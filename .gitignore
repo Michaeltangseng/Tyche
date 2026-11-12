@@ -23,6 +23,7 @@ latest*.yml
 # Local documentation drafts. The feature Q&A is shared reading material.
 /docs/*
 !/docs/功能特性.md
+!/docs/需求-项目室.md
 /documentation/
 .github/brand/
 
