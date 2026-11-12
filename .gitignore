@@ -20,8 +20,9 @@ release/
 *.blockmap
 latest*.yml
 
-# Local documentation drafts
-/docs/
+# Local documentation drafts. The feature Q&A is shared reading material.
+/docs/*
+!/docs/功能特性.md
 /documentation/
 .github/brand/
 
