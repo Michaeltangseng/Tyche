@@ -1,6 +1,8 @@
 # 模块文档：M4 产物与版本、M6 写入协调
 
-初稿第一版，2026-11-13。依据：`docs/product-target.md`（R7、R10、R11、R12、R15、R23、R25）、`docs/functional-architecture.md` 第十二版（决定 A4、A5、A11、A14）、`docs/modules/m2-checkpoint-engine.md` 第八版（5.2 写入作用域、5.4 租约的生命周期、第 8 节未解决漂移、第 9 节副作用、第 10 节恢复屏障）。
+第二版，2026-11-13。第二版吸收评审 r8（`docs/reviews/architecture-v5/r8-review.md`，其中三条经临时仓库实测复现）：引用名与临时文件名改用 id 的哈希；影子仓库以原始字节保存，屏蔽工作目录属性的内容转换；路径声明解析内部符号链接；恢复开始前为所有项目目录建立保护；强制加入只针对存在的文件。
+
+依据：`docs/product-target.md`（R7、R10、R11、R12、R15、R23、R25）、`docs/functional-architecture.md` 第十二版（决定 A4、A5、A11、A14）、`docs/modules/m2-checkpoint-engine.md` 第八版（5.2 写入作用域、5.4 租约的生命周期、第 8 节未解决漂移、第 9 节副作用、第 10 节恢复屏障）。
 
 M2 规定了「什么时候要什么」，本文规定「怎样做到」：调度器怎样实现 M2 5.4 的契约，影子仓库怎样实现 M2 第 9 节里与 git 有关的副作用。M2 的各项保证都建立在本文之上，所以本文的每一条接口都标出它对应的 M2 条款。
 
@@ -57,7 +59,12 @@ claim = { root, path, mode }
 - `path` 统一为 `/` 分隔，去掉 `.` 段；含 `..` 段、绝对路径、空字节的拒绝。
 - Unicode 统一为 NFC，避免 macOS 文件名的组合字符造成同名不同串。
 - **大小写**：按卷探测一次并缓存。在 `root` 下创建一个临时文件，用改变大小写后的名字 `stat`，能找到就是大小写不敏感的卷（macOS 默认的 APFS 即如此）；在不敏感的卷上，比较前先做大小写折叠。项目室创建时探测并记入项目记录；项目外的 `root` 在第一次申请时探测并缓存到进程结束。
-- **符号链接**：只解析 `root` 本身。`root` 内部路径按字面比较，不跟随其中的符号链接。Agent 经符号链接写到 `root` 之外的情况不在本文保证之内（M8 的读取通道另有限制）。
+- **符号链接**：`root` 和声明路径都按磁盘上的实际位置比较，而不是按字面。
+  - 声明路径中已存在的部分用 `realpath` 解析，不存在的尾部（例如还没创建的目标文件）接在最近的已存在祖先解析结果之后。这样 `root/alias → root/docs` 时，`alias/spec.md` 与 `docs/spec.md` 解析为同一路径，判为冲突。
+  - 解析结果必须仍在 `root` 的真实路径之内，否则拒绝这条声明：检查点的目标文件不能经符号链接指向工作目录之外。
+  - 解析在申请时进行。获批之后才出现的符号链接（例如 Agent 在工作中新建了一个别名），调度器无法提前识别；由越界检测兜底：影子仓库把符号链接存为链接本身，经别名写入的改动显示为真实文件的改动，不在声明范围内就会被列为越界（A6）。
+  - 硬链接（同一文件的两个名字）不在识别范围内，写入架构的 Known Risks。
+  - Agent 经符号链接写到工作目录之外，不在本文保证之内（M8 的读取通道另有限制）。
 
 #### A2.3 项目外普通群聊
 
@@ -141,12 +148,16 @@ M2 5.4 的五个状态与调度器的对应：
 
 **位置**：`meldwork-private/projects/<projectId>/shadow.git`，以 `git --git-dir=<shadow.git> --work-tree=<root> init` 创建，`core.bare=false`。
 
+**名字的编码**：M2 的副作用 id 形如 `<实例 id>:<seq>:<序号>`，含有冒号，不是合法的 git 引用名（实测 `git update-ref` 返回 128）。所以引用名、临时文件名里出现的一切 id，都用 `h(id)` 表示：id 的 UTF-8 字节的 SHA-256，取小写十六进制全长 64 位。它只含 `[0-9a-f]`，在 git 引用、macOS、Linux、Windows 的文件名中都合法，且长度固定。原始 id 写在提交说明里，便于诊断。下文的 `<…>` 凡是出现在引用名或文件名中的，都指编码后的值。
+
 **唯一入口**：`desktop/src/project-room/shadow-git.cjs`。其他代码不直接调用 git。每次调用由它生成参数，以 `execFile` 调用 git 可执行文件，不经过 shell：
 
 ```
 git --git-dir=<shadow.git> --work-tree=<root>
     -c core.hooksPath=/dev/null      不执行钩子
     -c core.autocrlf=false           不改换行
+    -c core.fileMode=true            记录可执行位
+    -c core.symlinks=true            符号链接存为链接本身
     -c core.quotepath=false          路径原样输出
     -c core.fsmonitor=false          不调用外部监视程序
     -c gc.auto=0                     不自动回收，由 B5 控制
@@ -155,6 +166,14 @@ git --git-dir=<shadow.git> --work-tree=<root>
 ```
 
 环境变量：清除 `GIT_DIR`、`GIT_WORK_TREE`、`GIT_INDEX_FILE`、`GIT_OBJECT_DIRECTORY` 等一切 `GIT_*`，再设 `GIT_CONFIG_GLOBAL=/dev/null`、`GIT_CONFIG_NOSYSTEM=1`、`GIT_TERMINAL_PROMPT=0`，不读用户的全局与系统 git 配置。Windows 上 `/dev/null` 换成 `NUL`。
+
+**原始字节**：影子仓库保存工作目录文件的原始字节，不做任何内容转换。`core.autocrlf=false` 不足以做到这一点：工作目录里的 `.gitattributes` 规则（例如 `*.txt text eol=lf`）仍会让 `git add` 把 CRLF 存成 LF，而之后的 `git diff` 用同样的规则比较，会报告「无差异」。实测确认了这个问题：工作目录是 CRLF、快照里是 LF，候选核对却通过。所以创建影子仓库时写入 `shadow.git/info/attributes`：
+
+```
+* -text -eol -filter -ident -working-tree-encoding
+```
+
+`info/attributes` 的优先级高于工作目录中的任何 `.gitattributes`，这一行对所有路径关闭换行转换、清理与还原过滤（包括 Git LFS）、`$Id$` 展开和编码转换。不关闭 `diff` 属性，文本文件仍按文本显示 diff。实测：加上这一行后，快照保存 CRLF 原样；工作目录由 CRLF 改为 LF、或者可执行位变化时，`git diff --quiet` 都报告有差异；文本 diff 照常输出。由此，候选核对、漂移检查、恢复文件、用户仓库提交的前置条件（B7）比较的都是同一份原始字节与文件模式。
 
 **版本要求**：git ≥ 2.32（`GIT_CONFIG_GLOBAL` 从这个版本起可用）。创建项目室时检查，不满足则创建失败并说明原因。macOS 自带的 git（例如 2.39）满足。
 
@@ -171,7 +190,7 @@ git --git-dir=<shadow.git> --work-tree=<root>
 
 工作目录里的 `.gitignore` 由 git 照常读取，平台不修改它。
 
-例外：**检查点的目标文件和回应文件总要进入快照**，即使用户的 `.gitignore` 忽略了它们。快照时对这些文件额外执行 `git add -f -- <文件>`。否则送审快照会漏掉正在评审的文档。
+例外：**检查点的目标文件和回应文件只要存在，就要进入快照**，即使用户的 `.gitignore` 忽略了它们，否则送审快照会漏掉正在评审的文档。做法见 B3.1 第 2 步。
 
 **嵌套仓库**：工作目录里含有其他 git 仓库（子模块或嵌入的仓库）时，git 只会记下一个指针，不跟踪其中的文件内容。创建项目室时扫描并列出这些目录，把它们写进排除规则的自动段；界面说明「这些目录的改动不会被快照、越界检测和漂移检查覆盖」。这条写入架构的 Known Risks（第 E 节）。
 
@@ -181,11 +200,12 @@ git --git-dir=<shadow.git> --work-tree=<root>
 
 在项目互斥队列中：
 
-1. 如果 `refs/meldwork/effects/<副作用 id>` 已存在，直接返回它指向的提交（M2 9.1 的幂等方式）。
-2. `git add -A`，再 `git add -f -- <本检查点的目标文件与回应文件>`（如有）。
+1. 如果 `refs/meldwork/effects/<h(副作用 id)>` 已存在，直接返回它指向的提交（M2 9.1 的幂等方式）。
+2. `git add -A`。它记录工作目录中所有未被忽略的新增、修改与删除，包括此前被强制加入、现在已被删除的文件（它们已在影子仓库的索引里）。
+   然后对本检查点的目标文件与回应文件中**当前存在**的那些（以 `lstat` 判断）执行 `git add -f -- <文件…>`，让被 `.gitignore` 忽略的目标文件也进入快照。对不存在的路径执行 `git add -f` 会失败（实测返回 128），所以不存在的文件不传给它：从未存在的文件在快照中就是「不存在」，主笔首次开工前目标文件还没创建、回应文件还没写，都属于这种正常情况。
 3. `git write-tree` → 树。
-4. `git commit-tree <树> -m <副作用 id>` → 提交。快照之间不设父子关系，相同内容的对象由 git 自动复用。
-5. `git update-ref refs/meldwork/effects/<副作用 id> <提交>`。
+4. `git commit-tree <树> -m <原始副作用 id>` → 提交。快照之间不设父子关系，相同内容的对象由 git 自动复用。
+5. `git update-ref refs/meldwork/effects/<h(副作用 id)> <提交>`。
 
 快照总是覆盖整个工作目录（架构 A4、A5）。
 
@@ -193,17 +213,17 @@ git --git-dir=<shadow.git> --work-tree=<root>
 
 | 引用 | 用途 | 保留到 |
 | --- | --- | --- |
-| `refs/meldwork/effects/<副作用 id>` | 所有快照与接受提交的幂等记录 | 见 B5 |
-| `refs/meldwork/accepted/<checkpointId>/<版本序号>` | 已接受版本（`ArtifactVersion.commit`） | 项目室删除时 |
-| `refs/meldwork/candidate/<checkpointId>/<轮次>` | 每轮的候选提交 | 所属检查点被接受或重开之后，只保留最后一轮 |
-| `refs/meldwork/drift/<itemId>/<修订号>` | 漂移条目的观察快照 | 条目解决或作废时 |
+| `refs/meldwork/effects/<h(副作用 id)>` | 所有快照与接受提交的幂等记录 | 见 B5 |
+| `refs/meldwork/accepted/<h(checkpointId)>/<版本序号>` | 已接受版本（`ArtifactVersion.commit`） | 项目室删除时 |
+| `refs/meldwork/candidate/<h(checkpointId)>/<轮次>` | 每轮的候选提交 | 所属检查点被接受或重开之后，只保留最后一轮 |
+| `refs/meldwork/drift/<h(itemId)>/<修订号>` | 漂移条目的观察快照 | 条目解决或作废时 |
 
 #### B3.3 对应的 M2 副作用
 
 | M2 副作用 | git 做法 |
 | --- | --- |
 | `snapshot` | B3.1 |
-| `evaluate-submission` | `bodyChanged`：`git diff --quiet <上一轮候选> <本次快照> -- <目标文件>`。`newResponse`：回应文件在本次快照中存在，且与上一轮候选中的不同（`git diff --quiet <上一轮候选> <本次快照> -- <回应文件>`）。清单校验读取本次快照中的清单文件（`git show <提交>:<路径>`），不读工作目录 |
+| `evaluate-submission` | 目标文件或回应文件在快照中不存在是正常值，不是错误；`git diff` 对不存在的路径照常比较。`bodyChanged`：`git diff --quiet <上一轮候选> <本次快照> -- <目标文件>`。`newResponse`：回应文件在本次快照中存在，且与上一轮候选中的不同（`git diff --quiet <上一轮候选> <本次快照> -- <回应文件>`）。清单校验读取本次快照中的清单文件（`git show <提交>:<路径>`），不读工作目录 |
 | `verify-candidate`、`verify-observed` | 先 `git update-index -q --refresh`，再 `git diff --quiet <候选或观察快照> -- <文件>`，比较的是工作目录与该提交 |
 | `drift-check` | 对每个上游的已接受提交：`git diff --name-only -z <已接受提交> -- <上游的文件>`。有输出即为漂移；随后为工作目录做一次快照，作为漂移条目的观察快照 |
 | `detect-accepted-changes` | 对每份已接受文档：`git diff --quiet <它的最新已接受提交> -- <文件>`；有差异时做快照，作为新版本的候选 |
@@ -227,12 +247,12 @@ git --git-dir=<shadow.git> --work-tree=<root>
 
 对应 M2 的 `accept-commit`。目标：提交树里的目标文件**严格等于候选提交**，再叠加平台管理的记录文件的当前内容（M2 9.1）。
 
-这一步使用一份**临时索引**（`GIT_INDEX_FILE=shadow.git/accept-<副作用 id>.index`）。它不扫描工作目录，只从候选提交构造树，所以不影响长期索引的文件状态缓存，也不受 B3.4 的上限影响：
+这一步使用一份**临时索引**（`GIT_INDEX_FILE=shadow.git/accept-<h(副作用 id)>.index`）。它不扫描工作目录，只从候选提交构造树，所以不影响长期索引的文件状态缓存，也不受 B3.4 的上限影响：
 
 1. `git read-tree <candidate>`。
 2. 对每个记录文件（本检查点的评审文件与回应文件、`decisions.md`、`changes.md`）：`git hash-object -w -- <文件>` 得到对象，再 `git update-index --add --cacheinfo <模式>,<对象>,<路径>`。工作目录中不存在的记录文件跳过。
 3. `git write-tree` → 树；`git commit-tree <树> -p <这个检查点上一个已接受提交（如有）> -m <检查点、决策 id>` → 提交。
-4. 更新 `refs/meldwork/effects/<副作用 id>` 与 `refs/meldwork/accepted/<checkpointId>/<序号>`，删除临时索引。
+4. 更新 `refs/meldwork/effects/<h(副作用 id)>` 与 `refs/meldwork/accepted/<h(checkpointId)>/<序号>`，删除临时索引。
 
 里程碑检查点的候选提交覆盖整个工作目录，接受提交同样以它为基础。
 
@@ -292,10 +312,14 @@ git --git-dir=<shadow.git> --work-tree=<root>
 
 应用启动时，M3、M6、M2 按以下顺序协作，前一步完成之前不进入下一步：
 
-1. **调度器以恢复模式启动**：拒绝排队任何可写申请，只接受 `registerResidual`、`holdRoot`、`restoreGranted`。
-2. **进程登记表恢复**（A14，M3 实现）：确认每个未结束容器已空；确认不了的调用 `registerResidual`。完成后，调度器开始接受可写申请，但还在恢复的项目 `root` 仍处于 `holdRoot`。
-3. **各项目的恢复屏障**（M2 第 10 节）：每个项目先 `holdRoot(root)`，在屏障内执行 `restoreGranted`（只含「已获批」且未被残留占用代表的申请）；然后落盘，`openRoot(root)`，再按原申请时间重新提交「等待中」的申请。各项目之间互不等待。
-4. 项目外的普通群聊：第 2 步完成后即可申请；与正在恢复的项目 `root` 重叠的申请，等到该项目 `openRoot` 之后。
+1. **调度器以恢复模式启动**：不授予任何可写申请，只接受 `holdRoot`、`registerResidual`、`restoreGranted`。
+2. **为所有项目目录建立保护**：从工作区文件的项目列表（M1，`meldwork-workspace.json` 的 `projects`）读出每个项目室的工作目录，对每一个 `holdRoot(root)`。这一步只依赖工作区文件，不依赖各项目的状态文件，所以即使某个项目的状态文件读不出来，它的目录也已受保护。
+3. **进程登记表恢复**（A14，M3 实现）：确认每个未结束容器已空；确认不了的调用 `registerResidual`。
+4. **退出恢复模式**：调度器开始授予可写申请。与仍处于保护中的项目目录重叠的申请（例如使用项目目录的普通群聊）继续等待；其他申请照常授予。
+5. **各项目的恢复屏障**（M2 第 10 节），各项目之间互不等待：在屏障内执行 `restoreGranted`（只含「已获批」且未被残留占用代表的申请），落盘后 `openRoot(root)`，再按原申请时间重新提交「等待中」的申请。
+6. **读不出状态的项目**（状态文件损坏、迁移失败）：目录保持保护，项目室只读打开，界面说明原因。用户可以修复后重试，或者经确认「解除这个目录的写入保护」，之后这个项目室保持只读，直到恢复成功或被删除。
+
+这个顺序保证：在任何项目恢复旧租约之前，没有项目外的调用能先拿到它目录内的写入，项目恢复时也就不会把合法状态判为冲突。
 
 `restoreGranted` 整体拒绝时（记录损坏），按 M2 第 10 节第 6 步：冲突的持有者记为 `blockedOn`，其余申请单独重试恢复。
 
@@ -304,6 +328,8 @@ git --git-dir=<shadow.git> --work-tree=<root>
 调度器（`desktop/test/run-scheduler.test.cjs` 扩展，`desktop/test/project-room-claims.test.cjs` 新增）：
 
 - 冲突规则：相同路径、前缀路径、按段比较（`a/b` 与 `a/bc` 不冲突）、大小写不敏感卷、NFC 与 NFD 同名、`shared-legacy` 之间不冲突、残留占用与一切重叠声明冲突。
+- 符号链接：`root/alias → root/docs` 时 `alias/spec.md` 与 `docs/spec.md` 冲突；尚不存在的文件按最近的已存在祖先解析；解析到 `root` 之外的声明被拒绝。
+- 启动顺序：在进程登记表恢复期间提交一个使用项目目录的普通群聊申请，断言它在该项目 `openRoot` 之前不被授予，项目恢复旧租约时不报冲突；项目状态文件损坏时，断言目录保持保护。
 - 全有或全无：申请两个文件，其中一个被占用，断言两个都没有授予。
 - 公平：工作目录申请在等待时，后到的单文件申请不能越过它；与它无关的申请可以越过。
 - 生命周期：`withdraw` 对等待中、已授予、不存在三种情况都幂等；`release` 后立即授予下一位；`restoreGranted` 遇到重叠整体拒绝。
@@ -313,7 +339,8 @@ git --git-dir=<shadow.git> --work-tree=<root>
 
 - 参数与环境：断言每次调用都带 `--git-dir`、`--work-tree` 和 B1 的配置，清除了 `GIT_*`，不经过 shell；在用户全局配置里放入钩子和 `core.autocrlf=true`，断言不生效。
 - 不碰用户仓库：在一个真实的用户仓库上运行全部操作，断言它的 `.git` 目录（索引、引用、配置、钩子）前后逐字节相同。
-- 快照：被 `.gitignore` 忽略的目标文件仍进入快照；超过单文件上限的被排除并列出；同一副作用 id 重复执行返回同一提交。
+- 快照：被 `.gitignore` 忽略的目标文件仍进入快照；目标文件与回应文件都不存在时快照成功；被强制加入过的目标文件删除后，快照记录删除；超过单文件上限的被排除并列出；同一副作用 id 重复执行返回同一提交；含冒号等字符的副作用 id 生成合法的引用名与临时文件名。
+- 原始字节：工作目录有 `*.txt text eol=lf` 规则、文件为 CRLF 时，断言快照保存 CRLF、文件改为 LF 后候选核对报告差异、恢复文件后字节与原来相同；可执行位变化被检测到；LFS 过滤不被调用。
 - 接受提交：目标文件严格等于候选提交，即使工作目录已被改动；记录文件取当前内容。
 - 恢复文件：在改名前后注入取消，断言不会出现写了一半的文件；新增文件被删除；可执行位被恢复。
 - 用户仓库提交：用户已暂存其他文件时，断言它们仍然暂存且不在提交里；本次路径有用户暂存时跳过且索引不变；钩子拒绝时只恢复本次暂存的路径；子目录作为工作目录时路径换算正确；SHA-256 对象格式的仓库前置条件比较正确。
@@ -325,7 +352,8 @@ git --git-dir=<shadow.git> --work-tree=<root>
 | --- | --- |
 | 架构 M6 | 「防止死锁」改为引用 A3.1 的全有或全无；租约键改为引用 A2 的路径声明 |
 | 架构第 6 节 | 新增：工作目录与项目室重叠的普通群聊，改为与项目室互斥（A2.3），这是对现有行为的改变 |
-| 架构第 6 节 Known Risks | 新增：嵌套仓库中的改动不被快照、越界检测与漂移检查覆盖（B2）；Agent 经符号链接写到工作目录之外不在保证之内（A2.2） |
+| 架构第 6 节 Known Risks | 新增：嵌套仓库中的改动不被快照、越界检测与漂移检查覆盖（B2）；Agent 经符号链接写到工作目录之外不在保证之内；同一文件的硬链接别名不被路径声明识别（A2.2） |
+| 架构 M4 不变量 | 新增：影子仓库以原始字节保存，`info/attributes` 关闭一切内容转换（B1）；引用名与临时文件名中的 id 一律用 SHA-256 十六进制编码（B1） |
 | 架构第 5 节 | `run-scheduler.cjs` 一行改为引用本文 A3；新增 `shadow-git.cjs` |
 | M2 | 无需修改；本文实现它的 5.4 契约与第 9 节副作用 |
 | M13 | 项目设置中显示：被排除的大文件与嵌套仓库、快照上限、影子仓库磁盘占用 |
