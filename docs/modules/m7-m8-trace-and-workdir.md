@@ -1,6 +1,6 @@
 # 模块文档：M7 完整轨迹、M8 工作目录浏览
 
-第三版，2026-11-13。第三版吸收评审 r26（`docs/reviews/architecture-v5/r26-review.md`）：流式脱敏改为保留原始尾部、在原始文本上判断切口，私钥改为显式的丢弃状态；`.git` 边界改为在反查出的真实路径上检查。第二版吸收评审 r25（`docs/reviews/architecture-v5/r25-review.md`）：先脱敏、后切分，跨步骤维护脱敏缓冲；流式增量事件的原始视图改为合并后的文本；按键名删除会话类元数据并按值替换已知会话号；读取文件时按打开的对象反查真实路径；预览与历史比较分开校验；补充威胁模型。
+定稿（第三版），2026-11-13，用户裁决定稿。后续修改按新一轮评审处理。第三版吸收评审 r26（`docs/reviews/architecture-v5/r26-review.md`）：流式脱敏改为保留原始尾部、在原始文本上判断切口，私钥改为显式的丢弃状态；`.git` 边界改为在反查出的真实路径上检查。第二版吸收评审 r25（`docs/reviews/architecture-v5/r25-review.md`）：先脱敏、后切分，跨步骤维护脱敏缓冲；流式增量事件的原始视图改为合并后的文本；按键名删除会话类元数据并按值替换已知会话号；读取文件时按打开的对象反查真实路径；预览与历史比较分开校验；补充威胁模型。
 
 依据：`docs/product-target.md`（「执行过程完整可见」、R21、R22）、`docs/functional-architecture.md` 第二十九版（决定 A7、A9，M7、M8，第 6 节）、`docs/modules/m1-m5-storage-and-interfaces.md` 定稿（IPC 约定、投影、项目目录）、`docs/modules/m4-m6-versions-and-writes.md` 定稿（A2.2 路径规范化、B6 diff 数据）、`docs/modules/m3-seat-invocation.md` 定稿（第 10 节能力登记）、`docs/modules/m13-interaction-experience.md` 定稿（右侧抽屉）。
 
