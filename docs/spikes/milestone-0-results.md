@@ -1,6 +1,6 @@
 # 里程碑 0 实测报告
 
-状态：进行中。日期、环境与逐项结果在完成后补齐。
+状态：0.2–0.7 已实测并记录（2026-11-13/14）。0.3 没有 Linux 环境；0.4 的 2 小时长跑仍在后台；0.6 的 DeepSeek 等 ACP Agent 因本机配置/安装缺失未测。0.2 的打包项已裁决改为原生小程序，打包场景移到里程碑 1 重跑。
 
 本报告验证各模块文档中尚未实测的前提。结论决定后续里程碑能否按现在的设计实现；需要修订模块文档的条目只写建议，经人确认后再改。
 
@@ -8,7 +8,7 @@
 
 | 编号 | 实测项 | 结论 | 对文档的影响 |
 | --- | --- | --- | --- |
-| 0.2 | 监护程序在 Electron 下运行（含打包后） | **不通过**：系统 Node 与开发用 Electron 通过；打包后无法以 Node 运行 | 建议改为随应用分发的独立小程序（M3 3.2）；M3 3.3 补充 fd 0/1/2 的处理约束 |
+| 0.2 | 监护程序在 Electron 下运行（含打包后） | **不通过（打包后）**：系统 Node 与开发用 Electron 通过；打包后 RunAsNode 被禁用。已裁决改为原生小程序，打包场景移到里程碑 1 重跑 | 已写入 M3 3.2/3.3/3.6、决策记录与里程碑 1 任务单（不再是待确认建议） |
 | 0.3 | Linux 上的进程组、`pgrep -g`、`/proc/<pid>/environ` | **未完成**：没有 Linux 环境（用户明确不需要容器） | 无（Linux 上 A14 的实现验证留待有环境时进行） |
 | 0.4 | Claude、Codex 的 ACP 适配器 | **部分通过**：登录、权限、会话、取消、轨迹、用量、SDK 兼容已测；2 小时长跑后台进行中 | 建议 M3 7.1 增加「必须显式设置会话模式」与 SDK 兼容性说明 |
 | 0.5 | Claude print、Codex exec 的 `read-exec` 参数 | **通过**（Claude 需去掉不存在的 `--permission-mode default`） | 建议更新 M3 6.1 的 Claude 候选参数与提示词传递方式 |
@@ -229,3 +229,42 @@
 - 第 F 节待定问题第 1 条：本报告给出的是 macOS/Apple Silicon 的合成数据；仍需在至少三个真实仓库（含大量小文件、大二进制、真实 LFS）上复测，特别是 200k 文件与真实 LFS。
 
 清理：所有临时目录已删除（`os.tmpdir()/meldwork-shadow-spike-*`）；实验没有启动常驻进程；`git` 子进程均已退出。
+
+## 0.8 汇总与文档修订建议
+
+### 总体结论
+
+- **通过**：0.5（read-exec）、0.7（影子仓库；合成/模拟仓库）。
+- **部分通过**：0.4（ACP 7/8 项，2 小时长跑待补）、0.6（只测到 Claude/Codex）。
+- **未完成**：0.3（没有 Linux 环境）。
+- **已裁决**：0.2 的打包后问题改为原生小程序；打包场景移到里程碑 1 重跑。
+
+### 对文档的修改建议（本节只给建议，未直接修改模块文档）
+
+| 文档 | 章节 | 建议修改 | 依据 |
+| --- | --- | --- | --- |
+| `docs/modules/m3-seat-invocation.md` | 6.1 Claude 行 | 去掉 `--permission-mode default`（2.1.318 没有该取值）；补充 `--allowedTools` 是可变参数，提示词必须经 stdin 或 `--` 分隔；说明 `--allowedTools` 只做预批准、不裁剪工具清单 | 0.5 |
+| `docs/modules/m3-seat-invocation.md` | 7.1「权限」 | 明确写出：Claude/Codex 接入 ACP 时必须调用 `setSessionMode`；Claude 用 `default`（只读/read-exec）与 `acceptEdits`（写入），Codex 用 `read-only` 与 `workspace-write`；默认 `auto`/`agent` 会绕过客户端审批 | 0.4 |
+| `docs/modules/m3-seat-invocation.md` | 7.1「轨迹」、第 10 节 | Claude 的 `rawInput`/`rawOutput` 完整；Codex 的 shell 命令没有命令原文（`rawInput` 为空），`fullTrace` 不能简单标为 `true`；按通道如实登记 | 0.4 |
+| `docs/modules/m3-seat-invocation.md` | 7.1「SDK 版本」 | 适配器依赖 SDK 2.6.0/~2.4.0，桌面端 0.23.0，协议版本都是 1，功能可用；2.x 会发送 0.23.0 不认识的 `auth/status_update` 通知；升级 SDK 或过滤未知通知的决定留给里程碑 5 | 0.4 |
+| `docs/modules/m3-seat-invocation.md` | 3.9 | 补入实测：Claude 冷启动 spawn→首事件 1,432 ms、→首条回答 2,862 ms；Codex 229 ms / 5,524 ms；常驻第二轮 Claude 351/880 ms、Codex 9/4,350 ms。说明「首事件」常是协议内务事件，体验评估看首个实质事件/首条回答 | 0.6 |
+| `docs/modules/m3-seat-invocation.md` | 3.13 | DeepSeek（本机无 `acp` profile）、Hermes、Kimi、MiMo、OpenCode 的 `read-exec`/ACP 延迟仍待补测 | 0.6 |
+| `docs/modules/m4-m6-versions-and-writes.md` | B3.4 | 建议把单次快照用时上限从 60 秒调到 **120 秒**；文件数 20 万、单文件 50 MB 维持。100k 文件实测 39.4 秒，200k 线性估计约 80 秒；非可选快照超限即暂停 | 0.7 |
+| `docs/modules/m4-m6-versions-and-writes.md` | B8、F1 | 补一句「首次大快照后尽快 gc」：100k 小文件首次快照产生约 401 MB 松散对象，`git gc` 后 15.5 MB（16.4 秒）；F1 的真实仓库（含 200k 文件与真实 LFS）仍需复测 | 0.7 |
+| `docs/modules/m7-m8-trace-and-workdir.md` | 3.3、能力登记 | Codex ACP 的 shell 命令没有命令原文；`fullTrace` 的能力登记与「轨迹」标签的说明要按实际内容标注 | 0.4 |
+
+### 未完成与限制
+
+1. **0.3 Linux**：本机 macOS，用户明确不需要 Linux 容器；Linux 的进程组、`pgrep -g`、`/proc/<pid>/environ` 仍未验证。
+2. **0.4 的 2 小时长跑**：Claude 与 Codex 的空闲长跑已在后台启动（后台任务每分钟写一行，2 小时后检查日志并发送第二条提示）；结果待补。
+3. **0.6 的 DeepSeek/Hermes/Kimi/MiMo/OpenCode**：本机 DeepSeek 0.8.13 没有 `acp` profile（`~/.dsh` 不存在），其余 CLI 未安装；这些 Agent 的每轮启动延迟未验证。
+4. **0.7 的真实仓库**：100k 小文件是合成的，大二进制是合成的 60 MB 随机文件，LFS 是 `.gitattributes` 模拟（本机未安装 git-lfs）；还需在真实仓库上复测，尤其是 200k 文件与真实 LFS。
+5. **0.2 的打包场景**：已按裁决改为原生小程序，移到里程碑 1 用原生监护程序重跑；本报告不再重复打包项。
+
+### 基线测试（与本次改动无关）
+
+`npm --prefix desktop test` 在改动前的基线为 2494 个测试、**2466 通过、26 失败**。失败集中在两组，均可在直接运行时复现：
+- `test/security/preload-security.test.cjs`：Node 25 下 `Cannot initialize local storage without a --localstorage-file path`。
+- `test/skills/local-skill-snapshot*.test.cjs`：临时目录 rename 报 `EACCES`。
+
+未修改、未删除任何测试。按交接手册 2.5 的判断标准，后续改动的失败集合必须是这个基线失败集合的子集。
