@@ -12,7 +12,7 @@
 | 0.3 | Linux 上的进程组、`pgrep -g`、`/proc/<pid>/environ` | **未完成**：没有 Linux 环境（用户明确不需要容器） | 无（Linux 上 A14 的实现验证留待有环境时进行） |
 | 0.4 | Claude、Codex 的 ACP 适配器 | **部分通过**：登录、权限、会话、取消、轨迹、用量、SDK 兼容已测；2 小时长跑后台进行中 | 建议 M3 7.1 增加「必须显式设置会话模式」与 SDK 兼容性说明 |
 | 0.5 | Claude print、Codex exec 的 `read-exec` 参数 | **通过**（Claude 需去掉不存在的 `--permission-mode default`） | 建议更新 M3 6.1 的 Claude 候选参数与提示词传递方式 |
-| 0.6 | 可写 ACP 调用每轮启动的延迟 | 待测 | 待定 |
+| 0.6 | 可写 ACP 调用每轮启动的延迟 | **部分通过**：Claude/Codex 已测；DeepSeek 无 `acp` profile，其余 ACP Agent 未安装 | 建议把实测值写入 M3 3.9；DeepSeek 等仍待有环境时补测 |
 | 0.7 | 影子仓库 | 待测 | 待定 |
 
 ## 0.2 监护程序在 Electron 下运行
@@ -151,12 +151,44 @@
 
 ## 0.6 可写 ACP 调用每轮启动的延迟
 
-环境：
+环境：macOS Darwin 24.6.0（arm64）；Node v25.2.0；桌面端 ACP SDK 0.23.0；Claude 适配器 0.107.0、Codex 适配器 2.6.0（临时安装于 `/tmp/meldwork-acp-spike`）；本机 `deepseek` CLI 0.8.13（`deepseek-tui` 同版本）。
+
 步骤：
-结果：
-结论：
-对文档的影响：
-清理：
+
+1. 写 `desktop/spikes/acp-latency-check.cjs`：对每个目标测 5 次冷启动；第一次 `newSession`，后续用 `resumeSession`（模拟可写调用每轮新进程 + 恢复会话）。
+2. 每次记录：`spawn → initialize → newSession/resumeSession → setSessionMode → prompt`，以及 prompt 之后的首个 `sessionUpdate`、首个实质事件（message/thought/tool_call）与首条回答。
+3. 常驻对比：同一进程、同一会话连续两轮，测第二轮 prompt 到首事件/首条回答的耗时。
+4. Claude 用 `setSessionMode('default')`，Codex 用 `setSessionMode('workspace-write')`（0.4 的结论）；权限请求一律批准。
+
+结果（5 次中位数，单位毫秒）：
+
+| 目标 | 冷启动：spawn→首事件 | 冷启动：spawn→首个实质事件 | 冷启动：spawn→首条回答 | 冷启动：spawn→完成 | 常驻第二轮：prompt→首事件 | 常驻第二轮：prompt→首条回答 | 常驻第二轮：完成 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Claude ACP | 1,432 | 2,862 | 2,862 | 2,879 | 351 | 880 | 893 |
+| Codex ACP | 229 | 5,524 | 5,524 | 5,534 | 9 | 4,350 | 4,362 |
+
+- 两次运行都是 5/5 成功；适配器经 `resumeSession` 恢复同一会话，`setSessionMode` 正常。
+- 「首事件」常常是 `usage_update` / `session_info_update` / `config_option_update` 一类的协议内务事件（几毫秒内到达），不能代表用户可见输出；上表同时给出首个实质事件与首条回答。
+- 冷启动相对常驻的额外开销：Claude 约 1.1 秒（首事件 1,432 vs 351）到约 2.0 秒（首条回答 2,862 vs 880）；Codex 约 0.22 秒（首事件 229 vs 9），首条回答的差异主要来自模型响应时间（5,524 vs 4,350），不是进程启动。
+- Codex 的冷启动很快，但模型首条回答较慢；Claude 的进程/会话恢复开销更大一些。两者都在「秒级」范围内，没有出现数十秒的启动延迟。
+
+**未测到的目标**：
+
+- DeepSeek：本机 `deepseek` 0.8.13 不接受 `--patch`（`unexpected argument '--patch'`）；`deepseek --profile acp` 报 `Profile 'acp' not found. Available profiles: none`；`~/.dsh` 不存在。应用内的 DeepSeek 集成可能依赖安装器写入的 profile，本次无法在应用外复现。**未测**。
+- Hermes、Kimi、MiMo、OpenCode、OpenClaw：本机未安装对应 CLI，**未测**。
+- Gemini、Qwen：当前仍走 print 通道，不在本任务「现有 ACP Agent」的列表内；切换到原生 ACP 时再测。
+
+会话策略（查 `desktop/src/agents/cli/cli-invocations.cjs`）：只有 OpenClaw 显式设置 `acpSessionStrategy: 'new'`；DeepSeek、Kimi、MiMo、OpenCode、Hermes 默认走 `resumeSession`。Claude/Codex 目前走 print/exec，尚未登记 ACP 会话策略；0.4 已证明它们的适配器支持 `resumeSession`。
+
+结论：**部分通过**。Claude/Codex 的每轮新进程 + `resumeSession` 在启动延迟上可接受（额外约 0.2–2 秒，模型响应占主导）；DeepSeek 与其他 ACP Agent 因本机配置/安装缺失未验证，M3 3.9 的结论仍不能覆盖它们。
+
+对文档的影响（建议，未修改）：
+
+- `docs/modules/m3-seat-invocation.md` 3.9：补充 Claude/Codex 的实测数值；明确「首事件」包含协议内务事件，评估体验应看首个实质事件/首条回答。
+- 第 13 节第 5 条：DeepSeek、Hermes、Kimi、MiMo、OpenCode 的延迟仍待补测；在有可用 Agent 的环境中重跑本脚本。
+- 0.4 的会话模式要求同样适用于延迟测量：Claude 用 `default`，Codex 用 `workspace-write`。
+
+清理：测试临时目录已删除；`/tmp/meldwork-acp-spike` 与 2 小时长跑进程保留到长跑结束；本脚本不修改仓库中的产品代码。
 
 ## 0.7 影子仓库
 
