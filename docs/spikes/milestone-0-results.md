@@ -9,7 +9,7 @@
 | 编号 | 实测项 | 结论 | 对文档的影响 |
 | --- | --- | --- | --- |
 | 0.2 | 监护程序在 Electron 下运行（含打包后） | **不通过**：系统 Node 与开发用 Electron 通过；打包后无法以 Node 运行 | 建议改为随应用分发的独立小程序（M3 3.2）；M3 3.3 补充 fd 0/1/2 的处理约束 |
-| 0.3 | Linux 上的进程组、`pgrep -g`、`/proc/<pid>/environ` | 待测 | 待定 |
+| 0.3 | Linux 上的进程组、`pgrep -g`、`/proc/<pid>/environ` | **未完成**：没有 Linux 环境（用户明确不需要容器） | 无（Linux 上 A14 的实现验证留待有环境时进行） |
 | 0.4 | Claude、Codex 的 ACP 适配器 | 待测 | 待定 |
 | 0.5 | Claude print、Codex exec 的 `read-exec` 参数 | 待测 | 待定 |
 | 0.6 | 可写 ACP 调用每轮启动的延迟 | 待测 | 待定 |
@@ -53,12 +53,17 @@
 
 ## 0.3 Linux
 
-环境：
-步骤：
-结果：
-结论：
-对文档的影响：
-清理：
+环境：未完成。本机是 macOS（Mac mini，Darwin 24.6.0）；用户明确不需要为此启动 Linux 容器或其他 Linux 环境。
+
+步骤：计划在 Linux 上用系统 Node 与 Electron 重跑任务 0.2 的四个场景，并验证 `pgrep -g <pgid>`、读取同一用户进程的 `/proc/<pid>/environ`、`env -i` 启动的子进程环境中没有 `MELDWORK_CONTAINER`。本机没有 Linux 环境，未执行。
+
+结果：未完成：没有 Linux 环境。
+
+结论：**未完成**。Linux 上的进程组语义、`pgrep -g` 与 `/proc` 环境读取仍需在有 Linux 机器时验证；M3 3.7 的 Linux 分支在验证前不应标为已实测。
+
+对文档的影响：无。`docs/modules/m3-seat-invocation.md` 第 13 节已把 Linux 列为待验证项，本次结果与之相符。
+
+清理：未创建 Linux 环境；为尝试环境而启动的 Docker Desktop 已退出，拉取的测试镜像已删除。
 
 ## 0.4 Claude、Codex 的 ACP 适配器
 
