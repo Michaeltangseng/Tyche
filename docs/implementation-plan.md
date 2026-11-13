@@ -10,7 +10,7 @@
 | --- | --- |
 | `docs/modules/m1-m5-storage-and-interfaces.md` | 定稿（第六版） |
 | `docs/modules/m2-checkpoint-engine.md` | 定稿（第十一版） |
-| `docs/modules/m3-seat-invocation.md` | 定稿（第七版） |
+| `docs/modules/m3-seat-invocation.md` | 定稿（第九版） |
 | `docs/modules/m4-m6-versions-and-writes.md` | 定稿（第八版） |
 | `docs/modules/m13-interaction-experience.md` | 定稿（第十二版） |
 | `docs/modules/m7-m8-trace-and-workdir.md` | 定稿（第三版） |
@@ -197,7 +197,7 @@
 
 | 风险 | 影响的里程碑 | 应对 |
 | --- | --- | --- |
-| 监护程序在打包后的 Electron 中行为与原型不同 | 0、1 | 里程碑 0 首先验证；备选为独立的小程序 |
+| 监护程序在打包后的 Electron 中行为与原型不同 | 0、1 | **已发生并已裁决**（2026-11-13）：打包后关闭了 RunAsNode fuse，改为原生小程序；不打开 fuse |
 | Claude、Codex 的 ACP 适配器实测不通过 | 0、5、7 | 保留 print/exec 通道；完整轨迹在回退通道中按 M7 的映射提供，能力登记如实标注 |
 | `read-exec` 在部分 CLI 上无法表达 | 0、5 | 席位配置中提示不支持，不降级（R16） |
 | 可写 ACP 调用每轮启动的延迟过大 | 0、1 | 评估 M3 第 13 节第 5 条的替代方案，改文档后再实现 |

@@ -1,6 +1,6 @@
 # 模块文档：M3 席位调用适配（含 M10 用量、A14 受管理进程的实现）
 
-定稿（第八版），2026-11-13。第八版为定稿后的补充：新增 4.6「项目内群聊的调用」（文档缺漏补齐）。第七版经评审 r18 确认无新问题。实现阶段仍需完成第 13 节的待实测项（Electron 打包运行、Linux、Windows、ACP 适配器、`read-exec` 参数）。第七版吸收评审 r17（`docs/reviews/architecture-v5/r17-review.md`）：选择回退结果前，先等控制通道读到结束；Agent 不继承 fd 3。第六版吸收评审 r16（`docs/reviews/architecture-v5/r16-review.md`）：根进程退出与清理相互独立地上报；`exit` 与 `close` 对每个子进程恰好发出一次，拿不到真实结果、也不能确认是被清理结束时以「退出结果未知」收尾。第五版吸收评审 r15（`docs/reviews/architecture-v5/r15-review.md`）：不再用启动时间推断组号已被复用；钉子不在时平台不对任何单个进程自动发信号，一律登记残留占用、由人处理；`finalKill` 携带 Agent 根进程是否存活，清理中被一并结束的 Agent 以 `SIGKILL` 报告 `exit`。第四版吸收评审 r14（`docs/reviews/architecture-v5/r14-review.md`）：容器改回监护程序领头的进程组，监护程序作「钉子」：忽略 `SIGTERM`，先报告结果与成员清单，最后对整组 `SIGKILL`；组号在放行前落盘；适配器的终止路径改为统一经受管理的停止接口；附第三轮实测。第三版吸收评审 r13（`docs/reviews/architecture-v5/r13-review.md`）：容器改为 Agent 自己的进程组、监护程序在组外，整组原子发信号，正常清理不再逐个进程发信号；启动器的 `exit`、`close`、`container-empty` 三个事件分开定义，`close` 等输出排空；标记缺失视为身份未知；附第二轮实测与控制通道的实现约束。第二版吸收评审 r12（`docs/reviews/architecture-v5/r12-review.md`）：重启恢复先核实容器身份（容器标记与组长启动时间），只对核实属于本容器的进程发信号；`read-exec` 评审串行运行并纳入快照与核对；常驻 ACP 调用以协议的一轮完成为结束；监护程序先报告 Agent 结果、再逐个清理组内进程、最后报告容器已空。
+定稿（第九版），2026-11-13。第九版为定稿后的补充（随里程碑 0 任务 0.2 的实测结论与设计裁决）：监护程序由「Electron 可执行文件以 `ELECTRON_RUN_AS_NODE` 运行的脚本」改为**随应用分发的原生小程序**，因为打包后的应用关闭了 RunAsNode fuse；第八版新增 4.6「项目内群聊的调用」。第七版经评审 r18 确认无新问题。实现阶段仍需完成第 13 节的待实测项（Electron 打包运行、Linux、Windows、ACP 适配器、`read-exec` 参数）。第七版吸收评审 r17（`docs/reviews/architecture-v5/r17-review.md`）：选择回退结果前，先等控制通道读到结束；Agent 不继承 fd 3。第六版吸收评审 r16（`docs/reviews/architecture-v5/r16-review.md`）：根进程退出与清理相互独立地上报；`exit` 与 `close` 对每个子进程恰好发出一次，拿不到真实结果、也不能确认是被清理结束时以「退出结果未知」收尾。第五版吸收评审 r15（`docs/reviews/architecture-v5/r15-review.md`）：不再用启动时间推断组号已被复用；钉子不在时平台不对任何单个进程自动发信号，一律登记残留占用、由人处理；`finalKill` 携带 Agent 根进程是否存活，清理中被一并结束的 Agent 以 `SIGKILL` 报告 `exit`。第四版吸收评审 r14（`docs/reviews/architecture-v5/r14-review.md`）：容器改回监护程序领头的进程组，监护程序作「钉子」：忽略 `SIGTERM`，先报告结果与成员清单，最后对整组 `SIGKILL`；组号在放行前落盘；适配器的终止路径改为统一经受管理的停止接口；附第三轮实测。第三版吸收评审 r13（`docs/reviews/architecture-v5/r13-review.md`）：容器改为 Agent 自己的进程组、监护程序在组外，整组原子发信号，正常清理不再逐个进程发信号；启动器的 `exit`、`close`、`container-empty` 三个事件分开定义，`close` 等输出排空；标记缺失视为身份未知；附第二轮实测与控制通道的实现约束。第二版吸收评审 r12（`docs/reviews/architecture-v5/r12-review.md`）：重启恢复先核实容器身份（容器标记与组长启动时间），只对核实属于本容器的进程发信号；`read-exec` 评审串行运行并纳入快照与核对；常驻 ACP 调用以协议的一轮完成为结束；监护程序先报告 Agent 结果、再逐个清理组内进程、最后报告容器已空。
 
 依据：`docs/product-target.md`（R2、R8、R10、R16、R20、R21、R26、R27、R28）、`docs/functional-architecture.md` 第十六版（决定 A3、A8、A9、A13、A14）、`docs/modules/m2-checkpoint-engine.md` 第八版（4.2 结果隔离、5.4 租约生命周期、第 10 节恢复屏障）、`docs/modules/m4-m6-versions-and-writes.md` 定稿（A3 调度器接口、C 启动顺序）。
 
@@ -25,7 +25,8 @@ M3 把「席位 + 检查点 + 输入」变成一次 Agent 调用，再把结果�
 | --- | --- | --- |
 | Agent 以 `stdio: ['pipe','pipe','pipe']`、POSIX 上 `detached: true` 启动 | `desktop/src/agents/cli/cli-adapters.cjs:246-252`；ACP 同理 `cli-acp-runner.cjs:684` | 监护程序可以夹在中间而不改变 stdio 的用法（第 3 节） |
 | 停止时对整个进程组发信号 `process.kill(-child.pid, …)` | `cli-adapters.cjs:331`、`cli-acp-runner.cjs:500` | `child` 换成监护程序后，同样的代码结束的是整个容器 |
-| 子进程环境中剔除 `ELECTRON_RUN_AS_NODE` 等变量 | `cli-process-support.cjs:40` | 监护程序自己需要这个变量才能用 Electron 的可执行文件运行，在启动 Agent 前剔除 |
+| 子进程环境中剔除 `ELECTRON_RUN_AS_NODE` 等变量 | `cli-process-support.cjs:40` | 沿用：main 在构造 `go` 消息中的 Agent 环境时照常剔除；原生监护程序自己不需要这些变量 |
+| 打包后的应用关闭了 `runAsNode` 等 fuse | `desktop/scripts/after-pack.cjs:13-19` | 监护程序不能是由 Electron 运行的脚本，改为原生小程序（3.2） |
 | Windows 的进程树结束在直接子进程退出后立即返回 | `cli-process-support.cjs:47` | 证明不了后代已退出（A14） |
 | 正常退出时 `before-quit` 经 `workspace.stopAll()` 结束 Agent；崩溃时不执行 | `desktop/src/main.cjs:1157` | A14 的监护 |
 | 运行记录的崩溃恢复只改状态，不处理进程 | `desktop/src/runs/run-ledger.cjs:568` | A14 的进程登记表 |
@@ -45,7 +46,12 @@ A14 原文说「可写调用」。本文把范围修正为**可能写入工作�
 
 ### 3.2 组成
 
-- **监护程序**：`desktop/src/agents/process/meldwork-supervisor.cjs`，一个不依赖第三方包的小脚本。用 Electron 自己的可执行文件运行，环境中只为它设置 `ELECTRON_RUN_AS_NODE=1`。打包时放进 `asarUnpack`。每个可能写入的调用多一个这样的进程，内存占用为一个最小的 Node 进程。
+- **监护程序**：`meldwork-supervisor`，一个**随应用分发的原生小程序**（C 语言，只依赖系统库），源码 `desktop/native/supervisor/meldwork-supervisor.c`。每个可能写入的调用多一个这样的进程，内存占用很小。
+  - **为什么不是 Node 脚本**：打包后的应用在 `desktop/scripts/after-pack.cjs:13-19` 中关闭了 Electron 的 `runAsNode` fuse（同时关闭 `NODE_OPTIONS` 与 `--inspect`，开启 asar 完整性校验），`ELECTRON_RUN_AS_NODE=1` 被忽略，打包后的 Electron 可执行文件无法运行监护脚本（里程碑 0 任务 0.2 实测）。**不打开这个 fuse**：打开后，任何能启动进程的东西都能把签过名的 Meldwork 当作通用的 Node 解释器执行任意脚本，为了一个监护程序放宽整个应用的这项加固，不值得。
+  - **构建**：`desktop/scripts/build-native.cjs` 在打包前用 `clang` 编译，macOS 上分别编译 arm64 与 x86_64，再用 `lipo` 合并为通用二进制，输出到 `desktop/native/build/`（不进入版本控制）。`desktop/package.json` 的 `pack`、`dist`、`dist:public` 脚本先运行它；`build.extraResources` 把产物放进 `Contents/Resources/bin/meldwork-supervisor`。现有 `after-pack.cjs` 的 `codesign --force --deep` 一并签名它。
+  - **定位**：打包后为 `path.join(process.resourcesPath, 'bin', 'meldwork-supervisor')`；开发时（`npm --prefix desktop run dev`、测试）为 `desktop/native/build/meldwork-supervisor`，找不到时提示先运行构建脚本。启动前检查它存在且可执行，否则可能写入的调用以 `LOCAL_MANAGED_PROCESS_UNAVAILABLE` 失败（不退回无保护的启动）。
+  - **系统接口**：列出进程组成员用 `proc_listpids(PROC_PGRP_ONLY, pgid, …)`，取启动时间用 `proc_pidinfo(PROC_PIDTBSDINFO)`（macOS，libproc，已在本机验证可用）；Linux 上读 `/proc`。不再启动 `pgrep`、`ps` 子进程。
+  - Windows 的作业对象辅助程序（3.8）与它同属「随应用分发的原生小程序」，可以放在同一个构建脚本中。
 - **受管理启动器**：`desktop/src/agents/process/managed-spawn.cjs`，替换现有调用中的 `spawnFn`，返回的 `child` 带 `stdin`、`stdout`、`stderr`、`pid`，事件语义见 3.4，另提供受管理的停止接口 `stop({ force })`。
 - **进程登记表**：`desktop/src/agents/process/process-registry.cjs`，文件 `meldwork-private/process-registry.json`。
 - **适配器的终止路径必须一起修改**，不是只换 `spawnFn`。现有代码在 `cli-adapters.cjs` 的 `signalProcessTree`（`:328-338`）和 `cli-acp-runner.cjs` 的 `terminateChild`（`:479-505`）里直接调用全局的 `process.kill(-child.pid, signal)`，成功后立即返回，不经过启动器。`child.pid` 现在是监护程序，这样发出的信号会绕过 3.4 的停止协议：`SIGTERM` 被监护程序忽略，随后的 `SIGKILL` 会在它报告 Agent 结果之前就把它杀死。所以在 `cli-process-support.cjs` 新增 `terminateAgentProcess(child, { force })`：对受管理的 `child` 调用 `child.stop({ force })`；对不受管理的 `child`（只读调用）保持现有的信号与 Windows 进程树逻辑。两个适配器的取消、超时与强制终止都改为调用它，不再直接调用 `process.kill(-child.pid, …)`。
@@ -61,12 +67,12 @@ A14 原文说「可写调用」。本文把范围修正为**可能写入工作�
 ```
 main                                    监护程序（新会话、新进程组的组长）       Agent（同一个组）
  │ 1 生成容器标记，登记「启动中」，落盘
- │ 2 启动监护程序（detached），stdio = 三路 pipe，fd 3 = 控制通道
+ │ 2 启动监护程序（detached；main 一侧仍用 Node 的 spawn），stdio = 三路 pipe，fd 3 = 控制通道
  │ 3 取组号（= 监护程序 pid）与组长启动时间，登记「运行中」，落盘
  │ 4 fd 3：{"go": 命令, 参数, 环境}  ──→│
- │                                      │ 5 剔除 ELECTRON_RUN_AS_NODE，加入 MELDWORK_CONTAINER，
- │                                      │   在同一个组里启动 Agent，stdio 继承 ─────────────→ 开始工作
- │                                      │   随后关闭自己持有的 fd 0、1、2
+ │                                      │ 5 以 go 消息中的环境为准（main 已剔除自己的变量、加入 MELDWORK_CONTAINER），
+ │                                      │   fork + execve 在同一个组里启动 Agent，stdio 继承 ──→ 开始工作
+ │                                      │   随后把自己的 fd 0、1、2 重新指向 /dev/null
 ```
 
 - 第 3 步的「落盘」指**持久化确认**：改名与目录 `fsync` 都成功。目录 `fsync` 失败（`phase: 'after-commit'`，M1/M5 6.1）时先重写，成功后才进入第 4 步；重写也失败则不放行，结束监护程序，调用以失败返回。（定稿后的补充，随 M1/M5 评审 r19。）
@@ -74,8 +80,8 @@ main                                    监护程序（新会话、新进程组�
 - 容器的组号与组长启动时间在第 3 步、也就是放行之前落盘。所以任何能写文件的 Agent 及其子进程（包括用 `env -i` 清空了环境的子进程），所在的组号都已经登记。这正是 A14「身份落盘后才放行」的保证。
 - **容器标记**：第 1 步生成的随机值，以环境变量 `MELDWORK_CONTAINER=<随机值>` 传给 Agent，子进程默认继承。用于组长已经不在时，恢复时辅助核实成员（3.7）。
 - 命令、参数与环境经 fd 3 传递，不出现在监护程序的命令行里。
-- 监护程序启动 Agent 时只传 fd 0、1、2，**不传 fd 3**（控制通道设置为 close-on-exec，Node 的 `spawn` 只传 `stdio` 中列出的描述符）。所以 fd 3 只由监护程序持有，它退出时 fd 3 必然读到结束，3.4 的「先排空控制通道」才成立。
-- 监护程序**从不向 fd 1、2 写任何内容**，它们是 Agent 的输出通道；它的消息只经 fd 3。第 5 步之后它关闭自己持有的 fd 0、1、2，使 stdout、stderr 的结束只取决于 Agent 及其子进程。
+- 监护程序启动 Agent 时只传 fd 0、1、2，**不传 fd 3**：监护程序一启动就对 fd 3 设置 `FD_CLOEXEC`，`execve` 时它自动关闭；监护程序打开的其他描述符同样设置 `FD_CLOEXEC`。所以 fd 3 只由监护程序持有，它退出时 fd 3 必然读到结束，3.4 的「先排空控制通道」才成立。
+- 监护程序**从不向 fd 1、2 写任何内容**，它们是 Agent 的输出通道；它的消息只经 fd 3。第 5 步之后，它用 `dup2` 把自己的 fd 0、1、2 重新指向 `/dev/null`，使 stdout、stderr 管道的结束只取决于 Agent 及其子进程。**不要只关闭而不重新占用**：0、1、2 空出来后，之后打开的任何描述符都会落到这些编号上，被误当作标准输入输出（里程碑 0 的 Node 原型中，关闭后再启动子进程直接 `SIGABRT`）。
 
 ### 3.4 清理、结束的确认与三个事件
 
@@ -110,7 +116,7 @@ main                                    监护程序（新会话、新进程组�
 
 ### 3.5 监护
 
-监护程序以非阻塞的流读取 fd 3（`net.Socket({ fd: 3 })`）。main 死亡（崩溃、被强制结束）时 fd 3 关闭，监护程序按 3.4 的清理顺序结束整个容器（没有人接收报告，跳过第 1、4 步的报告）。断电时所有进程本来就不存在。
+监护程序用 `poll` 同时等待 fd 3 与子进程结束（`SIGCHLD` 经自管道或 `kqueue` 的 `EVFILT_PROC` 送进同一个事件循环），不在任何一处阻塞读取。main 死亡（崩溃、被强制结束）时 fd 3 关闭，监护程序按 3.4 的清理顺序结束整个容器（没有人接收报告，跳过第 1、4 步的报告）。断电时所有进程本来就不存在。
 
 ### 3.6 实测（macOS）
 
@@ -125,9 +131,11 @@ main                                    监护程序（新会话、新进程组�
 
 第二轮放弃的原因：Agent 先运行、组号后落盘，留下了评审 r13 指出的窗口。第一轮的问题只是报告与清理的顺序（评审 r12）。第三轮同时解决了两者。
 
-实现约束（第二轮发现）：用 `fs.createReadStream` 读取 fd 3 是线程池中的阻塞读，会使监护程序的 `process.exit` 挂起不退出；必须用 `net.Socket({ fd: 3 })`。
+原型中发现的实现约束（Node 原型特有，原生实现中以对应的方式满足）：用 `fs.createReadStream` 读取 fd 3 是阻塞读，会使 `process.exit` 挂起；关闭 fd 0/1/2 后再启动子进程会 `SIGABRT`。原生实现分别用 3.5 的 `poll` 事件循环与 3.3 的 `dup2` 到 `/dev/null` 满足这两条。
 
-仍需在正式实现中验证：用 Electron 可执行文件加 `ELECTRON_RUN_AS_NODE` 运行监护程序（原型用的是系统 Node）；打包后的路径；Linux。
+**里程碑 0 任务 0.2 的结论**（2026-11-13）：Node 原型的四个场景在系统 Node 与开发用的 Electron（`ELECTRON_RUN_AS_NODE=1`）上全部通过，场景 C 的事件顺序与上表一致；在打包后的应用上全部失败，原因是 RunAsNode fuse 已关闭。据此改为原生小程序（3.2）。原生监护程序实现后，四个场景在开发环境与打包后的应用中各重跑一遍，作为里程碑 1 的验收项。
+
+仍需验证：原生监护程序在打包与签名后的运行；Linux。
 
 ### 3.7 进程登记表与启动恢复
 
@@ -424,7 +432,7 @@ watchdog = {
 
 ## 13. 待实测与待定
 
-1. 监护程序在 Electron 可执行文件下运行、打包后路径（3.6）；Linux 上的 `pgrep -g` 与进程组行为。
+1. 原生监护程序在打包与签名后的运行（3.2、3.6）；Linux 上的 `/proc` 读取与进程组行为。
 2. Claude、Codex 的 ACP 适配器（7.1 全表）。
 3. Claude print 与 Codex exec 的 `read-exec` 参数（6.1）。
 4. Windows 作业对象辅助程序的实现方式（3.8）。

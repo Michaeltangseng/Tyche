@@ -6,7 +6,8 @@
 
 ## 前置条件
 
-- 里程碑 0 已验收：任务 0.2（Electron 与打包后运行）通过。如果当时的结论是「改为独立的小程序」，先停下来问，本任务单需要相应修订。
+- 里程碑 0 已验收。任务 0.2 的结论是「打包后的应用关闭了 RunAsNode fuse，Node 脚本形式的监护程序不可用」，据此已裁决改为原生小程序，本任务单已按此修订（任务 1.3）。
+- 本机有 `clang`（Xcode 命令行工具）。
 - 已读 `docs/handoff-guide.md`。
 
 ## 必读
@@ -20,7 +21,7 @@
 
 | 包括 | 不包括 |
 | --- | --- |
-| 新增 `desktop/src/agents/process/` 下的监护程序、受管理启动器、进程登记表、进程检查工具 | 项目室的任何部分 |
+| 新增 `desktop/native/supervisor/` 下的原生监护程序与 `desktop/scripts/build-native.cjs`；`desktop/src/agents/process/` 下的受管理启动器、进程登记表、进程检查工具 | 项目室的任何部分 |
 | `atomicWritePrivateFile` 的 `phase` | `read-exec` 权限模式（里程碑 5） |
 | 两个适配器的 `spawnFn` 注入与终止路径 | 调度器的残留占用（里程碑 2；本里程碑先保存在内存里） |
 | 可能写入的 ACP 调用改为每轮一个进程 | 残留进程的完整界面（里程碑 6；本里程碑只在诊断中显示） |
@@ -60,23 +61,30 @@ async readEnvironmentMarker(pid, marker) → 'present' | 'absent' | 'unreadable'
 
 测试 `desktop/test/agents/process/process-inspect.test.cjs`：用注入的 `execFileFn` 覆盖每个函数的正常、进程不存在、权限不足分支；再用一个真实的 `sleep 5` 子进程做一次端到端（启动时间非空、组成员包含它、环境标记 `present`），测试结束 `kill` 它。
 
-### 任务 1.3 监护程序
+### 任务 1.3 原生监护程序
 
-新文件：`desktop/src/agents/process/meldwork-supervisor.cjs`。以里程碑 0 的 `desktop/spikes/supervisor-prototype.cjs` 为起点，但必须完全符合 M3 3.3–3.5：
+监护程序是**随应用分发的原生小程序**，不是 Node 脚本（M3 3.2；原因：打包后的应用关闭了 RunAsNode fuse，里程碑 0 任务 0.2）。**不要修改 `desktop/scripts/after-pack.cjs` 中的任何 fuse 设置。**
 
-- 第一行注释写明：这个文件由 Electron 可执行文件以 `ELECTRON_RUN_AS_NODE=1` 运行，不依赖任何第三方包，**永远不向 fd 1、2 写任何内容**。
-- `process.on('SIGTERM', () => {})`。
-- 控制通道：`new net.Socket({ fd: 3, readable: true, writable: true })`，按行解析 JSON。
-- 消息协议（main → 监护程序）：`{"go": {"command", "args", "env", "cwd"}}`、`{"stop": {"force": boolean}}`。
-- 消息协议（监护程序 → main）：`{"started": {"agentPid"}}`、`{"agentExit": {"code", "signal"}}`、`{"finalKill": {"agentAlive", "members": [{ "pid", "startTime" }]}}`、`{"error": {"code"}}`。
-- 放行前控制通道关闭：`process.exit(0)`，不启动 Agent。
-- 放行：`spawn(command, args, { cwd, env, stdio: ['inherit', 'inherit', 'inherit'] })`（不设 `detached`，同一进程组）；`env` 中删除 `ELECTRON_RUN_AS_NODE`。`env` 中的 `MELDWORK_CONTAINER` 由 main 放入，监护程序不生成。启动后 `fs.closeSync(0)`、`fs.closeSync(1)`、`fs.closeSync(2)`。
-- 根进程的 `exit` 事件：立即发送 `agentExit`（最多一次），然后开始清理。
-- `stop`：开始清理；`force` 时跳过等待。
-- 控制通道 `end` 或 `error`（main 死亡）：开始清理（不再发送消息）。
-- 清理（只执行一次）：`process.kill(-process.pid, 'SIGTERM')` → 等 2500 毫秒（`force` 时 0）→ `await new Promise(setImmediate)` → 如果此时观察到根进程退出且尚未发送 `agentExit`，先发送它 → 发送 `finalKill`（`members` 用 `pgrep -g` 取得，排除自己；`agentAlive` 为「尚未观察到根进程退出」）→ 等控制通道写出（`socket.write` 的回调）→ `process.kill(-process.pid, 'SIGKILL')`。
-
-不需要为这个文件单独写单元测试，它由任务 1.5 的集成测试覆盖。
+1. 新文件 `desktop/native/supervisor/meldwork-supervisor.c`。C99，只用系统库（macOS：`libproc`、`kqueue` 可选；Linux：`/proc`）。以里程碑 0 的 `desktop/spikes/supervisor-prototype.cjs` 为行为参照，必须完全符合 M3 3.3–3.5：
+   - 启动后立即：`signal(SIGTERM, SIG_IGN)`；对 fd 3 设置 `FD_CLOEXEC`；监护程序打开的其他描述符一律 `O_CLOEXEC`。
+   - **永远不向 fd 1、2 写任何内容**。诊断只经 fd 3 的 `error` 消息。
+   - 控制通道：fd 3，按行解析 JSON。消息只有下面几种，字段固定，可以用一个很小的手写解析器（只需支持字符串、字符串数组、字符串字典、布尔与整数）；遇到无法解析的消息，发送 `{"error":{"code":"SUPERVISOR_PROTOCOL"}}` 并按 stop 处理。
+     - main → 监护程序：`{"go":{"command":"…","args":["…"],"env":{"K":"V"},"cwd":"…"}}`、`{"stop":{"force":true|false}}`。
+     - 监护程序 → main：`{"started":{"agentPid":N}}`、`{"agentExit":{"code":N|null,"signal":"SIGNAME"|null}}`、`{"finalKill":{"agentAlive":true|false,"members":[{"pid":N,"startTime":N}]}}`、`{"error":{"code":"…"}}`。
+   - 事件循环：`poll` 等待 fd 3 可读与「子进程结束」（`SIGCHLD` 经自管道写入，或在 macOS 上用 `kqueue` 的 `EVFILT_PROC`）。不在任何地方阻塞读取。
+   - 放行前 fd 3 读到结束（main 死亡）：立即 `_exit(0)`，不启动 Agent。
+   - 放行：`fork`；子进程中 `chdir(cwd)`、`execve(command, args, env)`（不改变进程组，与监护程序同组）。`env` 完全取自 `go` 消息：main 已剔除 `ELECTRON_RUN_AS_NODE` 等变量并加入 `MELDWORK_CONTAINER`，监护程序不增删环境变量。`execve` 失败时子进程 `_exit(127)`。父进程发送 `started`，然后 `dup2` 打开的 `/dev/null` 到 0、1、2（**不要只 `close`**，见 M3 3.3）。
+   - 子进程结束（`waitpid`）：立即发送 `agentExit`（最多一次），开始清理。
+   - `stop`：开始清理；`force` 时跳过等待。
+   - fd 3 读到结束（main 死亡）：开始清理，之后不再发送消息。
+   - 清理（只执行一次）：`kill(-getpgrp(), SIGTERM)` → 等 2500 毫秒（`force` 时 0），期间继续处理事件循环（这样等待中结束的根进程能被 `waitpid` 收到）→ 再处理一次事件循环中已到达的事件 → 若此时观察到根进程退出且尚未发送 `agentExit`，先发送 → 用 `proc_listpids(PROC_PGRP_ONLY, getpgrp(), …)`（macOS）或扫描 `/proc/*/stat`（Linux）列出组内成员（排除自己），用 `proc_pidinfo(PROC_PIDTBSDINFO)` 或 `/proc/<pid>/stat` 取启动时间 → 发送 `finalKill`（`agentAlive` 为「尚未观察到根进程退出」）→ 确认消息已完整写入 fd 3（循环 `write` 直到写完）→ `kill(-getpgrp(), SIGKILL)`。
+2. 新文件 `desktop/scripts/build-native.cjs`：用 `execFile` 调用 `clang`（不经过 shell），编译参数 `-std=c99 -O2 -Wall -Wextra -Werror`。macOS 上分别以 `-arch arm64`、`-arch x86_64` 编译，再 `lipo -create` 合并为 `desktop/native/build/meldwork-supervisor`；Linux 上编译当前架构。找不到 `clang` 时以明确的错误退出，提示安装 Xcode 命令行工具。
+3. `desktop/package.json`：
+   - `scripts` 中新增 `"build:native": "node scripts/build-native.cjs"`；`dev`、`pack`、`dist`、`dist:public` 在现有步骤之前先运行它（例如 `"pack": "npm run build:native && npm run build:frontend && electron-builder --dir"`）。
+   - `build.extraResources` 新增 `{ "from": "native/build/meldwork-supervisor", "to": "bin/meldwork-supervisor" }`。
+4. `.gitignore`：加入 `desktop/native/build/`。
+5. 签名：现有 `after-pack.cjs` 的 `codesign --force --deep --sign -` 会一并签名 `Resources/bin/` 下的可执行文件；在汇报中给出 `codesign -dv <应用>/Contents/Resources/bin/meldwork-supervisor` 的输出确认。
+6. 测试 `desktop/test/agents/process/supervisor-native.test.cjs`：测试开始时若 `desktop/native/build/meldwork-supervisor` 不存在，先调用构建脚本。按 M3 3.6 的四个场景各一个用例（驱动方式与里程碑 0 的 `run-supervisor-scenarios.cjs` 相同，但改为启动原生监护程序）；另外断言：Agent 的环境与 `go` 消息中的 `env` 完全一致；fd 3 不被 Agent 继承；无法解析的消息导致清理而不是崩溃；`execve` 失败时报告 `agentExit` 退出码 127。
 
 ### 任务 1.4 进程登记表
 
@@ -109,7 +117,7 @@ class ProcessRegistry {
 新文件：`desktop/src/agents/process/managed-spawn.cjs`。
 
 ```
-function createManagedSpawn({ registry, invocation, supervisorPath, execPath, platform })
+function createManagedSpawn({ registry, invocation, supervisorPath, platform })
   → spawnFn(command, args, options)      签名与 child_process.spawn 相同，返回一个 managed child
 ```
 
@@ -132,16 +140,16 @@ managed child 的接口（`EventEmitter`）：
 
 1. 生成容器标记 `crypto.randomBytes(16).toString('hex')`，放进传给 Agent 的 `env`。
 2. `await registry.begin(...)`。
-3. 以 `spawn(execPath, [supervisorPath], { detached: true, stdio: ['pipe', 'pipe', 'pipe', 'pipe'], env: { ...最小环境, ELECTRON_RUN_AS_NODE: '1' }, windowsHide: true })` 启动监护程序。监护程序自己的环境只放运行它所需的最少变量；Agent 的环境经 `go` 消息传递。
+3. 以 `spawn(supervisorPath, [], { detached: true, stdio: ['pipe', 'pipe', 'pipe', 'pipe'], env: { PATH: '/usr/bin:/bin' }, windowsHide: true })` 启动原生监护程序。监护程序自己的环境只放最少的变量；Agent 的完整环境经 `go` 消息传递。启动前检查 `supervisorPath` 存在且可执行，否则以 `LOCAL_MANAGED_PROCESS_UNAVAILABLE` 失败，**不退回无保护的启动**。
 4. 取 `pid` 与 `processStartTime(pid)`，`await registry.markRunning(...)`。失败则结束监护程序（关闭 fd 3，它会在放行前退出），以 `error` 返回。
 5. 发送 `go`。
 6. 选择 `exit` 结果时，**必须先排空控制通道**（M3 3.4）：真实的 `agentExit` 到达就立即发出 `exit`；需要回退时，等监护程序的子进程 `exit` 事件**和** fd 3 的 `end` 都到达，再选择；5 秒内 fd 3 没有结束则按 `LOCAL_AGENT_SUPERVISOR_LOST`。
 7. `exit` 与 `close` 各**恰好一次**；用一个状态变量保证，重复调用直接返回。
 8. `container-empty` 之后 `await registry.markEnded(...)`；确认不了已空时 `markEnding` 并保持，不发出 `container-empty`。
 
-`supervisorPath` 的取值：开发时为源码路径；打包后，把路径中的 `app.asar` 替换为 `app.asar.unpacked`。在 `desktop/package.json` 的 `build.asarUnpack` 中加入 `src/agents/process/meldwork-supervisor.cjs`。
+`supervisorPath` 的取值（M3 3.2「定位」）：打包后（`app.isPackaged`）为 `path.join(process.resourcesPath, 'bin', 'meldwork-supervisor')`；开发与测试时为 `desktop/native/build/meldwork-supervisor`。
 
-测试 `desktop/test/agents/process/managed-spawn.test.cjs`，用真实进程（`execPath` 用测试运行时的 `process.execPath`，Agent 用一个 `desktop/test/fixtures/` 下的小脚本）：
+测试 `desktop/test/agents/process/managed-spawn.test.cjs`，用真实进程（监护程序用 `desktop/native/build/meldwork-supervisor`，Agent 用一个 `desktop/test/fixtures/` 下的小脚本）：
 
 - M3 3.6 的场景 A、B（B 通过让测试进程派生一个「假 main」子进程，再对它 `SIGKILL` 来模拟）、C。
 - 事件顺序 `exit` → 输出排空 → `close` → `container-empty`；`exit` 中的退出码是 Agent 的真实退出码。
@@ -170,7 +178,7 @@ async function terminateAgentProcess(child, { force = false, platform, spawnFn }
 
 ### 任务 1.7 注入受管理启动器
 
-1. 在 `desktop/src/workspace/local-workspace-agent-invocation.cjs` 中，找到构造适配器选项（传给 CLI 与 ACP 运行器的 `options`）的地方。当这次调用的 `permissionMode === 'workspace-write'` 且平台不是 Windows 时，传入 `spawnFn: createManagedSpawn({ registry, invocation, supervisorPath, execPath: process.execPath, platform })`。`invocation` 中带群聊 id、工作目录真实路径、权限。
+1. 在 `desktop/src/workspace/local-workspace-agent-invocation.cjs` 中，找到构造适配器选项（传给 CLI 与 ACP 运行器的 `options`）的地方。当这次调用的 `permissionMode === 'workspace-write'` 且平台不是 Windows 时，传入 `spawnFn: createManagedSpawn({ registry, invocation, supervisorPath, platform })`。`invocation` 中带群聊 id、工作目录真实路径、权限。
 2. `registry` 是应用级的单例，在 `desktop/src/main.cjs` 创建 `LocalWorkspace` 的地方创建，经构造参数传入。不要在多个地方各建一个。
 3. 只读调用不传，行为与现在完全相同。
 
@@ -212,7 +220,7 @@ async function terminateAgentProcess(child, { force = false, platform, spawnFn }
 2. 在 Agent 运行一个长任务时，用 `kill -9 <Electron 主进程 pid>` 强制结束应用；在终端中确认 Agent 及其子进程在约 3 秒内消失；重新启动应用，确认没有误报残留。
 3. 只读群聊的行为与改动前相同：回答正常，常驻 ACP 进程在两轮之间保留。
 4. 可写的 ACP 群聊（例如 DeepSeek）连续两轮，第二轮能接着上一轮的上下文回答。
-5. `npm --prefix desktop run pack` 之后，在打包的应用中重复第 1、2 条。
+5. `npm --prefix desktop run pack` 之后，在打包的应用中重复第 1、2 条；同时确认 `after-pack.cjs` 读回的 fuse 状态与改动前相同（`runAsNode` 仍为关闭），以及 `Contents/Resources/bin/meldwork-supervisor` 已签名。
 
 需求追踪：R20、R26（A14），架构第 6 节的边界变更。
 
@@ -220,4 +228,6 @@ async function terminateAgentProcess(child, { force = false, platform, spawnFn }
 
 - 现有的某个适配器测试依赖「终止时直接对 `-child.pid` 发信号」的行为，改动后失败。
 - `ps -wwE` 在当前 macOS 上看不到同一用户其他进程的环境。
-- 打包后的应用中找不到解包后的监护程序文件。
+- 打包后的应用中找不到 `Contents/Resources/bin/meldwork-supervisor`，或它没有被签名。
+- 原生监护程序需要系统库以外的依赖。
+- 有人建议通过修改 `after-pack.cjs` 的 fuse 来解决问题：不允许，停下来问。

@@ -45,7 +45,7 @@
 | A11 | 副作用走发件箱：转移结果连同待执行的副作用先原子写入项目状态文件（提交点是改名；改名之后目录 `fsync` 失败时，内存采用新状态，但副作用暂停到重写持久化成功，M1/M5 模块文档 6.1），再逐个执行；每个副作用有确定性 ID，执行器按 ID 幂等。副作用的结果不单独标记完成，而是作为事件进入下一次转移，与「已消费」标记同一次原子写入；每个副作用记录产生它时实例的执行纪元，纪元过期（上游重开）的副作用不执行；重启时重放未消费、未过期的副作用 | 一次「接受」要写影子仓库、项目状态、`decisions.md`，可能还要提交到用户仓库，中途崩溃会让它们互相矛盾。先记意图再执行，恢复时只需要看项目状态文件这一处 | 「最后写实例」：崩溃后要反向推断哪些副作用做过，每类副作用各写一套对账；两阶段提交：本地单进程不需要 |
 | A12 | 「正文未变」与「驳回轮」分开判断：回应文件不算目标文件；正文未变但有新的回应文件时，进行一次驳回轮评审，驳回轮里评审仍给 `revise` 按需要人处理 | 需求同时要求「产物未变就叫人」和「驳回交下一轮评审裁决」。把回应文件算进目标文件，前一条永远不触发；不算，全部驳回时会跳过评审直接叫人。分开判断能同时满足两条，而且仍然有界 | 只看目标文件：全部驳回时绕过评审；只要有回应就再评审：未修改的稿子可以反复送审，直到轮数上限 |
 | A13 | 每个项目室有一个「主流程」群聊，随项目室创建，项目室存在期间不可删除。它是所有检查点调用的宿主群聊，成员是全体席位所用 Agent 种类的并集，席位变更时同步 | `invokeAgent`、会话状态、Run Ledger 都以群聊为单位。宿主群聊被删，检查点的会话和运行记录就失去归属 | 每个席位一个合成群聊：污染侧边栏与消息存储；允许删除主流程群聊、调用时临时建一个：会话与运行记录断链 |
-| A14 | **受管理的可写进程**：Meldwork 启动的每一个可能写入工作目录的调用（权限为 `workspace-write` 或 `read-exec`，后者运行的命令同样能写文件；包括项目室的检查点调用、项目内群聊、普通群聊）都在一个受管理的进程容器里运行，并登记在应用级的进程登记表中。三层保护：①启动握手，身份落盘之前 Agent 不能开始工作；②监护，主进程死亡时整个容器随之结束；③恢复屏障复核，重启后确认容器已空，确认不了的作用域在调度器里保持占用。「结束」指整个容器已空，不是根进程退出 | 现有调用链以独立进程组启动 Agent（`cli-adapters.cjs:250`），主进程崩溃时 `before-quit` 不执行，Agent 及其启动的测试、构建进程会继续写工作目录；`recoverInterrupted`（`run-ledger.cjs:568`）只改运行状态，不处理操作系统进程；Windows 的 `terminateWindowsProcessTree` 在直接子进程退出后直接返回（`cli-process-support.cjs:47`），证明不了后代已退出。租约协议（M2 5.4）的正确性依赖「持有者结束」这一事实，必须有可靠的确认 | 只登记根进程 id：漏掉后代进程，且启动与登记之间有窗口；只在项目室调用上做：项目内群聊的残留进程同样写同一个工作目录；超时后视为结束：超时只说明不再等待 |
+| A14 | **受管理的可写进程**（监护程序为随应用分发的原生小程序，见 M3 模块文档 3.2）：Meldwork 启动的每一个可能写入工作目录的调用（权限为 `workspace-write` 或 `read-exec`，后者运行的命令同样能写文件；包括项目室的检查点调用、项目内群聊、普通群聊）都在一个受管理的进程容器里运行，并登记在应用级的进程登记表中。三层保护：①启动握手，身份落盘之前 Agent 不能开始工作；②监护，主进程死亡时整个容器随之结束；③恢复屏障复核，重启后确认容器已空，确认不了的作用域在调度器里保持占用。「结束」指整个容器已空，不是根进程退出 | 现有调用链以独立进程组启动 Agent（`cli-adapters.cjs:250`），主进程崩溃时 `before-quit` 不执行，Agent 及其启动的测试、构建进程会继续写工作目录；`recoverInterrupted`（`run-ledger.cjs:568`）只改运行状态，不处理操作系统进程；Windows 的 `terminateWindowsProcessTree` 在直接子进程退出后直接返回（`cli-process-support.cjs:47`），证明不了后代已退出。租约协议（M2 5.4）的正确性依赖「持有者结束」这一事实，必须有可靠的确认 | 只登记根进程 id：漏掉后代进程，且启动与登记之间有窗口；只在项目室调用上做：项目内群聊的残留进程同样写同一个工作目录；超时后视为结束：超时只说明不再等待 |
 
 ## 3. 模块
 
@@ -387,7 +387,7 @@ stale     ─ 上游重新接受 → checking（主笔用新会话）
 | 新的用量读取模块 | 读取 ACP 用量事件或 CLI 本地日志 | 低 | M10 |
 | `preload.cjs`、`shell/main-ipc.cjs` | 新增 `project:*`、`workdir:*`、`trace:*` IPC | 中；每个方法都要做输入校验 | M1、M7、M8 |
 
-新增依赖：`@git-diff-view/vue`（MIT）、ACP 适配器 `@agentclientprotocol/claude-agent-acp`、`@agentclientprotocol/codex-acp`（Apache-2.0，由安装器安装）、可选 `pi-acp`。引入前逐个核对 LICENSE 与维护状态。 Windows 上的作业对象辅助程序（A14）随应用分发，形式（原生模块或独立的小程序）在 M3 模块文档中确定。
+新增构建步骤：原生监护程序（C，`desktop/native/supervisor/`，打包前由 `clang` 编译，见 M3 模块文档 3.2；不打开 Electron 的 RunAsNode fuse）。新增依赖：`@git-diff-view/vue`（MIT）、ACP 适配器 `@agentclientprotocol/claude-agent-acp`、`@agentclientprotocol/codex-acp`（Apache-2.0，由安装器安装）、可选 `pi-acp`。引入前逐个核对 LICENSE 与维护状态。 Windows 上的作业对象辅助程序（A14）随应用分发，形式（原生模块或独立的小程序）在 M3 模块文档中确定。
 
 新增目录：`desktop/src/project-room/`（M1–M6、M9）、`desktop/src/runs/trace-store.cjs`（M7）、`desktop/src/shell/project-ipc.cjs`、`desktop/src/shell/workdir-ipc.cjs`（M8）。每个新模块在 `desktop/test/` 下有同名测试（node 测试脚本）；前端测试用 vitest，放在 `frontend/src/__tests__/meldwork/`。
 
@@ -478,7 +478,7 @@ stale     ─ 上游重新接受 → checking（主笔用新会话）
 | `docs/modules/m2-checkpoint-engine.md` | M2 | 核心状态机与时序 | 定稿（第十一版） |
 | `docs/modules/m13-interaction-experience.md` | M13 | 产品交互规格；M12 的组件按它实现 | 定稿（第十二版） |
 | `docs/modules/m4-m6-versions-and-writes.md` | M4、M6 | 影子仓库、快照、候选提交、租约、越界检测、用户仓库提交是同一组「保护文件」的机制，M2 的正确性依赖它们，分开写会在接口处留缝。第一部分是调度器侧的租约生命周期（申请、获批、撤回、释放、重启重建），实现 M2 5.4 的调度器契约，以及残留占用的路径规范化、包含关系与键映射（A14） | 定稿（第八版） |
-| `docs/modules/m3-seat-invocation.md` | M3、M10 | 受管理的可写进程（A14）的 POSIX 与 Windows 实现及实测、提示词分层、会话键、`project-room` 调用策略、`read-exec`、ACP 通道实测与切换、看门狗。用量的来源就是调用通道（ACP 事件或 CLI 本地日志），放在一起 | 定稿（第七版） |
+| `docs/modules/m3-seat-invocation.md` | M3、M10 | 受管理的可写进程（A14）的 POSIX 与 Windows 实现及实测、提示词分层、会话键、`project-room` 调用策略、`read-exec`、ACP 通道实测与切换、看门狗。用量的来源就是调用通道（ACP 事件或 CLI 本地日志），放在一起 | 定稿（第九版） |
 | `docs/modules/m1-m5-storage-and-interfaces.md` | M1、M5 | 项目状态文件的完整字段、大小上限、迁移，以及 `project:*` IPC 的输入校验。关卡的逻辑已在 M2，关卡的交互已在 M13，M5 剩下的只是接口和校验，与 M1 的数据模型放在一起 | 定稿（第六版） |
 | `docs/modules/m7-m8-trace-and-workdir.md` | M7、M8 | 两者都是新的 renderer 读取通道，都改动信任边界（第 6 节），脱敏、分页、路径校验、大小上限应该一起评审 | 定稿（第三版） |
 | `docs/modules/m11-existing-chat-modes.md` | M11 | 本期的去留已在第 3 节 M11 定下（冻结 V4、项目内不提供），文档等 V4 退役决定时再写。现有群聊模式的去留是独立的产品决定，涉及旧记录兼容与代码退役 | 初稿第一版 |

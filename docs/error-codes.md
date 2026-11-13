@@ -103,6 +103,7 @@
 | `LOCAL_AGENT_SUPERVISOR_LOST` | 监护程序意外退出，Agent 的结果未知 | 受管理启动器（M3 3.4） | Agent 进程意外结束，结果未知 |
 | `LOCAL_AGENT_EXIT_UNKNOWN` | Agent 已退出，但退出报告没能送达 | 受管理启动器（M3 3.4） | Agent 已结束，但无法确认它的退出结果 |
 | `LOCAL_DISCUSSION_STYLE_UNAVAILABLE_IN_PROJECT` | 项目内群聊不提供自动讨论（`discussionStyle: 'agent-led'`） | 消息提交的 `validateInput`（M11 3.1） | 项目内不提供自动讨论，请改用顺序讨论 |
+| `LOCAL_MANAGED_PROCESS_UNAVAILABLE` | 原生监护程序不存在或不可执行（构建缺失、打包遗漏），可能写入的调用拒绝启动 | 受管理启动器（M3 3.2） | 写入保护组件缺失，未开始写入；请重新安装 |
 | `LOCAL_MANAGED_PROCESS_UNSUPPORTED` | 当前平台上受管理进程尚未实现（Windows），用于能力提示 | 能力登记（M3 第 10 节） | 当前系统上尚不支持这项保护 |
 
 沿用现有：`LOCAL_AGENT_TERMINATION_FAILED`、`LOCAL_AGENT_SPAWN_FAILED`、`LOCAL_AGENT_EXECUTION_STOPPED`、`LOCAL_RUN_ISOLATED_CONTEXT_INVALID` 等，含义不变。

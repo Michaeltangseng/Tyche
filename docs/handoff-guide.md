@@ -75,6 +75,13 @@
 
 **测试不通过就不能汇报完成。** 如果某个已有测试在你改动之前就失败，先在汇报里说明（附失败输出），不要修改或删除它来让套件通过。
 
+**既有失败的基线**（2026-11-13，Node 25）：`npm --prefix desktop test` 在没有任何改动时有 26 个失败，全部来自两处环境问题：`desktop/test/security/preload-security.test.cjs` 在 Node 25 下报 `Cannot initialize local storage without a --localstorage-file path`；`local-skill-snapshot` 相关测试在临时目录 `rename` 时报 `EACCES`。它们与项目室无关。
+
+- 每个里程碑开工时，先运行一次全部测试，把**失败测试的名称列表**保存为 `docs/spikes/baseline-failures-milestone-<N>.txt`。
+- 判断「测试通过」的标准是：**改动之后的失败集合是基线失败集合的子集**，并且你新增的测试全部通过。出现任何不在基线中的失败，都按失败处理。
+- 不要尝试修复这些既有失败，除非任务单要求；它们在本项目之外另行处理。
+- 本项目建议用 `.nvmrc` 之外的 Node 22 LTS 复核一次（`desktop/package.json` 的 `engines` 为 `>=22.12.0`）：如果 Node 22 下这 26 个失败消失，在汇报中说明，之后的基线以 Node 22 为准。
+
 ## 3. 工作方式
 
 1. **一次一个任务**。任务单里的任务按编号顺序做；每个任务做完，运行它列出的测试，通过后再做下一个。
