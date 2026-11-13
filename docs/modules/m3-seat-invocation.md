@@ -1,6 +1,6 @@
 # 模块文档：M3 席位调用适配（含 M10 用量、A14 受管理进程的实现）
 
-第六版，2026-11-13。第六版吸收评审 r16（`docs/reviews/architecture-v5/r16-review.md`）：根进程退出与清理相互独立地上报；`exit` 与 `close` 对每个子进程恰好发出一次，拿不到真实结果、也不能确认是被清理结束时以「退出结果未知」收尾。第五版吸收评审 r15（`docs/reviews/architecture-v5/r15-review.md`）：不再用启动时间推断组号已被复用；钉子不在时平台不对任何单个进程自动发信号，一律登记残留占用、由人处理；`finalKill` 携带 Agent 根进程是否存活，清理中被一并结束的 Agent 以 `SIGKILL` 报告 `exit`。第四版吸收评审 r14（`docs/reviews/architecture-v5/r14-review.md`）：容器改回监护程序领头的进程组，监护程序作「钉子」：忽略 `SIGTERM`，先报告结果与成员清单，最后对整组 `SIGKILL`；组号在放行前落盘；适配器的终止路径改为统一经受管理的停止接口；附第三轮实测。第三版吸收评审 r13（`docs/reviews/architecture-v5/r13-review.md`）：容器改为 Agent 自己的进程组、监护程序在组外，整组原子发信号，正常清理不再逐个进程发信号；启动器的 `exit`、`close`、`container-empty` 三个事件分开定义，`close` 等输出排空；标记缺失视为身份未知；附第二轮实测与控制通道的实现约束。第二版吸收评审 r12（`docs/reviews/architecture-v5/r12-review.md`）：重启恢复先核实容器身份（容器标记与组长启动时间），只对核实属于本容器的进程发信号；`read-exec` 评审串行运行并纳入快照与核对；常驻 ACP 调用以协议的一轮完成为结束；监护程序先报告 Agent 结果、再逐个清理组内进程、最后报告容器已空。
+第七版，2026-11-13。第七版吸收评审 r17（`docs/reviews/architecture-v5/r17-review.md`）：选择回退结果前，先等控制通道读到结束；Agent 不继承 fd 3。第六版吸收评审 r16（`docs/reviews/architecture-v5/r16-review.md`）：根进程退出与清理相互独立地上报；`exit` 与 `close` 对每个子进程恰好发出一次，拿不到真实结果、也不能确认是被清理结束时以「退出结果未知」收尾。第五版吸收评审 r15（`docs/reviews/architecture-v5/r15-review.md`）：不再用启动时间推断组号已被复用；钉子不在时平台不对任何单个进程自动发信号，一律登记残留占用、由人处理；`finalKill` 携带 Agent 根进程是否存活，清理中被一并结束的 Agent 以 `SIGKILL` 报告 `exit`。第四版吸收评审 r14（`docs/reviews/architecture-v5/r14-review.md`）：容器改回监护程序领头的进程组，监护程序作「钉子」：忽略 `SIGTERM`，先报告结果与成员清单，最后对整组 `SIGKILL`；组号在放行前落盘；适配器的终止路径改为统一经受管理的停止接口；附第三轮实测。第三版吸收评审 r13（`docs/reviews/architecture-v5/r13-review.md`）：容器改为 Agent 自己的进程组、监护程序在组外，整组原子发信号，正常清理不再逐个进程发信号；启动器的 `exit`、`close`、`container-empty` 三个事件分开定义，`close` 等输出排空；标记缺失视为身份未知；附第二轮实测与控制通道的实现约束。第二版吸收评审 r12（`docs/reviews/architecture-v5/r12-review.md`）：重启恢复先核实容器身份（容器标记与组长启动时间），只对核实属于本容器的进程发信号；`read-exec` 评审串行运行并纳入快照与核对；常驻 ACP 调用以协议的一轮完成为结束；监护程序先报告 Agent 结果、再逐个清理组内进程、最后报告容器已空。
 
 依据：`docs/product-target.md`（R2、R8、R10、R16、R20、R21、R26、R27、R28）、`docs/functional-architecture.md` 第十六版（决定 A3、A8、A9、A13、A14）、`docs/modules/m2-checkpoint-engine.md` 第八版（4.2 结果隔离、5.4 租约生命周期、第 10 节恢复屏障）、`docs/modules/m4-m6-versions-and-writes.md` 定稿（A3 调度器接口、C 启动顺序）。
 
@@ -73,6 +73,7 @@ main                                    监护程序（新会话、新进程组�
 - 容器的组号与组长启动时间在第 3 步、也就是放行之前落盘。所以任何能写文件的 Agent 及其子进程（包括用 `env -i` 清空了环境的子进程），所在的组号都已经登记。这正是 A14「身份落盘后才放行」的保证。
 - **容器标记**：第 1 步生成的随机值，以环境变量 `MELDWORK_CONTAINER=<随机值>` 传给 Agent，子进程默认继承。用于组长已经不在时，恢复时辅助核实成员（3.7）。
 - 命令、参数与环境经 fd 3 传递，不出现在监护程序的命令行里。
+- 监护程序启动 Agent 时只传 fd 0、1、2，**不传 fd 3**（控制通道设置为 close-on-exec，Node 的 `spawn` 只传 `stdio` 中列出的描述符）。所以 fd 3 只由监护程序持有，它退出时 fd 3 必然读到结束，3.4 的「先排空控制通道」才成立。
 - 监护程序**从不向 fd 1、2 写任何内容**，它们是 Agent 的输出通道；它的消息只经 fd 3。第 5 步之后它关闭自己持有的 fd 0、1、2，使 stdout、stderr 的结束只取决于 Agent 及其子进程。
 
 ### 3.4 清理、结束的确认与三个事件
@@ -98,7 +99,7 @@ main                                    监护程序（新会话、新进程组�
 
 | 事件 | 含义 | 使用者 |
 | --- | --- | --- |
-| `exit` | Agent 根进程的终止结果。监护程序退出后，按下面的顺序取第一个成立的：① 收到过 `agentExit`：它报告的真实退出码与信号；② 收到过 `finalKill` 且 `agentAlive` 为真：Agent 是在清理最后一步与监护程序一同被整组 `SIGKILL` 结束的（例如它忽略了 `SIGTERM`，或 `force` 取消跳过了等待），以 `{ code: null, signal: 'SIGKILL', terminatedBy: 'cleanup' }` 发出；③ 收到过 `finalKill` 但 `agentAlive` 为假（根进程已经退出，但退出报告没能在监护程序结束前送出）：以失败 `LOCAL_AGENT_EXIT_UNKNOWN` 发出，附 `terminatedBy: 'cleanup'`；④ 没有 `finalKill`（监护程序意外退出）：以失败 `LOCAL_AGENT_SUPERVISOR_LOST` 发出。`agentExit` 若在监护程序退出前到达，立即发出 `exit`，不等监护程序退出 | 现有适配器 |
+| `exit` | Agent 根进程的终止结果。监护程序退出后，按下面的顺序取第一个成立的：① 收到过 `agentExit`：它报告的真实退出码与信号；② 收到过 `finalKill` 且 `agentAlive` 为真：Agent 是在清理最后一步与监护程序一同被整组 `SIGKILL` 结束的（例如它忽略了 `SIGTERM`，或 `force` 取消跳过了等待），以 `{ code: null, signal: 'SIGKILL', terminatedBy: 'cleanup' }` 发出；③ 收到过 `finalKill` 但 `agentAlive` 为假（根进程已经退出，但退出报告没能在监护程序结束前送出）：以失败 `LOCAL_AGENT_EXIT_UNKNOWN` 发出，附 `terminatedBy: 'cleanup'`；④ 没有 `finalKill`（监护程序意外退出）：以失败 `LOCAL_AGENT_SUPERVISOR_LOST` 发出。真实的 `agentExit` 一到达就立即发出 `exit`，不等监护程序退出。需要回退（②–④）时，**先排空控制通道**：等到监护程序已经退出、**并且** fd 3 读到结束（EOF），才按收到过的全部消息选择结果。操作系统报告监护程序退出时，它写进 fd 3 的消息可能还没被 main 读取，过早选择会把成功误判为失败，而「恰好一次」不允许事后更正。监护程序退出后 5 秒仍未读到 fd 3 的结束（按设计不应发生），按 ④ 处理并记录诊断 | 现有适配器 |
 | `close` | 在 `exit` 之后，并且 stdout 与 stderr **都已读到结束**。附同样的退出码与信号 | 现有适配器：它们在 `close` 时结束解析，所以必须等输出排空，否则可能漏掉最终回答、结尾标记或诊断 |
 | `container-empty` | 上面「结束的确认」通过 | M3 第 5 节、M2 的租约 |
 
@@ -365,6 +366,8 @@ watchdog = {
 - 强制结束：Agent 忽略 `SIGTERM` 时，断言 `exit` 以 `signal: 'SIGKILL'`、`terminatedBy: 'cleanup'` 到达，`close` 在输出排空后到达，适配器得到的是「被终止」而不是成功；`force` 取消同样。
 - 响应 `TERM` 后、退出回调处理前强制清理：取消后让 Agent 响应 `SIGTERM` 立即退出，同时人为延迟监护程序处理子进程退出事件，使它在处理之前进入最后清理。断言两种结果之一：监护程序在第 4 步让出事件循环后报告了 `agentExit`，`exit` 带真实结果；或者 `finalKill` 报告 `agentAlive: false`，`exit` 以 `LOCAL_AGENT_EXIT_UNKNOWN` 到达。两种情况下 `close` 都随后到达，适配器不挂起。
 - 不变量：随机组合「有无 `agentExit`」「有无 `finalKill`」「`agentAlive` 真假」「`agentExit` 早于或晚于监护程序退出」，断言 `exit` 与 `close` 各恰好一次且顺序正确。
+- 控制消息延迟读取：让监护程序在写出 `agentExit`（以及另一组用例中的 `finalKill`）后立即退出，同时人为延迟 main 读取 fd 3，使「监护程序退出」先于这些消息被处理。断言结果仍是真实的 `agentExit`（或对应的清理结果），而不是 `LOCAL_AGENT_SUPERVISOR_LOST`，且 `exit` 恰好一次。
+- fd 3 不被继承：断言 Agent 及其子进程中没有持有控制通道的描述符。
 - 适配器的终止路径：断言 `cli-adapters.cjs` 与 `cli-acp-runner.cjs` 的取消、超时、强制终止都经过 `terminateAgentProcess`，受管理调用中不出现对 `-child.pid` 的直接信号；只读调用的终止行为不变。
 - 常驻只读 ACP：断言一轮完成后立即发出 `INVOCATION_ENDED`，进程保持存活。
 - `read-exec` 评审：断言只读评审全部结束后才开始、一次一个；它改动目标文件时断言结论作废、进入评审失败关卡、其后的评审不开始；它改动 `.gitignore` 之外的其他文件时断言列为越界条目；取消时断言等容器清空后才进入下一状态。
