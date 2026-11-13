@@ -13,7 +13,7 @@
 | 0.4 | Claude、Codex 的 ACP 适配器 | **部分通过**：登录、权限、会话、取消、轨迹、用量、SDK 兼容已测；2 小时长跑后台进行中 | 建议 M3 7.1 增加「必须显式设置会话模式」与 SDK 兼容性说明 |
 | 0.5 | Claude print、Codex exec 的 `read-exec` 参数 | **通过**（Claude 需去掉不存在的 `--permission-mode default`） | 建议更新 M3 6.1 的 Claude 候选参数与提示词传递方式 |
 | 0.6 | 可写 ACP 调用每轮启动的延迟 | **部分通过**：Claude/Codex 已测；DeepSeek 无 `acp` profile，其余 ACP Agent 未安装 | 建议把实测值写入 M3 3.9；DeepSeek 等仍待有环境时补测 |
-| 0.7 | 影子仓库 | 待测 | 待定 |
+| 0.7 | 影子仓库 | **通过**（100k 小文件首次快照 39.4s，接近 60s 上限；占位与原始字节正确） | 建议把快照用时上限从 60s 调到 120s；B8 的 gc 能把 401MB 松散对象压到 15.5MB |
 
 ## 0.2 监护程序在 Electron 下运行
 
@@ -192,9 +192,40 @@
 
 ## 0.7 影子仓库
 
-环境：
+环境：macOS Darwin 24.6.0（arm64）；Node v25.2.0；git 2.39.5（Apple Git-154，≥ 2.32）；临时目录均在 `os.tmpdir()/meldwork-shadow-spike-*` 下，实验后删除。本机没有 10 万文件的真实仓库，也没有安装 git-lfs，因此：
+- 「大量小文件」使用 10 万个合成小文件（100 个目录 × 1,000 个文件，每个约 100 字节）；
+- 「大二进制」使用 60 MB 随机字节（超过 B3.4 的 50 MB 单文件上限）；
+- 「LFS」用 `.gitattributes` 的 `*.bin filter=lfs diff=lfs merge=lfs -text` 模拟，验证的是 B3.5 的属性判定与占位，不涉及真实的 LFS smudge/clean。
+
 步骤：
+
+1. 写 `desktop/spikes/shadow-git-check.cjs`：按 M4/M6 B1 的参数创建影子仓库（`--git-dir`、`--work-tree`、`core.hooksPath=/dev/null`、`core.autocrlf=false`、`core.fileMode=true`、`core.symlinks=true`、`core.quotepath=false`、`core.fsmonitor=false`、`gc.auto=0`、固定的 `user.name/email`；清除 `GIT_*`，设 `GIT_CONFIG_GLOBAL=/dev/null`、`GIT_CONFIG_NOSYSTEM=1`、`GIT_TERMINAL_PROMPT=0`）。
+2. 写入 `info/attributes`：`* -text -eol -filter -ident -working-tree-encoding`；`info/exclude` 固定 `.git`、`node_modules/`、`.DS_Store`。
+3. 快照：`git add -A` → `git write-tree` → `git commit-tree` → `git update-ref refs/meldwork/effects/<sha256(effectId)>`。大文件与 LFS 路径在 `git add -A` 前移出索引并写入排除规则，之后写占位条目（`hash-object -w --stdin` + `update-index --cacheinfo`）。
+4. 每个仓库测：首次快照、无改动快照、修改 10 个文件后的快照；影子仓库磁盘占用；100k 仓库另外执行一次 `git gc --prune=now` 并记录 gc 用时与压缩后的占用。
+5. 原始字节：工作目录放 `.gitattributes`（`*.txt text eol=lf`）与 CRLF 文件，快照后用 `git cat-file blob` 检查保存的是否为 CRLF；改成 LF 后再快照，用 `git diff --quiet` 检查是否报告差异。
+6. `git --version` 检查 ≥ 2.32。
+
 结果：
-结论：
-对文档的影响：
-清理：
+
+| 场景 | 首次快照 | 无改动快照 | 改动 10 个文件 | 影子仓库占用 |
+| --- | --- | --- | --- | --- |
+| 10 万小文件（约 10 MB 内容） | **39,410 ms** | 127 ms | 159 ms | 401 MB（松散对象）；`git gc` 后 15.5 MB（gc 16.4s） |
+| 60 MB 大二进制（超过 50 MB 上限） | 92 ms | 92 ms | — | 112 KB |
+| 模拟 LFS（`filter=lfs`） | 65 ms | 63 ms | — | 112 KB |
+
+- **占位条目正确**：60 MB 文件的快照内容是 `meldwork-placeholder 1 / reason oversize / mode 100644 / size 62914560 / sha256 ...`，影子仓库没有存入这 60 MB；模拟 LFS 的条目是 `reason lfs`。占位路径在第二次快照中保持不变，没有误报为删除。
+- **原始字节正确**：CRLF 文件存储为 `[65, 13, 10, 66, 13, 10]`（`A\r\nB\r\n`）；改为 LF 后 `git diff --quiet` 退出码 1，报告差异。`info/attributes` 的 `-filter` 也避免了 LFS 过滤介入。
+- **索引缓存有效**：无改动快照 127 ms，改动 10 个文件后 159 ms；首次快照的开销主要在 10 万个新对象的写入。
+- **磁盘占用**：100k 小文件首次快照产生约 401 MB 松散对象；一次 `git gc --prune=now` 用 16.4 秒压缩到 15.5 MB。B8 的 gc 阈值（5,000 个松散对象）会在 100k 快照后很快触发；应用空闲时执行是必要的。
+- **git 版本**：`git version 2.39.5 (Apple Git-154)`，满足 ≥ 2.32。
+
+结论：**通过（在合成/模拟仓库上）**。B1 的参数、B3.1 的快照、B3.5 的占位与原始字节行为都按设计工作。风险点是首次快照用时：100k 文件已经用掉 39.4 秒，离 B3.4 的 60 秒上限只剩约 20 秒余量；200k 文件在同类机器上很可能超过 60 秒，而送审/核对类快照是失败闭合的，超限会让实例暂停。
+
+对文档的影响（建议，未修改）：
+
+- `docs/modules/m4-m6-versions-and-writes.md` B3.4：建议把「单次快照的用时」默认值从 60 秒调到 **120 秒**；文件数 20 万与单文件 50 MB 维持。理由：100k 文件实测 39.4 秒，200k 按线性估计约 80 秒；非可选快照超限即暂停，留出余量更稳妥。若坚持 60 秒，建议把默认文件数上限降到 150k 左右。
+- B8：实测支持「松散对象超过阈值后在空闲时 gc」的必要性；100k 快照后 401 MB → 15.5 MB。建议在文档中给出「首次快照后尽快 gc 一次」的提示，避免用户在大仓库上看到数倍于内容的磁盘占用。
+- 第 F 节待定问题第 1 条：本报告给出的是 macOS/Apple Silicon 的合成数据；仍需在至少三个真实仓库（含大量小文件、大二进制、真实 LFS）上复测，特别是 200k 文件与真实 LFS。
+
+清理：所有临时目录已删除（`os.tmpdir()/meldwork-shadow-spike-*`）；实验没有启动常驻进程；`git` 子进程均已退出。
