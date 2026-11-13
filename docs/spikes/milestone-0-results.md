@@ -10,7 +10,7 @@
 | --- | --- | --- | --- |
 | 0.2 | 监护程序在 Electron 下运行（含打包后） | **不通过**：系统 Node 与开发用 Electron 通过；打包后无法以 Node 运行 | 建议改为随应用分发的独立小程序（M3 3.2）；M3 3.3 补充 fd 0/1/2 的处理约束 |
 | 0.3 | Linux 上的进程组、`pgrep -g`、`/proc/<pid>/environ` | **未完成**：没有 Linux 环境（用户明确不需要容器） | 无（Linux 上 A14 的实现验证留待有环境时进行） |
-| 0.4 | Claude、Codex 的 ACP 适配器 | 待测 | 待定 |
+| 0.4 | Claude、Codex 的 ACP 适配器 | **部分通过**：登录、权限、会话、取消、轨迹、用量、SDK 兼容已测；2 小时长跑后台进行中 | 建议 M3 7.1 增加「必须显式设置会话模式」与 SDK 兼容性说明 |
 | 0.5 | Claude print、Codex exec 的 `read-exec` 参数 | **通过**（Claude 需去掉不存在的 `--permission-mode default`） | 建议更新 M3 6.1 的 Claude 候选参数与提示词传递方式 |
 | 0.6 | 可写 ACP 调用每轮启动的延迟 | 待测 | 待定 |
 | 0.7 | 影子仓库 | 待测 | 待定 |
@@ -67,12 +67,51 @@
 
 ## 0.4 Claude、Codex 的 ACP 适配器
 
-环境：
+环境：macOS Darwin 24.6.0（arm64）；Node v25.2.0；桌面端 `@agentclientprotocol/sdk` 0.23.0（客户端）；适配器临时安装在 `/tmp/meldwork-acp-spike`：`@agentclientprotocol/claude-agent-acp` 0.107.0（依赖 SDK 2.6.0）、`@agentclientprotocol/codex-acp` 2.6.0（依赖 SDK ~2.4.0）；Codex 适配器使用其依赖的 `@openai/codex`，并读取本机 `~/.codex/config.toml` 的 `cubence_codex`。适配器未写入 `desktop/package.json`。
+
 步骤：
+
+1. 写 `desktop/spikes/acp-adapter-check.cjs`：用桌面端 SDK 0.23.0 建立 `ClientSideConnection`，实现 `requestPermission` 与 `sessionUpdate`。权限策略按 M3 6.1：`read` 放行 read/search/fetch/think；`read-exec` 另放行 execute；`write` 全部放行。
+2. 每次 `newSession` 后按需调用 `setSessionMode`（见下），再发送提示。
+3. 权限：临时目录放 `sample.txt` 与 `edit-me.txt`，提示依次读文件、运行 `ls`、运行 `echo x > out.txt`、编辑 `edit-me.txt`。
+4. 会话：第一轮记住 `BANANA`，关闭进程；新进程 `resumeSession` 后问同一个词。
+5. 取消：运行 `sleep 30 # <随机标记>`，4 秒后 `cancel`，检查 `stopReason` 与残留进程。
+6. 用量：一条 `Reply with exactly OK.` 提示，记录 `usage_update`。
+7. 长跑：启动每分钟写一行的后台任务后立即返回，保持同一 ACP 进程与会话空闲 2 小时，再检查日志行数并发送第二条提示。
+
 结果：
-结论：
-对文档的影响：
-清理：
+
+- **登录：通过。** 两个适配器都复用了本机已有登录，不需要重新登录或另存凭据；Claude 发送 `auth/status_update`，Codex 使用 `cubence_codex`。0.23.0 客户端对这两个通知记录 `Method not found`，不影响会话。
+- **权限：通过，但必须显式设置会话模式。**
+  - Claude 的 `newSession` 默认 `currentModeId = "auto"`（「Claude handles permission decisions」），不会向客户端发权限请求；实测未设置模式时直接执行了 Edit，`edit-me.txt` 变成 `NEW`。调用 `setSessionMode({ modeId: 'default' })` 后：
+    - `read`：execute 与 edit 都被拒绝；`out.txt` 不存在，`edit-me.txt` 保持 `OLD`。
+    - `read-exec`：execute 被批准（`out.txt` 为 `x`），edit 被拒绝（`edit-me.txt` 保持 `OLD`）。
+    - `write`：两者都被批准（`out.txt` 为 `x`，`edit-me.txt` 变成 `NEW`）。
+  - Codex 的 `newSession` 默认 `currentModeId = "agent"`（「Auto review」），同样绕过客户端审批：实测未设置模式时 `permissionCount = 0`，Edit 直接执行。设置 `setSessionMode({ modeId: 'read-only' })` 后，edit 会向客户端请求并被拒绝（`permissionCount = 1`，`edit-me.txt` 保持 `OLD`，`out.txt` 不存在）；`workspace-write` 模式下工作区内编辑由模式本身放行（`permissionCount = 0`，`edit-me.txt` 变成 `NEW`），符合该模式的语义。
+  - **结论：接入 Claude/Codex 的 ACP 时，必须在 `newSession`/`resumeSession` 之后调用 `setSessionMode`；不能使用适配器的默认 `auto`/`agent` 模式，否则客户端审批被绕过。** Claude 的模式建议 `default`（只读/read-exec）与 `acceptEdits`（写入）；Codex 建议 `read-only` 与 `workspace-write`。
+- **会话：通过。** 关闭适配器进程后，新进程 `resumeSession` 能恢复上下文：Claude 的第二轮回答为 `BANANA`；Codex 的第二轮回答包含 `BANANA`（并附带一条 `disable_response_storage` 被忽略的配置警告）。
+- **取消：通过。** 两个适配器的 `prompt` 都以 `stopReason: "cancelled"` 返回；`sleep 30` 的随机标记没有残留进程。
+- **轨迹：部分通过。**
+  - Claude：完整。`tool_call`/`tool_call_update` 带 `rawInput`（例如 `{ "command": "ls" }`、`{ "file_path": "...", "old_string": "OLD", "new_string": "NEW" }`）、`rawOutput`（命令输出、文件内容）与 `agent_thought_chunk` 文本。
+  - Codex：部分完整。`tool_call` 有标题（`Read file ...`、`List files`、`Editing files`），编辑事件带 diff 内容，`rawOutput` 有 `{ exit_code: 0 }`；但 shell 命令的 `rawInput` 为 `null`，没有命令原文。M7 需要按通道如实标注能力，不能假设所有 ACP Agent 都提供完整命令。
+  - 两边都有 `agent_thought_chunk`；Claude 的思考增量数量明显更多。
+- **用量：通过。** 两个适配器都发 `usage_update`：
+  - Claude：`{ size: 1000000, used: 17968, _meta: { "_claude/model": "..." } }`，`promptResult.usage` 另带 input/output/cached/total。
+  - Codex：`{ size: 258400, used: 19016 }`，`promptResult.usage` 带 total/input/cached/output。
+- **SDK 版本：功能兼容，但有通知噪音。** 适配器依赖 SDK 2.6.0 / ~2.4.0，桌面端是 0.23.0；两边 `PROTOCOL_VERSION` 都是 1，initialize、newSession、resumeSession、prompt、cancel 全部可用。2.x 适配器会发送 0.23.0 客户端不认识的 `_auth/status_update`、`auth/status_update` 通知，桌面端 SDK 记录 `Method not found`。这不影响会话，但正式接入前要决定：升级桌面端 SDK（需回归现有 ACP Agent）或过滤未知通知。
+- **2 小时长跑：后台进行中。** 已用同一脚本启动 Claude 与 Codex 的空闲长跑（后台任务每分钟写一行，2 小时后检查日志并发送第二条提示）；结果待补。
+
+结论：**部分通过（7/8 项已测，长跑待补）**。Claude/Codex 的 ACP 适配器在功能上可用；接入时的硬性条件是显式设置会话模式，Codex 的轨迹完整度低于 Claude。
+
+对文档的影响（建议，未修改）：
+
+- `docs/modules/m3-seat-invocation.md` 7.1：增加「登录、权限、会话、取消、轨迹、用量、SDK」的实测结论；在「权限」一项明确写出必须调用 `setSessionMode`，默认 `auto`/`agent` 会绕过客户端审批。
+- 7.1 的「轨迹」一项：Claude 完整，Codex 的 shell 命令没有命令原文（`rawInput` 为空）；M7 的能力登记按通道标注。
+- 第 10 节能力登记：`fullTrace` 对 Codex ACP 不能简单标为 `true`，应按实际提供的内容标注。
+- SDK 兼容：0.23.0 与适配器 2.x 在协议版本 1 上功能兼容，但会记录未知通知；升级或过滤的决定留给里程碑 5。
+- 0.4 的临时安装不改 `desktop/package.json`；正式接入时由安装器按固定版本安装。
+
+清理：测试临时目录已删除；`/tmp/meldwork-acp-spike` 保留到 0.6 完成后统一删除；2 小时长跑的两个后台进程仍在运行，结束后补结果并清理。
 
 ## 0.5 `read-exec` 参数
 
