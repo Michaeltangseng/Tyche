@@ -1,6 +1,6 @@
 # 模块文档：M4 产物与版本、M6 写入协调
 
-定稿（第六版），2026-11-13。第六版为定稿后的补充（随 M3 评审 r12）：A6 的快照与越界检测覆盖 `read-exec` 调用。第五版：第五版吸收评审 r11（`docs/reviews/architecture-v5/r11-review.md`，结论无阻塞问题）：写明占位候选路径必须在改写影子索引之前确定。第四版吸收评审 r10（`docs/reviews/architecture-v5/r10-review.md`）：占位哈希的重算依据与 git 的文件状态缓存一致（含 ctime 与 racy 处理），并写明保证程度；删除、缩小、类型变化的占位路径时序闭合；所有核对用的快照失败闭合；新增统一的「路径状态」与变化描述。第三版吸收评审 r9（`docs/reviews/architecture-v5/r9-review.md`，三条经临时仓库实测确认）：超限与 LFS 路径改用占位条目，对已跟踪路径同样生效；用户仓库提交强制加入被忽略的接受路径；前置条件比较存在性、文件类型、模式与内容；「解除目录写入保护」定义确认强度、记录与解除后的限制。第二版吸收评审 r8（`docs/reviews/architecture-v5/r8-review.md`，其中三条经临时仓库实测复现）：引用名与临时文件名改用 id 的哈希；影子仓库以原始字节保存，屏蔽工作目录属性的内容转换；路径声明解析内部符号链接；恢复开始前为所有项目目录建立保护；强制加入只针对存在的文件。
+定稿（第七版），2026-11-13。第七版为定稿后的补充（随 M1/M5 评审 r22）：申请带持有者类型，供对账区分管理来源。第六版为定稿后的补充（随 M3 评审 r12）：A6 的快照与越界检测覆盖 `read-exec` 调用。第五版：第五版吸收评审 r11（`docs/reviews/architecture-v5/r11-review.md`，结论无阻塞问题）：写明占位候选路径必须在改写影子索引之前确定。第四版吸收评审 r10（`docs/reviews/architecture-v5/r10-review.md`）：占位哈希的重算依据与 git 的文件状态缓存一致（含 ctime 与 racy 处理），并写明保证程度；删除、缩小、类型变化的占位路径时序闭合；所有核对用的快照失败闭合；新增统一的「路径状态」与变化描述。第三版吸收评审 r9（`docs/reviews/architecture-v5/r9-review.md`，三条经临时仓库实测确认）：超限与 LFS 路径改用占位条目，对已跟踪路径同样生效；用户仓库提交强制加入被忽略的接受路径；前置条件比较存在性、文件类型、模式与内容；「解除目录写入保护」定义确认强度、记录与解除后的限制。第二版吸收评审 r8（`docs/reviews/architecture-v5/r8-review.md`，其中三条经临时仓库实测复现）：引用名与临时文件名改用 id 的哈希；影子仓库以原始字节保存，屏蔽工作目录属性的内容转换；路径声明解析内部符号链接；恢复开始前为所有项目目录建立保护；强制加入只针对存在的文件。
 
 依据：`docs/product-target.md`（R7、R10、R11、R12、R15、R23、R25）、`docs/functional-architecture.md` 第十二版（决定 A4、A5、A11、A14）、`docs/modules/m2-checkpoint-engine.md` 第八版（5.2 写入作用域、5.4 租约的生命周期、第 8 节未解决漂移、第 9 节副作用、第 10 节恢复屏障）。
 
@@ -77,7 +77,7 @@ claim = { root, path, mode }
 
 | 接口 | 作用 | 对应 M2 |
 | --- | --- | --- |
-| `request({ requestId, holder, claims, onGranted })` | 排队申请一组声明，**全有或全无**地授予。`onGranted(requestId)` 在授予时调用，由引擎转为 `LEASE_GRANTED` 事件 | 5.4「申请」 |
+| `request({ requestId, holder, claims, onGranted })` | 排队申请一组声明，**全有或全无**地授予。`onGranted(requestId)` 在授予时调用，由引擎转为 `LEASE_GRANTED` 事件。`holder` 为 `{ kind, projectId?, ownerId }`，`kind` 是 `checkpoint-scope`、`project-maintenance` 或 `invocation`（现有的 `acquire` / `withLease` 一律记为 `invocation`）；`snapshot()` 中带出这个字段，M2 的对账据此只处理前两类 | 5.4「申请」 |
 | `release(requestId)` | 释放已授予的申请；之后立即尝试授予等待者 | 5.4「正常释放」 |
 | `withdraw(requestId)` | 等待中的移出队列；已授予的等同 `release`；不存在则无操作 | 5.4「放弃（撤回）」 |
 | `restoreGranted(requests)` | 恢复屏障中使用：不经队列直接恢复一批已授予的申请；任一重叠即整体拒绝并返回冲突清单 | 第 10 节第 6 步 |
