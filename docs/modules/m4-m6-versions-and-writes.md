@@ -76,6 +76,8 @@ claim = { root, path, mode }
 
 保留 `acquire` / `withLease`（现有调用方继续可用），新增一组不绑定单次操作的接口。所有新接口按申请 id 幂等。
 
+定稿后的补充：`project-maintenance` 同时覆盖漂移恢复和 M3 4.6 的补做检测。后者的申请记录在项目 `maintenanceLeaseRequests`，对账与恢复必须与各实例的 `leaseRequests` 一起遍历；调用生命周期管理的 `invocation` 仍不参与对账。
+
 | 接口 | 作用 | 对应 M2 |
 | --- | --- | --- |
 | `request({ requestId, holder, claims, onGranted })` | 排队申请一组声明，**全有或全无**地授予。`onGranted(requestId)` 在授予时调用，由引擎转为 `LEASE_GRANTED` 事件。`holder` 为 `{ kind, projectId?, ownerId }`，`kind` 是 `checkpoint-scope`、`project-maintenance` 或 `invocation`（现有的 `acquire` / `withLease` 一律记为 `invocation`）；`snapshot()` 中带出这个字段，M2 的对账据此只处理前两类 | 5.4「申请」 |
@@ -229,7 +231,7 @@ git --git-dir=<shadow.git> --work-tree=<root>
 | `evaluate-submission` | 目标文件或回应文件在快照中不存在是正常值，不是错误；`git diff` 对不存在的路径照常比较。`bodyChanged`：`git diff --quiet <上一轮候选> <本次快照> -- <目标文件>`。`newResponse`：回应文件在本次快照中存在，且与上一轮候选中的不同（`git diff --quiet <上一轮候选> <本次快照> -- <回应文件>`）。清单校验读取本次快照中的清单文件（`git show <提交>:<路径>`），不读工作目录 |
 | `verify-candidate`、`verify-observed` | 先为工作目录做一次快照（B3.1），再 `git diff --quiet <候选或观察快照> <新快照> -- <文件>`。所有「工作目录是否仍等于某个提交」的比较都这样做，而不是直接拿工作目录与提交比较，这样占位路径（B3.5）与普通路径用同一种方式比较 |
 | `drift-check` | 为工作目录做一次快照，对每个上游的已接受提交：`git diff --name-only -z <已接受提交> <快照> -- <上游的文件>`。有输出即为漂移，这次快照同时作为漂移条目的观察快照 |
-| `detect-accepted-changes` | 为工作目录做一次快照，对每份已接受文档：`git diff --quiet <它的最新已接受提交> <快照> -- <文件>`；有差异时，这次快照作为新版本的候选 |
+| `detect-accepted-changes` | 使用 M3 4.6 在调用租约内固定并持久化的快照与基准版本；补检先取得整个工作目录的维护租约再固定快照。对每份文档比较 `<基准接受提交>` 与 `<固定快照>`，`changes.md` 也从快照读取。消费时校验版本与实例代数，不匹配则补检，不登记旧版本。快照引用保留到检测消费完成，重放不能改读当前工作目录 |
 
 #### B3.4 上限
 
@@ -245,6 +247,8 @@ git --git-dir=<shadow.git> --work-tree=<root>
 - **其余所有快照都失败闭合**：送审快照、漂移的观察快照、接受提交，以及 B3.3 中为核对而做的快照（`verify-candidate`、`verify-observed`、`drift-check`、`detect-accepted-changes`）。它们是评审、版本和核对的依据，「无法核对」绝不当作「无差异」。超出上限时按 M2 9.2 作为必要副作用失败：实例暂停，错误条写明是哪一步（例如「工作目录太大，无法核对送审版本」），并建议在项目设置里增加排除规则或调高上限；人调整后重试。
 
 上限可以在项目设置中修改。
+
+定稿后的补充：上述调用后快照若同时作为 `detect-accepted-changes` 的依据，就属于不可跳过的核对快照。项目级快照／检测失败使用 M2 4.1 的项目级阻塞与重试，不要求虚构一个实例；M3 4.6 规定的补检路径仍须保留接受屏障，并在失败收尾时释放维护租约。
 
 #### B3.5 不存内容的路径：占位条目
 

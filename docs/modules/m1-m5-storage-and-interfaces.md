@@ -94,6 +94,9 @@
   preferences: { ... } 界面偏好（M13：抽屉宽度、标签、「同时提交到 git」的上次选择）
   chatReads: { [groupId]: { [checkpointId]: artifactVersionId } }   项目内群聊上次读取的文档版本（M3 4.6，定稿后的补充）
   projectEffects: [ ... ]   项目级发件箱（M2 4.1 补充，定稿后的补充）
+  projectBlockedOn: null | { effectId, error, time }   项目级必要副作用失败；重试成功消费时清除
+  chatWriteChecks: { [agentRunId]: { groupId, status: 'running' | 'pending-detection', snapshotCommit?, baseVersions?, failure? } }
+  maintenanceLeaseRequests: [ ... ]   项目级补做检测的租约记录，生命周期字段同实例的 leaseRequests
 }
 ```
 
@@ -130,11 +133,16 @@
 | `callWindows` | 对应关卡决定后删除（越界归属只在关卡上使用） |
 | `placeholders` | 每次快照整体重写（M4/M6 B3.5） |
 | `metrics` | 每个关卡一条（决定用时、走向、原因、是否在评审通过后人工要求修改），保留全部；超过 5,000 条时按月聚合最旧的部分 |
+| `projectEffects` | 未消费的全部保留，已消费的只留最近 200 条（压缩后 20 条）；`append-message` 只保存暂存引用和固定元数据，不内嵌输出正文 |
+| `chatWriteChecks` | 启动 Agent 前登记；只在检测结果及新版本／关卡同次提交时移除。等待、失败、恢复期间不能清理；它与未消费的项目级检测共同构成 M2 4.1 的接受屏障 |
+| `maintenanceLeaseRequests` | 按实例租约同样规则保留；调度器对账与恢复也必须遍历这个集合，不能把合法的补做检测租约当成多余申请撤回 |
 
 ### 4.5 不放进项目状态文件的内容
 
 - 提示词、Agent 输出、轨迹：在 Run Ledger、消息存储与 `traces/`（M7）。
 - 会话号：在工作区文件的 `sessions`（M3 4.2）。
+- **消息发件箱的正文暂存**（本轮评审补充）：放在 `projects/<projectId>/pending-messages/<sourceHash>.json`，main 生成来源哈希，私有权限、脱敏后原子写入并确认持久化；项目状态只引用 id、内容摘要和固定元数据，不保存回答正文。输入事件携带 `pendingMessageRef`。同一次状态转移消费有效事件并产生 `append-message`；关卡意见、交付的插话、开始需求也遵守同一规则，暂存失败则不提交转移。`append-message` 的内部存储接口允许 main 指定稳定消息 id、原始时间，按群聊串行检查并插入；同 id 内容或来源不符视为存储故障，不覆盖。只有消息已经可靠落盘才确认成功，不能把尚未保存的内存消息当成去重成功。消费确认后才回收暂存；恢复时先重放所有引用，未被任何状态引用的孤儿文件可清理。失败／取消调用没有回答则不暂存。该内部接口不向 renderer 暴露。
+- **历史卡片存储**：`projects/<projectId>/timeline/<recordHash>.json`，每条独立、带模式版本、脱敏、原子私有写入。由 `append-timeline` 在状态提交后幂等写入：检查点开始／重开记录包含实例 id、会话代数、开始时间和原因；关卡决定／作废记录包含关卡 id、修订号、所属实例与代数、产生／结束时间、原因、走向、意见、候选及评审文件引用。来源时间在产生副作用的转移中固定。记录不参与状态压缩，也不随决策索引淘汰；跟随项目删除。读取服务合并已归档记录与已提交但尚未归档的 `append-timeline`，按记录 id 去重，避免归档延迟导致卡片消失。当前待决关卡仍从实时状态读取，历史不能作为流程决策依据。
 - 主流程群聊的时间线消息：在现有的消息存储中，带 `metadata.projectRoom`（M13 5.11）。关卡、排队中的插话、检查点分隔条等卡片不存为消息，由投影生成。现有的消息存储不会整体保存 `metadata`，而是逐个挑出已知字段（`elapsedMs`、`toolCalls`、`trace` 等），所以新字段 `projectRoom` 要在**两处**加入白名单：写入时的 `addMessage`（`local-workspace-conversations.cjs:236` 起），以及加载时的 `normalizeLoadedMessage`（`local-workspace-message-records.cjs:209`）。两处都按 M13 5.11 的表格逐个字段校验，存为消息的顶层字段 `message.projectRoom`；`user` 与 `agent` 两种角色都要支持（现有代码对两种角色分别挑选字段）。（定稿后的补充。）
 - 文件内容：在工作目录与影子仓库。
 - 凭据与任何密钥：永不进入。写入前对所有自由文本字段（插话、关卡意见、侧写、席位职责）执行现有的 `redactSecrets`：已知的密钥值被替换，而不是拒绝整次写入。
@@ -209,6 +217,8 @@ renderer 永远只拿到投影，不拿到项目状态文件本身。投影函�
 | 「待我决定」（随工作区快照） | 跨项目的待决条目列表：类型（关卡 / 漂移 / 残留进程 / 暂停）、项目、检查点、原因、等待时长；最多 100 条，按等待时长排序，附总数 | 同上 |
 | 项目快照 | 一个项目的完整可见状态：进度（实例的状态、轮次、主笔、等待对象）、当前关卡的首屏内容（M13 第 4 节，按预算组装）、漂移与越界条目、错误条、配置（席位、侧写当前版本、playbook）、`revision` | 推送 `project:changed { projectId, revision }`（每个项目最多 10 次/秒，合并相邻的变化）；renderer 收到后调用 `project:snapshot` 拉取。只在用户打开这个项目室时拉取 |
 
+项目快照的错误条包含实例及 `projectBlockedOn` 的投影（`effectId`、可重试状态、错误码与脱敏说明，项目级不带检查点 id）；关卡可用性包含检测屏障与等待原因。不得直接把发件箱参数、正文暂存引用或维护租约内部路径送给 renderer。
+
 ### 7.2 投影中不出现的内容
 
 - 可执行文件路径、会话号、提示词、Context Pack 内容、进程的完整命令行。
@@ -266,7 +276,8 @@ renderer 永远只拿到投影，不拿到项目状态文件本身。投影函�
 | `cancelDriftResolution({ projectId, itemId, revision })` | | 取消一条正在进行的「恢复为已接受版本」（M2 8.2、M13 5.8.1）：条目必须处于「处理中」且修订号一致，否则 `PROJECT_DRIFT_STALE`。作为放弃这条恢复链的事件进入项目队列，按 M2 5.4 的「放弃」在同一次转移中持久化撤回（等待中的申请立即撤回，已获批且正在写入的进入「待释放」）；条目回到「未解决」 |
 | `compact({ projectId })` | | 4.6 的压缩 |
 | `resolveOutOfScope({ projectId, itemIds })` | | 标记已处理（接受即保留改动，M6） |
-| `retryEffect({ projectId, checkpointId, effectId })` | | M2 9.2 |
+| `retryEffect({ projectId, checkpointId?, effectId })` | `checkpointId` 可选 | 有实例 id 时只查该实例发件箱；省略时只查 `projectEffects`，不跨集合搜索。必须是该项目所属且失败的任务，否则 `PROJECT_EFFECT_NOT_FOUND`；项目级重试按 M2 4.1 清除阻塞并续跑 |
+| `timelineHistory({ projectId, cursor?, limit? })` | main 签发的不透明游标；默认 50、最多 100 条 | 分页读取 4.5 历史卡片；不接受文件路径或偏移。游标绑定项目与读取顺序，非法／失效返回 `PROJECT_INPUT_INVALID` 并要求重新加载；投影过滤规则照常适用。`project:changed` 后界面刷新最近页，按记录 id 合并 |
 | `residual({ projectId?, residualId, action })` | `action`：`manuallyEnded` / `notRelated` | M3 3.7 第 4 步：平台复核，不发信号 |
 | `unlockDirectory({ projectId, folderName })` | `folderName` 必须等于工作目录的最后一级名称 | M4/M6 C 第 6 步：先重新检查残留进程，再写审计记录 |
 | `diagnostics({ projectId })` | | 返回错误条与诊断的详细内容（不含 7.2 排除的内容） |
@@ -285,8 +296,8 @@ renderer 永远只拿到投影，不拿到项目状态文件本身。投影函�
 2. **落盘删除请求**：在工作区文件中写入 `deleting: { requestedAt, keepChats }`（一次原子写入）。删除选项与标记一起落盘，崩溃后恢复时严格沿用当时的选择。
 3. **进入排空**：项目队列中的**一次短转移**（属于 4.6 的控制类写入），然后立即让出队列：
    - 写入 `deletion.phase = 'draining'`；
-   - 所有实例的纪元加 1（包括 `accepting` 中的实例：项目正在被删除，不再需要完成接受，所以这里不适用 M2 5.3 对接受事务的例外一）。尚未启动的副作用随之作废（M2 5.3），不会再启动；**但租约的调度器通知（`release-scope`、`withdraw-lease`）与取消调用照常执行**（M2 5.3 例外二）：例如记录已落盘为「已释放」、通知还没执行时开始删除，这条通知仍要执行，否则调度器会一直持有这个作用域；
-   - 为所有进行中的检查点调用产生取消副作用，按 M2 5.4 放弃所有检查点与项目维护的持有者：等待中的租约申请立即撤回，已获批、没有写入在进行的释放，有写入在进行的进入「待释放」。
+   - 所有实例的纪元加 1（包括 `accepting` 中的实例：项目正在被删除，不再需要完成接受，所以这里不适用 M2 5.3 对接受事务的例外一）。显式作废实例与项目级发件箱中未启动的业务副作用，包括 `append-message`、`append-timeline`、`detect-accepted-changes`；这里也不适用保存历史的纪元例外，因为整个项目正在删除。**但租约的调度器通知（`release-scope`、`withdraw-lease`）与取消调用照常执行**（M2 5.3 例外二）：例如记录已落盘为「已释放」、通知还没执行时开始删除，这条通知仍要执行，否则调度器会一直持有这个作用域；
+   - 为所有进行中的检查点调用产生取消副作用，按 M2 5.4 放弃所有检查点与项目维护的持有者（包括 `maintenanceLeaseRequests` 中的补检申请）：等待中的租约申请立即撤回，已获批、没有操作在进行的释放，有操作在进行的进入「待释放」，待操作结束才释放。已开始的消息、历史归档和检测只收尾，不再产生业务后续；排空检查覆盖项目级执行器与维护申请，未启动且已作废的任务不阻挡排空。
    - **项目内群聊**正在运行或等待租约的调用，同样取消：经现有的停止机制，由**它们自己的调用生命周期**结束进程、等容器清空并释放它们的 `invocation` 租约（M3 3.4）。它们的租约不在项目状态文件里，不经过项目队列，也不由对账撤回（M2 5.3）。在删除开始之后，项目内群聊不能再发起新的可写调用。
 4. **排空期间**，项目队列照常运行，但只接受收尾：
    - 照常处理：`INVOCATION_ENDED`、`LEASE_GRANTED`（按 M2 5.4，对已撤回的申请立即释放）、副作用结果的消费、「待释放」改为「已释放」、清理类副作用。
@@ -336,7 +347,7 @@ renderer 永远只拿到投影，不拿到项目状态文件本身。投影函�
 5. 绑定候选提交的关卡：`candidateCommit` 一致 → 否则 `PROJECT_GATE_STALE`。
 6. `continue` 需要非空 `comment`（「以当前文件重新送审」例外，M2 6.1）→ 否则 `PROJECT_GATE_COMMENT_REQUIRED`。
 7. `reject-upstream`：`upstreamCheckpointId` 确实是上游；`impactHash` 与重新计算的一致 → 否则 `PROJECT_IMPACT_CHANGED`。
-8. `accept`：读取过的上游没有待决的「文档新版本」关卡与未解决漂移 → 否则 `PROJECT_ACCEPT_BLOCKED`，附阻挡项；工作目录不等于候选提交且请求中没有选定「接受送审版本」或「重新送审」→ 返回 `PROJECT_CANDIDATE_DIVERGED` 与差异，让人选择（M2 6.1 第 4 条）。
+8. `accept`：读取过的上游没有待决的「文档新版本」关卡与未解决漂移，且 M2 4.1 的检测屏障已解除 → 否则 `PROJECT_ACCEPT_BLOCKED`，附阻挡项；工作目录不等于候选提交且请求中没有选定「接受送审版本」或「重新送审」→ 返回 `PROJECT_CANDIDATE_DIVERGED` 与差异，让人选择（M2 6.1 第 4 条）。检测屏障在转移中复核，文档新版本接受也不例外。
 9. `commitToGit`：按 M4/M6 B7 的前置条件预检；不满足时整次决定**仍然可以提交**，只是不提交到用户仓库，返回中标明原因（界面在勾选前已经显示过，这里是执行前的再确认）。
 10. 通过：作为 `GATE_DECIDED` 事件进入项目队列；转移函数再校验一次（M2 6.1）。
 

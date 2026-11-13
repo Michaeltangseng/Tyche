@@ -143,6 +143,8 @@ projectSnapshot(projectRecord, state)    7.1 第三行
 
 依据 M1/M5 4.5 与 M13 5.11：在 `local-workspace-conversations.cjs` 的 `addMessage`（写入）与 `local-workspace-message-records.cjs` 的 `normalizeLoadedMessage`（加载）两处，把 `metadata.projectRoom` 加入白名单，存为消息的顶层字段 `projectRoom`，`user` 与 `agent` 两种角色都支持，字段按 M13 5.11 的表格逐个校验。测试：两种角色的消息写入后再加载，`projectRoom` 完整保留；非法字段被丢弃；没有 `projectRoom` 的现有消息不受影响。
 
+同时实现 M1/M5 4.5 的私有正文暂存、历史记录存储，以及仅 main 可用的稳定 id／原始时间消息插入接口：按群聊串行、确认持久化才算去重成功，同 id 内容不符报存储故障。实现 `timelineHistory` 的分页、投影过滤和绑定项目的不透明游标校验；服务合并未归档的已提交历史。补全 `projectBlockedOn`、`chatWriteChecks`、`maintenanceLeaseRequests` 权威模式及保留规则，`retryEffect` 的 `checkpointId` 可选并限定查找集合。测试覆盖写入后消费前崩溃重放不重复、正文不进状态文件、历史不随状态压缩删除、游标不能跨项目读数据。
+
 ### 任务 4.12 功能开关与通知合并
 
 1. 功能开关：在现有的应用偏好中新增 `projectRoomPreview`（默认 `false`）。关闭时，`project:*` 中除 `snapshot` 外的方法都返回 `PROJECT_ROOM_DISABLED`，侧边栏投影不包含项目室。如果找不到合适的现有偏好存储位置，停下来问。

@@ -66,7 +66,7 @@
 | `PROJECT_GATE_OUTCOME_UNAVAILABLE` | 这个关卡原因下该走向不可用，`details.reason` | `decideGate` 第 4 步 | 此关卡不能「<走向>」：<原因> |
 | `PROJECT_GATE_COMMENT_REQUIRED` | 继续改需要意见 | `decideGate` 第 6 步 | 请写下意见 |
 | `PROJECT_IMPACT_CHANGED` | 打回或重新打开的影响范围在预览后变化 | `decideGate` 第 7 步、`reopen` | 影响范围已变化，请重新查看 |
-| `PROJECT_ACCEPT_BLOCKED` | 上游有待确认的新版本或未解决漂移，`details.blockers` | `decideGate` 第 8 步 | 上游有待处理的变化，处理后才能接受 |
+| `PROJECT_ACCEPT_BLOCKED` | 上游有待确认的新版本、未解决漂移，或项目文档变更检测屏障未解除，`details.blockers` | `decideGate` 第 8 步及引擎接受转移 | 上游有待处理的变化，或正在等待文档变更检测，处理完成后才能接受 |
 | `PROJECT_CANDIDATE_DIVERGED` | 工作目录与候选提交不同，需要人选择「接受送审版本」或「重新送审」，`details.files` | `decideGate` 第 8 步 | 送审之后文件有变化，请选择 |
 | `PROJECT_NOT_REOPENABLE` | 只有已接受的检查点可以重新打开 | `reopen` | 这个检查点不能重新打开 |
 | `PROJECT_DRIFT_STALE` | 漂移条目的修订号不符、状态不允许处理、或处理的前提不满足（M2 8.2） | `resolveDrift`、`cancelDriftResolution` | 内容已变化，请重新查看 |

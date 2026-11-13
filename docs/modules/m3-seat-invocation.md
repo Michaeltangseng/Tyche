@@ -1,6 +1,6 @@
 # 模块文档：M3 席位调用适配（含 M10 用量、A14 受管理进程的实现）
 
-定稿（第九版），2026-11-13。第九版为定稿后的补充（随里程碑 0 任务 0.2 的实测结论与设计裁决）：监护程序由「Electron 可执行文件以 `ELECTRON_RUN_AS_NODE` 运行的脚本」改为**随应用分发的原生小程序**，因为打包后的应用关闭了 RunAsNode fuse；第八版新增 4.6「项目内群聊的调用」。第七版经评审 r18 确认无新问题。实现阶段仍需完成第 13 节的待实测项（Electron 打包运行、Linux、Windows、ACP 适配器、`read-exec` 参数）。第七版吸收评审 r17（`docs/reviews/architecture-v5/r17-review.md`）：选择回退结果前，先等控制通道读到结束；Agent 不继承 fd 3。第六版吸收评审 r16（`docs/reviews/architecture-v5/r16-review.md`）：根进程退出与清理相互独立地上报；`exit` 与 `close` 对每个子进程恰好发出一次，拿不到真实结果、也不能确认是被清理结束时以「退出结果未知」收尾。第五版吸收评审 r15（`docs/reviews/architecture-v5/r15-review.md`）：不再用启动时间推断组号已被复用；钉子不在时平台不对任何单个进程自动发信号，一律登记残留占用、由人处理；`finalKill` 携带 Agent 根进程是否存活，清理中被一并结束的 Agent 以 `SIGKILL` 报告 `exit`。第四版吸收评审 r14（`docs/reviews/architecture-v5/r14-review.md`）：容器改回监护程序领头的进程组，监护程序作「钉子」：忽略 `SIGTERM`，先报告结果与成员清单，最后对整组 `SIGKILL`；组号在放行前落盘；适配器的终止路径改为统一经受管理的停止接口；附第三轮实测。第三版吸收评审 r13（`docs/reviews/architecture-v5/r13-review.md`）：容器改为 Agent 自己的进程组、监护程序在组外，整组原子发信号，正常清理不再逐个进程发信号；启动器的 `exit`、`close`、`container-empty` 三个事件分开定义，`close` 等输出排空；标记缺失视为身份未知；附第二轮实测与控制通道的实现约束。第二版吸收评审 r12（`docs/reviews/architecture-v5/r12-review.md`）：重启恢复先核实容器身份（容器标记与组长启动时间），只对核实属于本容器的进程发信号；`read-exec` 评审串行运行并纳入快照与核对；常驻 ACP 调用以协议的一轮完成为结束；监护程序先报告 Agent 结果、再逐个清理组内进程、最后报告容器已空。
+定稿（第十版），2026-11-13。第十版为定稿后的补充（随评审 r27）：项目内群聊调用在释放租约前快照，检测以固定快照为准，补做检测先取得互斥；主流程群聊调用以 `deferMessage` 把消息交给引擎。第九版为定稿后的补充（随里程碑 0 任务 0.2 的实测结论与设计裁决）：监护程序由「Electron 可执行文件以 `ELECTRON_RUN_AS_NODE` 运行的脚本」改为**随应用分发的原生小程序**，因为打包后的应用关闭了 RunAsNode fuse；第八版新增 4.6「项目内群聊的调用」。第七版经评审 r18 确认无新问题。实现阶段仍需完成第 13 节的待实测项（Electron 打包运行、Linux、Windows、ACP 适配器、`read-exec` 参数）。第七版吸收评审 r17（`docs/reviews/architecture-v5/r17-review.md`）：选择回退结果前，先等控制通道读到结束；Agent 不继承 fd 3。第六版吸收评审 r16（`docs/reviews/architecture-v5/r16-review.md`）：根进程退出与清理相互独立地上报；`exit` 与 `close` 对每个子进程恰好发出一次，拿不到真实结果、也不能确认是被清理结束时以「退出结果未知」收尾。第五版吸收评审 r15（`docs/reviews/architecture-v5/r15-review.md`）：不再用启动时间推断组号已被复用；钉子不在时平台不对任何单个进程自动发信号，一律登记残留占用、由人处理；`finalKill` 携带 Agent 根进程是否存活，清理中被一并结束的 Agent 以 `SIGKILL` 报告 `exit`。第四版吸收评审 r14（`docs/reviews/architecture-v5/r14-review.md`）：容器改回监护程序领头的进程组，监护程序作「钉子」：忽略 `SIGTERM`，先报告结果与成员清单，最后对整组 `SIGKILL`；组号在放行前落盘；适配器的终止路径改为统一经受管理的停止接口；附第三轮实测。第三版吸收评审 r13（`docs/reviews/architecture-v5/r13-review.md`）：容器改为 Agent 自己的进程组、监护程序在组外，整组原子发信号，正常清理不再逐个进程发信号；启动器的 `exit`、`close`、`container-empty` 三个事件分开定义，`close` 等输出排空；标记缺失视为身份未知；附第二轮实测与控制通道的实现约束。第二版吸收评审 r12（`docs/reviews/architecture-v5/r12-review.md`）：重启恢复先核实容器身份（容器标记与组长启动时间），只对核实属于本容器的进程发信号；`read-exec` 评审串行运行并纳入快照与核对；常驻 ACP 调用以协议的一轮完成为结束；监护程序先报告 Agent 结果、再逐个清理组内进程、最后报告容器已空。
 
 依据：`docs/product-target.md`（R2、R8、R10、R16、R20、R21、R26、R27、R28）、`docs/functional-architecture.md` 第十六版（决定 A3、A8、A9、A13、A14）、`docs/modules/m2-checkpoint-engine.md` 第八版（4.2 结果隔离、5.4 租约生命周期、第 10 节恢复屏障）、`docs/modules/m4-m6-versions-and-writes.md` 定稿（A3 调度器接口、C 启动顺序）。
 
@@ -213,6 +213,7 @@ main                                    监护程序（新会话、新进程组�
 ### 4.2 会话
 
 - 宿主群聊：项目室的主流程群聊（A13），所有检查点调用都以它调用 `invokeAgent`。
+- **消息由引擎写入**（定稿后的补充，随评审 r27）：检查点调用一律以 `deferMessage: true` 调用 `invokeAgent`（现有选项，`local-workspace-agent-invocation.cjs:1360`；V4 已在使用）。调用层不写消息，把返回的 `pendingMessage` 交给引擎接入层。接入层先去结尾标记、脱敏、固定来源时间与 M13 元数据，将正文可靠暂存到 M1/M5 4.5 的私有文件，再把 `pendingMessageRef` 随 `INVOCATION_ENDED` 送入项目队列；只有通过 M2 4.2 隔离检查的结果，才在消费结果的同一次转移中产生 `append-message`。项目状态不嵌入回答正文。已提交转移的消息可重放且不随纪元作废；调用完成但结果尚未提交时崩溃，仍按 M2 第 10 节的中断调用处理，不能承诺恢复未提交的回答。现有 `deferMessage` 成功路径之外，失败／取消路径也须取得已收到的非空最终回答（没有则不造消息），被取消的只读评审不存消息。
 - 主笔会话键：`project:<projectId>:cp:<checkpointId>:seat:<seatId>:<kind>:g<代数>`，存在工作区的 `sessions` 里。`resolveSessionState`（`local-workspace-context.cjs:437`）对 `project-room` 策略使用调用者给出的键；`sessionKey()` 的超长哈希回退（`:357-371`）把项目、检查点、席位、代数都纳入哈希。
 - 评审者：每轮新会话，不保存会话号。`onSessionRef` 与结束时的 `session.complete` 两处都跳过保存（现有跳过条件在 `local-workspace-agent-invocation.cjs:385`、`:964`、`:1371`，只覆盖代码审查类 Agent 与 `isolated`，需要加入 `project-room` 的评审调用）。
 - 删除项目室时按 `project:<projectId>:` 前缀清理会话键（架构 M1）。
@@ -263,11 +264,23 @@ main                                    监护程序（新会话、新进程组�
 
 可能写入的调用以整个工作目录为写入声明、`exclusive` 模式（M4/M6 A2.3），持有者类型为 `invocation`，在受管理容器中运行（A14）。因此它与检查点的循环互斥（M2 5.2）。它不做越界检测：它持有整个工作目录，没有「范围之外」。
 
+取得租约之后、放行 Agent 之前，向项目队列登记 `chatWriteChecks[agentRunId]` 并等待持久化确认。登记失败或删除已开始时不启动 Agent、释放租约；因此不会有写入已经开始、检测屏障却尚未登记的窗口。租约等待、Agent 运行及快照都在项目队列之外，队列只处理短转移。
+
 **（四）调用结束后的检测**
 
-可能写入的调用在容器清空（3.4 `container-empty`）、`invocation` 租约释放之后，调用层向项目队列投递 `PROJECT_CHAT_CALL_ENDED { groupId, agentRunId, writable: true }`。引擎收到后，在项目级发件箱（M2 第 9 节补充）中产生一次 `detect-accepted-changes`；检测到的变化按 M2 8.1 第一行（实施中调整）处理：需求或架构文档开「文档新版本」关卡，其他文档自动形成新版本并进入下一个关卡的摘要，`changes.md` 头部缺失时在关卡上标出。只读调用结束时不投递这个事件。删除排空期间，这个事件同时触发一次 `DRAIN_CHECK`（M1/M5 9.1）。
+检测必须读到**这次调用的结果**，而不是之后某个写入者的半成品。所以顺序是：
 
-崩溃导致这次检测没有执行（调用结束后、事件落盘前应用退出）时，由恢复屏障补做：每个项目在屏障通过后执行一次 `detect-accepted-changes`（M2 第 10 节补充）。检测是幂等的，多做一次没有副作用。
+1. 可能写入的调用结束，容器清空（3.4 `container-empty`）。
+2. **在释放 `invocation` 租约之前**，先从项目队列取得比较基准（各文档的版本 id 与实例代数），调用层为工作目录做一次影子仓库快照（M4/M6 B3.1，非可选；引用 id 对 `[projectId, 'chat-end', agentRunId]` 的 JSON 做 SHA-256）。这时这次调用仍持有整个工作目录的写入权，没有其他 Meldwork 写入者；应用外的改动仍受既有 Known Risks 限制。
+3. 保持租约，投递 `PROJECT_CHAT_CALL_ENDED { groupId, agentRunId, snapshotCommit, baseVersions }`，在一次短转移中更新 `chatWriteChecks`、产生项目级 `detect-accepted-changes`，等待持久化确认后才释放租约。事件按运行 id 去重；快照引用保留到检测消费完成，不能被普通快照清理提前删除。释放后投递 `DRAIN_CHECK`（删除期间）以复查调用生命周期已结束。
+4. 检测**以 `snapshotCommit` 和捕获的基准为比较对象**，包含从这个提交读取 `changes.md`，不再读工作目录。结果消费时核对各文档的基准版本与实例代数仍相符；不符则不把旧快照当作新版本，而是保留屏障并补做检测。检测结果、形成的版本／关卡及完成屏障记录由同一个项目队列原子提交，防止重放或迟到结果倒退版本。
+5. 检测到的变化按 M2 8.1 第一行（实施中调整）处理：需求或架构文档开「文档新版本」关卡，其他文档以 `snapshotCommit` 为内容形成新版本并进入下一个关卡的摘要；`changes.md` 头部缺失时在关卡上标出。
+
+第 2 步的快照失败（例如超过 M4/M6 B3.4 的上限）：以空 `snapshotCommit` 和失败原因投递并持久化补做检测，再释放租约。若连事件持久化也失败，Agent 已空的租约仍应释放，项目进入存储故障暂停；启动前登记的屏障不能删除，恢复时按它补检，不能放行接受。
+
+只读调用结束时不做快照、不投递这个事件。删除排空期间，这个事件同时触发一次 `DRAIN_CHECK`（M1/M5 9.1）。
+
+**补做检测**（崩溃后的恢复、快照失败、基准变化）：先持久化项目级检测任务及其屏障，再以「项目维护」为持有者、整个工作目录为声明（`exclusive`）申请租约（M2 5.4、M4/M6 A3）。申请记录归项目的 `maintenanceLeaseRequests`，使用同样的获批、撤回、释放、恢复与对账规则；等待不占住项目队列，也不阻塞释放／取消等收尾。获批后取得基准并快照，把快照及基准持久化到原检测任务，释放租约，再比较固定提交。快照失败要释放维护租约，由原任务的失败与重试处理；重试没有固定快照时重新申请，不沿用旧租约。获批之前不读工作目录。结果注明「来源：补做检测」，它不能证明变化属于哪次调用。删除期间不新建补检，按 M2 4.1 收尾。
 
 ## 5. 结束事件
 
