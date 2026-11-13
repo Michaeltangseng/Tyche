@@ -11,7 +11,7 @@
 | 0.2 | 监护程序在 Electron 下运行（含打包后） | **不通过**：系统 Node 与开发用 Electron 通过；打包后无法以 Node 运行 | 建议改为随应用分发的独立小程序（M3 3.2）；M3 3.3 补充 fd 0/1/2 的处理约束 |
 | 0.3 | Linux 上的进程组、`pgrep -g`、`/proc/<pid>/environ` | **未完成**：没有 Linux 环境（用户明确不需要容器） | 无（Linux 上 A14 的实现验证留待有环境时进行） |
 | 0.4 | Claude、Codex 的 ACP 适配器 | 待测 | 待定 |
-| 0.5 | Claude print、Codex exec 的 `read-exec` 参数 | 待测 | 待定 |
+| 0.5 | Claude print、Codex exec 的 `read-exec` 参数 | **通过**（Claude 需去掉不存在的 `--permission-mode default`） | 建议更新 M3 6.1 的 Claude 候选参数与提示词传递方式 |
 | 0.6 | 可写 ACP 调用每轮启动的延迟 | 待测 | 待定 |
 | 0.7 | 影子仓库 | 待测 | 待定 |
 
@@ -76,12 +76,39 @@
 
 ## 0.5 `read-exec` 参数
 
-环境：
+环境：macOS Darwin 24.6.0（arm64）；Node v25.2.0；Claude Code 2.1.318（`/Users/limu/.local/bin/claude`）；Codex CLI 0.169.0（临时安装于 `/tmp/meldwork-codex-spike`，使用本机 `~/.codex/config.toml` 的 `model_provider = "cubence_codex"`、`model = "gpt-6.1-sol"`）。全局 `codex` 命令当前不可用：npm 包装找不到平台二进制（`ENOENT .../@openai/codex-darwin-arm64/.../codex`），因此用临时安装验证。
+
 步骤：
+
+1. 写 `desktop/spikes/read-exec-check.cjs`：在临时目录放 `sample.txt`（`ALPHA`）与 `edit-me.txt`（`OLD`），提示模型依次做四件事：用 Read 读 `sample.txt`、用 Bash 运行 `ls`、用 Bash 运行 `echo x > out.txt`、用 Edit 工具把 `edit-me.txt` 的 `OLD` 改成 `NEW`。
+2. Claude：`--print --output-format stream-json --verbose --allowedTools Read,Glob,Grep,Bash --disallowedTools Edit,Write,MultiEdit,NotebookEdit`；提示词经 stdin 传入（`--allowedTools` 是可变参数，放在末尾的提示词会被它吞掉）。
+3. 另做一次聚焦测试：明确要求调用 Edit，并检查初始化事件中的工具清单。
+4. Codex：`exec --sandbox read-only --skip-git-repo-check --json <提示词>`。
+
 结果：
-结论：
-对文档的影响：
-清理：
+
+- **Claude：通过。**
+  - Read 工具被调用；Bash 依次运行 `ls` 与 `echo x > out.txt`，`out.txt` 存在且内容为 `x`。
+  - 初始化事件的工具清单中没有 `Edit`、`Write`、`MultiEdit`、`NotebookEdit`。
+  - 聚焦测试中模型尝试调用 Edit，返回 `<tool_use_error>Error: No such tool available: Edit. Edit is disabled for this session, in subagents as well as here.</tool_use_error>`；`edit-me.txt` 保持 `OLD`。
+  - 结论：能读、能运行命令，编辑类工具被拒绝，支持 `read-exec`。
+  - **参数修正**：本机 Claude Code 2.1.318 的 `--permission-mode` 可选值为 `acceptEdits`、`auto`、`bypassPermissions`、`manual`、`dontAsk`、`plan`，**没有 `default`**。候选参数应省略 `--permission-mode`（默认模式），只用 `--allowedTools` / `--disallowedTools`；否则 CLI 会拒绝启动。另：`--allowedTools` 会吞掉后面的位置参数，提示词必须走 stdin（或在参数之间加 `--`），落地时要与现有 `promptArg: true` 的调用方式一起处理。
+  - 注意：初始化工具清单仍包含 Task、CronCreate、CronDelete、Workflow、Skill 以及本机 MCP 工具；`--allowedTools` 只做预批准，不做工具裁剪。编辑类工具确实不可用。是否进一步收窄其他工具，留到里程碑 5 的权限实现中决定；容器与轮后快照仍是兜底。
+- **Codex：通过。**
+  - `cat sample.txt` 与 `ls` 两条命令成功执行（`command_execution`，`completed`）。
+  - 编辑尝试被拒绝：stderr 为 `patch rejected: writing is blocked by read-only sandbox; rejected by user approval settings`；`edit-me.txt` 保持 `OLD`。
+  - `echo x > out.txt` 没有创建文件（`read-only` 沙箱阻止写入）；按 M3 6.1 的口径，命令能写文件不是 `read-exec` 的必要条件，记录为预期行为。
+  - 结论：能运行命令、编辑类工具被拒绝，支持 `read-exec`。
+- 全局 Codex CLI 的 `ENOENT` 是环境问题；临时安装的 0.169.0 证明参数本身可用。Meldwork 的安装器/能力登记应以实际可用的 CLI 为准，不在本任务内修复本机全局安装。
+
+结论：**通过**。Claude print 与 Codex exec 都能表达 `read-exec`；Claude 的候选参数需要去掉 `--permission-mode default`。
+
+对文档的影响（建议，未修改）：
+
+- `docs/modules/m3-seat-invocation.md` 6.1 的 Claude 行：把 `--permission-mode default` 改为「省略 `--permission-mode`」；补充 `--allowedTools` 为可变参数、提示词需经 stdin 或 `--` 分隔的调用约束。
+- 6.1 可补充：`--allowedTools` 只做预批准，不裁剪工具清单；`read-exec` 的实际边界仍由容器、快照与轮后检测保证。
+
+清理：测试临时目录已删除；`/tmp/meldwork-codex-spike` 保留到任务 0.4/0.6 完成后统一删除；仓库中只新增 `desktop/spikes/read-exec-check.cjs`。
 
 ## 0.6 可写 ACP 调用每轮启动的延迟
 
