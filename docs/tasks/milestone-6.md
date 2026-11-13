@@ -1,0 +1,93 @@
+# 任务单：里程碑 6 项目室界面
+
+## 目标
+
+实现 M13 定义的全部项目室界面，接上里程碑 4、5 的 `project:*` 接口。现有群聊的界面不变。
+
+## 前置条件
+
+- 里程碑 5 已验收。
+- 已读 `docs/handoff-guide.md`，尤其 2.4（界面约定）。
+
+## 必读
+
+- `docs/modules/m13-interaction-experience.md`：全文。
+- `docs/modules/m1-m5-storage-and-interfaces.md`：第 7 节（投影：界面能拿到什么）、第 8 节（方法与错误码）、9.2（删除期间的界面）。
+- `docs/functional-architecture.md`：M12 的组件表。
+- 现有代码：`frontend/src/App.vue`（布局）、`frontend/src/components/WorkspaceSidebar.vue`、`ConversationHeader.vue`、`ConversationTimelineView.vue`（现有关卡按钮约 `:613-655`）、`ConversationComposer.vue`、`RunTracePanel.vue`；`frontend/src/composables/useOverlayLifecycle.js`；`frontend/src/desktop-snapshot.js`；`frontend/src/locales/zh.js`、`en.js`。
+
+## 范围
+
+| 包括 | 不包括 |
+| --- | --- |
+| 新的组件与 composable | 右侧抽屉「文件」「轨迹」标签的**内容**（里程碑 7）；本里程碑只做抽屉外壳与标签切换 |
+| `frontend/src/desktop.js` 中对 `projectRoom` 的封装 | 修改现有群聊的组件行为（只允许在其中加入项目室的入口） |
+| 全部中英文案 | |
+
+## 任务
+
+每个任务完成后运行 `npm --prefix frontend test` 与 `npm --prefix frontend run build:desktop`。
+
+### 任务 6.1 数据层
+
+1. `frontend/src/desktop.js`：封装 `window.meldworkDesktop.projectRoom` 的全部方法与 `onChanged`。
+2. 新 composable `frontend/src/composables/useProjectRoom.js`：订阅 `project:changed`，按 `revision` 拉取 `snapshot`（只在项目室打开时）；暴露当前项目的快照、发送各类操作的方法；把错误码映射为本地化文案的键。
+3. `frontend/src/desktop-snapshot.js`：接收工作区快照中的侧边栏条目与「待我决定」。
+4. 测试 `frontend/src/__tests__/meldwork/useProjectRoom.spec.js`：修订号过期时重新拉取；项目室关闭时不拉取；错误码映射。
+
+### 任务 6.2 侧边栏与「待我决定」
+
+依据 M13 第 3 节。`WorkspaceSidebar.vue` 中加入：顶部的「待我决定」（数字、列表、点击跳转并设定操作目标）；项目室为一级、其下列出群聊；正在删除的项目室显示阶段（M1/M5 9.2）；只读项目室的标记。功能开关关闭时不显示任何项目室入口。
+
+### 任务 6.3 主流程群聊：进度条与输入框
+
+依据 M13 5.3、第 6 节、第 8 节。
+
+- 进度条：检查点链、状态图标（不只靠颜色）、当前检查点的一句话、最近一次活动时间、展开后的完整列表、每个已接受检查点的「重新打开…」。
+- 输入框的操作目标：目标条、切换方式（只能点击进度项或关卡卡片）、按目标分别保存草稿、用途随目标状态变化的提示、发送时带目标 id 与用途、被拒绝时保留文字并显示原因、「去项目群聊讨论」。
+- 测试：目标不会因后台状态变化而改变；草稿按目标保存；用途变化时文字保留、按钮文字改变。
+
+### 任务 6.4 关卡面板
+
+依据 M13 第 4 节。三段布局（顶部固定、中间滚动、底部固定）；信号条最多 4 个、其余收成「+N」；各区域的预算与「展开」；决定区的全部规则（「接受」不绑定快捷键、「接受现状」二次确认、不可用时置灰并说明、送审后文件有变化时的二选一、「同时提交到 git」的可用条件与原因、`⌘/Ctrl + Enter`）；关卡被刷新时的处理。
+
+测试：每个预算的截断与总数；每种不可用走向的置灰与原因；`PROJECT_GATE_STALE` 时重新载入并保留意见。
+
+### 任务 6.5 弹层
+
+依据 M13 5.5、5.10。打回（两步：选上游 → 影响预览 + 必填理由）、重新打开、「接受现状」确认、删除确认（写明不能取消）、解除目录写入保护（输入文件夹名）。全部使用 `useOverlayLifecycle.js`：Escape 返回上一步或关闭，打开时阻止背景滚动。影响范围变化（`PROJECT_IMPACT_CHANGED`）时回到预览这一步。
+
+### 任务 6.6 漂移、越界、残留进程、错误条
+
+依据 M13 5.7、5.8.1、第 8 节。漂移条目的固定快照 diff 入口、两种处理与可用性、「等待接受完成」「等待写入权」「取消处理」「恢复已暂停」；越界条目；残留进程列表（只显示投影提供的字段）、「我已手动结束」「这些进程与 Meldwork 无关」；项目室顶部的错误条（「重试」「查看诊断」「压缩项目状态」）。
+
+### 任务 6.7 新建项目室与席位配置
+
+依据 M13 5.1。三步流程：`chooseWorkdir`（已有项目室时直接打开）、选择 playbook、确认席位（M13 5.1 第 3 步的全部提示，能力来自里程碑 5 的能力登记）。席位配置弹层：角色、侧写（版本与回退）、Agent、能力、增删席位；`PROJECT_CONFIG_STALE` 时重新载入。普通群聊写入开关旁的说明（M13 第 6 节「普通群聊的写入开关」）。
+
+### 任务 6.8 右侧抽屉外壳
+
+依据 M13 第 3 节。一个抽屉、「文件」「轨迹」两个标签；宽度与标签按项目室记住；窄窗口下覆盖主区并遵守弹层规范。「文件」标签本里程碑只显示「已接受文档」列表（来自投影）；目录树、预览、diff 与「轨迹」标签的内容在里程碑 7。
+
+### 任务 6.9 文案
+
+所有新文字进入 `zh.js` 与 `en.js`，包括 M13 第 8 节的状态用语与关卡原因、M1/M5 的全部错误码。测试：两个 locale 文件的键集合相同。
+
+## 验收
+
+- `npm --prefix frontend test`、`npm --prefix frontend run build`、`npm --prefix frontend run build:desktop`、`npm --prefix desktop test` 全部通过。
+- **Electron 人工检查清单**（逐条记录结果，附截图）：
+  1. M13 第 5 节的每个关键流程（5.1–5.10）完整走一遍（用里程碑 5 的假 Agent 或真实 Agent）。
+  2. 最小窗口尺寸与 200% 字号下，关卡面板的信号条与决定区始终可见（M13 X2）。
+  3. 中英文切换后所有新界面都有文字、没有键名。
+  4. 每个弹层：Escape、背景不滚动。
+  5. 锁屏状态下收到的通知不含产物或评审内容。
+  6. 现有群聊的主要页面与改动前一致（截图对比）。
+  7. 功能开关关闭时，界面中没有任何项目室入口。
+
+需求追踪：R6、R17、R22、R28（通知）。
+
+## 停下来问的情况（除交接手册第 5 节之外）
+
+- 现有布局无法在不改变现有群聊外观的前提下放下右侧抽屉。
+- 投影中缺少界面需要的字段（不要为此去读项目状态文件；把缺少的字段列出来）。
