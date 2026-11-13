@@ -19,7 +19,7 @@
 
 ### 任务 9.1 项目内群聊不提供 V4
 
-依据架构 M11：项目内群聊的模式选择器不显示自动讨论；从项目外移入项目室的群聊，如果设置为自动讨论，改为单次回答并提示（文案进入中英 locale）。**不修改** V4 执行器（`local-workspace-auto-runner*.cjs`）的任何代码。测试：前端选择器在项目内群聊中没有自动讨论；移入时的转换与提示；项目外群聊的模式选择不变。
+依据 `docs/modules/m11-existing-chat-modes.md` 第 3、6 节：项目内群聊的模式选择器不显示「自动讨论」（`composer.autoBeta`，`discussionStyle: 'agent-led'`），后端 `validateInput` 同时拒绝并返回 `LOCAL_DISCUSSION_STYLE_UNAVAILABLE_IN_PROJECT`；并发回复与顺序讨论**照常提供**（它们也走 V4 协议，不要误把 V4 整个禁用）；移入项目室的群聊若记住的是自动讨论，改为顺序讨论并显示系统提示；有正在运行的自动讨论时不允许移入。**不修改** V4 执行器（`local-workspace-auto-runner*.cjs`、`orchestration-v4-records.cjs`）的任何代码。测试按 M11 第 6 节。
 
 ### 任务 9.2 升级与降级说明
 

@@ -139,6 +139,10 @@ projectSnapshot(projectRecord, state)    7.1 第三行
 
 测试 `desktop/test/project-room/project-ipc.test.cjs`：每个方法的多余字段、超长文本、非法 id 被拒绝；不存在接受路径的方法（用代码检查断言没有任何方法的模式包含路径字段）；令牌过期与重复使用被拒绝；含已知密钥的文本被替换后存储；`decideGate` 第 1–2 步的失败用例。安全测试 `desktop/test/security/preload-security.test.cjs` 若有对暴露方法的清单断言，按新增的 `projectRoom` 更新。
 
+### 任务 4.11b 时间线消息的存储字段
+
+依据 M1/M5 4.5 与 M13 5.11：在 `local-workspace-conversations.cjs` 的 `addMessage`（写入）与 `local-workspace-message-records.cjs` 的 `normalizeLoadedMessage`（加载）两处，把 `metadata.projectRoom` 加入白名单，存为消息的顶层字段 `projectRoom`，`user` 与 `agent` 两种角色都支持，字段按 M13 5.11 的表格逐个校验。测试：两种角色的消息写入后再加载，`projectRoom` 完整保留；非法字段被丢弃；没有 `projectRoom` 的现有消息不受影响。
+
 ### 任务 4.12 功能开关与通知合并
 
 1. 功能开关：在现有的应用偏好中新增 `projectRoomPreview`（默认 `false`）。关闭时，`project:*` 中除 `snapshot` 外的方法都返回 `PROJECT_ROOM_DISABLED`，侧边栏投影不包含项目室。如果找不到合适的现有偏好存储位置，停下来问。

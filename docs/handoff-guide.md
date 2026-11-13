@@ -22,6 +22,8 @@
 | `docs/modules/*.md` | 每个模块的详细设计、数据结构、规则、测试要求。**实现以它们为准** |
 | `docs/implementation-plan.md` | 里程碑顺序、依赖、验收方式 |
 | `docs/tasks/milestone-<N>.md` | 一个里程碑的具体任务：改哪些文件、写哪些函数、写哪些测试 |
+| `docs/error-codes.md` | 全部错误码：含义、由谁返回、界面提示 |
+| `docs/playbook-content.md` | 默认 playbook、角色侧写、平台立场提示词的产品内容（里程碑 8 原样放进代码） |
 | `docs/reviews/architecture-v5/` | 历次评审与回应。想知道「为什么这样设计」时查这里，不需要通读 |
 
 模块文档之间如果互相矛盾，以**版本较新、且明确写了「随某某同步」的那一处**为准，并在汇报里指出矛盾。
@@ -33,7 +35,7 @@
 - 桌面端（`desktop/src/`）是 CommonJS，文件扩展名 `.cjs`，用 `require` / `module.exports`。不要写 ES module，不要引入 TypeScript。
 - 前端（`frontend/src/`）是 Vue 3 + Vite，状态放在 `frontend/src/composables/` 的 composable 里。
 - 输入校验用 zod（`desktop/package.json` 中的 4.4.3），写法参照 `desktop/src/shell/delivery-ipc.cjs`：`z.strictObject`，校验失败抛出带 `code` 的错误。
-- 错误统一为 `Object.assign(new Error(CODE), { code: CODE })`，`CODE` 是大写下划线常量，例如 `PROJECT_GATE_STALE`。
+- 错误统一为 `Object.assign(new Error(CODE), { code: CODE })`，`CODE` 是大写下划线常量，例如 `PROJECT_GATE_STALE`。**只使用 `docs/error-codes.md` 中列出的错误码**；需要新的错误码时，先停下来问（第 5 节），不要自己起名。
 - 私有文件只用 `desktop/src/security/private-file.cjs` 的 `atomicWritePrivateFile` 写入，不要自己写 `fs.writeFileSync` 再改名。
 - 调用外部程序（git、ps、pgrep）只用 `execFile` / `spawn` 加参数数组，**永远不经过 shell**，不拼接命令字符串。
 - 不新增第三方依赖，除非任务单明确写了。需要新依赖时停下来问。

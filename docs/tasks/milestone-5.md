@@ -102,6 +102,20 @@
 
 依据 M3 第 10 节：每种 Agent 的 `fullTrace`、`readExec`、`midTurnCancel`、`writeSessionContinuity`、`usage`、`managedProcess`。取值以里程碑 0 的实测结论为准；没有实测的一律为 `false`。`updateSeat` 的能力组合校验（M1/M5 8.2）改为读取这里。
 
+### 任务 5.10b 项目内群聊的调用
+
+依据 M3 4.6 与 M2 4.1 的补充：
+
+1. `invocation-prompt.cjs`：项目内群聊（`projectId` 非空且不是主流程群聊）的每次调用，在现有提示词之前加入「项目室上下文」，内容与上限按 M3 4.6（一）的五项；中英按项目语言。
+2. 调用开始时投递 `PROJECT_CHAT_CONTEXT_DELIVERED`，引擎更新 `chatReads`。
+3. 可能写入的调用：写入声明为整个工作目录、`exclusive`（里程碑 2 已按项目 root 实现）；容器清空、租约释放后投递 `PROJECT_CHAT_CALL_ENDED`，引擎在项目级发件箱产生 `detect-accepted-changes`；删除排空中同时触发 `DRAIN_CHECK`。
+4. 项目级发件箱 `projectEffects`（M2 4.1 补充）；恢复屏障第 13 步。
+5. 测试：注入内容的各部分与上限；「自上次读取以来」只列出新版本；项目内群聊写入了需求文档后出现「文档新版本」关卡；写入其他已接受文档后形成新版本；调用结束后、事件落盘前崩溃，重启后由屏障补做检测；只读调用不触发检测；主流程群聊不注入这段上下文。
+
+### 任务 5.10c 主流程群聊的时间线消息
+
+依据 M13 5.11 的「存为消息的」表格：主笔、草稿、评审的调用结束后以 `addMessage` 写入消息（去掉结尾标记，带 `metadata.projectRoom`）；关卡意见、交付的插话、项目开始的需求写入 `user` 消息。被取消的只读评审、被隔离丢弃的晚到结果**不写**消息。测试覆盖表格每一行与两种不写的情况。
+
 ### 任务 5.11 系统通知
 
 扩展 `desktop/src/shell/main-run-notifications.cjs`：以里程碑 4 的 `notification-coalescer.cjs` 为依据，在项目状态提交后比较新旧投影，发出通知；点击打开对应项目室（打开的方式在里程碑 6 由界面响应，本里程碑发出一个 `project:open` 事件即可）。

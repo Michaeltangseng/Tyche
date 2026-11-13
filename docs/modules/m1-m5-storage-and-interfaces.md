@@ -92,6 +92,8 @@
   placeholders: [ ... ],    M4/M6 B3.5
   metrics: { ... },    M13 第 9 节
   preferences: { ... } 界面偏好（M13：抽屉宽度、标签、「同时提交到 git」的上次选择）
+  chatReads: { [groupId]: { [checkpointId]: artifactVersionId } }   项目内群聊上次读取的文档版本（M3 4.6，定稿后的补充）
+  projectEffects: [ ... ]   项目级发件箱（M2 4.1 补充，定稿后的补充）
 }
 ```
 
@@ -133,6 +135,7 @@
 
 - 提示词、Agent 输出、轨迹：在 Run Ledger、消息存储与 `traces/`（M7）。
 - 会话号：在工作区文件的 `sessions`（M3 4.2）。
+- 主流程群聊的时间线消息：在现有的消息存储中，带 `metadata.projectRoom`（M13 5.11）。关卡、排队中的插话、检查点分隔条等卡片不存为消息，由投影生成。现有的消息存储不会整体保存 `metadata`，而是逐个挑出已知字段（`elapsedMs`、`toolCalls`、`trace` 等），所以新字段 `projectRoom` 要在**两处**加入白名单：写入时的 `addMessage`（`local-workspace-conversations.cjs:236` 起），以及加载时的 `normalizeLoadedMessage`（`local-workspace-message-records.cjs:209`）。两处都按 M13 5.11 的表格逐个字段校验，存为消息的顶层字段 `message.projectRoom`；`user` 与 `agent` 两种角色都要支持（现有代码对两种角色分别挑选字段）。（定稿后的补充。）
 - 文件内容：在工作目录与影子仓库。
 - 凭据与任何密钥：永不进入。写入前对所有自由文本字段（插话、关卡意见、侧写、席位职责）执行现有的 `redactSecrets`：已知的密钥值被替换，而不是拒绝整次写入。
 
