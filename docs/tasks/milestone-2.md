@@ -93,8 +93,10 @@ snapshot()                  在现有内容之外，加上：每个授予与等�
 1. `acquire` / `withLease` 的输入增加可选字段 `workdirRoot`（工作目录的真实路径）。提供时，调度器为它生成一条声明：`{ root: workdirRoot, path: '', mode }`，`mode` 默认为 `shared-legacy`。现有的 `workspaceKey` 照常用于同一群聊内的写入轮流（M4/M6 A2.3），两者同时生效。
 2. 这类申请的 `holder.kind` 记为 `invocation`。
 3. **与项目室重叠时改为独占**（M4/M6 A2.3）：调度器提供一个可注入的 `projectRootsProvider()`（返回所有项目室工作目录的真实路径）。`workdirRoot` 与任一项目 root 相同或互相包含时，`mode` 改为 `exclusive`。本里程碑还没有项目室，`projectRootsProvider` 默认返回空数组；用测试注入非空值覆盖这条规则。
-4. 在 `local-workspace-agent-invocation.cjs` 的 `withLease` 调用处传入 `workdirRoot`（工作目录的真实路径；解析失败时不传，保持现有行为，并记录诊断）。
-5. 现有测试 `desktop/test/runs/run-scheduler.test.cjs` 全部不改、全部通过。新增测试：带 `workdirRoot` 的两个普通群聊（同一目录）彼此不等待；注入项目 root 后，与它重叠的普通群聊与一个 `exclusive` 申请互斥；残留占用挡住普通群聊。
+4. 在 `local-workspace-agent-invocation.cjs` 的 `withLease` 调用处传入 `workdirRoot`（工作目录的真实路径）。解析失败时：
+   - **可能写入的调用**（`workspace-write`，里程碑 5 起还有 `read-exec`）：**拒绝启动**，以 `LOCAL_WORKDIR_UNRESOLVED` 失败返回，界面显示「无法确认工作目录，未开始写入」。**不能**退回到不带路径声明的申请：那样的申请不会与项目租约或残留占用判冲突，目录恢复可用后 Agent 就可能在没有保护的情况下开始写入。
+   - 只读调用：不传 `workdirRoot`，保持现有行为，记录诊断。
+5. 现有测试 `desktop/test/runs/run-scheduler.test.cjs` 全部不改、全部通过。新增测试：带 `workdirRoot` 的两个普通群聊（同一目录）彼此不等待；注入项目 root 后，与它重叠的普通群聊与一个 `exclusive` 申请互斥；残留占用挡住普通群聊；工作目录解析失败时，可写调用以 `LOCAL_WORKDIR_UNRESOLVED` 失败、调度器中没有它的任何申请，只读调用照常进行。
 
 ### 任务 2.5 契约测试（测试替身引擎）
 

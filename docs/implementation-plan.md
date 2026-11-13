@@ -11,9 +11,9 @@
 | `docs/modules/m1-m5-storage-and-interfaces.md` | 定稿（第六版） |
 | `docs/modules/m2-checkpoint-engine.md` | 定稿（第十一版） |
 | `docs/modules/m3-seat-invocation.md` | 定稿（第七版） |
-| `docs/modules/m4-m6-versions-and-writes.md` | 定稿（第七版） |
+| `docs/modules/m4-m6-versions-and-writes.md` | 定稿（第八版） |
 | `docs/modules/m13-interaction-experience.md` | 定稿（第十二版） |
-| `docs/modules/m7-m8-trace-and-workdir.md` | 初稿第一版，待评审定稿；定稿后补全里程碑 7 的任务单 |
+| `docs/modules/m7-m8-trace-and-workdir.md` | 第三版，待评审定稿；定稿后补全里程碑 7 的任务单 |
 | `docs/modules/m11-existing-chat-modes.md` | 本期去留已定（架构 M11），文档等 V4 退役决定时再写 |
 
 本文按里程碑（下文写作「里程碑 N」，与模块编号 M1–M13 区分）组织实施顺序、依赖、验收方式与需求追踪。每个里程碑是一个硬关卡（用户方法第 8 步）：做完、验收通过、人评审满意之后才开始下一个。

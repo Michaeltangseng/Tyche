@@ -477,10 +477,10 @@ stale     ─ 上游重新接受 → checking（主笔用新会话）
 | --- | --- | --- | --- |
 | `docs/modules/m2-checkpoint-engine.md` | M2 | 核心状态机与时序 | 定稿（第十一版） |
 | `docs/modules/m13-interaction-experience.md` | M13 | 产品交互规格；M12 的组件按它实现 | 定稿（第十二版） |
-| `docs/modules/m4-m6-versions-and-writes.md` | M4、M6 | 影子仓库、快照、候选提交、租约、越界检测、用户仓库提交是同一组「保护文件」的机制，M2 的正确性依赖它们，分开写会在接口处留缝。第一部分是调度器侧的租约生命周期（申请、获批、撤回、释放、重启重建），实现 M2 5.4 的调度器契约，以及残留占用的路径规范化、包含关系与键映射（A14） | 定稿（第七版） |
+| `docs/modules/m4-m6-versions-and-writes.md` | M4、M6 | 影子仓库、快照、候选提交、租约、越界检测、用户仓库提交是同一组「保护文件」的机制，M2 的正确性依赖它们，分开写会在接口处留缝。第一部分是调度器侧的租约生命周期（申请、获批、撤回、释放、重启重建），实现 M2 5.4 的调度器契约，以及残留占用的路径规范化、包含关系与键映射（A14） | 定稿（第八版） |
 | `docs/modules/m3-seat-invocation.md` | M3、M10 | 受管理的可写进程（A14）的 POSIX 与 Windows 实现及实测、提示词分层、会话键、`project-room` 调用策略、`read-exec`、ACP 通道实测与切换、看门狗。用量的来源就是调用通道（ACP 事件或 CLI 本地日志），放在一起 | 定稿（第七版） |
 | `docs/modules/m1-m5-storage-and-interfaces.md` | M1、M5 | 项目状态文件的完整字段、大小上限、迁移，以及 `project:*` IPC 的输入校验。关卡的逻辑已在 M2，关卡的交互已在 M13，M5 剩下的只是接口和校验，与 M1 的数据模型放在一起 | 定稿（第六版） |
-| `docs/modules/m7-m8-trace-and-workdir.md` | M7、M8 | 两者都是新的 renderer 读取通道，都改动信任边界（第 6 节），脱敏、分页、路径校验、大小上限应该一起评审 | 初稿第一版 |
+| `docs/modules/m7-m8-trace-and-workdir.md` | M7、M8 | 两者都是新的 renderer 读取通道，都改动信任边界（第 6 节），脱敏、分页、路径校验、大小上限应该一起评审 | 第三版 |
 | `docs/modules/m11-existing-chat-modes.md` | M11 | 本期的去留已在第 3 节 M11 定下（冻结 V4、项目内不提供），文档等 V4 退役决定时再写。现有群聊模式的去留是独立的产品决定，涉及旧记录兼容与代码退役 | 待写 |
 
 不单独写模块文档的：
