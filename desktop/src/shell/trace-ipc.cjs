@@ -21,19 +21,26 @@ const schemas = {
     length: z.number().int().positive().max(256 * 1024),
   }),
   status: z.strictObject({ runId: id, agentRunId: id }),
+  diskUsage: z.strictObject({}),
+  prune: z.strictObject({
+    groupId: id.optional(),
+    olderThan: z.number().int().nonnegative().optional(),
+  }),
 }
 
 function traceInputError() {
   return Object.assign(new Error('TRACE_NOT_FOUND'), { code: 'TRACE_NOT_FOUND' })
 }
 
-function registerTraceIpc({ registerTrustedHandle, reader }) {
+function registerTraceIpc({ registerTrustedHandle, reader, store }) {
   if (!reader) throw new Error('TRACE_READER_REQUIRED')
   for (const [method, schema] of Object.entries(schemas)) {
     registerTrustedHandle(`trace:${method}`, (input) => {
       const parsed = schema.safeParse(input)
       if (!parsed.success) throw traceInputError()
-      return reader[method](parsed.data)
+      const target = typeof reader[method] === 'function' ? reader : store
+      if (!target || typeof target[method] !== 'function') throw traceInputError()
+      return target[method](parsed.data)
     })
   }
 }

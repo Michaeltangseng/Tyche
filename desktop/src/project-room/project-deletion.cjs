@@ -43,6 +43,7 @@ class ProjectDeletion {
     }),
     hasResidual,
     onDeleted = () => {},
+    removeTracesForGroup = () => {},
     onDrainCheck = () => {},
     onError = () => {},
     drainFallbackMs = DEFAULT_DRAIN_FALLBACK_MS,
@@ -67,6 +68,7 @@ class ProjectDeletion {
     this.projectClaim = projectClaim
     this.hasResidual = hasResidual
     this.onDeleted = onDeleted
+    this.removeTracesForGroup = removeTracesForGroup
     this.onDrainCheck = onDrainCheck
     this.onError = onError
     this.drainFallbackMs = drainFallbackMs
@@ -392,8 +394,9 @@ class ProjectDeletion {
       changed = true
     }
     state.groups = nextGroups
+    let removedGroupIds = new Set()
     if (changed) {
-      const removedGroupIds = new Set(groups
+      removedGroupIds = new Set(groups
         .filter(group => group.projectId === projectId && !keptChatIds.has(group.id))
         .map(group => group.id))
       state.messages = (state.messages || []).filter(message => (
@@ -405,7 +408,12 @@ class ProjectDeletion {
         ))
       }
     }
-    if (changed) await this.#saveWorkspace()
+    if (changed) {
+      await this.#saveWorkspace()
+      for (const groupId of removedGroupIds) {
+        try { await this.removeTracesForGroup(groupId) } catch { /* trace cleanup is best effort */ }
+      }
+    }
   }
 
   async #removeProjectDirectory(projectId) {

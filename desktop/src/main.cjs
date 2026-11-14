@@ -79,6 +79,7 @@ const { AppPreferencesStore } = require('./project-room/app-preferences.cjs')
 const { createProjectNotificationCoordinator } = require('./project-room/project-notifications.cjs')
 const { registerProjectIpc } = require('./shell/project-ipc.cjs')
 const { createTraceReader } = require('./runs/trace/trace-reader.cjs')
+const { cleanupOrphanTraces, createTraceStore, removeTracesForGroup } = require('./runs/trace/trace-store.cjs')
 const { createTraceAppendedNotifier, registerTraceIpc } = require('./shell/trace-ipc.cjs')
 const { ProcessRegistry } = require('./agents/process/process-registry.cjs')
 const { processRunScheduler } = require('./runs/run-scheduler.cjs')
@@ -931,6 +932,12 @@ function initializeWorkspace() {
   if (workspace) return workspace
   const next = createWorkspace()
   workspace = next
+  try {
+    cleanupOrphanTraces(
+      path.join(app.getPath('userData'), 'meldwork-private', 'traces'),
+      groupId => Boolean(next.getGroup(groupId)),
+    )
+  } catch { /* orphan cleanup is best effort */ }
   workspaceChangedListener = notifyWorkspaceChanged
   workspaceRunFinishedListener = notifyRunFinished
   workspaceRunEventListener = notifyWorkspaceRunEvent
@@ -1072,11 +1079,13 @@ function registerIpc() {
     })).env,
     skillCatalog,
   })
+  const tracesRoot = path.join(app.getPath('userData'), 'meldwork-private', 'traces')
   const traceReader = createTraceReader({
-    tracesRoot: path.join(app.getPath('userData'), 'meldwork-private', 'traces'),
+    tracesRoot,
     isKnownGroup: groupId => Boolean(workspace?.getGroup?.(groupId)),
   })
-  registerTraceIpc({ registerTrustedHandle, reader: traceReader })
+  const traceStore = createTraceStore({ tracesRoot })
+  registerTraceIpc({ registerTrustedHandle, reader: traceReader, store: traceStore })
   registerProjectIpc({
     registerTrustedHandle,
     getProjectService: () => projectService,
@@ -1236,6 +1245,10 @@ if (!hasSingleInstanceLock) {
           cancelAll: () => {},
         },
         onDeleted: projectId => projectService?.removeContext(projectId),
+        removeTracesForGroup: groupId => removeTracesForGroup(
+          path.join(app.getPath('userData'), 'meldwork-private', 'traces'),
+          groupId,
+        ),
       })
       startupWorkspace.setProjectRoom(projectService)
       projectNotifications = createProjectNotificationCoordinator({

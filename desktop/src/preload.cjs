@@ -159,6 +159,8 @@ if (isLocalDocument) Object.assign(desktopApi, {
     page: input => ipcRenderer.invoke('trace:page', input),
     blob: input => ipcRenderer.invoke('trace:blob', input),
     status: input => ipcRenderer.invoke('trace:status', input),
+    diskUsage: () => ipcRenderer.invoke('trace:diskUsage'),
+    prune: input => ipcRenderer.invoke('trace:prune', input),
     onAppended: callback => {
       const listener = (_event, payload) => callback(payload)
       ipcRenderer.on('trace:appended', listener)

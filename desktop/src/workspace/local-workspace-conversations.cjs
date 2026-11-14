@@ -28,6 +28,9 @@ class LocalWorkspaceConversations {
     this.agentLabel = options.agentLabel
     this.createId = options.createId
     this.now = options.now
+    this.removeTracesForGroup = typeof options.removeTracesForGroup === 'function'
+      ? options.removeTracesForGroup
+      : null
   }
 
   snapshotState() {
@@ -174,7 +177,10 @@ class LocalWorkspaceConversations {
       state.groups = state.groups.filter(group => group.id !== groupId)
       state.messages = state.messages.filter(message => message.groupId !== groupId)
       if (state.deliveryTasks) state.deliveryTasks = state.deliveryTasks.filter(task => task.groupId !== groupId)
-    }, () => this.runLedger?.deleteGroup?.(groupId))
+    }, () => {
+      this.runLedger?.deleteGroup?.(groupId)
+      try { this.removeTracesForGroup?.(groupId) } catch { /* trace cleanup is best effort */ }
+    })
   }
 
   deleteMessage(groupId, messageId) {

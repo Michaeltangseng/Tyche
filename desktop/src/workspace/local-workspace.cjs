@@ -17,6 +17,7 @@ const { RunBudget } = require('../runs/run-budget.cjs')
 const { LocalWorkspaceRunLedger } = require('./local-workspace-ledger.cjs')
 const { LocalWorkspaceAgentCatalog } = require('./local-workspace-agent-catalog.cjs')
 const { LocalWorkspaceAgentInvocation } = require('./local-workspace-agent-invocation.cjs')
+const { removeTracesForGroup } = require('../runs/trace/trace-store.cjs')
 const { LocalWorkspaceAutoRunner } = require('./local-workspace-auto-runner.cjs')
 const { LocalWorkspaceConversations } = require('./local-workspace-conversations.cjs')
 const { LocalWorkspaceContextPacks } = require('./local-workspace-context-packs.cjs')
@@ -275,6 +276,7 @@ class LocalWorkspace extends EventEmitter {
       agentLabel: kind => this.agentLabel(kind),
       createId: () => this.createId(),
       now: () => this.now(),
+      removeTracesForGroup: groupId => removeTracesForGroup(this.tracesRoot, groupId),
     })
     this.runMessages = new LocalWorkspaceRunMessages({
       state: () => this.state,

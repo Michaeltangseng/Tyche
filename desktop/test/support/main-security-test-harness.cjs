@@ -93,6 +93,8 @@ const LOCAL_IPC_CHANNELS = Object.freeze([
   'trace:page',
   'trace:blob',
   'trace:status',
+  'trace:diskUsage',
+  'trace:prune',
   'project:getPreferences',
   'project:setPreferences',
   'project:templates',

@@ -37,6 +37,10 @@ function register(reader) {
   registerTraceIpc({
     registerTrustedHandle: (channel, handler) => { handlers.set(channel, handler) },
     reader,
+    store: {
+      diskUsage: () => ({ bytes: 10, runs: 1 }),
+      prune: () => ({ removed: 1, bytes: 10 }),
+    },
   })
   return handlers
 }
@@ -44,7 +48,9 @@ function register(reader) {
 test('trace IPC registers page, blob, and status handlers', async (t) => {
   const reader = makeReader(t)
   const handlers = register(reader)
-  assert.deepEqual([...handlers.keys()], ['trace:page', 'trace:blob', 'trace:status'])
+  assert.deepEqual([...handlers.keys()], [
+    'trace:page', 'trace:blob', 'trace:status', 'trace:diskUsage', 'trace:prune',
+  ])
 
   const page = await handlers.get('trace:page')({
     runId: 'run-1', agentRunId: 'agent-1', direction: 'forward', limit: 10,
@@ -56,6 +62,8 @@ test('trace IPC registers page, blob, and status handlers', async (t) => {
   })
   assert.equal(status.lastSeq, 1)
   assert.equal(status.complete, true)
+  assert.deepEqual(await handlers.get('trace:diskUsage')({}), { bytes: 10, runs: 1 })
+  assert.deepEqual(await handlers.get('trace:prune')({ groupId: 'group-1' }), { removed: 1, bytes: 10 })
 })
 
 test('trace IPC rejects invalid inputs and unknown runs', async (t) => {

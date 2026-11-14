@@ -107,7 +107,7 @@ test('local preload exposes the local-only Meldwork API', async () => {
   assert.equal(Object.isFrozen(api.trace), true)
   assert.deepEqual(
     Object.keys(api.trace).sort(),
-    ['blob', 'onAppended', 'page', 'status'],
+    ['blob', 'diskUsage', 'onAppended', 'page', 'prune', 'status'],
   )
   const cancelTrace = api.trace.onAppended(() => {})
   cancelTrace()
