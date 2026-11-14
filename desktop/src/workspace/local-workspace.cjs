@@ -154,6 +154,9 @@ class LocalWorkspace extends EventEmitter {
     this.createId = options.createId || randomUUID
     this.createRunId = options.createRunId || randomUUID
     this.runLedger = options.runLedger || null
+    this.processRegistry = options.processRegistry || null
+    this.managedSupervisorPath = options.managedSupervisorPath || ''
+    this.platform = options.platform || process.platform
     this.workspaceRecovery = this.load()
     this.state = this.workspaceRecovery.state
     this.delivery = new DeliveryTasks(this)
@@ -318,6 +321,9 @@ class LocalWorkspace extends EventEmitter {
       projectIdentity: (...args) => this.agentCatalog.projectIdentity(...args),
       addMessage: (...args) => this.addMessage(...args),
       runScheduler: options.runScheduler,
+      processRegistry: this.processRegistry,
+      managedSupervisorPath: this.managedSupervisorPath,
+      platform: this.platform,
       registerAgentController: (...args) => this.runCoordinator.registerAgentController(...args),
       unregisterAgentController: (...args) => this.runCoordinator.unregisterAgentController(...args),
       requestHumanGate: (...args) => this.requestHumanGate(...args),

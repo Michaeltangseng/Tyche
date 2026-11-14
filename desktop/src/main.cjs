@@ -67,6 +67,7 @@ const {
   resolveNativeShellEnvironment,
 } = require('./agents/local-agent-readiness.cjs')
 const { LocalWorkspace } = require('./workspace/local-workspace.cjs')
+const { ProcessRegistry } = require('./agents/process/process-registry.cjs')
 const { registerDesktopIpc } = require('./shell/main-ipc.cjs')
 const { workBuddyEnvironment, workBuddySettings } = require('./agents/cli/workbuddy-runtime.cjs')
 const {
@@ -730,8 +731,16 @@ function createWorkspace() {
     }),
     connectors: [],
   })
+  const processRegistry = new ProcessRegistry({
+    storagePath: path.join(privateRoot, 'process-registry.json'),
+  })
+  const managedSupervisorPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'bin', 'meldwork-supervisor')
+    : path.join(__dirname, '..', 'native', 'build', 'meldwork-supervisor')
   const localWorkspace = new LocalWorkspace({
     storagePath: workspaceStoragePath(),
+    processRegistry,
+    managedSupervisorPath,
     contentBlobStore,
     contextPackStore: new ContextPackStore({
       rootPath: path.join(privateRoot, 'context-packs'),

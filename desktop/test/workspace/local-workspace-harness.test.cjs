@@ -1487,6 +1487,7 @@ test('Hermes retains group-scoped persistent ACP while a frozen Skill stays prom
   await workspace.refreshAgents()
   const group = workspace.createGroup({
     name: 'Hermes transport switch', agentKinds: ['hermes'], workdir: directory,
+    allowWrite: false,
   })
   const oldUser = workspace.addMessage(group.id, 'user', 'Keep the original constraint')
   const previousAgent = workspace.addMessage(

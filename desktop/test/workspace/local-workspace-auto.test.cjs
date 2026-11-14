@@ -5229,6 +5229,7 @@ test('automatic dialogue keeps Hermes on one persistent ACP session across round
   await workspace.refreshAgents()
   const group = workspace.createGroup({
     name: 'Hermes ACP discussion', agentKinds: ['codex', 'hermes'], workdir: directory,
+    allowWrite: false,
   })
 
   const started = await workspace.sendMessage({

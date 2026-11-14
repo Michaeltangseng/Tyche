@@ -18,6 +18,7 @@ const {
   cleanupStagedAgentInputs,
   stageAgentInputs,
 } = require('../agents/agent-input-staging.cjs')
+const { createManagedSpawn } = require('../agents/process/managed-spawn.cjs')
 const { createAnswerMarkerFilter } = require('../collaboration/answer-marker-filter.cjs')
 const {
   V4_AGENT_PHASES,
@@ -233,6 +234,9 @@ class LocalWorkspaceAgentInvocation {
     this.connectorRuntime = options.connectorRuntime || null
     this.attachmentSupport = options.attachmentSupport || (() => ({}))
     this.validateSkillSelections = options.validateSkillSelections || (async (_kind, selections) => selections)
+    this.processRegistry = options.processRegistry || null
+    this.managedSupervisorPath = options.managedSupervisorPath || ''
+    this.platform = options.platform || process.platform
     this.activeAgentSnapshots = new Map()
   }
 
@@ -970,6 +974,25 @@ class LocalWorkspaceAgentInvocation {
         },
         signal: agentController.signal,
         sandbox: allowWrite ? 'workspace-write' : 'read-only',
+        ...(allowWrite && this.platform !== 'win32'
+          && this.processRegistry && this.managedSupervisorPath
+          ? {
+              spawnFn: createManagedSpawn({
+                registry: this.processRegistry,
+                invocation: {
+                  invocationId: activeRun?.runId || null,
+                  groupId: group.id,
+                  projectId: group.projectId || null,
+                  workdir: group.workdir,
+                  permission: 'workspace-write',
+                  claims: [],
+                  agentKind: kind,
+                },
+                supervisorPath: this.managedSupervisorPath,
+                platform: this.platform,
+              }),
+            }
+          : {}),
         operationId,
         onActivity: () => {
           // A cloud request has no local process events while the remote CLI
@@ -1052,7 +1075,9 @@ class LocalWorkspaceAgentInvocation {
         // ACP runtimes are shared by the stable group/task session key. OpenClaw
         // is excluded because its gateway wrapper owns the process lifetime and
         // is intentionally torn down after each invocation.
-        ...(kind !== 'openclaw' ? { acpPersistenceKey: session.key } : {}),
+        // Writable ACP invocations run one disposable process per round (M3
+        // 3.9); only read-only invocations keep the persistent runtime key.
+        ...(kind !== 'openclaw' && !allowWrite ? { acpPersistenceKey: session.key } : {}),
         ...(kind === 'hermes'
           ? { hermesAcpAvailable: HERMES_WORKSPACE_ACP_ENABLED && agent.acpAvailable !== false }
           : {}),
