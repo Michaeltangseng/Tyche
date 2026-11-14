@@ -76,6 +76,23 @@ describe('useTraceStream', () => {
     scope.stop()
   })
 
+  it('treats a missing trace as an old run without steps', async () => {
+    const { api, scope } = fixture()
+    api.page.mockRejectedValueOnce(Object.assign(new Error('TRACE_NOT_FOUND'), { code: 'TRACE_NOT_FOUND' }))
+    api.status.mockRejectedValueOnce(Object.assign(new Error('TRACE_NOT_FOUND'), { code: 'TRACE_NOT_FOUND' }))
+    let stream
+    const local = effectScope()
+    local.run(() => {
+      stream = useTraceStream({ runId: ref('run-old'), agentRunId: ref('agent-old'), api })
+    })
+    await stream.open()
+    expect(stream.hasFullTrace.value).toBe(false)
+    expect(stream.status.value).toEqual({ lastSeq: 0, complete: false, incomplete: false, bytes: 0 })
+    expect(stream.error.value).toBe('')
+    local.stop()
+    scope.stop()
+  })
+
   it('loads blob pages through the trace API', async () => {
     const { stream, api, scope } = fixture()
     const result = await stream.loadBlob('blob-1', { offset: 0, length: 10 })

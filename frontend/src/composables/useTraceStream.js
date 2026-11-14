@@ -70,7 +70,14 @@ export function useTraceStream({
       status.value = nextStatus || null
       subscribe()
     } catch (cause) {
-      if (token === requestToken) error.value = String(cause?.message || cause || 'TRACE_LOAD_FAILED')
+      const code = String(cause?.code || cause?.message || cause || '')
+      if (token === requestToken && code.includes('TRACE_NOT_FOUND')) {
+        status.value = {
+          lastSeq: 0, complete: false, incomplete: false, bytes: 0,
+        }
+      } else if (token === requestToken) {
+        error.value = String(cause?.message || cause || 'TRACE_LOAD_FAILED')
+      }
     } finally {
       if (token === requestToken) loading.value = false
     }
