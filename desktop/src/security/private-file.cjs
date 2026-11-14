@@ -21,13 +21,14 @@ function ensurePrivateDirectory(directory) {
 
 function atomicWritePrivateFile(filename, contents) {
   const directory = path.dirname(filename)
-  fs.mkdirSync(directory, { recursive: true, mode: 0o700 })
   const temporaryPath = path.join(
     directory,
     `.${path.basename(filename)}.${process.pid}.${crypto.randomBytes(8).toString('hex')}.tmp`,
   )
   let descriptor
+  let committed = false
   try {
+    fs.mkdirSync(directory, { recursive: true, mode: 0o700 })
     descriptor = fs.openSync(temporaryPath, 'wx', 0o600)
     fs.writeFileSync(descriptor, contents, 'utf8')
     fs.fsyncSync(descriptor)
@@ -35,6 +36,9 @@ function atomicWritePrivateFile(filename, contents) {
     descriptor = undefined
     fs.chmodSync(temporaryPath, 0o600)
     fs.renameSync(temporaryPath, filename)
+    // Rename is the commit point: from here on the new contents are already
+    // on disk even if the following directory fsync fails (M1/M5 6.1).
+    committed = true
     let directoryDescriptor
     try {
       directoryDescriptor = fs.openSync(directory, 'r')
@@ -51,6 +55,9 @@ function atomicWritePrivateFile(filename, contents) {
       try { fs.closeSync(descriptor) } catch { /* already closed */ }
     }
     try { fs.unlinkSync(temporaryPath) } catch { /* absent or already renamed */ }
+    if (error && typeof error === 'object' && error.phase === undefined) {
+      error.phase = committed ? 'after-commit' : 'before-commit'
+    }
     throw error
   }
 }
