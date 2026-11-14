@@ -47,6 +47,7 @@ class CheckpointEngine {
     workdir = '',
     readExecSeatIds = [],
     softBlockers = () => ({}),
+    getManifest = () => null,
     now = () => new Date().toISOString(),
   } = {}) {
     if (!projectId) throw engineError('PROJECT_INPUT_INVALID', { reason: 'project-id-required' })
@@ -71,6 +72,8 @@ class CheckpointEngine {
     this.dispatching = false
     this.drainQueued = false
     this.waitingAcquisitions = new Set()
+    this.snapshotCommits = new Map()
+    this.getManifest = getManifest
   }
 
   #instance(checkpointId) {
@@ -89,6 +92,73 @@ class CheckpointEngine {
       softBlockers: this.softBlockersProvider(state) || {},
       workdir: this.workdir,
     }
+  }
+
+  #prepareEffect(instance, effect) {
+    const state = this.store.current()
+    const def = state?.config.playbook.checkpointDefs
+      .find(item => item.key === instance.checkpointKey) || null
+    const params = { ...(effect.params || {}) }
+    const placeholders = state?.placeholders || []
+    const limits = state?.config.settings.snapshotLimits || {}
+    if (effect.type === 'snapshot') {
+      params.targets = def?.targetFiles || params.targets || []
+      params.placeholderList = placeholders
+      params.limits = limits
+      params.isOptional = params.isOptional === true
+    } else if (effect.type === 'drift-check') {
+      const acceptedByPath = {}
+      const upstreamIds = new Set(Object.keys(instance.readVersions || {}))
+      for (const key of def?.dependsOn || []) {
+        const upstream = state.instances.find(item => (
+          item.checkpointKey === key && item.state === 'accepted'
+        ))
+        if (upstream) upstreamIds.add(upstream.id)
+      }
+      for (const upstreamId of upstreamIds) {
+        const upstream = state.instances.find(item => item.id === upstreamId)
+        const version = upstream?.artifactVersions?.at(-1)
+        const upstreamDef = state.config.playbook.checkpointDefs
+          .find(item => item.key === upstream?.checkpointKey)
+        if (!version || !upstreamDef) continue
+        for (const path of upstreamDef.targetFiles || []) {
+          acceptedByPath[path] = version.commit
+        }
+      }
+      params.acceptedByPath = acceptedByPath
+      params.placeholderList = placeholders
+      params.limits = limits
+    } else if (effect.type === 'evaluate-submission') {
+      params.targetFiles = def?.targetFiles || []
+      params.previousCandidate = instance.rounds.at(-1)?.candidate || ''
+      params.candidate = this.snapshotCommits.get(instance.id) || instance.candidate || ''
+      params.responseFile = `meldwork/reviews/${instance.checkpointKey}/r${instance.round + 1}-response.md`
+      params.manifest = this.getManifest(instance)
+    } else if (effect.type === 'verify-candidate') {
+      params.candidate = instance.candidate
+      params.paths = def?.targetFiles || []
+      params.placeholderList = placeholders
+      params.limits = limits
+    } else if (effect.type === 'accept-commit') {
+      const currentRound = instance.rounds.at(-1)
+      params.candidate = instance.candidate
+      params.recordPaths = [
+        ...(currentRound?.reviews || []).map(review => review.reviewFile).filter(Boolean),
+        'meldwork/decisions.md',
+        'meldwork/changes.md',
+      ]
+      params.parent = instance.artifactVersions.at(-1)?.commit || null
+      params.message = `Meldwork checkpoint ${instance.checkpointKey}`
+    }
+    return { ...effect, params }
+  }
+
+  async #persistPlaceholders(placeholders) {
+    if (!Array.isArray(placeholders)) return
+    await this.store.enqueue((state) => {
+      state.placeholders = placeholders
+      return { next: state }
+    })
   }
 
   async dispatch(checkpointId, event) {
@@ -258,7 +328,8 @@ class CheckpointEngine {
         await this.#markEffect(effect.id, 'consumed')
         continue
       }
-      const result = await this.runner.run(instance, effect, {
+      const prepared = this.#prepareEffect(instance, effect)
+      const result = await this.runner.run(instance, prepared, {
         projectId: this.projectId,
         checkpointId,
         role: effect.type === 'invoke-reviewer'
@@ -298,6 +369,12 @@ class CheckpointEngine {
           },
         })
         continue
+      }
+      if (result.effectType === 'snapshot' && result.result?.commit) {
+        this.snapshotCommits.set(checkpointId, result.result.commit)
+        if (Array.isArray(result.result.placeholderList)) {
+          await this.#persistPlaceholders(result.result.placeholderList)
+        }
       }
       await this.dispatch(checkpointId, {
         type: 'EFFECT_RESULT',

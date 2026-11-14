@@ -1189,6 +1189,7 @@ if (!hasSingleInstanceLock) {
           beginDraining: state => state,
           isDrained: () => true,
         },
+        engineFor: projectId => projectService?.engineFor(projectId) || null,
         effects: {
           isIdle: () => true,
           onIdle: () => {},

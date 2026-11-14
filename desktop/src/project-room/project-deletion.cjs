@@ -31,6 +31,7 @@ class ProjectDeletion {
     scheduler,
     getContext,
     engine,
+    engineFor,
     effects,
     invocations,
     now = () => new Date().toISOString(),
@@ -53,6 +54,7 @@ class ProjectDeletion {
     this.scheduler = scheduler
     this.getContext = getContext
     this.engine = engine
+    this.engineFor = typeof engineFor === 'function' ? engineFor : null
     this.effects = effects
     this.invocations = invocations
     this.now = now
@@ -71,6 +73,11 @@ class ProjectDeletion {
     this.setIntervalFn = setIntervalFn
     this.clearIntervalFn = clearIntervalFn
     this.deletions = new Map()
+  }
+
+  #engine(projectId) {
+    const engine = this.engineFor ? this.engineFor(projectId) : null
+    return engine || this.engine
   }
 
   isDeleting(projectId) {
@@ -202,7 +209,7 @@ class ProjectDeletion {
     }
     try {
       await context.store.enqueue((state) => {
-        const next = this.engine.beginDraining(structuredClone(state)) || state
+        const next = this.#engine(project.id).beginDraining(structuredClone(state)) || state
         next.deletion = {
           phase: 'draining',
           startedAt: nowIso(this.now),
@@ -271,7 +278,7 @@ class ProjectDeletion {
   #localDrained(projectId) {
     const context = this.getContext?.(projectId)
     const state = context?.store?.current()
-    if (state && !this.engine.isDrained(state)) return false
+    if (state && !this.#engine(projectId).isDrained(state)) return false
     if (!this.#effectsIdle(projectId)) return false
     if (this.#activeInvocations(projectId) > 0) return false
     return true

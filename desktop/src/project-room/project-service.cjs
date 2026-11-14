@@ -14,6 +14,8 @@ const {
 } = require('./project-state-schema.cjs')
 const { ProjectStore } = require('./project-store.cjs')
 const { PendingMessageStore, TimelineHistoryStore } = require('./project-timeline.cjs')
+const { CheckpointEngine } = require('./checkpoint-engine.cjs')
+const { createEffectHandlers } = require('./effect-handlers.cjs')
 const {
   pendingDecisions,
   projectSnapshot,
@@ -135,6 +137,12 @@ class ProjectService {
     writeFile = atomicWritePrivateFile,
     clock = Date.now,
     isPreviewEnabled = () => true,
+    invoke,
+    cancelInvocation,
+    userGit,
+    effectHooks = {},
+    effectHandlers,
+    getManifest,
   } = {}) {
     if (!workspace) throw inputError('workspace-required')
     if (!privateRoot) throw inputError('private-root-required')
@@ -155,6 +163,12 @@ class ProjectService {
     this.previewEnabledFn = typeof isPreviewEnabled === 'function'
       ? isPreviewEnabled
       : () => true
+    this.invoke = invoke
+    this.cancelInvocation = cancelInvocation
+    this.userGit = userGit
+    this.effectHooks = effectHooks
+    this.effectHandlers = effectHandlers
+    this.getManifest = getManifest
     this.projects = new Map()
     this.started = false
     this.pendingStores = new Map()
@@ -287,6 +301,13 @@ class ProjectService {
             gitDir: path.join(this.#projectDir(project.id), 'shadow.git'),
             workTree: project.workdir,
           })
+          this.#createEngine(context)
+          try {
+            await context.engine.recover()
+          } catch (error) {
+            context.readOnly = true
+            context.readOnlyReason = error?.code || 'engine-recovery-failed'
+          }
         }
       } catch (error) {
         context.readOnly = true
@@ -303,6 +324,41 @@ class ProjectService {
       this.#projectForProjection(context),
       context.store?.current() || null,
     ))
+  }
+
+  #handlersFor(context) {
+    if (typeof this.effectHandlers === 'function') {
+      return this.effectHandlers({ context, projectId: context.project.id })
+    }
+    return createEffectHandlers({
+      shadowRepo: context.shadowRepo,
+      userGit: this.userGit,
+      ...this.effectHooks,
+    })
+  }
+
+  #createEngine(context) {
+    const state = context.store.current()
+    const readExecSeatIds = (state?.config.seats || [])
+      .filter(seat => seat.capabilities.includes('read-exec'))
+      .map(seat => seat.id)
+    context.engine = new CheckpointEngine({
+      projectId: context.project.id,
+      store: context.store,
+      scheduler: this.scheduler,
+      handlers: this.#handlersFor(context),
+      invoke: this.invoke,
+      cancelInvocation: this.cancelInvocation,
+      workdir: context.project.workdir,
+      readExecSeatIds,
+      getManifest: this.getManifest,
+      now: this.now,
+    })
+    return context.engine
+  }
+
+  engineFor(projectId) {
+    return this.projects.get(projectId)?.engine || null
   }
 
   #projectForProjection(context) {
@@ -642,6 +698,7 @@ class ProjectService {
       readOnly: false,
       readOnlyReason: '',
     }
+    this.#createEngine(context)
     this.#registerContext(projectId, context)
     return this.snapshot(projectId)
   }
