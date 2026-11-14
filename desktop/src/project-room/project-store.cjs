@@ -206,17 +206,17 @@ class ProjectStore {
       if (error?.code === 'ENOENT') {
         throw projectError('PROJECT_STATE_INVALID', { reason: 'missing' })
       }
-      throw error
+      return this.#corruptState(undefined, 'unreadable')
     }
     let value
     try {
       value = JSON.parse(source)
     } catch {
-      throw projectError('PROJECT_STATE_INVALID', { reason: 'corrupt' })
+      return this.#corruptState(source, 'corrupt')
     }
     const rawVersion = value?.schemaVersion
     if (!Number.isInteger(rawVersion) || rawVersion < 0) {
-      throw projectError('PROJECT_STATE_INVALID', { reason: 'schema-version-invalid' })
+      return this.#corruptState(source, 'corrupt')
     }
     if (rawVersion > this.schemaVersion) {
       this.readOnly = true
@@ -229,12 +229,43 @@ class ProjectStore {
       current = await this.#migrate(value, source, rawVersion)
       if (!current) return this.current()
     }
-    this.state = parseProjectState(current)
+    try {
+      this.state = parseProjectState(current)
+    } catch {
+      return this.#corruptState(source, 'corrupt')
+    }
     return this.current()
   }
 
   readOnlyReason() {
     return this.readOnlyCode
+  }
+
+  // M1/M5 6.3: never isolate records from a corrupt project state. Keep the
+  // original bytes for diagnostics and open the whole project read-only.
+  async #corruptState(source, reason) {
+    this.readOnly = true
+    this.readOnlyCode = this.readOnlyCode || reason
+    this.state = null
+    if (typeof source === 'string') {
+      const value = this.now()
+      const parsed = typeof value === 'number' ? value : Date.parse(value)
+      const stamp = (Number.isFinite(parsed) ? new Date(parsed) : new Date())
+        .toISOString().replace(/[:.]/g, '-')
+      const base = path.join(this.projectDir, `state.corrupt-${stamp}`)
+      let target = `${base}.json`
+      let counter = 1
+      while (fs.existsSync(target)) {
+        target = `${base}-${counter}.json`
+        counter += 1
+      }
+      try {
+        await this.writeFile(target, source)
+      } catch {
+        // The read-only flag still protects the original file.
+      }
+    }
+    return this.current()
   }
 
   async #migrate(value, source, startVersion) {
