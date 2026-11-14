@@ -353,20 +353,45 @@ class LocalWorkspaceAgentInvocation {
         permissionMode: leasePermissionMode,
         workdirRoot: leasePermissionMode === 'workspace-write' ? workdirRoot : '',
         signal: agentController.signal,
-      }, (lease) => {
+      }, async (lease) => {
         if (signal && queuedAbortHandler) {
           signal.removeEventListener('abort', queuedAbortHandler)
           queuedAbortHandler = null
         }
-        return this.invokeLeased(
-          group,
-          kind,
-          mode,
-          signal,
-          threadRootId,
-          context,
-          { agentController, registration, lease },
+        const projectRoomService = this.getProjectRoom()
+        const projectChatWrite = Boolean(
+          !projectRoomInvocation
+            && group.projectId
+            && group.projectRole !== 'main'
+            && permissionMode === 'workspace-write'
+            && typeof projectRoomService?.beginProjectChatWrite === 'function',
         )
+        const chatWriteId = `${group.id}:${activeRun?.runId || Date.now()}:${kind}`
+        if (projectChatWrite) {
+          await projectRoomService.beginProjectChatWrite(group.id, chatWriteId)
+        }
+        try {
+          const result = await this.invokeLeased(
+            group,
+            kind,
+            mode,
+            signal,
+            threadRootId,
+            context,
+            { agentController, registration, lease },
+          )
+          if (projectChatWrite) {
+            await projectRoomService.endProjectChatWrite(group.id, chatWriteId)
+              .catch(() => {})
+          }
+          return result
+        } catch (error) {
+          if (projectChatWrite) {
+            await projectRoomService.endProjectChatWrite(group.id, chatWriteId)
+              .catch(() => {})
+          }
+          throw error
+        }
       })
     } catch (error) {
       if (permissionMode === 'workspace-write'

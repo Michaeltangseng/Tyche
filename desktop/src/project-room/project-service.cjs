@@ -1,6 +1,6 @@
 const fs = require('node:fs')
 const path = require('node:path')
-const { randomUUID } = require('node:crypto')
+const { createHash, randomUUID } = require('node:crypto')
 const { z } = require('zod')
 const { atomicWritePrivateFile } = require('../security/private-file.cjs')
 const { claimsOverlap, makeClaim, resolveRoot } = require('../runs/path-claims.cjs')
@@ -728,6 +728,198 @@ class ProjectService {
     return { itemId, status: 'unresolved' }
   }
 
+  #projectForGroup(groupId) {
+    const group = (this.workspace.state.groups || []).find(item => item.id === groupId)
+    if (!group?.projectId) return null
+    return { group, context: this.projects.get(group.projectId) || null }
+  }
+
+  async beginProjectChatWrite(groupId, checkId) {
+    const found = this.#projectForGroup(groupId)
+    if (!found?.context?.store?.current()) throw projectError('PROJECT_NOT_FOUND')
+    if (found.context.readOnly) throw projectError('PROJECT_READ_ONLY')
+    await found.context.store.enqueue((state) => {
+      state.chatWriteChecks[checkId] = {
+        groupId,
+        status: 'running',
+        snapshotCommit: null,
+        baseVersions: null,
+        failure: null,
+      }
+      return { next: state }
+    })
+    return { checkId }
+  }
+
+  async endProjectChatWrite(groupId, checkId) {
+    const found = this.#projectForGroup(groupId)
+    if (!found?.context?.store?.current()) return null
+    const context = found.context
+    const state = context.store.current()
+    const check = state.chatWriteChecks?.[checkId]
+    if (!check) return null
+    const baseVersions = state.instances
+      .filter(instance => instance.state === 'accepted')
+      .map(instance => ({
+        checkpointId: instance.id,
+        artifactVersionId: instance.artifactVersions.at(-1)?.id || '',
+        instanceEpoch: instance.epoch,
+      }))
+      .filter(entry => entry.artifactVersionId)
+    let snapshotCommit = null
+    let failure = null
+    if (context.shadowRepo) {
+      const effectKey = createHash('sha256')
+        .update(JSON.stringify([context.project.id, 'chat-end', checkId]), 'utf8')
+        .digest('hex')
+      try {
+        const snapshot = await context.shadowRepo.snapshot({
+          effectId: `chat-${effectKey}`,
+          targets: [],
+          placeholderList: state.placeholders || [],
+          limits: state.config.settings.snapshotLimits,
+          isOptional: false,
+        })
+        snapshotCommit = snapshot.commit || null
+      } catch (error) {
+        failure = String(error?.code || 'SHADOW_SNAPSHOT_FAILED')
+      }
+    } else {
+      failure = 'SHADOW_UNAVAILABLE'
+    }
+    const detectionId = `detect-${createHash('sha256')
+      .update(JSON.stringify([context.project.id, 'detect', checkId]), 'utf8')
+      .digest('hex')}`
+    await context.store.enqueue((next) => {
+      const current = next.chatWriteChecks?.[checkId]
+      if (current) {
+        current.status = 'pending-detection'
+        current.snapshotCommit = snapshotCommit
+        current.baseVersions = baseVersions
+        current.failure = failure
+      }
+      if (!next.projectEffects.some(effect => effect.id === detectionId)) {
+        next.projectEffects.push({
+          id: detectionId,
+          type: 'detect-accepted-changes',
+          category: 'required',
+          status: 'pending',
+          params: {
+            checkId,
+            groupId,
+            snapshotCommit,
+            baseVersions,
+            failure,
+          },
+          result: null,
+          error: null,
+          startedAt: null,
+          finishedAt: null,
+        })
+      }
+      return { next, control: false }
+    })
+    await this.runProjectEffects(context.project.id)
+    return { checkId, snapshotCommit, failure }
+  }
+
+  async runProjectEffects(projectId) {
+    const context = this.#context(projectId)
+    for (let step = 0; step < 100; step += 1) {
+      const state = context.store?.current()
+      if (!state) return { processed: step }
+      const effect = (state.projectEffects || []).find(item => item.status === 'pending')
+      if (!effect) return { processed: step }
+      if (effect.type !== 'detect-accepted-changes') break
+      await this.#processDetection(context, effect)
+    }
+    return { processed: 100 }
+  }
+
+  async #processDetection(context, effect) {
+    const state = context.store.current()
+    const params = effect.params || {}
+    if (!params.snapshotCommit) {
+      await context.store.enqueue((next) => {
+        const target = next.projectEffects.find(item => item.id === effect.id)
+        if (target) {
+          target.status = 'failed'
+          target.error = params.failure || 'SHADOW_SNAPSHOT_FAILED'
+          target.finishedAt = this.#nowIso()
+        }
+        if (next.projectEffects.filter(item => item.status === 'pending').length === 0) {
+          next.projectBlockedOn = {
+            effectId: effect.id,
+            error: params.failure || 'SHADOW_SNAPSHOT_FAILED',
+            time: this.#nowIso(),
+          }
+        }
+        return { next, control: true }
+      })
+      return
+    }
+    const changes = []
+    let baseChanged = false
+    for (const instance of state.instances) {
+      if (instance.state !== 'accepted') continue
+      const version = instance.artifactVersions.at(-1)
+      if (!version) continue
+      const expected = (params.baseVersions || []).find(item => item.checkpointId === instance.id)
+      if (!expected || expected.artifactVersionId !== version.id
+          || expected.instanceEpoch !== instance.epoch) {
+        baseChanged = true
+        break
+      }
+      const def = state.config.playbook.checkpointDefs
+        .find(item => item.key === instance.checkpointKey)
+      for (const path of def?.targetFiles || []) {
+        try {
+          const clean = await context.shadowRepo.diffQuiet(version.commit, params.snapshotCommit, [path])
+          if (!clean) changes.push({ instance, def, path })
+        } catch {
+          baseChanged = true
+          break
+        }
+      }
+      if (baseChanged) break
+    }
+    if (baseChanged) {
+      await context.store.enqueue((next) => {
+        const target = next.projectEffects.find(item => item.id === effect.id)
+        if (target) {
+          target.status = 'pending'
+          target.params = { ...target.params, snapshotCommit: null, baseVersions: null }
+        }
+        return { next }
+      })
+      return
+    }
+    for (const change of changes) {
+      const critical = ['requirements', 'architecture'].some(key => (
+        change.def?.key === key || String(change.def?.name || '').toLowerCase().includes(key)
+      ))
+      await context.engine.dispatch(change.instance.id, {
+        type: 'ACCEPTED_DOC_CHANGED',
+        at: this.#nowIso(),
+        payload: {
+          file: change.path,
+          critical,
+          snapshot: params.snapshotCommit,
+        },
+      })
+    }
+    await context.store.enqueue((next) => {
+      const target = next.projectEffects.find(item => item.id === effect.id)
+      if (target) {
+        target.status = 'consumed'
+        target.finishedAt = this.#nowIso()
+      }
+      if (params.checkId) delete next.chatWriteChecks[params.checkId]
+      next.projectBlockedOn = null
+      return { next, control: true }
+    })
+  }
+
   projectChatContext(groupId) {
     const group = (this.workspace.state.groups || []).find(item => item.id === groupId)
     if (!group?.projectId || group.projectRole === 'main') return null
@@ -772,7 +964,20 @@ class ProjectService {
       ))
     }
     if (!found) throw projectError('PROJECT_EFFECT_NOT_FOUND')
-    if (!checkpointId) throw projectError('PROJECT_ENGINE_UNAVAILABLE')
+    if (!checkpointId) {
+      await context.store.enqueue((next) => {
+        const effect = next.projectEffects.find(item => item.id === effectId)
+        if (effect) {
+          effect.status = 'pending'
+          effect.error = null
+          effect.finishedAt = null
+        }
+        next.projectBlockedOn = null
+        return { next, control: true }
+      })
+      await this.runProjectEffects(projectId)
+      return { effectId, retried: true }
+    }
     await context.engine.dispatch(checkpointId, {
       type: 'RETRY_EFFECT',
       at: this.#nowIso(),

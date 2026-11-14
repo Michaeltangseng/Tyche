@@ -167,6 +167,36 @@ test('project chats prepend the project context and record chat reads', async (t
   }])
 })
 
+test('writable project chats register and finish a write check around the call', async (t) => {
+  const events = []
+  const { workspace, group, task, contextPack, controller } = await setup(t, {
+    mainChat: false,
+    allowWrite: true,
+    runAgent: async () => ({ text: 'Answer', sessionRef: 'session-1', outcome: 'completed' }),
+  })
+  workspace.setProjectRoom({
+    list: () => [],
+    pendingDecisions: () => ({ items: [], total: 0 }),
+    isPreviewEnabled: () => true,
+    projectChatContext: () => null,
+    beginProjectChatWrite: async (groupId, checkId) => {
+      events.push(['begin', groupId, checkId])
+    },
+    endProjectChatWrite: async (groupId, checkId) => {
+      events.push(['end', groupId, checkId])
+    },
+  })
+  await workspace.invokeAgent(
+    group, 'codex', 'manual', controller.signal, task.id,
+    { taskId: task.id, contextPackId: contextPack.contextPackId },
+  )
+  await workspace.finishRun(group.id, controller, 'completed')
+  assert.equal(events.length, 2)
+  assert.deepEqual(events[0].slice(0, 2), ['begin', group.id])
+  assert.deepEqual(events[1].slice(0, 2), ['end', group.id])
+  assert.equal(events[0][2], events[1][2])
+})
+
 test('the project-room session key hash includes project, checkpoint, seat, and generation', () => {
   const base = projectRoomSessionKey({
     projectId: 'p', checkpointId: 'c', seatId: 's', kind: 'codex', generation: 0,
