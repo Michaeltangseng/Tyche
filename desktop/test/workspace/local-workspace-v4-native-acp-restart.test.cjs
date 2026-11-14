@@ -778,7 +778,9 @@ test('Auto V4 synthesis native ACP permission restart enters existing recovery G
   assert.equal(binding.round, waiting.orchestration.round)
   assert.equal(request.stateEpoch, binding.stateEpoch)
   assert.equal(request.bindingHash, binding.bindingHash)
-  assert.equal(calls.filter(call => call.phase === 'synthesis').length, 2)
+  // Writable ACP calls are disposable per round; there is no persistent
+  // runtime restart that would produce a second synthesis call.
+  assert.equal(calls.filter(call => call.phase === 'synthesis').length, 1)
 
   restarted.decideHumanGate(recoveryGate.gateId, {
     status: 'rejected', optionId: 'stop-discussion', actorId: 'local-user',
@@ -786,6 +788,6 @@ test('Auto V4 synthesis native ACP permission restart enters existing recovery G
   const terminal = await terminalRun(restartedLedger, originalGate.runId)
   assert.equal(terminal.status, 'stopped')
   assert.equal(terminal.continuation.state, 'cancelled')
-  assert.equal(calls.filter(call => call.phase === 'synthesis').length, 2)
+  assert.equal(calls.filter(call => call.phase === 'synthesis').length, 1)
   assert.equal(calls.filter(call => call.phase === 'verification').length, 0)
 })

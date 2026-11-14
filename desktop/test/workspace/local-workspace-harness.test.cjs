@@ -1549,6 +1549,7 @@ test('Hermes replaces an unavailable stored ACP runtime with rebuilt context', a
   await workspace.refreshAgents()
   const group = workspace.createGroup({
     name: 'Hermes stale ACP', agentKinds: ['hermes'], workdir: directory,
+    allowWrite: false,
   })
   const oldUser = workspace.addMessage(group.id, 'user', 'Keep the original constraint')
   const previousAgent = workspace.addMessage(
