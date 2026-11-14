@@ -576,6 +576,7 @@ function parseProjectState(value) {
 module.exports = {
   DEFAULT_SNAPSHOT_LIMITS,
   PROJECT_STATE_SCHEMA_VERSION,
+  checkpointDefSchema: checkpointDef,
   emptyProjectState,
   parseProjectState,
 }
