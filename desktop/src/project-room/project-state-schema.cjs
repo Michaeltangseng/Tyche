@@ -579,4 +579,7 @@ module.exports = {
   checkpointDefSchema: checkpointDef,
   emptyProjectState,
   parseProjectState,
+  playbookSchema: playbook,
+  profileSchema: profile,
+  seatSchema: seat,
 }

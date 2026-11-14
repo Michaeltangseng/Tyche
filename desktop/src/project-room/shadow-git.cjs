@@ -165,28 +165,31 @@ function parseLfsPaths(output) {
 }
 
 class ShadowRepo {
-  constructor({ gitDir, workTree, gitExecutable = 'git', execFileFn } = {}) {
+  constructor({ gitDir, workTree, gitExecutable = 'git', execFileFn, excludePaths = [] } = {}) {
     if (typeof gitDir !== 'string' || !gitDir) throw shadowError('SHADOW_GIT_DIRECTORY_REQUIRED')
     if (typeof workTree !== 'string' || !workTree) throw shadowError('SHADOW_WORKTREE_REQUIRED')
     this.gitDir = path.resolve(gitDir)
     this.workTree = path.resolve(workTree)
     this.gitExecutable = gitExecutable
     this.execFileFn = typeof execFileFn === 'function' ? execFileFn : defaultExecFile
+    this.excludePaths = Array.isArray(excludePaths)
+      ? excludePaths.map(entry => normalizeShadowPath(entry)).filter(Boolean)
+      : []
     this.lock = Promise.resolve()
   }
 
-  static async create({ gitDir, workTree, gitExecutable, execFileFn } = {}) {
+  static async create({ gitDir, workTree, gitExecutable, execFileFn, excludePaths = [] } = {}) {
     if (typeof workTree !== 'string' || !fs.existsSync(workTree)
         || !fs.statSync(workTree).isDirectory()) {
       throw shadowError('SHADOW_WORKTREE_INVALID')
     }
     fs.mkdirSync(path.resolve(gitDir), { recursive: true })
-    const repo = new ShadowRepo({ gitDir, workTree, gitExecutable, execFileFn })
+    const repo = new ShadowRepo({ gitDir, workTree, gitExecutable, execFileFn, excludePaths })
     await repo.git(['init', '--quiet'])
     await repo.git(['config', 'core.bare', 'false'])
     fs.mkdirSync(path.join(repo.gitDir, 'info'), { recursive: true })
     fs.writeFileSync(path.join(repo.gitDir, 'info', 'attributes'), ATTRIBUTES_LINE)
-    writeExclude(repo.gitDir, [])
+    writeExclude(repo.gitDir, repo.excludePaths)
     return repo
   }
 
@@ -354,7 +357,10 @@ class ShadowRepo {
         }
       }
 
-      writeExclude(this.gitDir, placeholders.map(entry => entry.path))
+      writeExclude(this.gitDir, [
+        ...this.excludePaths,
+        ...placeholders.map(entry => entry.path),
+      ])
       if (removeFromIndex.length) {
         await this.git(['rm', '--cached', '-f', '-q', '--ignore-unmatch', '--', ...removeFromIndex])
       }
