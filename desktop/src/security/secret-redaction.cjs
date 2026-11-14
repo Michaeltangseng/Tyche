@@ -68,11 +68,15 @@ const SECRET_RULES = [
     name: 'jose',
     pattern: JOSE_COMPACT_CANDIDATE,
     replace: match => (hasJoseHeader(match) ? '[redacted]' : match),
+    // A JOSE compact token needs at least two dots; skipping the regex on long
+    // dot-less lines keeps forced-cut checks fast.
+    appliesTo: text => text.includes('.') && text.indexOf('.') !== text.lastIndexOf('.'),
   },
   {
     name: 'url-credentials',
     pattern: /([A-Za-z][A-Za-z0-9+.-]*:\/\/)([^\s/@:]+):([^\s/@]+)@/gi,
     replacement: '$1[redacted]@',
+    appliesTo: text => text.includes('://'),
   },
   {
     name: 'sensitive-assignment',
