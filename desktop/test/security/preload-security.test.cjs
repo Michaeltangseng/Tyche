@@ -96,7 +96,7 @@ test('local preload exposes the local-only Meldwork API', async () => {
     [
       'addSeat', 'cancelDriftResolution', 'chooseWorkdir', 'compact', 'create',
       'decideGate', 'delete', 'diagnostics', 'getPreferences', 'interject', 'onChanged',
-      'previewReject', 'previewReopen', 'removeSeat', 'rename', 'reopen', 'residual',
+      'onOpen', 'previewReject', 'previewReopen', 'removeSeat', 'rename', 'reopen', 'residual',
       'resolveDrift', 'resolveOutOfScope', 'retryDeletion', 'retryEffect',
       'rollbackProfile', 'saveAsTemplate', 'setPreferences', 'snapshot', 'start',
       'stopAndDeliver', 'timelineHistory', 'unlockDirectory', 'updatePlaybook',

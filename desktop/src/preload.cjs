@@ -145,6 +145,11 @@ if (isLocalDocument) Object.assign(desktopApi, {
       ipcRenderer.on('project:changed', listener)
       return () => ipcRenderer.removeListener('project:changed', listener)
     },
+    onOpen: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('project:open', listener)
+      return () => ipcRenderer.removeListener('project:open', listener)
+    },
   }),
   cloudAgent: Object.freeze({
     provideInput: (runId, requestId, value) => ipcRenderer.invoke(

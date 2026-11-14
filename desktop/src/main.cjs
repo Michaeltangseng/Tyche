@@ -71,6 +71,7 @@ const { ProjectService } = require('./project-room/project-service.cjs')
 const { TemplatesStore } = require('./project-room/templates-store.cjs')
 const { ProjectDeletion } = require('./project-room/project-deletion.cjs')
 const { AppPreferencesStore } = require('./project-room/app-preferences.cjs')
+const { createProjectNotificationCoordinator } = require('./project-room/project-notifications.cjs')
 const { registerProjectIpc } = require('./shell/project-ipc.cjs')
 const { ProcessRegistry } = require('./agents/process/process-registry.cjs')
 const { processRunScheduler } = require('./runs/run-scheduler.cjs')
@@ -126,6 +127,7 @@ let workspace = null
 let projectService = null
 let projectDeletion = null
 let appPreferences = null
+let projectNotifications = null
 let workspaceStartupError = ''
 let workspaceChangedListener = null
 let workspaceRunFinishedListener = null
@@ -456,6 +458,16 @@ function notifyWorkspaceChanged(snapshot) {
       && isTrustedLocalWebContents(mainWindow.webContents)) {
     mainWindow.webContents.send('local-workspace:changed', snapshot)
   }
+}
+
+function refreshProjectNotifications() {
+  if (!projectService || !projectNotifications) return
+  try {
+    const items = projectService.isPreviewEnabled?.() === false
+      ? []
+      : projectService.pendingDecisions().items
+    projectNotifications.update(items)
+  } catch { /* notifications are best effort */ }
 }
 
 function notifyProjectChanged(payload) {
@@ -1204,7 +1216,28 @@ if (!hasSingleInstanceLock) {
         onDeleted: projectId => projectService?.removeContext(projectId),
       })
       startupWorkspace.setProjectRoom(projectService)
-      projectService.onChanged(payload => notifyProjectChanged(payload))
+      projectNotifications = createProjectNotificationCoordinator({
+        send: ({ projectId, title, body }) => {
+          try {
+            const notification = new Notification({
+              title,
+              body,
+              ...(appIconImage() ? { icon: appIconImage() } : (appIconPath() ? { icon: appIconPath() } : {})),
+            })
+            notification.on('click', () => {
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('project:open', { projectId })
+              }
+            })
+            notification.show()
+          } catch { /* notifications are best effort */ }
+        },
+        locale: () => app.getLocale?.() || 'zh',
+      })
+      projectService.onChanged((payload) => {
+        notifyProjectChanged(payload)
+        refreshProjectNotifications()
+      })
       try {
         const recovery = await startupWorkspace.processRegistry.recover()
         for (const result of recovery) {
@@ -1236,6 +1269,7 @@ if (!hasSingleInstanceLock) {
       try {
         await projectService.start()
         await projectDeletion.start()
+        refreshProjectNotifications()
       } catch (error) {
         console.warn('[meldwork] project room startup failed',
           error?.code || error?.message || error)
