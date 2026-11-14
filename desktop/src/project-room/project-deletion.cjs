@@ -244,6 +244,15 @@ class ProjectDeletion {
     }
     this.#releaseManagedGrants(project.id)
     this.invocations.cancelAll(project.id)
+    // Cleanup effects (cancel-invocation, release-scope) are allowed to run
+    // while the project drains; trigger them without blocking the delete call.
+    const engine = this.#engine(project.id)
+    if (typeof engine?.runUntilIdle === 'function') {
+      Promise.resolve()
+        .then(() => engine.runUntilIdle())
+        .then(() => this.#deliverDrainCheck(project.id, 'cleanup'))
+        .catch(() => {})
+    }
     this.#installListeners(project.id, record)
     await this.#checkDrain(project.id, 'begin')
     if (!this.deletions.has(project.id)) return { projectId: project.id, deleted: true }
@@ -283,8 +292,9 @@ class ProjectDeletion {
     record.checking = true
     try {
       if (!this.#localDrained(projectId)) return
-      if (typeof this.engine.reconcileScheduler === 'function') {
-        await this.engine.reconcileScheduler(projectId)
+      const engine = this.#engine(projectId)
+      if (typeof engine?.reconcileScheduler === 'function') {
+        await engine.reconcileScheduler(projectId)
       }
       if (!this.#schedulerIdleSync(projectId)) return
       if (record.finished || record.finishing) return

@@ -688,3 +688,57 @@ test('beginDraining voids business effects, abandons leases, and cancels calls',
     projectEffects: next.projectEffects.map(effect => ({ ...effect, status: 'voided' })),
   }), true)
 })
+
+test('beginDraining releases an already-releasing lease when no call is running', () => {
+  const state = baseState()
+  state.instances = [instance('leading', {
+    leaseRequests: [{
+      id: 'lease-1',
+      holder: { kind: 'checkpoint-scope', projectId: 'project-1', ownerId: 'cp-1' },
+      chainEffectId: 'lease-1', claims: [], epoch: 0, requestedAt: at,
+      status: 'releasing', grantedAt: at, releasedAt: null,
+    }],
+  })]
+  const engine = new CheckpointEngine({
+    projectId: 'project-1',
+    store: { current: () => state, enqueue: async () => {} },
+    scheduler: fakeScheduler(),
+    workdir: '/tmp/project',
+    now: () => at,
+  })
+  const next = engine.beginDraining(state)
+  assert.equal(next.instances[0].leaseRequests[0].status, 'released')
+  assert.equal(next.instances[0].leaseRequests[0].releasedAt, at)
+})
+
+test('recovery drops a cancelled reviewer call instead of retrying it', async (t) => {
+  const state = baseState()
+  state.instances = [instance('reviewing', {
+    activeInvocations: [{
+      effectId: 'invoke-review', role: 'reviewer', seatId: 'seat-reviewer',
+      agentKind: 'claude', round: 1, sessionGeneration: 0, claims: [],
+      cancellationRequested: true, processRegistryId: null,
+    }],
+    effects: [effect('invoke-review', 'invoke-reviewer', {
+      category: 'invocation', status: 'started',
+    })],
+  })]
+  const { store, engine } = await engineFixture(t, state)
+  await engine.recover()
+  const current = store.current().instances[0]
+  assert.deepEqual(current.activeInvocations, [])
+  assert.equal(current.effects.find(item => item.id === 'invoke-review').status, 'consumed')
+})
+
+test('recovery clears a blockedOn whose effect is no longer retryable', async (t) => {
+  const state = baseState()
+  state.instances = [instance('leading', {
+    blockedOn: { effectId: 'invoke-lead', error: 'EFFECT_FAILED', time: at },
+    effects: [effect('invoke-lead', 'invoke-lead', {
+      category: 'invocation', status: 'consumed',
+    })],
+  })]
+  const { store, engine } = await engineFixture(t, state)
+  await engine.recover()
+  assert.equal(store.current().instances[0].blockedOn, null)
+})

@@ -23,9 +23,12 @@ async function setup(t, options = {}) {
   const contextPack = workspace.createContextPack({
     group, taskId: task.id, mode: 'manual', targetKinds: ['codex'], message: task,
   })
-  const reservation = workspace.reserveRun(group.id, 'manual', ['codex'], task.id)
-  workspace.bindRunTask(group.id, reservation, task.id, task.id, contextPack.contextPackId)
-  const controller = workspace.beginRun(group.id, 'manual', ['codex'], task.id, reservation)
+  let controller = null
+  if (options.run !== false) {
+    const reservation = workspace.reserveRun(group.id, 'manual', ['codex'], task.id)
+    workspace.bindRunTask(group.id, reservation, task.id, task.id, contextPack.contextPackId)
+    controller = workspace.beginRun(group.id, 'manual', ['codex'], task.id, reservation)
+  }
   return {
     workspace, group, task, contextPack, controller, calls, directory,
   }
@@ -67,6 +70,40 @@ test('project-room lead calls send the exact prompt and use the caller session k
   assert.equal(calls[0].runOptions.sandbox, 'workspace-write')
   assert.equal(calls[0].prompt.includes('Final response scope:'), false)
   assert.equal(workspace.state.sessions[sessionKey], 'native-1')
+  assert.equal(result.message, null)
+})
+
+test('project-room lead calls work without a chat run controller', async (t) => {
+  const calls = []
+  const { workspace, group, task, contextPack } = await setup(t, {
+    run: false,
+    runAgent: async (agent, prompt, workdir, runOptions) => {
+      calls.push({ agent, prompt, workdir, runOptions })
+      return {
+        text: 'Answer\n[[MELDWORK_CHECKPOINT:{"signal":"ready"}]]',
+        sessionRef: 'native-2',
+        outcome: 'completed',
+      }
+    },
+  })
+  const sessionKey = projectRoomSessionKey({
+    projectId: 'project-1', checkpointId: 'cp-1', seatId: 'seat-1', kind: 'codex', generation: 0,
+  })
+  const result = await workspace.invokeAgent(
+    group, 'codex', 'manual', undefined, task.id,
+    {
+      taskId: task.id,
+      sessionPolicy: 'project-room',
+      promptOverride: 'Project-room call without a run',
+      contextPackId: contextPack.contextPackId,
+      permissionMode: 'read-only',
+      sessionKey,
+      saveSession: true,
+      deferMessage: true,
+    },
+  )
+
+  assert.equal(calls.length, 1)
   assert.equal(result.message, null)
 })
 

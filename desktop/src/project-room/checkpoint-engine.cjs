@@ -679,6 +679,11 @@ class CheckpointEngine {
     return { pending: this.#hasPendingEffects() }
   }
 
+  async reconcileScheduler(projectId = this.projectId) {
+    if (!this.runner || typeof this.runner.reconcileScheduler !== 'function') return null
+    return this.runner.reconcileScheduler({ projectId })
+  }
+
   #hasPendingEffects() {
     const state = this.store.current()
     if (!state) return false
@@ -695,14 +700,14 @@ class CheckpointEngine {
         const retryInvocations = []
         for (const invocation of [...instance.activeInvocations]) {
           const effect = instance.effects.find(item => item.id === invocation.effectId)
-          if (invocation.role === 'lead' || invocation.role === 'draft') {
-            if (invocation.cancellationRequested) {
-              if (effect) effect.status = 'consumed'
-            } else {
-              instance.state = 'gate'
-              instance.gate = recoveryGate(instance, eventAt)
-              if (effect) effect.status = 'consumed'
-            }
+          if (invocation.cancellationRequested) {
+            // A cancelled call must not be retried after recovery; this is
+            // especially important while the project is being deleted.
+            if (effect) effect.status = 'consumed'
+          } else if (invocation.role === 'lead' || invocation.role === 'draft') {
+            instance.state = 'gate'
+            instance.gate = recoveryGate(instance, eventAt)
+            if (effect) effect.status = 'consumed'
           } else if (effect) {
             effect.status = 'pending'
             effect.startedAt = null
@@ -720,7 +725,11 @@ class CheckpointEngine {
         }
         if (instance.blockedOn) {
           const blocked = instance.effects.find(effect => effect.id === instance.blockedOn.effectId)
-          if (blocked?.status === 'voided') instance.blockedOn = null
+          // An interrupted effect is consumed by recovery; a stale blockedOn
+          // would keep offering a retry that can never find its effect.
+          if (!blocked || !['failed', 'pending', 'started'].includes(blocked.status)) {
+            instance.blockedOn = null
+          }
         }
       }
       for (const drift of state.driftItems || []) {
@@ -866,7 +875,7 @@ class CheckpointEngine {
       for (const request of instance.leaseRequests) {
         if (request.status === 'waiting') {
           request.status = 'withdrawn'
-        } else if (request.status === 'granted') {
+        } else if (request.status === 'granted' || request.status === 'releasing') {
           const writing = instance.activeInvocations.some(invocation => (
             invocation.role === 'lead' || invocation.role === 'draft'
           ))

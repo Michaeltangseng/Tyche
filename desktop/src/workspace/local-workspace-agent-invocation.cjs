@@ -943,8 +943,12 @@ class LocalWorkspaceAgentInvocation {
       return finished.capsule
     }
     try {
+      // Project-room calls carry their own durable state in the project
+      // engine and do not own a chat run controller, so there is no run-ledger
+      // record to checkpoint here.
       const persisted = this.checkpointRun(group.id, activeRun)
-      if (this.hasRunLedger() && persisted !== true) {
+      if (context.sessionPolicy !== 'project-room'
+          && this.hasRunLedger() && persisted !== true) {
         throw new Error('LOCAL_RUN_PERSIST_FAILED')
       }
       if (typeof context.onLeaseAcquired === 'function') {
