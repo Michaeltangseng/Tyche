@@ -1,5 +1,5 @@
 .conversation-pane {
-  --conversation-content-width: clamp(820px, 70vw, 1360px);
+  --conversation-content-width: clamp(720px, 62vw, 960px);
   height: 100%;
   display: grid;
   grid-template-rows: 68px minmax(0, 1fr) auto;

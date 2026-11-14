@@ -1228,6 +1228,26 @@ if (!hasSingleInstanceLock) {
         isPreviewEnabled: () => appPreferences?.isProjectRoomEnabled() === true,
         userGit: { userRepoCheckTrailer, userRepoCommit, userRepoPreflight },
       })
+      const projectGroupIds = projectId => new Set(
+        (startupWorkspace.state.groups || [])
+          .filter(group => group.projectId === projectId)
+          .map(group => group.id),
+      )
+      const activeProjectChatRuns = (projectId) => {
+        const ids = projectGroupIds(projectId)
+        let count = 0
+        for (const groupId of startupWorkspace.activeRuns.keys()) {
+          if (ids.has(groupId)) count += 1
+        }
+        return count
+      }
+      const cancelProjectChatRuns = (projectId) => {
+        const ids = projectGroupIds(projectId)
+        for (const [groupId, controller] of startupWorkspace.activeRuns) {
+          if (!ids.has(groupId)) continue
+          try { void startupWorkspace.stop(groupId, controller.runId) } catch { /* best effort */ }
+        }
+      }
       projectDeletion = new ProjectDeletion({
         workspace: startupWorkspace,
         privateRoot,
@@ -1244,10 +1264,10 @@ if (!hasSingleInstanceLock) {
           removeIdleListener: () => {},
         },
         invocations: {
-          activeInvocations: () => 0,
+          activeInvocations: activeProjectChatRuns,
           onInvocationEnded: () => {},
           removeInvocationEndedListener: () => {},
-          cancelAll: () => {},
+          cancelAll: cancelProjectChatRuns,
         },
         onDeleted: projectId => projectService?.removeContext(projectId),
         removeTracesForGroup: groupId => removeTracesForGroup(

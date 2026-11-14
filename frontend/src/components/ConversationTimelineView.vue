@@ -323,16 +323,17 @@
                 </div>
               </div>
               <template v-if="message.role === 'agent'">
+                <InlineTrace
+                  v-if="messageHasFullTrace(message)"
+                  :agent-run-id="message.trace.agentRunId"
+                  :default-open="message.id === latestAgentMessageId"
+                  :run-id="message.trace.runId"
+                  :t="t"
+                />
                 <template v-if="isAgentReplyExpanded(message)">
                   <div
                     class="message-copy-surface message-trace-surface"
                     :class="{ copied: isMessageCopied(message.id) }"
-                    :tabindex="messageHasTrace(message) ? 0 : undefined"
-                    :role="messageHasTrace(message) ? 'button' : undefined"
-                    :aria-label="messageHasTrace(message) ? t('trace.viewProcess') : undefined"
-                    @click="openAgentMessageTrace(message, $event)"
-                    @keydown.enter.prevent="openAgentMessageTrace(message, $event)"
-                    @keydown.space.prevent="openAgentMessageTrace(message, $event)"
                   >
                     <MarkdownMessage
                       v-if="message.content"
@@ -366,7 +367,7 @@
                   </ol>
                 </details>
                   <details
-                    v-if="messageHasTrace(message)"
+                    v-if="messageHasTrace(message) && !messageHasFullTrace(message)"
                     class="execution-details trace-inline-details"
                     :open="isDirectTraceOpen(message)"
                     @toggle="syncDirectTraceDisclosure(message, $event)"
@@ -916,6 +917,7 @@ import AttachmentMediaPreview from './AttachmentMediaPreview.vue'
 import HumanGateDecisionContext from './HumanGateDecisionContext.vue'
 import ProjectRoomTimelineCard from './ProjectRoomTimelineCard.vue'
 import MarkdownMessage from './MarkdownMessage.vue'
+import InlineTrace from './trace/InlineTrace.vue'
 
 const props = defineProps({
   controller: { type: Object, required: true },
@@ -1044,6 +1046,22 @@ const displayTimelineMessages = computed(() => {
       || String(left.id).localeCompare(String(right.id))
   ))
 })
+
+const latestAgentMessageId = computed(() => {
+  const messages = displayTimelineMessages.value
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message.role === 'agent' && !message.projectRoomCard
+        && message.trace?.runId && message.trace?.agentRunId) {
+      return message.id
+    }
+  }
+  return ''
+})
+
+function messageHasFullTrace(message) {
+  return Boolean(message?.trace?.runId && message?.trace?.agentRunId)
+}
 
 function timelineTimestamp(value) {
   if (Number.isFinite(value)) return Number(value)
@@ -1175,17 +1193,6 @@ function openMediaPreview(attachment) {
 
 function closeMediaPreview() {
   mediaPreviewAttachment.value = null
-}
-
-function openAgentMessageTrace(message, event) {
-  if (!messageHasTrace(message)) return
-  const target = event?.target
-  if (target instanceof Element && target.closest(
-    'a, button, input, textarea, select, option, form, summary, [contenteditable="true"]',
-  )) return
-  const selection = typeof window.getSelection === 'function' ? window.getSelection() : null
-  if (selection && String(selection).trim()) return
-  openTraceForMessage(message, event?.currentTarget || null)
 }
 
 function attachmentDocumentIconName(attachment) {

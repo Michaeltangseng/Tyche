@@ -437,12 +437,15 @@ class ProjectService {
           sessionKey,
           saveSession: role !== 'reviewer',
           deferMessage: true,
+          traceRunId: instance.id,
+          traceAgentRunId: effect.id,
           watchdog: { onInactivity: 'remind', hardLimitMs: null },
         },
       )
     } finally {
       this.projectControllers.delete(effect.id)
     }
+    const trace = invocation?.trace || invocation?.pendingMessage?.metadata?.trace || null
     const rawText = String(
       invocation?.pendingMessage?.content
         || invocation?.pendingMessage?.text
@@ -487,6 +490,7 @@ class ProjectService {
           role: 'agent',
           agentKind: seat.agentKind,
           createdAt: this.#nowIso(),
+          ...(trace ? { trace } : {}),
           projectRoom: {
             projectId: context.project.id,
             checkpointId: instance.id,
@@ -507,6 +511,7 @@ class ProjectService {
       round,
       sessionGeneration,
       marker: role === 'reviewer' ? (verdict || '') : (signal || ''),
+      ...(trace ? { trace } : {}),
       ...(pendingMessage ? { pendingMessage } : {}),
     }
   }

@@ -42,37 +42,6 @@
       </header>
 
       <section v-if="activeTab === 'files'" class="project-room-drawer-body" role="tabpanel">
-        <h3>{{ t('projectRoom.drawer.acceptedDocs') }}</h3>
-        <p v-if="!acceptedDocuments.length" class="project-room-drawer-empty">
-          {{ t('projectRoom.drawer.noAcceptedDocs') }}
-        </p>
-        <div v-for="item in acceptedDocuments" :key="item.checkpointId" class="accepted-doc">
-          <header>
-            <button class="accepted-doc-open" type="button" @click="openAcceptedDocument(item)">
-              {{ item.name }}
-            </button>
-            <button class="accepted-doc-diff" type="button" @click="showAcceptedDiff(item)">
-              {{ t('workdir.diff.title') }}
-            </button>
-            <span class="accepted-doc-flags">
-              <span v-if="item.stale" class="accepted-doc-pending">
-                {{ t('projectRoom.state.stale') }}
-              </span>
-              <span v-if="item.hasPendingVersion" class="accepted-doc-pending">
-                {{ t('projectRoom.drawer.pendingVersion') }}
-              </span>
-            </span>
-          </header>
-          <small>
-            {{ t('projectRoom.drawer.version', { id: item.acceptedVersion.id }) }}
-            <template v-if="item.acceptedVersion.acceptedAt">
-              · {{ formatNavTime(item.acceptedVersion.acceptedAt) }}
-            </template>
-          </small>
-          <ul>
-            <li v-for="file in item.acceptedVersion.files || []" :key="file">{{ file }}</li>
-          </ul>
-        </div>
         <WorkdirTree :controller="workdirTreeController" />
         <FilePreview :controller="filePreviewController" />
         <FileDiff v-if="workdirTree.diff.value" :controller="fileDiffController" />
@@ -95,7 +64,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { CloseOutline } from '@vicons/ionicons5'
 import { useTraceStream } from '../composables/useTraceStream.js'
 import TraceStepList from './trace/TraceStepList.vue'
@@ -111,7 +80,6 @@ const props = defineProps({
 const {
   close,
   drawer,
-  formatNavTime,
   onResize,
   open,
   projectId,
@@ -167,22 +135,6 @@ const fileDiffController = {
   theme: theme?.value || 'light',
 }
 
-function openAcceptedDocument(item) {
-  const file = item.acceptedVersion?.files?.[0]
-  if (!file) return
-  workdirTree.diff.value = null
-  void workdirTree.readFile(file)
-}
-
-function showAcceptedDiff(item) {
-  const file = item.acceptedVersion?.files?.[0]
-  if (!file) return
-  void workdirTree.readFile(file).then(() => workdirTree.loadDiff({
-    checkpointId: item.checkpointId,
-    version: item.acceptedVersion.id,
-  }))
-}
-
 const fullTrace = useTraceStream({ runId: traceRunId, agentRunId: traceAgentRunId })
 const traceHasFull = fullTrace.hasFullTrace
 const traceController = {
@@ -205,18 +157,6 @@ watch(activeTab, (tab) => {
   fullTrace.setViewing(active)
   if (active && traceRunId?.value && traceAgentRunId?.value) void fullTrace.open()
 }, { immediate: true })
-
-const acceptedDocuments = computed(() => (
-  (projectSnapshot.value?.progress || [])
-    .filter(item => item.acceptedVersion)
-    .map(item => ({
-      checkpointId: item.checkpointId,
-      name: item.name,
-      stale: item.state === 'stale',
-      hasPendingVersion: item.hasPendingVersion === true,
-      acceptedVersion: item.acceptedVersion,
-    }))
-))
 
 function applyPreferences() {
   const preferences = projectSnapshot.value?.preferences || {}

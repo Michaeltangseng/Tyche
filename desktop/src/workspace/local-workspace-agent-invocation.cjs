@@ -1114,12 +1114,15 @@ class LocalWorkspaceAgentInvocation {
         return prompt
       }
       let traceSink = null
-      if (this.tracesRoot && activeRun?.runId && harnessRun?.agentRunId) {
+      const traceRunId = activeRun?.runId || (projectRoom ? String(context.traceRunId || '') : '')
+      const traceAgentRunId = harnessRun?.agentRunId
+        || (projectRoom ? String(context.traceAgentRunId || '') : '')
+      if (this.tracesRoot && traceRunId && traceAgentRunId) {
         try {
           traceSink = createTraceSink({
             tracesRoot: this.tracesRoot,
-            runId: activeRun.runId,
-            agentRunId: harnessRun.agentRunId,
+            runId: traceRunId,
+            agentRunId: traceAgentRunId,
             groupId: group.id,
             projectId: group.projectId || null,
             agentKind: kind,
@@ -1544,7 +1547,18 @@ class LocalWorkspaceAgentInvocation {
         outcomeRefs: auditOutcomeRefs,
         ...(collaborationReply.collaboration?.taskDecision
           ? { taskDecision: collaborationReply.collaboration.taskDecision } : {}),
-      })
+      }) || (traceSink ? {
+        // Project-room calls have no chat run harness; the trace sink still
+        // gives the message the ids needed to load the full trace.
+        runId: traceRunId,
+        agentRunId: traceAgentRunId,
+        status: finalStatus,
+        summary: '',
+        events: [],
+        sourceMessageIds: [],
+        truncated: false,
+        context: {},
+      } : null)
       const messageMetadata = {
         elapsedMs: Date.now() - startedAt,
         toolCalls,
@@ -1589,6 +1603,7 @@ class LocalWorkspaceAgentInvocation {
       return {
         message,
         pendingMessage,
+        trace,
         collaboration: collaborationReply.collaboration,
         outcomeRefs: producedOutcomeRefs,
         producedOutcomeRefs,

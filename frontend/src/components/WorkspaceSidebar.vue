@@ -34,11 +34,6 @@
       </button>
     </header>
 
-    <button class="new-group-button" type="button" :title="t('nav.newGroup')" @click="openNewGroup">
-      <AddOutline />
-      <span>{{ t('nav.newGroup') }}</span>
-    </button>
-
     <nav class="conversation-nav" :aria-label="t('nav.conversations')">
       <section v-if="pendingDecisionCount" class="nav-section pending-decisions-section">
         <button
@@ -98,9 +93,11 @@
               <button
                 class="project-room-open"
                 type="button"
-                :title="t('projectRoom.sidebar.open', { name: project.name })"
+                :title="t(isProjectRoomExpanded(project.projectId) ? 'projectRoom.sidebar.collapse' : 'projectRoom.sidebar.expand', { name: project.name })"
                 :aria-current="isProjectRoomSelected(project.projectId) ? 'page' : undefined"
-                @click="selectProjectRoom(project.projectId)"
+                :aria-expanded="String(isProjectRoomExpanded(project.projectId))"
+                :aria-controls="`project-room-groups-${project.projectId}`"
+                @click="handleProjectRoomClick(project)"
               >
                 <span class="project-room-avatar" aria-hidden="true">{{ projectInitial(project.name) }}</span>
                 <span class="project-room-copy">
@@ -118,17 +115,14 @@
                 />
               </button>
               <button
-                v-if="project.groups.length"
-                class="project-room-toggle"
+                v-if="!project.deleting"
+                class="project-room-add"
                 type="button"
-                :title="t(isProjectRoomExpanded(project.projectId) ? 'projectRoom.sidebar.collapse' : 'projectRoom.sidebar.expand', { name: project.name })"
-                :aria-label="t(isProjectRoomExpanded(project.projectId) ? 'projectRoom.sidebar.collapse' : 'projectRoom.sidebar.expand', { name: project.name })"
-                :aria-expanded="String(isProjectRoomExpanded(project.projectId))"
-                :aria-controls="`project-room-groups-${project.projectId}`"
-                @click="toggleProjectRoomExpanded(project.projectId)"
+                :title="t('projectRoom.sidebar.addChat', { name: project.name })"
+                :aria-label="t('projectRoom.sidebar.addChat', { name: project.name })"
+                @click.stop="addProjectChat(project.projectId)"
               >
-                <ChevronDownOutline v-if="isProjectRoomExpanded(project.projectId)" aria-hidden="true" />
-                <ChevronForwardOutline v-else aria-hidden="true" />
+                <AddOutline />
               </button>
               <button
                 v-if="!project.deleting"
@@ -336,202 +330,9 @@
         <p v-if="!sidebarAgentGroups.length && !sidebarAgentsCollapsed && !discoveringAgents" class="nav-empty">{{ t('nav.noSidebarAgents') }}</p>
       </section>
 
-      <section class="nav-section group-nav-section">
-        <button
-          class="nav-heading"
-          type="button"
-          :title="sidebarGroupsCollapsed ? t('nav.expandGroups') : t('nav.collapseGroups')"
-          :aria-expanded="String(!sidebarGroupsCollapsed)"
-          aria-controls="sidebar-group-list"
-          @click="sidebarGroupsCollapsed = !sidebarGroupsCollapsed"
-        >
-          <span>{{ t('nav.groups') }}</span>
-          <small v-if="sidebarGroupsCollapsed" class="nav-heading-count">{{ groupGroups.length }}</small>
-        </button>
-        <div v-if="!sidebarGroupsCollapsed" id="sidebar-group-list">
-          <div v-if="groupGroups.length" class="group-conversation-list">
-            <div
-              v-for="group in visibleGroupGroups"
-              :key="group.id"
-              class="group-conversation-row"
-              :class="{ active: isSelectedConversation(group) }"
-            >
-              <button
-                class="conversation-link"
-                type="button"
-                :title="t('nav.openGroup', { name: groupName(group) })"
-                :aria-current="isSelectedConversation(group) ? 'page' : undefined"
-                @click="selectGroup(group.id)"
-              >
-                <span class="group-avatar stack" :aria-label="groupAgentSummary(group)">
-                  <img v-for="kind in group.agentKinds.slice(0, 3)" :key="kind" :src="agentLogo(kind, theme)" alt="" />
-                </span>
-                <span>{{ groupName(group) }}</span>
-                <span
-                  v-if="isGroupAwaitingDecision(group.id) && !isSelectedConversation(group)"
-                  class="attention-mark"
-                  role="img"
-                  :title="t('humanGate.waiting')"
-                  :aria-label="t('humanGate.waiting')"
-                >
-                  <span class="attention-dot" />
-                </span>
-                <span
-                  v-else-if="isGroupRunning(group.id) && !isSelectedConversation(group)"
-                  class="run-mark"
-                  :title="t('conversation.runningGeneric')"
-                >
-                  <span class="run-agent-bars" aria-hidden="true"><i /><i /><i /></span>
-                </span>
-                <span
-                  v-else-if="hasFinishedDirectRun(group.id) && !isSelectedConversation(group)"
-                  class="run-finished-mark"
-                  role="img"
-                  :title="t('nav.runFinished')"
-                  :aria-label="t('nav.runFinished')"
-                >
-                  <CheckmarkCircleOutline aria-hidden="true" />
-                </span>
-              </button>
-              <span class="group-conversation-actions">
-                <button
-                  class="direct-session-action"
-                  type="button"
-                  :title="t('nav.renameGroup', { name: groupName(group) })"
-                  :aria-label="t('nav.renameGroup', { name: groupName(group) })"
-                  @click="openConversationRename(group)"
-                >
-                  <PencilOutline />
-                </button>
-                <span class="sidebar-delete-control">
-                  <button
-                    class="direct-session-action danger"
-                    type="button"
-                    :title="t('nav.deleteGroup', { name: groupName(group) })"
-                    :aria-label="t('nav.deleteGroup', { name: groupName(group) })"
-                    :disabled="isGroupRunning(group.id)"
-                    @click="openSidebarConversationDelete(group, $event)"
-                  >
-                    <TrashOutline />
-                  </button>
-                </span>
-              </span>
-            </div>
-            <button
-              v-if="hasMoreGroupGroups"
-              class="sidebar-more-button"
-              type="button"
-              :title="t(groupSessionListExpanded ? 'nav.lessGroups' : 'nav.moreGroups', {
-                count: remainingGroupGroupsCount,
-              })"
-              :aria-label="t(groupSessionListExpanded ? 'nav.lessGroups' : 'nav.moreGroups', {
-                count: remainingGroupGroupsCount,
-              })"
-              :aria-expanded="String(groupSessionListExpanded)"
-              @click="toggleGroupSessionListExpanded"
-            >
-              <span>{{ t(groupSessionListExpanded ? 'nav.lessItems' : 'nav.moreItems') }}</span>
-            </button>
-          </div>
-          <p v-else class="nav-empty">{{ t('nav.noGroups') }}</p>
-        </div>
-      </section>
     </nav>
 
-    <div v-if="sidebarCollapsed" class="collapsed-group-switcher">
-      <button
-        ref="collapsedGroupMenuButton"
-        class="icon-button collapsed-group-switcher-button"
-        :class="{ active: collapsedGroupMenuOpen }"
-        type="button"
-        :title="t('nav.switchGroup')"
-        :aria-label="t('nav.switchGroup')"
-        :aria-expanded="String(collapsedGroupMenuOpen)"
-        aria-haspopup="dialog"
-        aria-controls="collapsed-group-menu"
-        @click="toggleCollapsedGroupMenu"
-      >
-        <ChatbubblesOutline />
-        <span
-          v-if="groupGroups.some(group => isGroupAwaitingDecision(group.id))"
-          class="attention-dot collapsed-group-attention"
-          aria-hidden="true"
-        />
-      </button>
-    </div>
-
-
   </aside>
-
-  <Teleport to="body">
-    <section
-      v-if="collapsedGroupMenuOpen"
-      id="collapsed-group-menu"
-      ref="collapsedGroupMenu"
-      class="collapsed-group-menu"
-      role="dialog"
-      :aria-label="t('nav.switchGroup')"
-      :style="collapsedGroupMenuStyle"
-    >
-      <header class="collapsed-group-menu-header">
-        <span class="collapsed-group-menu-icon"><PeopleOutline /></span>
-        <span>
-          <strong>{{ t('nav.groups') }}</strong>
-          <small>{{ t('nav.groupCount', { count: groupGroups.length }) }}</small>
-        </span>
-      </header>
-      <div v-if="groupGroups.length" class="collapsed-group-menu-list">
-        <button
-          v-for="group in groupGroups"
-          :key="group.id"
-          class="collapsed-group-option"
-          :class="{ active: activeView === 'conversation' && selectedGroupId === group.id }"
-          type="button"
-          :title="t('nav.openGroup', { name: groupName(group) })"
-          :aria-current="activeView === 'conversation' && selectedGroupId === group.id ? 'page' : undefined"
-          @click="selectGroup(group.id)"
-        >
-          <span class="group-avatar stack" :aria-label="groupAgentSummary(group)">
-            <img v-for="kind in group.agentKinds.slice(0, 3)" :key="kind" :src="agentLogo(kind, theme)" alt="" />
-          </span>
-          <span class="collapsed-group-option-main">
-            <strong>{{ groupName(group) }}</strong>
-            <small>{{ groupAgentSummary(group) }}</small>
-          </span>
-          <span class="collapsed-group-option-state">
-            <span
-              v-if="isGroupAwaitingDecision(group.id) && !isSelectedConversation(group)"
-              class="attention-mark"
-              role="img"
-              :title="t('humanGate.waiting')"
-              :aria-label="t('humanGate.waiting')"
-            >
-              <span class="attention-dot" />
-            </span>
-            <span
-              v-else-if="isGroupRunning(group.id) && !isSelectedConversation(group)"
-              class="run-mark"
-              :title="t('conversation.runningGeneric')"
-            >
-              <span class="run-agent-bars" aria-hidden="true"><i /><i /><i /></span>
-            </span>
-            <span
-              v-else-if="hasFinishedDirectRun(group.id) && !isSelectedConversation(group)"
-              class="run-finished-mark"
-              role="img"
-              :title="t('nav.runFinished')"
-              :aria-label="t('nav.runFinished')"
-            >
-              <CheckmarkCircleOutline aria-hidden="true" />
-            </span>
-            <CheckmarkCircleOutline v-else-if="isSelectedConversation(group)" aria-hidden="true" />
-            <time v-else>{{ formatNavTime(group.updatedAt || group.createdAt) }}</time>
-          </span>
-        </button>
-      </div>
-      <p v-else class="collapsed-group-menu-empty">{{ t('nav.noGroups') }}</p>
-    </section>
-  </Teleport>
 
   <Teleport to="body">
     <span
@@ -577,6 +378,7 @@ const props = defineProps({
 })
 
 const {
+  addProjectChat,
   activeView,
   agentState,
   collapsedGroupMenu,
@@ -647,6 +449,17 @@ const {
 
 function isSelectedConversation(group) {
   return unref(activeView) === 'conversation' && unref(selectedGroupId) === group.id
+}
+
+function handleProjectRoomClick(project) {
+  if (isProjectRoomExpanded(project.projectId)) {
+    toggleProjectRoomExpanded(project.projectId)
+    return
+  }
+  toggleProjectRoomExpanded(project.projectId)
+  const main = (project.groups || []).find(group => group.projectRole === 'main')
+  if (main) selectGroup(main.id)
+  else selectProjectRoom(project.projectId)
 }
 
 function projectInitial(name) {

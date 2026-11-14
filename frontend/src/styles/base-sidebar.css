@@ -1040,11 +1040,13 @@
 }
 
 .project-room-toggle svg,
+.project-room-add svg,
 .project-room-delete svg {
   width: 14px;
   height: 14px;
 }
 
+.project-room-add,
 .project-room-delete {
   width: 24px;
   height: 24px;
@@ -1060,7 +1062,17 @@
   cursor: pointer;
 }
 
+.project-room-add:hover,
+.project-room-add:focus-visible {
+  outline: none;
+  background: var(--surface-active);
+  color: var(--accent);
+  opacity: 1;
+}
+
+.project-room-row:hover .project-room-add,
 .project-room-row:hover .project-room-delete,
+.project-room-row:focus-within .project-room-add,
 .project-room-row:focus-within .project-room-delete {
   opacity: 1;
 }

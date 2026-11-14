@@ -11,6 +11,7 @@ export function createWorkspaceControllers({
   timeline,
 }) {
   const workspaceSidebarController = {
+    addProjectChat: app.addProjectChat,
     activeView: app.activeView,
     agentState: agentCatalog.agentState,
     collapsedGroupMenu: collapsedGroupMenu.collapsedGroupMenu,

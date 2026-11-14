@@ -102,17 +102,6 @@
         <div v-else class="home-panel-empty">
           <ChatbubblesOutline />
           <p>{{ t('home.recentEmpty') }}</p>
-          <button
-            v-if="homeMode === 'first-task'"
-            class="primary-button compact"
-            type="button"
-            :disabled="readyCount < 1"
-            :title="readyCount < 1 ? t('home.noReadyAgents') : undefined"
-            @click="$emit('open-new-group')"
-          >
-            <AddOutline />
-            {{ t('nav.newGroup') }}
-          </button>
         </div>
       </section>
 
@@ -122,17 +111,6 @@
             <h2>{{ t('home.agentStatusTitle') }}</h2>
             <p>{{ t('home.agentStatusSubtitle') }}</p>
           </div>
-          <button
-            v-if="homeMode !== 'first-task'"
-            class="secondary-button compact home-new-group-button"
-            type="button"
-            :disabled="readyCount < 1"
-            :title="readyCount < 1 ? t('home.noReadyAgents') : undefined"
-            @click="$emit('open-new-group')"
-          >
-            <AddOutline />
-            {{ t('nav.newGroup') }}
-          </button>
         </header>
         <div v-if="homeAgentPreview.length" class="home-agent-list">
           <button
@@ -200,7 +178,6 @@
 <script setup>
 import { computed } from 'vue'
 import {
-  AddOutline,
   ChatbubblesOutline,
   CheckmarkCircleOutline,
   ChevronForwardOutline,
@@ -237,13 +214,18 @@ defineEmits([
 ])
 
 const readyCount = computed(() => props.readyAgents.length)
-const recentGroups = computed(() => props.groups.slice().sort((left, right) => (
+// Generic group chats are no longer a product surface; only direct chats and
+// project-room conversations remain.
+const visibleGroups = computed(() => props.groups.filter(group => (
+  group.conversationType === 'direct' || Boolean(group.projectId)
+)))
+const recentGroups = computed(() => visibleGroups.value.slice().sort((left, right) => (
   new Date(right.updatedAt || right.createdAt || 0).getTime()
   - new Date(left.updatedAt || left.createdAt || 0).getTime()
 )).slice(0, 6))
 const homeAgentPreview = computed(() => props.readyAgents.slice(0, 5))
 const homeMode = computed(() => {
-  if (props.groups.length) return 'workspace'
+  if (visibleGroups.value.length) return 'workspace'
   return readyCount.value > 0 ? 'first-task' : 'setup'
 })
 // While the first detection runs there is no Agent data yet; that is not a
@@ -262,7 +244,7 @@ const homeWorkspaceSummary = computed(() => (
     ? t('home.setupNeeded')
     : t('home.workspaceSummary', {
         agents: readyCount.value,
-        conversations: props.groups.length,
+        conversations: visibleGroups.value.length,
       })
 ))
 const setupGuideMessage = computed(() => t('setupGuide.detectBody'))

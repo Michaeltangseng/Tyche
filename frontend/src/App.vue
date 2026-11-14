@@ -290,7 +290,6 @@ import { createWorkspaceControllers } from './workspaceControllers.js'
 const snapshot = ref(emptySnapshot())
 const shortcutDefinitions = Object.freeze([
   { labelKey: 'shortcut.toggleSidebar', keys: '⌘ B' },
-  { labelKey: 'shortcut.newGroup', keys: '⌘ G' },
   { labelKey: 'shortcut.previousConversation', keys: '⌘ [' },
   { labelKey: 'shortcut.nextConversation', keys: '⌘ ]' },
   { labelKey: 'shortcut.openAgents', keys: '⌘ ,' },
@@ -826,6 +825,7 @@ const {
   activeMessages,
   activeRun,
   activeRunTopicSignature,
+  allTracePanelItems,
   closeTracePanel,
   clearActiveTurn,
   clearDeletedTurnState,
@@ -848,6 +848,8 @@ const {
 const projectDrawerTraceItem = computed(() => (
   tracePanelItems.value.find(item => item.agentRunId === selectedTraceAgentRunId.value)
   || tracePanelItems.value.at(-1)
+  || allTracePanelItems.value.find(item => item.agentRunId === selectedTraceAgentRunId.value)
+  || allTracePanelItems.value.at(-1)
   || null
 ))
 Object.assign(projectRoomDrawerController, {
@@ -1281,6 +1283,7 @@ const {
     cloudAgentBridges,
     confirmUnlimitedRounds,
     contentInteractionBlocked,
+    addProjectChat: projectRoomView.addProjectChat,
     customAgentDeleteArmed,
     deleteProjectRoom: requestProjectDelete,
     discoveringAgents: agentDiscoveryPending,

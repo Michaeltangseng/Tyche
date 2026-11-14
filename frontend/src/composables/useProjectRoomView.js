@@ -1024,12 +1024,48 @@ export function useProjectRoomView({
     }
   }
 
+  async function addProjectChat(projectId) {
+    const id = String(projectId || '')
+    if (!id || !workspace?.value?.createGroup) return false
+    const groups = snapshot.value.groups || []
+    const projectGroups = groups.filter(group => group.projectId === id)
+    const main = projectGroups.find(group => group.projectRole === 'main')
+    if (!main) return false
+    const base = t('projectRoom.chat.defaultName')
+    const names = new Set(projectGroups.map(group => group.name))
+    let name = base
+    let index = 2
+    while (names.has(name)) {
+      name = `${base} ${index}`
+      index += 1
+    }
+    try {
+      const created = await workspace.value.createGroup({
+        name,
+        topic: '',
+        agentKinds: [...(main.agentKinds || [])],
+        workdir: main.workdir,
+        allowWrite: false,
+        projectId: id,
+      })
+      if (typeof normalizeSnapshot === 'function') {
+        snapshot.value = normalizeSnapshot(await workspace.value.get())
+      }
+      selectGroup(created.id)
+      return true
+    } catch (error) {
+      showError(error)
+      return false
+    }
+  }
+
   async function requestReopen(checkpointId) {
     return Boolean(await previewReopenCheckpoint(checkpointId))
   }
 
   return {
     acceptCandidateVersion,
+    addProjectChat,
     activeCheckpointId,
     activeGate,
     archivedGenerationLabel,
