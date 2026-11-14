@@ -379,6 +379,7 @@ function createRuntimeEventEmitter(options, childEnv) {
 }
 
 module.exports = {
+  childSecrets,
   createRuntimeEventEmitter,
   redactChildSecrets,
   runtimeEventStatus,
