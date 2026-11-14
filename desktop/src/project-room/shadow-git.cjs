@@ -350,6 +350,73 @@ class ShadowRepo {
       return { commit, placeholderList: placeholders, skipped: false }
     })
   }
+
+  async diffQuiet(a, b, paths = []) {
+    const args = ['diff', '--quiet', a, b]
+    if (paths.length) args.push('--', ...paths)
+    try {
+      await this.git(args)
+      return true
+    } catch (error) {
+      if (error.code === 1) return false
+      throw error
+    }
+  }
+
+  async nameStatus(a, b, paths = []) {
+    const args = ['diff', '--name-status', '-z', a, b]
+    if (paths.length) args.push('--', ...paths)
+    const { stdout } = await this.git(args)
+    const tokens = String(stdout || '').split('\0').filter(Boolean)
+    const entries = []
+    for (let index = 0; index < tokens.length;) {
+      const status = tokens[index++]
+      if (!status) continue
+      if (status.startsWith('R') || status.startsWith('C')) {
+        const oldPath = tokens[index++]
+        const newPath = tokens[index++]
+        entries.push({ status, path: newPath, oldPath })
+      } else {
+        entries.push({ status, path: tokens[index++] })
+      }
+    }
+    return entries
+  }
+
+  async verifyAgainst({ effectId, commit, paths = [], placeholderList, limits } = {}) {
+    const snapshot = await this.snapshot({
+      effectId,
+      targets: paths,
+      placeholderList,
+      limits,
+    })
+    const intact = await this.diffQuiet(commit, snapshot.commit, paths)
+    return {
+      intact,
+      differing: intact
+        ? []
+        : (await this.nameStatus(commit, snapshot.commit, paths)).map(entry => entry.path),
+    }
+  }
+
+  async driftCheck({ effectId, acceptedByPath, placeholderList, limits } = {}) {
+    const entries = acceptedByPath instanceof Map
+      ? [...acceptedByPath.entries()]
+      : Object.entries(acceptedByPath || {})
+    const paths = entries.map(([relativePath]) => relativePath)
+    const snapshot = await this.snapshot({
+      effectId,
+      targets: paths,
+      placeholderList,
+      limits,
+    })
+    const drifted = []
+    for (const [relativePath, commit] of entries) {
+      const quiet = await this.diffQuiet(commit, snapshot.commit, [relativePath])
+      if (!quiet) drifted.push(relativePath)
+    }
+    return { snapshotCommit: snapshot.commit, drifted }
+  }
 }
 
 async function checkGitVersion(gitExecutable = 'git', { execFileFn } = {}) {
