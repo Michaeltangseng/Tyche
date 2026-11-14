@@ -16,10 +16,151 @@ function serializedSize(state) {
   return Buffer.byteLength(`${JSON.stringify(state)}\n`, 'utf8')
 }
 
-// Retention rules arrive with task 4.4. Until then compaction is a pure
-// identity so the over-limit path can be exercised without changing state.
-function compact(state) {
-  return state
+const KEEP_ROUNDS = 5
+const KEEP_CONSUMED_EFFECTS = 20
+const KEEP_DECISIONS = 50
+const METRIC_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
+const ENDED_LEASE_STATUSES = new Set(['withdrawn', 'released'])
+
+function timestampMs(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function monthOf(value) {
+  const ms = timestampMs(value)
+  return ms === null ? null : new Date(ms).toISOString().slice(0, 7)
+}
+
+function summarizeRounds(rounds) {
+  const verdicts = {
+    pass: 0, revise: 0, 'needs-human': 0, missing: 0, failed: 0, cancelled: 0,
+  }
+  for (const round of rounds) {
+    for (const review of round.reviews) {
+      if (Object.hasOwn(verdicts, review.verdict)) verdicts[review.verdict] += 1
+    }
+  }
+  return {
+    from: rounds[0].round,
+    to: rounds[rounds.length - 1].round,
+    verdicts,
+  }
+}
+
+function keepRecentConsumed(effects, limit) {
+  let consumed = 0
+  const keep = new Set()
+  for (let index = effects.length - 1; index >= 0; index -= 1) {
+    const status = effects[index].status
+    if (status === 'consumed' || status === 'voided') {
+      consumed += 1
+      if (consumed <= limit) keep.add(index)
+    } else {
+      keep.add(index)
+    }
+  }
+  return effects.filter((_, index) => keep.has(index))
+}
+
+function openLeases(requests) {
+  return requests.filter(request => !ENDED_LEASE_STATUSES.has(request.status))
+}
+
+function compactGateMetrics(decisions, months, cutoff) {
+  const recent = []
+  const aggregates = new Map(months.map(month => [
+    month.month,
+    {
+      ...month,
+      outcomes: { ...month.outcomes },
+    },
+  ]))
+  for (const decision of decisions) {
+    const decidedAt = timestampMs(decision.decidedAt)
+    const month = monthOf(decision.decidedAt)
+    if (decidedAt === null || decidedAt >= cutoff || month === null) {
+      recent.push(decision)
+      continue
+    }
+    const aggregate = aggregates.get(month) || {
+      month,
+      count: 0,
+      outcomes: { continue: 0, accept: 0, 'reject-upstream': 0 },
+      durationMs: 0,
+      requestedChangesAfterPass: 0,
+      acceptedAsIs: 0,
+    }
+    aggregate.count += 1
+    aggregate.outcomes[decision.outcome] += 1
+    aggregate.durationMs += decision.durationMs
+    if (decision.requestedChangesAfterPass) aggregate.requestedChangesAfterPass += 1
+    if (decision.acceptedAsIs) aggregate.acceptedAsIs += 1
+    aggregates.set(month, aggregate)
+  }
+  return {
+    recent,
+    months: [...aggregates.values()].sort((left, right) => left.month.localeCompare(right.month)),
+  }
+}
+
+function compactReopeningMetrics(reopenings, months, cutoff) {
+  const recent = []
+  const aggregates = new Map(months.map(month => [month.month, { ...month }]))
+  for (const reopening of reopenings) {
+    const at = timestampMs(reopening.at)
+    const month = monthOf(reopening.at)
+    if (at === null || at >= cutoff || month === null) {
+      recent.push(reopening)
+      continue
+    }
+    const aggregate = aggregates.get(month) || { month, count: 0 }
+    aggregate.count += 1
+    aggregates.set(month, aggregate)
+  }
+  return {
+    recent,
+    months: [...aggregates.values()].sort((left, right) => left.month.localeCompare(right.month)),
+  }
+}
+
+// M1/M5 4.6: stricter retention on demand. Active records are never removed.
+function compact(state, now = Date.now()) {
+  const next = structuredClone(state)
+  const cutoff = now - METRIC_RETENTION_MS
+  next.instances = next.instances.map((instance) => {
+    const rounds = instance.rounds.slice(-KEEP_ROUNDS)
+    const roundsSummary = [...instance.roundsSummary]
+    if (instance.rounds.length > KEEP_ROUNDS) {
+      roundsSummary.push(summarizeRounds(instance.rounds.slice(0, -KEEP_ROUNDS)))
+    }
+    return {
+      ...instance,
+      rounds,
+      roundsSummary,
+      effects: keepRecentConsumed(instance.effects, KEEP_CONSUMED_EFFECTS),
+      decisions: instance.decisions.slice(-KEEP_DECISIONS),
+      leaseRequests: openLeases(instance.leaseRequests),
+    }
+  })
+  next.driftItems = next.driftItems.filter(item => (
+    item.status === 'unresolved' || item.status === 'resolving'
+  ))
+  next.outOfScopeItems = next.outOfScopeItems.filter(item => item.status === 'unresolved')
+  next.projectEffects = keepRecentConsumed(next.projectEffects, KEEP_CONSUMED_EFFECTS)
+  next.maintenanceLeaseRequests = openLeases(next.maintenanceLeaseRequests)
+  const gates = compactGateMetrics(
+    next.metrics.gateDecisions, next.metrics.gateDecisionMonths, cutoff,
+  )
+  next.metrics.gateDecisions = gates.recent
+  next.metrics.gateDecisionMonths = gates.months
+  const reopenings = compactReopeningMetrics(
+    next.metrics.reopenings, next.metrics.reopeningMonths, cutoff,
+  )
+  next.metrics.reopenings = reopenings.recent
+  next.metrics.reopeningMonths = reopenings.months
+  return next
 }
 
 class ProjectStore {
@@ -88,6 +229,16 @@ class ProjectStore {
     return run
   }
 
+  async compactNow() {
+    return this.enqueue(state => ({ next: compact(state, this.#nowMs()) }))
+  }
+
+  #nowMs() {
+    const value = this.now()
+    const parsed = typeof value === 'number' ? value : Date.parse(value)
+    return Number.isFinite(parsed) ? parsed : Date.now()
+  }
+
   async #perform(operation) {
     if (!this.state) throw projectError('PROJECT_STATE_INVALID', { reason: 'not-loaded' })
     if (this.readOnly) throw projectError('PROJECT_READ_ONLY', { reason: 'PROJECT_STATE_FAULT' })
@@ -110,7 +261,7 @@ class ProjectStore {
 
     let size = serializedSize(next)
     if (!control && size > this.regularLimit) {
-      const compacted = compact(structuredClone(next))
+      const compacted = compact(structuredClone(next), this.#nowMs())
       compacted.revision = next.revision
       next = parseProjectState(compacted)
       size = serializedSize(next)

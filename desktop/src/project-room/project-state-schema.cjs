@@ -150,6 +150,19 @@ const round = z.strictObject({
   reviews: z.array(roundReview).max(64),
 })
 
+const roundSummary = z.strictObject({
+  from: z.number().int().positive(),
+  to: z.number().int().positive(),
+  verdicts: z.strictObject({
+    pass: z.number().int().nonnegative(),
+    revise: z.number().int().nonnegative(),
+    'needs-human': z.number().int().nonnegative(),
+    missing: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+    cancelled: z.number().int().nonnegative(),
+  }),
+})
+
 const draft = z.strictObject({
   seatId: id,
   status: z.enum(DRAFT_STATUSES),
@@ -256,6 +269,7 @@ const instance = z.strictObject({
   sessionGeneration: z.number().int().nonnegative(),
   candidate: commit.nullable(),
   rounds: z.array(round).max(1000),
+  roundsSummary: z.array(roundSummary).max(1000),
   leaseRequests: z.array(leaseRequest).max(1000),
   activeInvocations: z.array(activeInvocation).max(64),
   pendingStart: pendingStart.nullable(),
@@ -397,11 +411,29 @@ const gateMetric = z.strictObject({
   acceptedAsIs: z.boolean(),
 })
 
+const gateDecisionMonth = z.strictObject({
+  month: z.string().regex(/^\d{4}-\d{2}$/),
+  count: z.number().int().nonnegative(),
+  outcomes: z.strictObject({
+    continue: z.number().int().nonnegative(),
+    accept: z.number().int().nonnegative(),
+    'reject-upstream': z.number().int().nonnegative(),
+  }),
+  durationMs: z.number().int().nonnegative(),
+  requestedChangesAfterPass: z.number().int().nonnegative(),
+  acceptedAsIs: z.number().int().nonnegative(),
+})
+
 const reopeningMetric = z.strictObject({
   checkpointId: id,
   source: z.enum(['reject', 'reopen']),
   reason: text(32768),
   at: timestamp,
+})
+
+const reopeningMonth = z.strictObject({
+  month: z.string().regex(/^\d{4}-\d{2}$/),
+  count: z.number().int().nonnegative(),
 })
 
 const finalReviewFinding = z.strictObject({
@@ -413,7 +445,9 @@ const finalReviewFinding = z.strictObject({
 
 const metrics = z.strictObject({
   gateDecisions: z.array(gateMetric).max(10000),
+  gateDecisionMonths: z.array(gateDecisionMonth).max(1000),
   reopenings: z.array(reopeningMetric).max(1000),
+  reopeningMonths: z.array(reopeningMonth).max(1000),
   finalReviewFindings: z.array(finalReviewFinding).max(1000),
 })
 
@@ -505,7 +539,13 @@ function emptyProjectState({ projectId, config: configOverrides = {} } = {}) {
     outOfScopeItems: [],
     callWindows: [],
     placeholders: [],
-    metrics: { gateDecisions: [], reopenings: [], finalReviewFindings: [] },
+    metrics: {
+      gateDecisions: [],
+      gateDecisionMonths: [],
+      reopenings: [],
+      reopeningMonths: [],
+      finalReviewFindings: [],
+    },
     preferences: {},
     chatReads: {},
     projectEffects: [],

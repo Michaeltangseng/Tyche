@@ -76,6 +76,7 @@ function validState() {
         finishedAt: at,
       }],
     }],
+    roundsSummary: [],
     leaseRequests: [{
       id: 'req-1',
       holder: { kind: 'checkpoint-scope', projectId: 'project-1', ownerId: 'cp-1' },
@@ -239,7 +240,16 @@ function validState() {
       requestedChangesAfterPass: false,
       acceptedAsIs: false,
     }],
+    gateDecisionMonths: [{
+      month: '2025-12',
+      count: 2,
+      outcomes: { continue: 1, accept: 1, 'reject-upstream': 0 },
+      durationMs: 900,
+      requestedChangesAfterPass: 1,
+      acceptedAsIs: 0,
+    }],
     reopenings: [{ checkpointId: 'cp-1', source: 'reopen', reason: 'Revisit.', at }],
+    reopeningMonths: [{ month: '2025-12', count: 1 }],
     finalReviewFindings: [{ id: 'finding-1', checkpointId: 'cp-1', text: 'Missed risk.', createdAt: at }],
   }
   state.preferences = { drawerWidth: 480, drawerTab: 'files', commitToGit: true }
