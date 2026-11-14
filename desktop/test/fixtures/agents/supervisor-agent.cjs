@@ -21,6 +21,7 @@ if (!OUT) process.exit(1)
 fs.mkdirSync(OUT, { recursive: true })
 const loops = Number(process.env.LOOPS || '3')
 const mode = process.env.MODE || 'normal'
+if (mode === 'ignore-term') process.on('SIGTERM', () => {})
 
 fs.writeFileSync(path.join(OUT, 'env.json'), JSON.stringify(process.env, null, 2))
 
@@ -72,6 +73,9 @@ function startWriter(filename, detached) {
 
 startWriter('bg.txt', false)
 if (mode === 'escape') startWriter('escaped.txt', true)
+if (process.env.OUTPUT_BYTES) {
+  process.stdout.write('x'.repeat(Math.max(0, Number(process.env.OUTPUT_BYTES) || 0)))
+}
 
 console.log('STARTED')
 setTimeout(() => {
