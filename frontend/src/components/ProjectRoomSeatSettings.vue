@@ -29,7 +29,7 @@
             {{ capabilityLabel(capability) }}
           </span>
         </div>
-        <div class="seat-persona-rail-actions">
+        <!-- <div class="seat-persona-rail-actions">
           <button class="seat-persona-add" type="button" :disabled="busy" @click="addSeat">
             <AddOutline aria-hidden="true" />
             {{ t('projectRoom.seats.add') }}
@@ -45,12 +45,12 @@
             <TrashOutline aria-hidden="true" />
             {{ t('projectRoom.seats.remove') }}
           </button>
-        </div>
+        </div> -->
       </aside>
 
       <section class="seat-persona-form">
         <p class="seat-persona-kicker">PERSONA</p>
-        <p class="seat-persona-hint">{{ t('projectRoom.seats.hint') }}</p>
+        <!-- <p class="seat-persona-hint">{{ t('projectRoom.seats.hint') }}</p> -->
         <p v-if="staleNotice" class="overlay-warning">{{ t('projectRoom.seats.staleReloaded') }}</p>
         <p v-if="errorLabel" class="overlay-error" role="alert">{{ errorLabel }}</p>
 
