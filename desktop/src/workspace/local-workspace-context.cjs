@@ -370,6 +370,24 @@ function sessionKey(groupId, kind, taskId = '') {
   return `session:${digest}`
 }
 
+function projectRoomSessionKey({
+  projectId, checkpointId, seatId, kind, generation = 0,
+} = {}) {
+  const raw = `project:${projectId}:cp:${checkpointId}:seat:${seatId}:${kind}:g${generation}`
+  if (SESSION_KEY.test(raw)) return raw
+  const digest = createHash('sha256')
+    .update(JSON.stringify([
+      'project-room',
+      String(projectId || ''),
+      String(checkpointId || ''),
+      String(seatId || ''),
+      String(kind || ''),
+      Number(generation) || 0,
+    ]))
+    .digest('hex')
+  return `session:${digest}`
+}
+
 function clearSessionState(state, groupId) {
   const existingPrefix = `${groupId}:`
   const group = state.groups.find(item => item.id === groupId)
@@ -431,10 +449,11 @@ function unknownLegacySessionMeta(meta) {
 }
 
 function resolveSessionState({
-  state, group, kind, threadRootId = '', taskId = '', save,
+  state, group, kind, threadRootId = '', taskId = '', sessionKey: sessionKeyOverride = '', save,
 }) {
   const currentTaskId = cleanText(taskId || threadRootId, 100)
-  const key = sessionKey(group.id, kind)
+  const overrideKey = cleanText(sessionKeyOverride, 240)
+  const key = overrideKey || sessionKey(group.id, kind)
   const legacyPrefix = `${group.id}:${kind}:thread:`
   let stateChanged = false
   const validStoredRef = (candidateKey) => {
@@ -472,7 +491,7 @@ function resolveSessionState({
     return candidate
   }
 
-  const legacyKeys = [...new Set([
+  const legacyKeys = overrideKey ? [] : [...new Set([
     ...(currentTaskId ? [sessionKey(group.id, kind, currentTaskId), `${legacyPrefix}${currentTaskId}`] : []),
     ...[...(state.messages || [])].reverse()
       .filter(message => message.groupId === group.id && message.role === 'user')
@@ -923,6 +942,7 @@ module.exports = {
   clearSessionState,
   openClawSessionRef,
   packedPromptContext,
+  projectRoomSessionKey,
   promptFor,
   unlimitedReviewContract,
   promptMessageText,

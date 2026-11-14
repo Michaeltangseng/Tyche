@@ -2654,7 +2654,7 @@ class LocalWorkspace extends EventEmitter {
     return openClawSessionRef(group, generation, taskId, this.state.agentPreferences?.openclaw?.nativeConfigDirectory)
   }
 
-  sessionState(group, kind, threadRootId = '', taskId = '') {
+  sessionState(group, kind, threadRootId = '', taskId = '', options = {}) {
     const previousSessions = { ...this.state.sessions }
     const previousSessionMeta = { ...this.state.sessionMeta }
     try {
@@ -2664,6 +2664,7 @@ class LocalWorkspace extends EventEmitter {
         kind,
         threadRootId,
         taskId,
+        sessionKey: options.sessionKey,
         save: () => this.save(),
       })
     } catch (error) {

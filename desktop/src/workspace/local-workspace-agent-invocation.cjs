@@ -117,6 +117,20 @@ function isolatedInvocationContext(context) {
   }
 }
 
+function projectRoomPromptContext(context) {
+  if (context?.sessionPolicy !== 'project-room') return null
+  const promptOverride = typeof context.promptOverride === 'string'
+    ? context.promptOverride
+    : ''
+  const contextPackId = normalizeContextPackId(context.contextPackId)
+  if (!promptOverride || promptOverride.includes('\u0000')
+      || Buffer.byteLength(promptOverride) > MAX_ISOLATED_PROMPT_BYTES
+      || !contextPackId) {
+    throw new Error('LOCAL_RUN_ISOLATED_CONTEXT_INVALID')
+  }
+  return { promptOverride, contextPackId }
+}
+
 function deliveredPackedContext(packedContext, promptMode) {
   if (promptMode !== 'continuation') return packedContext
   return {
@@ -287,13 +301,19 @@ class LocalWorkspaceAgentInvocation {
       .update(`conversation\u0000${group.id}${proposalScope}`)
       .digest('hex')
     const writerKind = cleanText(context.singleWriterKind || context.writerKind, 80)
-    const permissionMode = group.allowWrite === true
-      && (context.permissionMode == null || context.permissionMode === 'workspace-write')
-      && (!writerKind || writerKind === kind)
-      && isolatedInvocationContext(context)?.policy !== 'isolated'
-      && !isCodeReviewAgentKind(kind)
-      ? 'workspace-write' : 'read-only'
+    const projectRoomInvocation = context.sessionPolicy === 'project-room'
+    const permissionMode = projectRoomInvocation
+      ? (['workspace-write', 'read-exec'].includes(context.permissionMode)
+        ? context.permissionMode
+        : 'read-only')
+      : (group.allowWrite === true
+        && (context.permissionMode == null || context.permissionMode === 'workspace-write')
+        && (!writerKind || writerKind === kind)
+        && isolatedInvocationContext(context)?.policy !== 'isolated'
+        && !isCodeReviewAgentKind(kind)
+        ? 'workspace-write' : 'read-only')
     context = { ...context, permissionMode }
+    const leasePermissionMode = projectRoomInvocation ? 'read-only' : permissionMode
     const agentController = new AbortController()
     const registration = { agentRunId: '' }
     let queuedAbortHandler = null
@@ -327,8 +347,8 @@ class LocalWorkspaceAgentInvocation {
       return await this.runScheduler.withLease({
         taskId,
         workspaceKey,
-        permissionMode,
-        workdirRoot,
+        permissionMode: leasePermissionMode,
+        workdirRoot: leasePermissionMode === 'workspace-write' ? workdirRoot : '',
         signal: agentController.signal,
       }, (lease) => {
         if (signal && queuedAbortHandler) {
@@ -421,23 +441,33 @@ class LocalWorkspaceAgentInvocation {
     await revalidateApprovedSkills()
     const reviewOnly = isCodeReviewAgentKind(kind)
     const invocationContext = isolatedInvocationContext(context)
+    const projectRoomContext = projectRoomPromptContext(context)
+    const projectRoom = Boolean(projectRoomContext)
     const isolated = invocationContext?.policy === 'isolated'
     const frozen = invocationContext?.policy === 'frozen'
     const internal = context.internal === true
     if (internal && !isolated) throw new Error('LOCAL_RUN_INTERNAL_CONTEXT_INVALID')
     const requestedPermission = context.permissionMode == null
       ? (group.allowWrite === true ? 'workspace-write' : 'read-only')
-      : (context.permissionMode === 'workspace-write' ? 'workspace-write' : 'read-only')
+      : (['workspace-write', 'read-exec'].includes(context.permissionMode)
+        ? context.permissionMode
+        : 'read-only')
     const writerKind = cleanText(context.singleWriterKind || context.writerKind, 80)
     const writerAllowed = !writerKind || writerKind === kind
     const supportsWorkspaceWrite = agentRuntimeCapabilities(kind, { agent })
       .permissionModes.includes('workspace-write')
-    const allowWrite = group.allowWrite === true
-      && requestedPermission === 'workspace-write'
-      && writerAllowed
-      && supportsWorkspaceWrite
-      && !reviewOnly
-      && !isolated
+    const allowWrite = projectRoom
+      ? requestedPermission === 'workspace-write'
+        && writerAllowed
+        && supportsWorkspaceWrite
+        && !reviewOnly
+        && !isolated
+      : (group.allowWrite === true
+        && requestedPermission === 'workspace-write'
+        && writerAllowed
+        && supportsWorkspaceWrite
+        && !reviewOnly
+        && !isolated)
     const skillInputTypes = new Set(['text'])
     for (const attachment of context.attachmentSnapshots || []) {
       const type = attachmentType(attachment?.mimeType)
@@ -496,17 +526,34 @@ class LocalWorkspaceAgentInvocation {
     const idempotencyMode = agent.idempotencyMode === 'durable' ? 'durable' : 'none'
     // Isolated invocations must see only their approved prompt, so they never
     // resume or persist the conversation's native session.
+    const projectRoomSessionKey = projectRoom ? cleanText(context.sessionKey, 240) : ''
+    if (projectRoom && !projectRoomSessionKey) {
+      throw new Error('LOCAL_RUN_ISOLATED_CONTEXT_INVALID')
+    }
+    const saveProjectRoomSession = projectRoom && context.saveSession !== false
     const session = new InvocationSession({
-      resolved: reviewOnly || isolated
-        ? {
-            key: this.sessionKey(group.id, kind),
-            sessionRef: '',
-            sessionMeta: {},
-            provenance: createdSessionProvenance(taskId, true),
-          }
-        : this.sessionState(
-            group, kind, context.sessionThreadRootId || threadRootId, taskId,
-          ),
+      resolved: projectRoom
+        ? (saveProjectRoomSession
+          ? this.sessionState(
+              group, kind, context.sessionThreadRootId || threadRootId, taskId,
+              { sessionKey: projectRoomSessionKey },
+            )
+          : {
+              key: projectRoomSessionKey,
+              sessionRef: '',
+              sessionMeta: {},
+              provenance: createdSessionProvenance(taskId, true),
+            })
+        : (reviewOnly || isolated
+          ? {
+              key: this.sessionKey(group.id, kind),
+              sessionRef: '',
+              sessionMeta: {},
+              provenance: createdSessionProvenance(taskId, true),
+            }
+          : this.sessionState(
+              group, kind, context.sessionThreadRootId || threadRootId, taskId,
+            )),
       group,
       kind,
       taskId,
@@ -584,41 +631,45 @@ class LocalWorkspaceAgentInvocation {
     const sessionContextOptions = (!isolated && !frozen && promptMode === 'continuation' && sameTaskSession)
       ? { ...(context.contextOptions || {}), afterMessageId: session.meta.lastDeliveredMessageId || '' }
       : (context.contextOptions || {})
-    let packedContext = isolated || frozen
+    const fixedPrompt = projectRoom ? projectRoomContext.promptOverride : v4Prompt
+    let packedContext = isolated || frozen || projectRoom
       ? {
-          text: v4Prompt,
+          text: fixedPrompt,
           sourceMessageIds: context.snapshotSourceMessageIds || [],
           sourceEntries: context.snapshotSourceEntries || [],
           omittedCount: 0,
-          charCount: v4Prompt.length,
+          charCount: fixedPrompt.length,
           context: {
             includedCount: 0,
             omittedCount: 0,
-            charCount: v4Prompt.length,
-            contextPackId: invocationContext.contextPackId,
+            charCount: fixedPrompt.length,
+            contextPackId: projectRoomContext?.contextPackId || invocationContext.contextPackId,
             contextPackState: 'captured',
           },
-          currentTaskText: v4Prompt,
+          currentTaskText: fixedPrompt,
           stableText: '(frozen)',
           recentText: '(frozen)',
-          continuationText: v4Prompt,
+          continuationText: fixedPrompt,
         }
       : this.packedPromptContext(
           group.id, transcriptAfterKind, threadRootId, sessionContextOptions,
         )
-    if (!isolated && !frozen) {
+    if (!isolated && !frozen && !projectRoom) {
       packedContext = withCollaborationPackage(
         packedContext, context.collaborationPackage,
       )
     }
-    if (!isolated && !frozen) assertRequiredContextFits(packedContext)
+    if (!isolated && !frozen && !projectRoom) assertRequiredContextFits(packedContext)
     let deliveredContext = deliveredPackedContext(packedContext, promptMode)
     const harness = this.ensureRunHarness(group, activeRun, threadRootId)
     const harnessRun = harness?.beginAgent(kind, round, deliveredContext.sourceMessageIds, {
       turnSeq: context.turnSeq,
     })
     let deliveryContext = {
-      contextPackId: invocationContext?.contextPackId || activeRun?.contextPackId || '',
+      contextPackId: projectRoomContext?.contextPackId
+        || invocationContext?.contextPackId
+        || activeRun?.contextPackId
+        || '',
       deliveryRecordIds: [],
       sessionProvenance: session.provenance,
     }
@@ -863,7 +914,9 @@ class LocalWorkspaceAgentInvocation {
       stagedInputs = isolated
         ? null
         : stageAgentInputs(group.workdir, context.attachmentSnapshots || [], nativeImageLimit)
-      const preferencesText = isolated ? '' : workPreferencesPrompt(this.state().workPreferences)
+      const preferencesText = isolated || projectRoom
+        ? ''
+        : workPreferencesPrompt(this.state().workPreferences)
       const buildPrompt = (afterKind, contextPackage) => [assembleInvocationPrompt({
         group,
         kind,
@@ -873,7 +926,8 @@ class LocalWorkspaceAgentInvocation {
         activeRun,
         isolated,
         frozen,
-        v4Prompt,
+        projectRoom,
+        v4Prompt: projectRoom ? projectRoomContext.promptOverride : v4Prompt,
         promptMode,
         afterKind,
         packed: contextPackage,
@@ -998,7 +1052,7 @@ class LocalWorkspaceAgentInvocation {
         onSessionRef: (nextSessionRef, metadata = {}) => {
           if (agentCallbacksClosed || agentController.signal.aborted) return
           watchdog.progress()
-          if (reviewOnly || isolated) return
+          if (reviewOnly || isolated || (projectRoom && !saveProjectRoomSession)) return
           session.adopt(nextSessionRef, metadata)
         },
         onSessionInvalidated: () => {
@@ -1426,7 +1480,7 @@ class LocalWorkspaceAgentInvocation {
             pendingMessage.metadata,
           )
         : null
-      if (!reviewOnly && !isolated) {
+      if (!reviewOnly && !isolated && !(projectRoom && !saveProjectRoomSession)) {
         session.complete(result.sessionRef, {
           promptChars: prompt.length,
           replyChars: reply.text.length,
