@@ -359,6 +359,14 @@ class ProjectService {
       workdir: context.project.workdir,
       readExecSeatIds,
       getManifest: this.getManifest,
+      softBlockers: (projectState) => {
+        const checks = Object.keys(projectState?.chatWriteChecks || {}).length
+        const pendingDetection = (projectState?.projectEffects || []).some(effect => (
+          effect.type === 'detect-accepted-changes'
+            && !['consumed', 'voided', 'failed'].includes(effect.status)
+        ))
+        return checks || pendingDetection ? { detection: true } : {}
+      },
       shadowRepo: context.shadowRepo,
       snapshotLimits: state?.config.settings.snapshotLimits || {},
       now: this.now,

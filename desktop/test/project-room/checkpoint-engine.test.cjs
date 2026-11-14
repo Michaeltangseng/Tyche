@@ -161,7 +161,7 @@ function invocation(marker) {
   })
 }
 
-async function engineFixture(t, state) {
+async function engineFixture(t, state, options = {}) {
   const directory = fixture(t)
   const store = new ProjectStore({ projectDir: directory, now: () => at })
   fs.writeFileSync(path.join(directory, 'state.json'), `${JSON.stringify(state)}\n`)
@@ -175,6 +175,7 @@ async function engineFixture(t, state) {
     invoke: invocation('pass'),
     workdir: '/tmp/project',
     now: () => at,
+    ...options.engineOptions,
   })
   return { store, scheduler, engine, directory }
 }
@@ -311,6 +312,30 @@ test('a writable call records its time window and out-of-scope changes', async (
     attribution: 'unattributed',
     status: 'unresolved',
   })
+})
+
+test('a detection barrier turns a soft pass into a hard gate', async (t) => {
+  const state = baseState()
+  state.config.playbook.checkpointDefs[0].gate = 'soft'
+  state.instances = [instance('pending')]
+  state.chatWriteChecks = {
+    'run-1': {
+      groupId: 'group-1', status: 'running', snapshotCommit: null,
+      baseVersions: null, failure: null,
+    },
+  }
+  const { store, engine } = await engineFixture(t, state, {
+    engineOptions: {
+      softBlockers: projectState => (
+        Object.keys(projectState.chatWriteChecks || {}).length ? { detection: true } : {}
+      ),
+    },
+  })
+  await engine.dispatch('cp-1', { type: 'DEPS_READY', at })
+  await engine.runUntilIdle()
+  const current = store.current().instances[0]
+  assert.equal(current.state, 'gate')
+  assert.equal(current.gate.reason, 'hard-gate-passed')
 })
 
 test('recovery turns an interrupted writable call into a recovery gate', async (t) => {

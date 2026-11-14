@@ -725,6 +725,7 @@ class CheckpointEngine {
       effect.status = 'voided'
       effect.finishedAt = eventAt
     }
+    next.chatWriteChecks = {}
     next.deletion = {
       phase: 'draining',
       startedAt: next.deletion?.startedAt || eventAt,
@@ -739,6 +740,7 @@ class CheckpointEngine {
         && instance.effects.every(effect => TERMINAL_EFFECT_STATUSES.has(effect.status))
     )) && (state.projectEffects || [])
       .every(effect => TERMINAL_EFFECT_STATUSES.has(effect.status))
+      && Object.keys(state.chatWriteChecks || {}).length === 0
   }
 }
 
