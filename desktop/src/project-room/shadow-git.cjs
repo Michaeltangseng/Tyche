@@ -611,6 +611,49 @@ class ShadowRepo {
     }
     return { restored, stoppedAt }
   }
+
+  async numstat(a, b, paths = []) {
+    const args = ['diff', '--no-color', '--no-ext-diff', '-M', '--numstat', '-z', a, b]
+    if (paths.length) args.push('--', ...paths)
+    const { stdout } = await this.git(args)
+    const tokens = String(stdout || '').split('\0')
+    const entries = []
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = tokens[index]
+      if (!token) continue
+      const first = token.indexOf('\t')
+      const second = token.indexOf('\t', first + 1)
+      if (first < 0 || second < 0) continue
+      const added = token.slice(0, first)
+      const removed = token.slice(first + 1, second)
+      let relative = token.slice(second + 1)
+      let oldPath = null
+      if (!relative) {
+        oldPath = tokens[index + 1] || ''
+        relative = tokens[index + 2] || ''
+        index += 2
+      }
+      entries.push({
+        path: relative,
+        ...(oldPath == null ? {} : { oldPath }),
+        added: added === '-' ? null : Number(added),
+        removed: removed === '-' ? null : Number(removed),
+        binary: added === '-' && removed === '-',
+      })
+    }
+    return entries
+  }
+
+  async fileDiff(a, b, relative, { maxBytes = 2 * 1024 * 1024 } = {}) {
+    const args = ['diff', '--no-color', '--no-ext-diff', '-M', a]
+    if (b) args.push(b)
+    args.push('--', relative)
+    const { stdout } = await this.git(args)
+    const text = String(stdout || '')
+    const bytes = Buffer.from(text, 'utf8')
+    if (bytes.length <= maxBytes) return { text, truncated: false }
+    return { text: bytes.subarray(0, maxBytes).toString('utf8'), truncated: true }
+  }
 }
 
 async function checkGitVersion(gitExecutable = 'git', { execFileFn } = {}) {
