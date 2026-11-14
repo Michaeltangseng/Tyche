@@ -68,6 +68,8 @@ const {
 } = require('./agents/local-agent-readiness.cjs')
 const { LocalWorkspace } = require('./workspace/local-workspace.cjs')
 const { ProcessRegistry } = require('./agents/process/process-registry.cjs')
+const { processRunScheduler } = require('./runs/run-scheduler.cjs')
+const { makeClaim } = require('./runs/path-claims.cjs')
 const { registerDesktopIpc } = require('./shell/main-ipc.cjs')
 const { workBuddyEnvironment, workBuddySettings } = require('./agents/cli/workbuddy-runtime.cjs')
 const {
@@ -117,7 +119,6 @@ process.on('unhandledRejection', reason => recordMainProcessFault('unhandledReje
 process.on('uncaughtException', error => recordMainProcessFault('uncaughtException', error))
 let workspace = null
 let workspaceStartupError = ''
-let managedProcessResiduals = []
 let workspaceChangedListener = null
 let workspaceRunFinishedListener = null
 let workspaceRunEventListener = null
@@ -1122,33 +1123,65 @@ if (!hasSingleInstanceLock) {
         refreshLocalAgentState().catch(() => {})
       }
     })
+    const scheduler = processRunScheduler
+    scheduler.enterRecoveryMode()
     try {
-      const startupWorkspace = initializeWorkspace()
-      // Recover managed-process containers before IPC is registered and any
-      // writable Agent invocation can start (A14, M3 3.7).
+      let startupWorkspace
+      try {
+        startupWorkspace = initializeWorkspace()
+      } catch (error) {
+        if (error?.message !== 'RUN_LEDGER_LOAD_FAILED') throw error
+        workspaceStartupError = 'RUN_LEDGER_LOAD_FAILED'
+        createWindow()
+        app.on('activate', () => {
+          if (!shutdownStarted && BrowserWindow.getAllWindows().length === 0) createWindow()
+        })
+        return
+      }
+      // M4/M6 C: protect every known project root, recover the process
+      // registry, register residual occupancy, then leave recovery mode.
+      const projects = Array.isArray(startupWorkspace.state?.projects)
+        ? startupWorkspace.state.projects
+        : []
+      for (const project of projects) {
+        if (!project || typeof project.workdir !== 'string' || !project.workdir) continue
+        try {
+          await scheduler.holdRoot(project.workdir)
+        } catch (error) {
+          console.warn('[meldwork] project workdir could not be protected',
+            project.id, error?.code || error?.message || error)
+        }
+      }
       try {
         const recovery = await startupWorkspace.processRegistry.recover()
-        managedProcessResiduals = recovery.filter(result => result.outcome === 'residual')
-        if (managedProcessResiduals.length) {
-          console.warn('[meldwork] managed process residuals require review', managedProcessResiduals.map(result => ({
-            recordId: result.recordId,
-            workdir: result.residual.workdir,
-            pgid: result.residual.pgid,
-            members: result.residual.members.length,
-          })))
+        for (const result of recovery) {
+          if (!result || result.outcome !== 'residual') continue
+          const residual = result.residual
+          let claims = Array.isArray(residual?.claims) ? residual.claims : []
+          if (!claims.length && residual?.workdir) {
+            try {
+              claims = [await makeClaim({ root: residual.workdir, path: '', mode: 'exclusive' })]
+            } catch (error) {
+              console.warn('[meldwork] residual workdir could not be claimed',
+                result.recordId, error?.code || error?.message || error)
+            }
+          }
+          if (claims.length) {
+            scheduler.registerResidual({ residualId: result.recordId, claims })
+          } else {
+            console.warn('[meldwork] residual has no writable claim', result.recordId)
+          }
+        }
+        const residuals = scheduler.snapshot().residuals
+        if (residuals.length) {
+          console.warn('[meldwork] managed process residuals require review', residuals)
         }
       } catch (recoveryError) {
         console.warn('[meldwork] managed process recovery failed',
           recoveryError?.message || recoveryError)
       }
-    } catch (error) {
-      if (error?.message !== 'RUN_LEDGER_LOAD_FAILED') throw error
-      workspaceStartupError = 'RUN_LEDGER_LOAD_FAILED'
-      createWindow()
-      app.on('activate', () => {
-        if (!shutdownStarted && BrowserWindow.getAllWindows().length === 0) createWindow()
-      })
-      return
+    } finally {
+      scheduler.exitRecoveryMode()
     }
     if (attachmentStore && attachmentReferences) {
       try {
