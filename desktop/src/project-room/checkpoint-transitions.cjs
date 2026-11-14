@@ -48,6 +48,30 @@ function addEffect(effects, type, params = {}) {
   effects.push({ type, category: EFFECT_CATEGORY[type] || 'required', params })
 }
 
+function addTimeline(effects, instance, config, type, eventAt, extra = {}) {
+  addEffect(effects, 'append-timeline', {
+    sourceKey: [
+      String(config?.projectId || 'project-1'),
+      type,
+      instance.id,
+      instance.seq + 1,
+      instance.sessionGeneration,
+      extra.gateId || '',
+      extra.gateRevision || '',
+    ],
+    record: {
+      schemaVersion: 1,
+      type,
+      projectId: String(config?.projectId || 'project-1'),
+      checkpointId: instance.id,
+      checkpointKey: instance.checkpointKey,
+      generation: instance.sessionGeneration,
+      at: eventAt,
+      ...extra,
+    },
+  })
+}
+
 function consumeEffect(instance, effectId, status, eventAt) {
   if (!effectId) return null
   const effect = instance.effects.find(item => item.id === effectId)
@@ -454,6 +478,15 @@ function decideGate(instance, event, config, effects, diagnostics) {
     return false
   }
   const eventAt = event.at || at
+  const decidedGate = instance.gate
+  addTimeline(effects, instance, config, 'gate-decided', eventAt, {
+    gateId: decidedGate.id,
+    gateRevision: decidedGate.revision,
+    reason: decidedGate.reason,
+    outcome: payload.outcome,
+    comment: String(payload.comment || ''),
+    candidateCommit: payload.candidateCommit || null,
+  })
   instance.roundsSinceHuman = 0
   instance.continuations = 0
   if (payload.outcome === 'reject-upstream') {
@@ -549,6 +582,7 @@ function handleEvent(instance, event, config, effects, diagnostics) {
   if (type === 'DEPS_READY') {
     if (instance.state === 'pending') {
       instance.state = 'checking'
+      addTimeline(effects, instance, config, 'checkpoint-start', eventAt)
       addEffect(effects, 'drift-check')
       return true
     }
@@ -567,6 +601,9 @@ function handleEvent(instance, event, config, effects, diagnostics) {
       }
       instance.sessionGeneration += 1
       instance.state = 'checking'
+      addTimeline(effects, instance, config, 'checkpoint-reopen', eventAt, {
+        reason: 'upstream changed',
+      })
       addEffect(effects, 'drift-check')
       return true
     }
@@ -660,10 +697,21 @@ function handleEvent(instance, event, config, effects, diagnostics) {
   }
   if (type === 'REOPEN') {
     if (instance.state !== 'accepted') return false
+    const reopenedGate = instance.gate
+    if (reopenedGate) {
+      addTimeline(effects, instance, config, 'gate-voided', eventAt, {
+        gateId: reopenedGate.id,
+        gateRevision: reopenedGate.revision,
+        reason: reopenedGate.reason,
+      })
+    }
     voidGate(instance)
     instance.epoch += 1
     instance.sessionGeneration += 1
     instance.state = 'checking'
+    addTimeline(effects, instance, config, 'checkpoint-reopen', eventAt, {
+      reason: String(event.payload?.reason || ''),
+    })
     addEffect(effects, 'withdraw-lease')
     return true
   }
@@ -673,6 +721,14 @@ function handleEvent(instance, event, config, effects, diagnostics) {
       'drafting', 'leading', 'reviewing'].includes(instance.state)) return false
     if (['drafting', 'leading', 'reviewing'].includes(instance.state)) {
       addEffect(effects, 'cancel-invocation')
+    }
+    const voidedGate = instance.gate
+    if (voidedGate) {
+      addTimeline(effects, instance, config, 'gate-voided', eventAt, {
+        gateId: voidedGate.id,
+        gateRevision: voidedGate.revision,
+        reason: voidedGate.reason,
+      })
     }
     voidGate(instance)
     instance.epoch += 1

@@ -148,6 +148,7 @@ function handlers() {
     'verify-candidate': async () => ({ intact: true }),
     'write-review-file': async () => null,
     'accept-commit': async () => ({ commit }),
+    'append-timeline': async () => null,
   }
 }
 

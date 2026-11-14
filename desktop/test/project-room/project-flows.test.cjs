@@ -103,6 +103,7 @@ async function makeService(t, state, options = {}) {
     'stamp-changes': async () => null,
     'drop-snapshot-refs': async () => null,
     notify: async () => null,
+    'append-timeline': async () => null,
   }
   const engine = new CheckpointEngine({
     projectId: 'project-1',

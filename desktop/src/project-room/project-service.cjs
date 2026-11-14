@@ -359,6 +359,16 @@ class ProjectService {
         await store.consume(params.ref)
         return null
       },
+      appendTimeline: async (params) => {
+        const id = createHash('sha256')
+          .update(JSON.stringify(params?.sourceKey || []), 'utf8')
+          .digest('hex')
+        await this.timelineStore(projectId).append({
+          id,
+          record: { ...params.record, id },
+        })
+        return null
+      },
     }
     return createEffectHandlers({
       shadowRepo: context.shadowRepo,
