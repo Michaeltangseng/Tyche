@@ -126,6 +126,7 @@ function createBoundedOutputCapture(maxBytes) {
 
 async function runAgent(agent, prompt, workdir, options = {}) {
   if (options.signal?.aborted) throw agentExecutionError('LOCAL_AGENT_EXECUTION_STOPPED')
+  try { options.traceSink?.setChildEnv?.(options.env) } catch { /* tracing is best effort */ }
   const noteActivity = () => {
     try { options.onActivity?.() } catch { /* activity is best-effort */ }
   }
@@ -298,6 +299,7 @@ async function runAgent(agent, prompt, workdir, options = {}) {
       && ['jsonl', 'jsonrpc-jsonl'].includes(profile.framing)
       && typeof profile.createDecoder === 'function'
       ? profile.createDecoder((event) => {
+          try { options.traceSink?.ingest('structured', event) } catch { /* tracing is best effort */ }
           structuredOutput.ingest?.(event)
           observeTerminalEvent(event)
           const progressEvent = profile.mapProgress(event)
@@ -417,6 +419,9 @@ async function runAgent(agent, prompt, workdir, options = {}) {
     if (options.signal?.aborted) abort()
     else options.signal?.addEventListener('abort', abort, { once: true })
     child.stdout.on('data', (chunk) => {
+      try {
+        if (!runtimeStreamParser) options.traceSink?.ingest('stdout', chunk.toString('utf8'))
+      } catch { /* tracing is best effort */ }
       stdout.push(chunk)
       noteActivity()
       structuredOutput.capture?.(chunk)
@@ -424,6 +429,7 @@ async function runAgent(agent, prompt, workdir, options = {}) {
       runtimeStreamParser?.write(chunk)
     })
     child.stderr.on('data', (chunk) => {
+      try { options.traceSink?.ingest('stderr', chunk.toString('utf8')) } catch { /* tracing is best effort */ }
       stderr.push(chunk)
       noteActivity()
     })

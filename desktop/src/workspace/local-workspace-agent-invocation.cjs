@@ -32,6 +32,7 @@ const {
 } = require('../collaboration/context-pack-records.cjs')
 const { normalizeOutcomeRefs, normalizeSessionMeta } = require('../runs/run-harness.cjs')
 const { createInvocationWatchdog } = require('../runs/invocation-watchdog.cjs')
+const { createTraceSink } = require('../runs/trace/trace-writer.cjs')
 const { processRunScheduler } = require('../runs/run-scheduler.cjs')
 const { assertLocalSkillExecution } = require('../skills/local-skill-contract.cjs')
 const {
@@ -246,6 +247,10 @@ class LocalWorkspaceAgentInvocation {
     this.projectIdentity = options.projectIdentity || projectVerificationIdentity
     this.addMessage = options.addMessage
     this.runScheduler = options.runScheduler || processRunScheduler
+    this.tracesRoot = options.tracesRoot || null
+    this.onTraceAppended = typeof options.onTraceAppended === 'function'
+      ? options.onTraceAppended
+      : null
     this.registerAgentController = options.registerAgentController
     this.unregisterAgentController = options.unregisterAgentController
     this.requestHumanGate = options.requestHumanGate
@@ -1104,6 +1109,26 @@ class LocalWorkspaceAgentInvocation {
         this.emitChanged()
         return prompt
       }
+      let traceSink = null
+      if (this.tracesRoot && activeRun?.runId && harnessRun?.agentRunId) {
+        try {
+          traceSink = createTraceSink({
+            tracesRoot: this.tracesRoot,
+            runId: activeRun.runId,
+            agentRunId: harnessRun.agentRunId,
+            groupId: group.id,
+            projectId: group.projectId || null,
+            agentKind: kind,
+            outputFormat: traceOutputFormat(kind),
+            childEnv: process.env,
+            knownSessionRefs: session.ref ? [session.ref] : [],
+            now: () => this.now(),
+            onAppended: payload => {
+              try { this.onTraceAppended?.(payload) } catch { /* best effort */ }
+            },
+          })
+        } catch { traceSink = null }
+      }
       const runOptions = {
         turnCompletion: context.v4 === true
           && (context.allowMissingProposalReceipt === true || context.allowMissingV4Receipt === true),
@@ -1123,6 +1148,7 @@ class LocalWorkspaceAgentInvocation {
         },
         signal: agentController.signal,
         sandbox: allowWrite ? 'workspace-write' : (readExec ? 'read-exec' : 'read-only'),
+        ...(traceSink ? { traceSink } : {}),
         ...(context.watchdog && Object.hasOwn(context.watchdog, 'hardLimitMs')
           ? { hardLimitMs: context.watchdog.hardLimitMs }
           : {}),
@@ -1641,6 +1667,7 @@ class LocalWorkspaceAgentInvocation {
         idempotencyMode,
       })
     } finally {
+      try { traceSink?.end() } catch { /* tracing must not affect the call */ }
       closeAgentCallbacks()
       if (signal && parentAbortHandler) {
         signal.removeEventListener('abort', parentAbortHandler)
@@ -1691,6 +1718,12 @@ class LocalWorkspaceAgentInvocation {
       return changed
     })
   }
+}
+
+function traceOutputFormat(kind) {
+  if (kind === 'codex') return 'jsonl'
+  if (['claude', 'qwen', 'workbuddy', 'hermes'].includes(kind)) return 'stream-json'
+  return 'text'
 }
 
 module.exports = { LocalWorkspaceAgentInvocation }

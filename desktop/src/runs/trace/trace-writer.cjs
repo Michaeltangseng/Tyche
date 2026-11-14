@@ -44,10 +44,15 @@ function createTraceSink({
     }
   }
 
-  const knownValues = [...new Set([
-    ...childSecrets(childEnv),
-    ...knownSessionRefs.map(value => String(value || '')).filter(Boolean),
-  ])].sort((left, right) => right.length - left.length)
+  const sessionRefs = knownSessionRefs
+    .map(value => String(value || ''))
+    .filter(Boolean)
+  let knownValues = buildKnownValues(childEnv)
+
+  function buildKnownValues(env) {
+    return [...new Set([...childSecrets(env), ...sessionRefs])]
+      .sort((left, right) => right.length - left.length)
+  }
 
   const runDir = path.join(tracesRoot, encodeId(runId))
   const encodedAgentRunId = encodeId(agentRunId)
@@ -334,6 +339,7 @@ function createTraceSink({
   return {
     end,
     ingest,
+    setChildEnv: env => { knownValues = buildKnownValues(env) },
     diagnostics: () => [...diagnostics],
   }
 }

@@ -746,6 +746,7 @@ async function createAcpRuntime(input) {
     },
     async sessionUpdate(params) {
       const turn = runtime.activeTurn
+      try { turn?.options?.traceSink?.ingest('acp', params.update) } catch { /* tracing is best-effort */ }
       try { turn?.noteActivity?.() } catch { /* activity is best-effort */ }
       const sequence = runtime.replyState.pendingUpdateSequences.shift()
       if (!turn || !runtime.replyState.collecting) return

@@ -158,10 +158,14 @@ class LocalWorkspace extends EventEmitter {
     this.managedSupervisorPath = options.managedSupervisorPath || ''
     this.platform = options.platform || process.platform
     this.projectRoom = options.projectRoom || null
+    this.onTraceAppended = typeof options.onTraceAppended === 'function'
+      ? options.onTraceAppended
+      : null
     this.workspaceRecovery = this.load()
     this.state = this.workspaceRecovery.state
     this.delivery = new DeliveryTasks(this)
     const privateRoot = path.join(path.dirname(this.storagePath), 'meldwork-private')
+    this.tracesRoot = options.tracesRoot || path.join(privateRoot, 'traces')
     this.contentBlobStore = options.contentBlobStore || new ContentBlobStore({
       rootPath: path.join(privateRoot, 'content-blobs'),
     })
@@ -333,6 +337,8 @@ class LocalWorkspace extends EventEmitter {
       connectorRuntime: options.connectorRuntime,
       attachmentSupport: (...args) => this.attachmentSupportFn(...args),
       validateSkillSelections: (...args) => this.validateSkillSelectionsFn(...args),
+      tracesRoot: this.tracesRoot,
+      onTraceAppended: payload => this.onTraceAppended?.(payload),
     })
     this.autoRunner = new LocalWorkspaceAutoRunner({
       reserveTurnSeqs: (...args) => this.reserveTurnSeqs(...args),
