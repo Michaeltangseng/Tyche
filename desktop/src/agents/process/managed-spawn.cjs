@@ -267,6 +267,10 @@ class ManagedChild extends EventEmitter {
   }
 }
 
+function managedProcessSupported(platform = process.platform) {
+  return platform !== 'win32'
+}
+
 function createManagedSpawn({
   registry,
   invocation,
@@ -276,7 +280,7 @@ function createManagedSpawn({
   closeTimeoutMs,
 } = {}) {
   return function spawnManaged(command, args = [], options = {}) {
-    if (platform === 'win32') throw managedError('LOCAL_MANAGED_PROCESS_UNAVAILABLE')
+    if (!managedProcessSupported(platform)) throw managedError('LOCAL_MANAGED_PROCESS_UNAVAILABLE')
     if (!registry) throw managedError('LOCAL_MANAGED_PROCESS_UNAVAILABLE')
     assertSupervisor(supervisorPath)
     const marker = crypto.randomBytes(16).toString('hex')
@@ -310,4 +314,5 @@ module.exports = {
   MANAGED_PROCESS,
   ManagedChild,
   createManagedSpawn,
+  managedProcessSupported,
 }

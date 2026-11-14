@@ -7,6 +7,7 @@ const path = require('node:path')
 const {
   MANAGED_PROCESS,
   createManagedSpawn,
+  managedProcessSupported,
 } = require('../../../src/agents/process/managed-spawn.cjs')
 
 const DESKTOP = path.join(__dirname, '..', '..', '..')
@@ -228,6 +229,12 @@ test('delayed control-channel reads still yield the real Agent result', async (t
   assert.equal(exit.code, 0)
   assert.equal(exit.signal, null)
   assert.equal(exit.info.failureCode, undefined)
+})
+
+test('managed process support is disabled on Windows', () => {
+  assert.equal(managedProcessSupported('win32'), false)
+  assert.equal(managedProcessSupported('darwin'), true)
+  assert.equal(managedProcessSupported('linux'), true)
 })
 
 test('a missing supervisor fails closed with LOCAL_MANAGED_PROCESS_UNAVAILABLE', () => {
