@@ -1,0 +1,7 @@
+{"sessionId":"acp-fixture-session","sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"I should inspect the repository first."}}
+{"sessionId":"acp-fixture-session","sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"I will list the "}}
+{"sessionId":"acp-fixture-session","sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"repository files."}}
+{"sessionId":"acp-fixture-session","sessionUpdate":"tool_call","toolCallId":"acp-tool-1","title":"List files","kind":"execute","status":"running","rawInput":{"command":"ls -la"},"locations":[{"path":"src"}]}
+{"sessionId":"acp-fixture-session","sessionUpdate":"tool_call_update","toolCallId":"acp-tool-1","title":"List files","kind":"execute","status":"completed","content":[{"type":"text","text":"total 2\nfile.txt"}]}
+{"sessionId":"acp-fixture-session","sessionUpdate":"plan_update","plan":{"entries":[{"content":"Inspect files","status":"completed"},{"content":"Write the summary","status":"pending"}]}}
+{"sessionId":"acp-fixture-session","sessionUpdate":"unknown_update","payload":{"value":42}}

@@ -1,0 +1,10 @@
+[
+  {
+    "kind": "stderr",
+    "output": "warning: fixture diagnostic",
+    "raw": {
+      "type": "stderr-line",
+      "line": "warning: fixture diagnostic"
+    }
+  }
+]

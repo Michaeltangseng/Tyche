@@ -1,0 +1,88 @@
+[
+  {
+    "kind": "lifecycle",
+    "title": "thread.started",
+    "status": "running",
+    "raw": {
+      "type": "thread.started"
+    }
+  },
+  {
+    "kind": "lifecycle",
+    "title": "turn.started",
+    "status": "running",
+    "raw": {
+      "type": "turn.started"
+    }
+  },
+  {
+    "kind": "thinking",
+    "title": "reasoning",
+    "status": "completed",
+    "output": "Check the repository before answering.",
+    "raw": {
+      "type": "item.completed",
+      "item": {
+        "id": "codex-reasoning-1",
+        "type": "reasoning",
+        "summary": "Check the repository before answering."
+      }
+    }
+  },
+  {
+    "kind": "tool",
+    "toolCallId": "codex-command-1",
+    "title": "command_execution",
+    "status": "running",
+    "command": "ls -la",
+    "raw": {
+      "type": "item.started",
+      "item": {
+        "id": "codex-command-1",
+        "type": "command_execution",
+        "command": "ls -la",
+        "status": "running"
+      }
+    }
+  },
+  {
+    "kind": "tool",
+    "toolCallId": "codex-command-1",
+    "title": "command_execution",
+    "status": "completed",
+    "command": "ls -la",
+    "output": "total 2\nfile.txt",
+    "exitCode": 0,
+    "raw": {
+      "type": "item.completed",
+      "item": {
+        "id": "codex-command-1",
+        "type": "command_execution",
+        "command": "ls -la",
+        "aggregated_output": "total 2\nfile.txt",
+        "exit_code": 0,
+        "status": "completed"
+      }
+    }
+  },
+  {
+    "kind": "message",
+    "output": "The fixture command listed one file.",
+    "raw": {
+      "type": "item.completed",
+      "item": {
+        "id": "codex-message-1",
+        "type": "agent_message",
+        "text": "The fixture command listed one file."
+      }
+    }
+  },
+  {
+    "kind": "lifecycle",
+    "title": "turn.completed",
+    "status": "completed",
+    "raw": {
+      "type": "turn.completed"
+    }
+  }
+]

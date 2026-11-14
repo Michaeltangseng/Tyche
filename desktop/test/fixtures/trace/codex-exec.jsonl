@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"codex-fixture-session"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"codex-reasoning-1","type":"reasoning","summary":"Check the repository before answering."}}
+{"type":"item.started","item":{"id":"codex-command-1","type":"command_execution","command":"ls -la","status":"running"}}
+{"type":"item.completed","item":{"id":"codex-command-1","type":"command_execution","command":"ls -la","aggregated_output":"total 2\nfile.txt","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"codex-message-1","type":"agent_message","text":"The fixture command listed one file."}}
+{"type":"turn.completed"}

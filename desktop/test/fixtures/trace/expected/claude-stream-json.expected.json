@@ -1,0 +1,111 @@
+[
+  {
+    "kind": "thinking",
+    "output": "Let me inspect the file. ",
+    "raw": {
+      "type": "content_block_delta",
+      "coalesced": true
+    }
+  },
+  {
+    "kind": "thinking",
+    "output": "Then I will answer.",
+    "raw": {
+      "type": "content_block_delta",
+      "coalesced": true
+    }
+  },
+  {
+    "kind": "message",
+    "output": "I will read the file ",
+    "raw": {
+      "type": "content_block_delta",
+      "coalesced": true
+    }
+  },
+  {
+    "kind": "message",
+    "output": "and summarize it.",
+    "raw": {
+      "type": "content_block_delta",
+      "coalesced": true
+    }
+  },
+  {
+    "kind": "tool",
+    "toolCallId": "toolu_fixture_1",
+    "title": "Read",
+    "status": "running",
+    "input": {},
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_start",
+        "index": 2,
+        "message_id": "msg_fixture_1",
+        "content_block": {
+          "type": "tool_use",
+          "id": "toolu_fixture_1",
+          "name": "Read",
+          "input": {}
+        }
+      }
+    }
+  },
+  {
+    "kind": "tool",
+    "toolCallId": "toolu_fixture_1",
+    "title": "tool",
+    "status": "running",
+    "input": "{\"file_path\":\"README.md\"}",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta",
+        "index": 2,
+        "message_id": "msg_fixture_1",
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "{\"file_path\":\"README.md\"}"
+        }
+      }
+    }
+  },
+  {
+    "kind": "tool",
+    "toolCallId": "toolu_fixture_1",
+    "title": "tool",
+    "status": "completed",
+    "output": "# Fixture README",
+    "raw": {
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_fixture_1",
+            "content": [
+              {
+                "type": "text",
+                "text": "# Fixture README"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "kind": "lifecycle",
+    "title": "result",
+    "status": "completed",
+    "output": "I will read the file and summarize it.",
+    "raw": {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "result": "I will read the file and summarize it."
+    }
+  }
+]
