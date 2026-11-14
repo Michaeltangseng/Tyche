@@ -476,7 +476,7 @@ function durableWaitingRunSnapshots({ state, records, pendingGates, liveRunIds, 
 
 function workspaceSnapshot({
   detectedAgents, state, preparingRuns, activeRuns, humanGateCoordinator, runLedger,
-  workspaceRecovery,
+  workspaceRecovery, projectRoom,
 }) {
   let records = []
   try { records = runLedger?.list?.() || [] } catch { /* retain the visible workspace on ledger read failure */ }
@@ -594,6 +594,10 @@ function workspaceSnapshot({
     humanGates: publicGates,
     runs: publicRuns,
     runOutcomes: [...latestOutcomes.values()],
+    ...(projectRoom ? {
+      projectRooms: projectRoom.list(),
+      pendingDecisions: projectRoom.pendingDecisions(),
+    } : {}),
   }
 }
 

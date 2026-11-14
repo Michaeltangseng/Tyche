@@ -67,6 +67,10 @@ const {
   resolveNativeShellEnvironment,
 } = require('./agents/local-agent-readiness.cjs')
 const { LocalWorkspace } = require('./workspace/local-workspace.cjs')
+const { ProjectService } = require('./project-room/project-service.cjs')
+const { TemplatesStore } = require('./project-room/templates-store.cjs')
+const { ProjectDeletion } = require('./project-room/project-deletion.cjs')
+const { registerProjectIpc } = require('./shell/project-ipc.cjs')
 const { ProcessRegistry } = require('./agents/process/process-registry.cjs')
 const { processRunScheduler } = require('./runs/run-scheduler.cjs')
 const { makeClaim } = require('./runs/path-claims.cjs')
@@ -118,6 +122,8 @@ function recordMainProcessFault(kind, detail) {
 process.on('unhandledRejection', reason => recordMainProcessFault('unhandledRejection', reason))
 process.on('uncaughtException', error => recordMainProcessFault('uncaughtException', error))
 let workspace = null
+let projectService = null
+let projectDeletion = null
 let workspaceStartupError = ''
 let workspaceChangedListener = null
 let workspaceRunFinishedListener = null
@@ -447,6 +453,13 @@ function notifyWorkspaceChanged(snapshot) {
   if (mainWindow && !mainWindow.isDestroyed()
       && isTrustedLocalWebContents(mainWindow.webContents)) {
     mainWindow.webContents.send('local-workspace:changed', snapshot)
+  }
+}
+
+function notifyProjectChanged(payload) {
+  if (mainWindow && !mainWindow.isDestroyed()
+      && isTrustedLocalWebContents(mainWindow.webContents)) {
+    mainWindow.webContents.send('project:changed', payload)
   }
 }
 
@@ -1029,6 +1042,13 @@ function registerIpc() {
     })).env,
     skillCatalog,
   })
+  registerProjectIpc({
+    registerTrustedHandle,
+    getProjectService: () => projectService,
+    getDeletion: () => projectDeletion,
+    dialog,
+    getMainWindow: () => mainWindow,
+  })
 }
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
@@ -1140,18 +1160,40 @@ if (!hasSingleInstanceLock) {
       }
       // M4/M6 C: protect every known project root, recover the process
       // registry, register residual occupancy, then leave recovery mode.
-      const projects = Array.isArray(startupWorkspace.state?.projects)
-        ? startupWorkspace.state.projects
-        : []
-      for (const project of projects) {
-        if (!project || typeof project.workdir !== 'string' || !project.workdir) continue
-        try {
-          await scheduler.holdRoot(project.workdir)
-        } catch (error) {
-          console.warn('[meldwork] project workdir could not be protected',
-            project.id, error?.code || error?.message || error)
-        }
-      }
+      const privateRoot = path.join(app.getPath('userData'), 'meldwork-private')
+      const templatesStore = new TemplatesStore({
+        storagePath: path.join(privateRoot, 'templates.json'),
+      })
+      projectService = new ProjectService({
+        workspace: startupWorkspace,
+        privateRoot,
+        scheduler,
+        templatesStore,
+      })
+      projectDeletion = new ProjectDeletion({
+        workspace: startupWorkspace,
+        privateRoot,
+        scheduler,
+        getContext: projectId => projectService?.contextFor(projectId) || null,
+        engine: {
+          beginDraining: state => state,
+          isDrained: () => true,
+        },
+        effects: {
+          isIdle: () => true,
+          onIdle: () => {},
+          removeIdleListener: () => {},
+        },
+        invocations: {
+          activeInvocations: () => 0,
+          onInvocationEnded: () => {},
+          removeInvocationEndedListener: () => {},
+          cancelAll: () => {},
+        },
+        onDeleted: projectId => projectService?.removeContext(projectId),
+      })
+      startupWorkspace.setProjectRoom(projectService)
+      projectService.onChanged(payload => notifyProjectChanged(payload))
       try {
         const recovery = await startupWorkspace.processRegistry.recover()
         for (const result of recovery) {
@@ -1179,6 +1221,13 @@ if (!hasSingleInstanceLock) {
       } catch (recoveryError) {
         console.warn('[meldwork] managed process recovery failed',
           recoveryError?.message || recoveryError)
+      }
+      try {
+        await projectService.start()
+        await projectDeletion.start()
+      } catch (error) {
+        console.warn('[meldwork] project room startup failed',
+          error?.code || error?.message || error)
       }
     } finally {
       scheduler.exitRecoveryMode()

@@ -132,6 +132,7 @@ class ProjectService {
     now = () => new Date().toISOString(),
     createId = () => randomUUID(),
     writeFile = atomicWritePrivateFile,
+    clock = Date.now,
   } = {}) {
     if (!workspace) throw inputError('workspace-required')
     if (!privateRoot) throw inputError('private-root-required')
@@ -148,8 +149,74 @@ class ProjectService {
     this.now = now
     this.createId = createId
     this.writeFile = writeFile
+    this.clock = typeof clock === 'function' ? clock : Date.now
     this.projects = new Map()
     this.started = false
+    this.changeListeners = new Set()
+    this.changeTimers = new Map()
+    this.changePending = new Map()
+    this.changeLastEmit = new Map()
+  }
+
+  onChanged(listener) {
+    this.changeListeners.add(listener)
+    return () => this.changeListeners.delete(listener)
+  }
+
+  #queueChange(projectId, revision) {
+    const pending = this.changePending.get(projectId)
+    const nextRevision = Math.max(pending?.revision || 0, revision)
+    const now = this.clock()
+    const last = this.changeLastEmit.get(projectId) || 0
+    if (!pending && now - last >= 100) {
+      this.changeLastEmit.set(projectId, now)
+      for (const listener of [...this.changeListeners]) {
+        try {
+          listener({ projectId, revision: nextRevision })
+        } catch {
+          // A failed listener must not affect the project store.
+        }
+      }
+      return
+    }
+    this.changePending.set(projectId, { revision: nextRevision })
+    if (this.changeTimers.has(projectId)) return
+    const delay = Math.max(0, 100 - (now - last))
+    const timer = setTimeout(() => {
+      this.changeTimers.delete(projectId)
+      const queued = this.changePending.get(projectId)
+      this.changePending.delete(projectId)
+      if (!queued) return
+      this.changeLastEmit.set(projectId, this.clock())
+      for (const listener of [...this.changeListeners]) {
+        try {
+          listener({ projectId, revision: queued.revision })
+        } catch {
+          // Ignore listener failures.
+        }
+      }
+    }, delay)
+    if (timer.unref) timer.unref()
+    this.changeTimers.set(projectId, timer)
+  }
+
+  #registerContext(projectId, context) {
+    this.projects.set(projectId, context)
+    if (context.store) {
+      context.store.onCommitted(({ revision }) => this.#queueChange(projectId, revision))
+    }
+  }
+
+  contextFor(projectId) {
+    return this.projects.get(projectId) || null
+  }
+
+  removeContext(projectId) {
+    this.projects.delete(projectId)
+    const timer = this.changeTimers.get(projectId)
+    if (timer) clearTimeout(timer)
+    this.changeTimers.delete(projectId)
+    this.changePending.delete(projectId)
   }
 
   #nowIso() {
@@ -215,7 +282,7 @@ class ProjectService {
         context.readOnlyReason = error?.details?.reason || 'state-invalid'
       }
       if (held) await this.scheduler.openRoot(project.workdir)
-      this.projects.set(project.id, context)
+      this.#registerContext(project.id, context)
     }
     return this.list()
   }
@@ -248,6 +315,19 @@ class ProjectService {
       this.#projectForProjection(context),
       context.store?.current() || null,
     )
+  }
+
+  assertReady(projectId) {
+    const context = this.#context(projectId)
+    this.#assertWritable(context)
+    return context
+  }
+
+  async compact(projectId) {
+    const context = this.#context(projectId)
+    this.#assertWritable(context)
+    const result = await context.store.compactNow()
+    return { revision: result.revision, durable: result.durable }
   }
 
   pendingDecisions(now = Date.now()) {
@@ -470,7 +550,7 @@ class ProjectService {
       readOnly: false,
       readOnlyReason: '',
     }
-    this.projects.set(projectId, context)
+    this.#registerContext(projectId, context)
     return this.snapshot(projectId)
   }
 

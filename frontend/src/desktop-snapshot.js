@@ -56,6 +56,7 @@ const RUN_OUTCOME_FIELDS = new Set([
 export function emptySnapshot() {
   return {
     agents: [], groups: [], messages: [], runningGroupIds: [], runs: [], humanGates: [], runOutcomes: [],
+    projectRooms: [], pendingDecisions: { items: [], total: 0 },
   }
 }
 
@@ -373,5 +374,9 @@ export function normalizeSnapshot(value) {
     runs,
     runOutcomes,
     humanGates: activeGates.filter(gate => waitingGateIds.has(gate.gateId)),
+    projectRooms: Array.isArray(value?.projectRooms) ? value.projectRooms : [],
+    pendingDecisions: value?.pendingDecisions && typeof value.pendingDecisions === 'object'
+      ? value.pendingDecisions
+      : { items: [], total: 0 },
   }
 }

@@ -157,6 +157,7 @@ class LocalWorkspace extends EventEmitter {
     this.processRegistry = options.processRegistry || null
     this.managedSupervisorPath = options.managedSupervisorPath || ''
     this.platform = options.platform || process.platform
+    this.projectRoom = options.projectRoom || null
     this.workspaceRecovery = this.load()
     this.state = this.workspaceRecovery.state
     this.delivery = new DeliveryTasks(this)
@@ -835,6 +836,10 @@ class LocalWorkspace extends EventEmitter {
       controller.orchestration?.candidateCommit?.messageId,
     ].filter(Boolean))
     return this.runLedgerCoordinator.finish(groupId, controller, status)
+  }
+
+  setProjectRoom(projectRoom) {
+    this.projectRoom = projectRoom || null
   }
 
   snapshot() {

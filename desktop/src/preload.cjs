@@ -108,6 +108,41 @@ if (isLocalDocument) Object.assign(desktopApi, {
       return () => ipcRenderer.removeListener('local-workspace:open-group', listener)
     },
   }),
+  projectRoom: Object.freeze({
+    chooseWorkdir: () => ipcRenderer.invoke('project:chooseWorkdir'),
+    create: input => ipcRenderer.invoke('project:create', input),
+    rename: input => ipcRenderer.invoke('project:rename', input),
+    delete: input => ipcRenderer.invoke('project:delete', input),
+    retryDeletion: input => ipcRenderer.invoke('project:retryDeletion', input),
+    snapshot: input => ipcRenderer.invoke('project:snapshot', input),
+    updateSeat: input => ipcRenderer.invoke('project:updateSeat', input),
+    addSeat: input => ipcRenderer.invoke('project:addSeat', input),
+    removeSeat: input => ipcRenderer.invoke('project:removeSeat', input),
+    updateProfile: input => ipcRenderer.invoke('project:updateProfile', input),
+    rollbackProfile: input => ipcRenderer.invoke('project:rollbackProfile', input),
+    updatePlaybook: input => ipcRenderer.invoke('project:updatePlaybook', input),
+    saveAsTemplate: input => ipcRenderer.invoke('project:saveAsTemplate', input),
+    compact: input => ipcRenderer.invoke('project:compact', input),
+    diagnostics: input => ipcRenderer.invoke('project:diagnostics', input),
+    start: input => ipcRenderer.invoke('project:start', input),
+    interject: input => ipcRenderer.invoke('project:interject', input),
+    stopAndDeliver: input => ipcRenderer.invoke('project:stopAndDeliver', input),
+    decideGate: input => ipcRenderer.invoke('project:decideGate', input),
+    previewReject: input => ipcRenderer.invoke('project:previewReject', input),
+    previewReopen: input => ipcRenderer.invoke('project:previewReopen', input),
+    reopen: input => ipcRenderer.invoke('project:reopen', input),
+    resolveDrift: input => ipcRenderer.invoke('project:resolveDrift', input),
+    cancelDriftResolution: input => ipcRenderer.invoke('project:cancelDriftResolution', input),
+    resolveOutOfScope: input => ipcRenderer.invoke('project:resolveOutOfScope', input),
+    retryEffect: input => ipcRenderer.invoke('project:retryEffect', input),
+    residual: input => ipcRenderer.invoke('project:residual', input),
+    unlockDirectory: input => ipcRenderer.invoke('project:unlockDirectory', input),
+    onChanged: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('project:changed', listener)
+      return () => ipcRenderer.removeListener('project:changed', listener)
+    },
+  }),
   cloudAgent: Object.freeze({
     provideInput: (runId, requestId, value) => ipcRenderer.invoke(
       'local-cloud-agent:provide-input', runId, requestId, value,

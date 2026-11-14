@@ -90,6 +90,27 @@ test('local preload exposes the local-only Meldwork API', async () => {
   }])
   invocations.length = 0
 
+  assert.equal(Object.isFrozen(api.projectRoom), true)
+  assert.deepEqual(
+    Object.keys(api.projectRoom).sort(),
+    [
+      'addSeat', 'cancelDriftResolution', 'chooseWorkdir', 'compact', 'create',
+      'decideGate', 'delete', 'diagnostics', 'interject', 'onChanged', 'previewReject',
+      'previewReopen', 'removeSeat', 'rename', 'reopen', 'residual', 'resolveDrift',
+      'resolveOutOfScope', 'retryDeletion', 'retryEffect', 'rollbackProfile',
+      'saveAsTemplate', 'snapshot', 'start', 'stopAndDeliver', 'unlockDirectory',
+      'updatePlaybook', 'updateProfile', 'updateSeat',
+    ].sort(),
+  )
+  const cancelProjectChanged = api.projectRoom.onChanged(() => {})
+  cancelProjectChanged()
+  await api.projectRoom.snapshot('project-1')
+  assert.deepEqual(invocations, [{
+    channel: 'project:snapshot',
+    args: ['project-1'],
+  }])
+  invocations.length = 0
+
   assert.deepEqual(
     Object.keys(api.localAgentConnector).sort(),
     [
