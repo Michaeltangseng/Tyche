@@ -55,11 +55,14 @@ async groupMembers(pgid)          → Array<{ pid, startTime }>   'pgrep -g <pgi
 groupEmpty(pgid)                  → boolean          process.kill(-pgid, 0)：抛 ESRCH 为 true，抛 EPERM 为 false（有成员但无权限），不抛为 false
 async readEnvironmentMarker(pid, marker) → 'present' | 'absent' | 'unreadable'
                                       macOS：'ps -wwE -o command= -p <pid>' 输出中是否含 'MELDWORK_CONTAINER=<marker>'
+                                      macOS 15 不暴露环境：输出中没有任何 KEY=VALUE 时返回 'unreadable'
                                       Linux：读 /proc/<pid>/environ，按 \0 分割比较
                                       读取失败（权限、进程已退出）返回 'unreadable'
 ```
 
-测试 `desktop/test/agents/process/process-inspect.test.cjs`：用注入的 `execFileFn` 覆盖每个函数的正常、进程不存在、权限不足分支；再用一个真实的 `sleep 5` 子进程做一次端到端（启动时间非空、组成员包含它、环境标记 `present`），测试结束 `kill` 它。
+测试 `desktop/test/agents/process/process-inspect.test.cjs`：用注入的 `execFileFn` 覆盖每个函数的正常、进程不存在、权限不足分支；再用一个真实的 `sleep 5` 子进程做一次端到端（启动时间非空、组成员包含它、环境标记 `present`，macOS 15 上允许 `unreadable` 但不允许 `absent`），测试结束 `kill` 它。
+
+> **实测约束（2026-11-14，macOS 15.6）**：`ps -E` 与 `sysctl KERN_PROCARGS2` 都读不到同一用户子进程的环境；`readEnvironmentMarker` 对无环境迹象的输出返回 `unreadable`，恢复时按身份未知登记残留占用。这是用户裁决的保守回退（M3 3.7）。
 
 ### 任务 1.3 原生监护程序
 
