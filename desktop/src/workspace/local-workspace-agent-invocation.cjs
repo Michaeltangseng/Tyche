@@ -468,6 +468,10 @@ class LocalWorkspaceAgentInvocation {
         && supportsWorkspaceWrite
         && !reviewOnly
         && !isolated)
+    const readExec = !allowWrite
+      && requestedPermission === 'read-exec'
+      && !reviewOnly
+      && !isolated
     const skillInputTypes = new Set(['text'])
     for (const attachment of context.attachmentSnapshots || []) {
       const type = attachmentType(attachment?.mimeType)
@@ -899,8 +903,8 @@ class LocalWorkspaceAgentInvocation {
         context.onLeaseAcquired({
           operationId,
           agentRunId: harnessRun?.agentRunId || '',
-          permissionMode: allowWrite ? 'workspace-write' : 'read-only',
-          sideEffectsPossible: allowWrite,
+          permissionMode: allowWrite ? 'workspace-write' : (readExec ? 'read-exec' : 'read-only'),
+          sideEffectsPossible: allowWrite || readExec,
         })
       }
       await outputs.begin()
@@ -1060,8 +1064,8 @@ class LocalWorkspaceAgentInvocation {
           return { prompt: rebuildFreshSession() }
         },
         signal: agentController.signal,
-        sandbox: allowWrite ? 'workspace-write' : 'read-only',
-        ...(allowWrite && this.platform !== 'win32'
+        sandbox: allowWrite ? 'workspace-write' : (readExec ? 'read-exec' : 'read-only'),
+        ...((allowWrite || readExec) && this.platform !== 'win32'
           && this.processRegistry && this.managedSupervisorPath
           ? {
               spawnFn: createManagedSpawn({
@@ -1071,7 +1075,7 @@ class LocalWorkspaceAgentInvocation {
                   groupId: group.id,
                   projectId: group.projectId || null,
                   workdir: group.workdir,
-                  permission: 'workspace-write',
+                  permission: allowWrite ? 'workspace-write' : 'read-exec',
                   claims: [],
                   agentKind: kind,
                 },
@@ -1105,7 +1109,7 @@ class LocalWorkspaceAgentInvocation {
           // `yolo: false`; sandbox and workspace authorization remain enforced
           // before this callback is reached.
           if ((context.yolo ?? this.defaultYolo) !== false) {
-            const automatic = automaticPermissionResponse(request, { allowWrite })
+            const automatic = automaticPermissionResponse(request, { allowWrite, readExec })
             if (automatic !== undefined) return Promise.resolve(automatic)
           }
           const pending = Promise.resolve().then(async () => {
@@ -1571,7 +1575,7 @@ class LocalWorkspaceAgentInvocation {
         outcomeCertainty: terminalFailureKnown
           ? 'known_failed'
           : (operationStarted || sideEffectsStarted ? 'unknown_outcome' : 'not_started'),
-        sideEffectsPossible: allowWrite && sideEffectsStarted,
+        sideEffectsPossible: (allowWrite || readExec) && sideEffectsStarted,
         operationId,
         idempotencyMode,
       })

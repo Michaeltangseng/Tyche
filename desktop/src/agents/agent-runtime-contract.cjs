@@ -28,7 +28,7 @@ const AGENT_OUTPUT_TYPES = Object.freeze(['text', 'artifact', 'evidence'])
 const AGENT_TOOL_CLASSES = Object.freeze([
   'agent-native', 'filesystem', 'filesystem-read', 'shell', 'network', 'browser',
 ])
-const AGENT_PERMISSION_MODES = Object.freeze(['read-only', 'workspace-write'])
+const AGENT_PERMISSION_MODES = Object.freeze(['read-only', 'read-exec', 'workspace-write'])
 const AGENT_LATENCY_BANDS = Object.freeze(['low', 'medium', 'high', 'unknown'])
 const AGENT_COST_BANDS = Object.freeze(['low', 'medium', 'high', 'unknown'])
 
@@ -54,7 +54,7 @@ function generalProfile(overrides = {}) {
     inputTypes: ['text', 'file'],
     outputTypes: ['text', 'artifact', 'evidence'],
     toolClasses: ['agent-native'],
-    permissionModes: ['read-only', 'workspace-write'],
+    permissionModes: ['read-only', 'read-exec', 'workspace-write'],
     latencyBand: 'unknown',
     costBand: 'unknown',
     contextLimitChars: 20000,

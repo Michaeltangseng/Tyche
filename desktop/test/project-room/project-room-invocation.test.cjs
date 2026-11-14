@@ -105,6 +105,34 @@ test('project-room reviewer calls do not persist a session', async (t) => {
   assert.equal(Object.hasOwn(workspace.state.sessionMeta, sessionKey), false)
 })
 
+test('project-room read-exec is passed to the adapter without workspace write', async (t) => {
+  const calls = []
+  const { workspace, group, task, contextPack, controller } = await setup(t, {
+    runAgent: async (agent, prompt, workdir, runOptions) => {
+      calls.push({ prompt, runOptions })
+      return {
+        text: 'Review\n[[MELDWORK_REVIEW:{"verdict":"pass"}]]',
+        sessionRef: 'exec-session',
+        outcome: 'completed',
+      }
+    },
+  })
+  await workspace.invokeAgent(
+    group, 'codex', 'manual', controller.signal, task.id,
+    {
+      taskId: task.id,
+      sessionPolicy: 'project-room',
+      promptOverride: 'Run the tests.',
+      contextPackId: contextPack.contextPackId,
+      permissionMode: 'read-exec',
+      sessionKey: 'project:p:cp:c:seat:s:codex:g0',
+      saveSession: false,
+    },
+  )
+  await workspace.finishRun(group.id, controller, 'completed')
+  assert.equal(calls[0].runOptions.sandbox, 'read-exec')
+})
+
 test('the project-room session key hash includes project, checkpoint, seat, and generation', () => {
   const base = projectRoomSessionKey({
     projectId: 'p', checkpointId: 'c', seatId: 's', kind: 'codex', generation: 0,

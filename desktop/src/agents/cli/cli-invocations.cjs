@@ -21,6 +21,7 @@ function internalTurnLimit(kind, requested) {
 }
 
 function codexSandbox(requested) {
+  if (requested === 'read-exec') return 'read-only'
   if (requested != null) {
     if (!CODEX_SANDBOXES.has(requested)) throw new Error('CODEX_SANDBOX_UNSUPPORTED')
     return requested
@@ -53,6 +54,12 @@ function attachmentPaths(kind, value) {
 }
 
 function invocation(kind, executable, workdir, sessionRef = '', options = {}) {
+  if (options.sandbox === 'read-exec' && !['claude', 'codex'].includes(kind)) {
+    throw Object.assign(new Error('PROJECT_CAPABILITY_UNSUPPORTED'), {
+      code: 'PROJECT_CAPABILITY_UNSUPPORTED',
+      details: { agentKind: kind, capability: 'read-exec' },
+    })
+  }
   const attachments = attachmentPaths(kind, options.attachments)
   if (kind === 'codex') {
     const sandbox = codexSandbox(options.sandbox)
@@ -241,16 +248,30 @@ function invocation(kind, executable, workdir, sessionRef = '', options = {}) {
     }
   }
   if (kind === 'claude') {
+    const args = [
+      '--print',
+      '--output-format', 'stream-json',
+      '--include-partial-messages',
+      '--verbose',
+    ]
+    if (options.sandbox === 'workspace-write') {
+      args.push('--permission-mode', 'acceptEdits')
+    } else if (options.sandbox === 'read-exec') {
+      // Verified in milestone 0 task 0.5: Claude has no `default` mode;
+      // pre-approve read and Bash tools and hide edit tools instead. The
+      // trailing `--` keeps the variadic tool list from swallowing the prompt.
+      args.push(
+        '--allowedTools', 'Read,Glob,Grep,Bash',
+        '--disallowedTools', 'Edit,Write,MultiEdit,NotebookEdit',
+      )
+    } else {
+      args.push('--permission-mode', 'plan')
+    }
+    if (sessionRef) args.push('--resume', sessionRef)
+    if (options.sandbox === 'read-exec') args.push('--')
     return {
       command: executable,
-      args: [
-        '--print',
-        '--output-format', 'stream-json',
-        '--include-partial-messages',
-        '--verbose',
-        '--permission-mode', options.sandbox === 'workspace-write' ? 'acceptEdits' : 'plan',
-        ...(sessionRef ? ['--resume', sessionRef] : []),
-      ],
+      args,
       promptArg: true,
     }
   }
