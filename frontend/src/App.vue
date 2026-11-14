@@ -845,6 +845,15 @@ const {
   tracePanelOpen,
   tracePanelRunId,
 } = conversationTimeline
+const projectDrawerTraceItem = computed(() => (
+  tracePanelItems.value.find(item => item.agentRunId === selectedTraceAgentRunId.value)
+  || tracePanelItems.value.at(-1)
+  || null
+))
+Object.assign(projectRoomDrawerController, {
+  traceAgentRunId: computed(() => projectDrawerTraceItem.value?.agentRunId || ''),
+  traceRunId: computed(() => projectDrawerTraceItem.value?.runId || ''),
+})
 watch(tracePanelOpen, (open) => {
   if (open) projectDrawerOpen.value = false
 })
