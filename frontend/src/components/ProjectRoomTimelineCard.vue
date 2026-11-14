@@ -14,7 +14,7 @@
     <template v-else-if="card.kind === 'gate'">
       <button class="project-timeline-gate" type="button" @click="selectGate(card.checkpointId)">
         <strong>{{ t('projectRoom.timeline.gateTitle', { name: card.name }) }}</strong>
-        <span>{{ card.reason }}</span>
+        <span>{{ reasonLabel }}</span>
         <small>{{ t('projectRoom.timeline.openGate') }}</small>
       </button>
     </template>
@@ -23,7 +23,7 @@
       <details class="project-timeline-decided">
         <summary>
           {{ t('projectRoom.timeline.gateDecided', {
-            name: card.name, outcome: card.outcome, reason: card.reason,
+            name: card.name, outcome: outcomeLabel, reason: reasonLabel,
           }) }}
           <small v-if="card.at"> · {{ formatNavTime(card.at) }}</small>
         </summary>
@@ -66,6 +66,13 @@ const props = defineProps({
   stopDelivery: { type: Function, default: null },
   t: { type: Function, required: true },
 })
+
+const reasonLabel = computed(() => (
+  props.card.reason ? props.t(`projectRoom.gate.reason.${props.card.reason}`) : ''
+))
+const outcomeLabel = computed(() => (
+  props.card.outcome ? props.t(`projectRoom.gate.outcome.${props.card.outcome}`) : ''
+))
 
 const runningLabel = computed(() => {
   const key = {
