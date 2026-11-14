@@ -457,7 +457,7 @@ class ProjectService {
             checkpointId: instance.id,
             seatId,
             role: role === 'reviewer' ? 'review' : role,
-            round,
+            round: Math.max(1, round),
             generation: sessionGeneration,
             ...(verdict ? { verdict } : {}),
             ...(signal ? { signal } : {}),
