@@ -40,10 +40,16 @@ function readStdin() {
   })
 }
 
-async function run() {
-  const prompt = await readStdin()
-  for (const step of script.steps || []) {
-    if (step.op === 'output') {
+async function executeSteps(steps, prompt) {
+  for (const step of steps || []) {
+    if (step.op === 'whenPromptIncludes') {
+      const branch = prompt.includes(String(step.text || '')) ? step.then : step.otherwise
+      await executeSteps(branch, prompt)
+      continue
+    }
+    if (step.op === 'marker') {
+      process.stdout.write(`\n${step.value}\n`)
+    } else if (step.op === 'output') {
       process.stdout.write(String(step.text || ''))
     } else if (step.op === 'echoPrompt') {
       process.stdout.write(prompt)
@@ -75,10 +81,14 @@ async function run() {
       process.exit(Number(step.code) || 2)
     }
   }
+}
+
+async function run() {
+  const prompt = await readStdin()
+  await executeSteps(script.steps, prompt)
   if (script.finalText) process.stdout.write(String(script.finalText))
   if (script.marker) {
-    if (script.finalText && !String(script.finalText).endsWith('\n')) process.stdout.write('\n')
-    process.stdout.write(`${script.marker}\n`)
+    process.stdout.write(`\n${script.marker}\n`)
   }
 }
 

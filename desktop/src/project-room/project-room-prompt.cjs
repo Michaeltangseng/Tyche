@@ -73,7 +73,10 @@ function buildProjectRoomPrompt({
     }
   }
   const currentRound = instance.rounds.at(-1)
-  const reviewFiles = (currentRound?.reviews || []).map(review => review.reviewFile).filter(Boolean)
+  const reviewFiles = instance.rounds
+    .flatMap(item => item.reviews || [])
+    .map(review => review.reviewFile)
+    .filter(Boolean)
   const responseFile = `meldwork/reviews/${instance.checkpointKey}/r${Math.max(1, instance.round)}-response.md`
   const pendingInterjections = instance.interjections
     .filter(item => item.status === 'queued')

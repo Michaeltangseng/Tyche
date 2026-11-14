@@ -57,19 +57,22 @@ function projectState() {
   return state
 }
 
-async function setup(t) {
+async function setup(t, scriptsOverride = {}) {
   const { directory, options } = fixture()
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
-  const scripts = path.join(directory, 'scripts')
-  fs.mkdirSync(scripts, { recursive: true })
-  const leadScript = path.join(scripts, 'lead.json')
-  const reviewScript = path.join(scripts, 'review.json')
-  writeJson(leadScript, {
+  const workdir = path.join(directory, 'work')
+  fs.mkdirSync(workdir, { recursive: true })
+  const privateRoot = path.join(directory, 'private')
+  const scriptsDir = path.join(directory, 'scripts')
+  fs.mkdirSync(scriptsDir, { recursive: true })
+  const leadScript = path.join(scriptsDir, 'lead.json')
+  const reviewScript = path.join(scriptsDir, 'review.json')
+  writeJson(leadScript, scriptsOverride.lead || {
     steps: [{ op: 'write', path: 'docs/requirements.md', content: 'Version 1\n' }],
     finalText: 'Draft ready',
     marker: checkpointMarker,
   })
-  writeJson(reviewScript, {
+  writeJson(reviewScript, scriptsOverride.review || {
     steps: [],
     finalText: 'Summary: looks good.',
     marker: reviewMarker,
@@ -92,27 +95,27 @@ async function setup(t) {
   options.detectAgents = async () => detected
   options.runAgent = async (agent, prompt, workdir, runOptions) => {
     if (![leadKind, reviewerKind].includes(agent.kind)) throw new Error('LOCAL_AGENT_UNAVAILABLE')
-    return agentStore.run(agent.kind, prompt, workdir, {
+    const result = await agentStore.run(agent.kind, prompt, workdir, {
       sandbox: runOptions.sandbox,
       signal: runOptions.signal,
     })
+    return result
   }
   const workspace = new LocalWorkspace(options)
   await workspace.refreshAgents()
   const mainGroup = workspace.createGroup({
-    name: 'Main', agentKinds: [leadKind, reviewerKind], workdir: directory,
+    name: 'Main', agentKinds: [leadKind, reviewerKind], workdir,
     allowWrite: true, projectId: 'project-1', projectRole: 'main',
   })
-  const privateRoot = path.join(directory, 'meldwork-private')
   const projectDir = path.join(privateRoot, 'projects', 'project-1')
   fs.mkdirSync(projectDir, { recursive: true })
   writeJson(path.join(projectDir, 'state.json'), projectState())
   await ShadowRepo.create({
     gitDir: path.join(projectDir, 'shadow.git'),
-    workTree: directory,
+    workTree: workdir,
   })
   workspace.state.projects = [{
-    id: 'project-1', name: 'Project One', workdir: directory,
+    id: 'project-1', name: 'Project One', workdir,
     createdAt: at, updatedAt: at,
   }]
   const scheduler = new RunScheduler()
@@ -131,11 +134,11 @@ async function setup(t) {
     },
   })
   await service.start()
-  return { service, workspace, directory, mainGroup }
+  return { service, workspace, directory, workdir, mainGroup }
 }
 
 test('a document checkpoint runs from start to acceptance with fake Agents', async (t) => {
-  const { service, workspace, directory } = await setup(t)
+  const { service, workspace, workdir } = await setup(t)
   await service.startProject({ projectId: 'project-1', brief: 'Write the requirements.' })
   const engine = service.engineFor('project-1')
   await engine.runUntilIdle()
@@ -162,11 +165,11 @@ test('a document checkpoint runs from start to acceptance with fake Agents', asy
   assert.equal(state.instances[0].artifactVersions.length, 1)
   assert.equal(state.instances[0].artifactVersions[0].source, 'gate')
   assert.equal(
-    fs.readFileSync(path.join(directory, 'docs', 'requirements.md'), 'utf8'),
+    fs.readFileSync(path.join(workdir, 'docs', 'requirements.md'), 'utf8'),
     'Version 1\n',
   )
   assert.equal(
-    fs.existsSync(path.join(directory, 'meldwork', 'reviews', 'requirements', 'r1-seat-reviewer.md')),
+    fs.existsSync(path.join(workdir, 'meldwork', 'reviews', 'requirements', 'r1-seat-reviewer.md')),
     true,
   )
   const messages = workspace.state.messages.filter(message => message.projectRoom)
@@ -175,4 +178,54 @@ test('a document checkpoint runs from start to acceptance with fake Agents', asy
   const history = service.timelineHistory('project-1')
   assert.ok(history.items.some(item => item.type === 'checkpoint-start'))
   assert.ok(history.items.some(item => item.type === 'gate-decided'))
+})
+
+test('a revise round returns to the lead and passes on the second round', async (t) => {
+  const { service, workdir } = await setup(t, {
+    lead: {
+      steps: [{
+        op: 'whenPromptIncludes',
+        text: '之前的评审文件',
+        then: [
+          { op: 'write', path: 'docs/requirements.md', content: 'Version 2\n' },
+          { op: 'output', text: 'Revised draft' },
+        ],
+        otherwise: [
+          { op: 'write', path: 'docs/requirements.md', content: 'Version 1\n' },
+          { op: 'output', text: 'Draft ready' },
+        ],
+      }],
+      marker: checkpointMarker,
+    },
+    review: {
+      steps: [{
+        op: 'whenPromptIncludes',
+        text: '之前的评审文件',
+        then: [
+          { op: 'output', text: 'Summary: revised looks good.' },
+          { op: 'marker', value: '[[MELDWORK_REVIEW:{"verdict":"pass"}]]' },
+        ],
+        otherwise: [
+          { op: 'output', text: 'Summary: revise the scope.' },
+          { op: 'marker', value: '[[MELDWORK_REVIEW:{"verdict":"revise"}]]' },
+        ],
+      }],
+    },
+  })
+  await service.startProject({ projectId: 'project-1', brief: 'Write it.' })
+  const engine = service.engineFor('project-1')
+  await engine.runUntilIdle()
+
+  const state = service.contextFor('project-1').store.current()
+  const instance = state.instances[0]
+  assert.equal(instance.round, 2)
+  assert.equal(instance.state, 'gate')
+  assert.equal(instance.gate.reason, 'hard-gate-passed')
+  assert.equal(
+    fs.readFileSync(path.join(workdir, 'docs', 'requirements.md'), 'utf8'),
+    'Version 2\n',
+  )
+  assert.equal(instance.rounds.length, 2)
+  assert.equal(instance.rounds[0].reviews[0].verdict, 'revise')
+  assert.equal(instance.rounds[1].reviews[0].verdict, 'pass')
 })
