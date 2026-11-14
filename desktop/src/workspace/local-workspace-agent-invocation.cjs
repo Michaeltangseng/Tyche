@@ -1,4 +1,6 @@
 const { createHash, randomUUID } = require('node:crypto')
+const fs = require('node:fs')
+const path = require('node:path')
 const { taskPermissionGroup } = require('./run-permission-cap.cjs')
 const { agentVerificationIdentity, projectVerificationIdentity } = require('./agent-verification-identity.cjs')
 const { NATIVE_PROJECT_CONFIG_PATHS } = require('../agents/native-config-directory.cjs')
@@ -302,10 +304,31 @@ class LocalWorkspaceAgentInvocation {
       else signal.addEventListener('abort', queuedAbortHandler, { once: true })
     }
     try {
+      let workdirRoot = ''
+      if (permissionMode === 'workspace-write') {
+        try {
+          workdirRoot = fs.realpathSync.native(path.resolve(group.workdir))
+        } catch (error) {
+          throw Object.assign(new Error('LOCAL_WORKDIR_UNRESOLVED'), {
+            code: 'LOCAL_WORKDIR_UNRESOLVED',
+            cause: error,
+          })
+        }
+      } else {
+        try {
+          fs.realpathSync.native(path.resolve(group.workdir))
+        } catch (error) {
+          // Read-only invocations keep their previous behavior; record the
+          // unresolved directory for diagnostics only.
+          console.warn('[meldwork] read-only workdir unresolved', group.id,
+            error?.code || error?.message || error)
+        }
+      }
       return await this.runScheduler.withLease({
         taskId,
         workspaceKey,
         permissionMode,
+        workdirRoot,
         signal: agentController.signal,
       }, (lease) => {
         if (signal && queuedAbortHandler) {
@@ -322,6 +345,16 @@ class LocalWorkspaceAgentInvocation {
           { agentController, registration, lease },
         )
       })
+    } catch (error) {
+      if (permissionMode === 'workspace-write'
+          && typeof error?.code === 'string'
+          && error.code.startsWith('SCHEDULER_CLAIM_')) {
+        throw Object.assign(new Error('LOCAL_WORKDIR_UNRESOLVED'), {
+          code: 'LOCAL_WORKDIR_UNRESOLVED',
+          cause: error,
+        })
+      }
+      throw error
     } finally {
       if (signal && queuedAbortHandler) {
         signal.removeEventListener('abort', queuedAbortHandler)
