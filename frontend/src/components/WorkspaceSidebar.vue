@@ -118,6 +118,16 @@
                 <ChevronDownOutline v-if="isProjectRoomExpanded(project.projectId)" aria-hidden="true" />
                 <ChevronForwardOutline v-else aria-hidden="true" />
               </button>
+              <button
+                v-if="!project.deleting"
+                class="project-room-delete"
+                type="button"
+                :title="t('projectRoom.sidebar.delete', { name: project.name })"
+                :aria-label="t('projectRoom.sidebar.delete', { name: project.name })"
+                @click.stop="deleteProjectRoom(project.projectId)"
+              >
+                <TrashOutline />
+              </button>
             </div>
             <div
               v-if="project.groups.length && isProjectRoomExpanded(project.projectId)"
@@ -563,6 +573,7 @@ const {
   collapsedGroupMenuStyle,
   contentInteractionBlocked,
   createDirectSession,
+  deleteProjectRoom,
   deleteSidebarConversation,
   directGroupsFor,
   discoveringAgents,

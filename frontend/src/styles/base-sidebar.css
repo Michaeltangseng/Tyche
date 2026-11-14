@@ -911,7 +911,7 @@
 .project-room-row {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 28px;
+  grid-template-columns: minmax(0, 1fr) 28px 24px;
   align-items: center;
   border-radius: var(--radius-sm);
 }
@@ -1011,9 +1011,38 @@
   color: var(--text);
 }
 
-.project-room-toggle svg {
+.project-room-toggle svg,
+.project-room-delete svg {
   width: 14px;
   height: 14px;
+}
+
+.project-room-delete {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.project-room-row:hover .project-room-delete,
+.project-room-row:focus-within .project-room-delete {
+  opacity: 0.7;
+}
+
+.project-room-delete:hover,
+.project-room-delete:focus-visible {
+  outline: none;
+  background: var(--surface-active);
+  color: var(--danger);
+  opacity: 1;
 }
 
 .project-room-groups {

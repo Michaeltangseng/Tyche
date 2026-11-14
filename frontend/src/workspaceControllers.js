@@ -19,6 +19,7 @@ export function createWorkspaceControllers({
     collapsedGroupMenuStyle: collapsedGroupMenu.collapsedGroupMenuStyle,
     contentInteractionBlocked: app.contentInteractionBlocked,
     createDirectSession: conversationActions.createDirectSession,
+    deleteProjectRoom: app.deleteProjectRoom,
     deleteSidebarConversation: conversationActions.deleteSidebarConversation,
     directGroupsFor: conversationNavigation.directGroupsFor,
     discoveringAgents: app.discoveringAgents,

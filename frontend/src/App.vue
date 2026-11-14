@@ -133,9 +133,10 @@
               ref="modalDialog"
               class="modal"
               :class="{
-                medium: ['new-group', 'settings', 'custom-agent'].includes(modal),
+                medium: ['new-group', 'settings', 'custom-agent', 'project-room-overlay'].includes(modal),
                 'agent-detail-modal': modal === 'agent-detail',
                 'unlimited-confirm-modal': modal === 'unlimited-confirm',
+                'project-room-overlay-modal': modal === 'project-room-overlay',
               }"
               role="dialog"
               aria-modal="true"
@@ -152,7 +153,12 @@
                 </button>
               </header>
 
+              <ProjectRoomOverlay
+                v-if="modal === 'project-room-overlay'"
+                :controller="projectRoomOverlayController"
+              />
               <WorkspaceModalContent
+                v-else
                 ref="workspaceModalContent"
                 :controller="workspaceModalController"
               />
@@ -215,6 +221,7 @@ import HomeDashboard from './components/HomeDashboard.vue'
 import OnboardingDialog from './components/OnboardingDialog.vue'
 import ProjectRoomComposer from './components/ProjectRoomComposer.vue'
 import ProjectRoomGatePanel from './components/ProjectRoomGatePanel.vue'
+import ProjectRoomOverlay from './components/ProjectRoomOverlay.vue'
 import ProjectRoomProgress from './components/ProjectRoomProgress.vue'
 import RunTracePanel from './components/RunTracePanel.vue'
 import SystemSettingsView from './components/SystemSettingsView.vue'
@@ -279,6 +286,7 @@ const sendingGroupIds = ref(new Set())
 const saving = ref(false)
 const humanGateDecisionPendingIds = ref([])
 const modal = ref('')
+const projectOverlay = ref(null)
 const composerContextVersion = ref(0)
 const DEFAULT_MAX_ROUNDS = 6
 const maxRounds = ref(DEFAULT_MAX_ROUNDS)
@@ -440,6 +448,75 @@ const projectRoomView = useProjectRoomView({
   workspace,
 })
 const isProjectMainGroup = projectRoomView.isMainGroup
+
+function openProjectOverlay(payload) {
+  projectOverlay.value = payload
+  modal.value = 'project-room-overlay'
+}
+
+function closeProjectOverlay() {
+  projectRoomView.reopenRequest.value = null
+  projectOverlay.value = null
+  closeModal()
+}
+
+function requestProjectDelete(projectId) {
+  const project = projectRoomEntries.value.find(entry => entry.projectId === projectId)
+  openProjectOverlay({
+    kind: 'delete',
+    projectId,
+    projectName: project?.name || '',
+  })
+}
+
+watch(() => projectRoomView.rejectRequested.value, (requested) => {
+  if (!requested) return
+  projectRoomView.rejectRequested.value = false
+  openProjectOverlay({
+    kind: 'reject',
+    projectId: activeGroup.value?.projectId || '',
+  })
+})
+
+watch(() => projectRoomView.reopenRequest.value, (request) => {
+  if (!request) return
+  openProjectOverlay({
+    kind: 'reopen',
+    projectId: request.projectId,
+    checkpointId: request.checkpointId,
+    projectName: projectRoomView.projectName.value,
+    preview: request,
+  })
+})
+
+watch(modal, (value) => {
+  if (value !== 'project-room-overlay') projectOverlay.value = null
+})
+
+const projectRoomOverlayController = {
+  checkpointDefs: computed(() => (
+    projectRoomView.project.value?.config?.playbook?.checkpointDefs || []
+  )),
+  close: closeProjectOverlay,
+  deleteProjectRoom: projectRoomView.deleteProjectRoom,
+  onDeleted: () => {
+    closeProjectOverlay()
+    goHome()
+  },
+  overlay: projectOverlay,
+  previewRejectUpstream: projectRoomView.previewRejectUpstream,
+  previewReopenCheckpoint: projectRoomView.previewReopenCheckpoint,
+  progressItems: projectRoomView.progressItems,
+  projectName: projectRoomView.projectName,
+  rejectPreview: projectRoomView.rejectPreview,
+  submitReject: projectRoomView.submitReject,
+  submitReopen: projectRoomView.submitReopen,
+  t,
+  unlockProjectDirectory: projectRoomView.unlockProjectDirectory,
+  upstreamCheckpoints: projectRoomView.upstreamCheckpoints,
+  workdirName: projectRoomView.workdirName,
+}
+
 const sending = computed(() => (
   Boolean(selectedGroupId.value && sendingGroupIds.value.has(selectedGroupId.value))
 ))
@@ -939,11 +1016,13 @@ const modalTitle = computed(() => ({
   'custom-agent': t('customAgent.title'),
   'unlimited-confirm': t('composer.unlimitedConfirmTitle'),
   'agent-detail': selectedAgentDetail.value?.label || t('systemSettings.openAgentDetailDefault'),
+  'project-room-overlay': t(`projectRoom.overlay.title.${projectOverlay.value?.kind || 'reject'}`),
 })[modal.value] || '')
 const modalSubtitle = computed(() => ({
   settings: groupName(activeGroup.value),
   'custom-agent': t('customAgent.subtitle'),
   'agent-detail': agentDetailSkillSummary.value,
+  'project-room-overlay': projectOverlay.value?.projectName || projectRoomView.projectName.value,
 })[modal.value] || '')
 
 const {
@@ -963,6 +1042,7 @@ const {
     confirmUnlimitedRounds,
     contentInteractionBlocked,
     customAgentDeleteArmed,
+    deleteProjectRoom: requestProjectDelete,
     discoveringAgents: agentDiscoveryPending,
     focusedAgentKind,
     formError,

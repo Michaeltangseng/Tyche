@@ -91,6 +91,11 @@ export function useProjectRoomView({
   const projectUnavailable = computed(() => (
     Boolean(project.value?.readOnly || project.value?.deleting)
   ))
+  const projectName = computed(() => String(project.value?.name || activeGroup.value?.name || ''))
+  const workdirName = computed(() => {
+    const workdir = String(project.value?.workdir || activeGroup.value?.workdir || '')
+    return workdir.split(/[\\/]/).filter(Boolean).at(-1) || ''
+  })
 
   function checkpointActivityAt(checkpointId) {
     const groupId = activeGroup.value?.id
@@ -265,6 +270,148 @@ export function useProjectRoomView({
     } finally {
       gateLoading.value = false
     }
+  }
+
+  const projectDefs = computed(() => (
+    project.value?.config?.playbook?.checkpointDefs || []
+  ))
+  const activeCheckpointId = computed(() => activeTarget.value?.checkpointId || '')
+  const upstreamCheckpoints = computed(() => {
+    const current = progress.value.find(item => item.checkpointId === activeCheckpointId.value)
+    if (!current) return []
+    const defs = projectDefs.value
+    const upstreamKeys = new Set()
+    const visit = (key) => {
+      const def = defs.find(item => item.key === key)
+      for (const dependency of def?.dependsOn || []) {
+        if (upstreamKeys.has(dependency)) continue
+        upstreamKeys.add(dependency)
+        visit(dependency)
+      }
+    }
+    visit(current.checkpointKey)
+    return progressItems.value
+      .filter(item => upstreamKeys.has(item.checkpointKey))
+      .map(item => ({
+        ...item,
+        gate: gates.value.find(gate => gate.checkpointId === item.checkpointId) || null,
+      }))
+  })
+  const rejectPreview = ref(null)
+  const rejectUpstreamId = ref('')
+  const rejectImpactChanged = ref(false)
+
+  async function previewRejectUpstream(upstreamId) {
+    if (!activeGate.value) return null
+    rejectUpstreamId.value = String(upstreamId || '')
+    rejectImpactChanged.value = false
+    gateErrorKey.value = ''
+    try {
+      rejectPreview.value = await projectRoom.previewReject({
+        projectId: projectId.value,
+        checkpointId: activeCheckpointId.value,
+        upstreamId: rejectUpstreamId.value,
+      })
+      return rejectPreview.value
+    } catch (error) {
+      gateErrorKey.value = SEND_ERROR_KEYS[errorCode(error)]
+        || 'projectRoom.composer.errors.generic'
+      return null
+    }
+  }
+
+  async function submitReject(reason, impactHash) {
+    const gate = activeGate.value
+    if (!gate || !String(reason || '').trim()) return { ok: false, reasonRequired: true }
+    try {
+      await projectRoom.decideGate({
+        projectId: projectId.value,
+        gateId: gate.gateId,
+        gateRevision: gate.revision,
+        ...(gate.candidateCommit ? { candidateCommit: gate.candidateCommit } : {}),
+        outcome: 'reject-upstream',
+        upstreamCheckpointId: rejectUpstreamId.value,
+        impactHash,
+        comment: String(reason),
+      })
+      rejectPreview.value = null
+      rejectUpstreamId.value = ''
+      await projectRoom.refresh()
+      await loadGateDetail()
+      return { ok: true }
+    } catch (error) {
+      const code = errorCode(error)
+      if (code === 'PROJECT_IMPACT_CHANGED') {
+        rejectImpactChanged.value = true
+        await previewRejectUpstream(rejectUpstreamId.value)
+        return { ok: false, impactChanged: true }
+      }
+      if (code === 'PROJECT_GATE_STALE') {
+        gateStale.value = true
+        await projectRoom.refresh()
+        await loadGateDetail()
+        return { ok: false, stale: true }
+      }
+      gateErrorKey.value = SEND_ERROR_KEYS[code] || 'projectRoom.composer.errors.generic'
+      return { ok: false }
+    }
+  }
+
+  async function previewReopenCheckpoint(checkpointId) {
+    if (!projectId.value || !checkpointId) return null
+    gateErrorKey.value = ''
+    try {
+      reopenRequest.value = {
+        projectId: projectId.value,
+        checkpointId,
+        ...(await projectRoom.previewReopen({
+          projectId: projectId.value,
+          checkpointId,
+        })),
+      }
+      return reopenRequest.value
+    } catch (error) {
+      gateErrorKey.value = SEND_ERROR_KEYS[errorCode(error)]
+        || 'projectRoom.composer.errors.generic'
+      return null
+    }
+  }
+
+  async function submitReopen(checkpointId, reason, impactHash) {
+    if (!String(reason || '').trim()) return { ok: false, reasonRequired: true }
+    try {
+      await projectRoom.reopen({
+        projectId: projectId.value,
+        checkpointId,
+        reason: String(reason),
+        impactHash,
+      })
+      reopenRequest.value = null
+      await projectRoom.refresh()
+      await loadGateDetail()
+      return { ok: true }
+    } catch (error) {
+      const code = errorCode(error)
+      if (code === 'PROJECT_IMPACT_CHANGED') {
+        await previewReopenCheckpoint(checkpointId)
+        return { ok: false, impactChanged: true }
+      }
+      gateErrorKey.value = SEND_ERROR_KEYS[code] || 'projectRoom.composer.errors.generic'
+      return { ok: false }
+    }
+  }
+
+  async function deleteProjectRoom(targetProjectId, keepChats) {
+    await projectRoom.delete({ projectId: targetProjectId, keepChats: keepChats === true })
+    return true
+  }
+
+  async function unlockProjectDirectory(folderName) {
+    await projectRoom.unlockDirectory({
+      projectId: projectId.value,
+      folderName: String(folderName || '').trim(),
+    })
+    return true
   }
 
   const gateTargets = computed(() => [...gates.value].sort((left, right) => (
@@ -549,25 +696,12 @@ export function useProjectRoomView({
   }
 
   async function requestReopen(checkpointId) {
-    if (!projectId.value) return false
-    try {
-      reopenRequest.value = {
-        projectId: projectId.value,
-        checkpointId,
-        ...(await projectRoom.previewReopen({
-          projectId: projectId.value,
-          checkpointId,
-        })),
-      }
-      return true
-    } catch (error) {
-      showError(error)
-      return false
-    }
+    return Boolean(await previewReopenCheckpoint(checkpointId))
   }
 
   return {
     acceptCandidateVersion,
+    activeCheckpointId,
     activeGate,
     activeTargetId,
     allReviewersPass,
@@ -578,6 +712,7 @@ export function useProjectRoomView({
     confirmAcceptAsIs,
     confirmAcceptNow,
     currentItem,
+    deleteProjectRoom,
     draft,
     driftGate,
     gateAllowedOutcomes,
@@ -592,10 +727,16 @@ export function useProjectRoomView({
     loadGateDetail,
     openProjectChat,
     otherGateCount,
+    previewRejectUpstream,
+    previewReopenCheckpoint,
     project,
+    projectName,
     progressItems,
     questionGate,
+    rejectImpactChanged,
+    rejectPreview,
     rejectRequested,
+    rejectUpstreamId,
     reloadGate,
     reopenRequest,
     requestAccept,
@@ -608,9 +749,14 @@ export function useProjectRoomView({
     sendLabel,
     sendTargetText,
     submitGateContinue,
+    submitReject,
+    submitReopen,
     targetAvailable,
     targetHint,
     targetLabel,
     targetPurposeLabel,
+    unlockProjectDirectory,
+    upstreamCheckpoints,
+    workdirName,
   }
 }

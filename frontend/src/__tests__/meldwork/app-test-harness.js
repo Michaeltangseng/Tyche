@@ -227,6 +227,13 @@ export function createBridge() {
     start: vi.fn(async () => ({})),
     interject: vi.fn(async () => ({})),
     decideGate: vi.fn(async () => ({})),
+    delete: vi.fn(async () => ({ deleted: true })),
+    previewReject: vi.fn(async () => ({
+      targetCheckpointId: 'cp-0',
+      affectedCheckpointIds: [],
+      activeInvocationEffectIds: [],
+      impactHash: 'impact-hash',
+    })),
     gateDetail: vi.fn(async ({ projectId, gateId, gateRevision }) => ({
       projectId,
       gateId,

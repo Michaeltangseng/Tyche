@@ -303,6 +303,82 @@ describe('project room sidebar', () => {
     wrapper.unmount()
   })
 
+  it('opens the reject overlay from the gate panel and the delete overlay from the sidebar', async () => {
+    const { wrapper, bridge } = await mountApp(({ state, bridge: desktopBridge }) => {
+      seedProjects(state)
+      desktopBridge.projectRoom.snapshot.mockResolvedValue({
+        projectId: 'project-1',
+        revision: 1,
+        progress: [{
+          checkpointId: 'cp-1',
+          checkpointKey: 'requirements',
+          name: 'Requirements',
+          state: 'gate',
+          round: 2,
+          roundsSinceHuman: 2,
+          leadSeatId: 'seat-1',
+          leadSeatName: 'Lead',
+          reviewerSeatIds: [],
+          waitingOn: 'human',
+          hasGate: true,
+          blocked: false,
+        }],
+        gates: [{
+          checkpointId: 'cp-1',
+          gateId: 'gate-1',
+          revision: 1,
+          reason: 'needs-human',
+          allowedOutcomes: ['continue', 'accept', 'reject-upstream'],
+          candidateCommit: 'a'.repeat(40),
+          createdAt: '2026-07-29T09:00:00Z',
+          round: 2,
+          elapsedMs: 0,
+          signals: [],
+          signalCount: 0,
+          reviewSummaries: [],
+          reviewSummaryCount: 0,
+          changedFiles: [],
+          changedFileCount: 0,
+          softGateSummary: [],
+          softGateCount: 0,
+          driftItemIds: [],
+          outOfScopeItemIds: [],
+          blockerCheckpointIds: [],
+          changesHeaderMissing: false,
+          detectionSkipped: false,
+          candidateDiverged: false,
+        }],
+        driftItems: [],
+        outOfScopeItems: [],
+        residuals: [],
+        config: {},
+      })
+    })
+
+    await wrapper.get('.project-room-open').trigger('click')
+    await flushPromises()
+    await wrapper.get('.gate-text-button').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.project-room-overlay').exists()).toBe(true)
+    expect(wrapper.get('#modal-title').text()).toBe('Reject')
+    expect(wrapper.get('.project-room-overlay').text())
+      .toContain('Choose the upstream checkpoint to reject to.')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(wrapper.find('.project-room-overlay').exists()).toBe(false)
+
+    await wrapper.get('.project-room-delete').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('#modal-title').text()).toBe('Delete project room')
+    await wrapper.get('.project-room-overlay .danger-button').trigger('click')
+    await flushPromises()
+    expect(bridge.projectRoom.delete).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      keepChats: false,
+    })
+    wrapper.unmount()
+  })
+
   it('shows no project room entries when the workspace snapshot does not include them', async () => {
     const { wrapper } = await mountApp(({ state }) => {
       state.groups.push(
