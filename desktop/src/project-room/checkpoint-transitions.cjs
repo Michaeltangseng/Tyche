@@ -240,10 +240,11 @@ function startReview(instance, effects, { rebuttal, eventAt, config }) {
   return config
 }
 
-function acceptEffects(effects) {
+function acceptEffects(effects, { commitToGit = false } = {}) {
   addEffect(effects, 'append-decision')
   addEffect(effects, 'stamp-changes')
   addEffect(effects, 'accept-commit')
+  if (commitToGit) addEffect(effects, 'user-git-commit')
   addEffect(effects, 'drop-snapshot-refs')
   addEffect(effects, 'notify')
 }
@@ -557,7 +558,7 @@ function decideGate(instance, event, config, effects, diagnostics) {
     } else if (['needs-human', 'review-failed', 'rebuttal-rejected', 'round-limit',
       'artifact-unchanged', 'hard-gate-passed'].includes(reason)) {
       instance.state = 'accepting'
-      acceptEffects(effects)
+      acceptEffects(effects, { commitToGit: payload.commitToGit === true })
     } else {
       instance.state = 'submitted'
       addEffect(effects, 'snapshot', { phase: 'before' })

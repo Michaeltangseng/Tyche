@@ -250,7 +250,7 @@ renderer 永远只拿到投影，不拿到项目状态文件本身。投影函�
 | `delete({ projectId, keepChats })` | `keepChats`：项目内群聊变为普通群聊或一并删除 | 第 9 节 |
 | `retryDeletion({ projectId })` | | 只在删除期间有效，9.2 |
 | `snapshot({ projectId })` | | 返回 7.1 的项目快照 |
-| `gateDetail({ projectId, gateId, gateRevision })` | | 返回关卡的完整首屏（不受 7.1 预算限制）、`allowedOutcomes` 与是否问题关卡；关卡 id 或修订号不符返回 `PROJECT_GATE_STALE`（M13 第 4 节的展开） |
+| `gateDetail({ projectId, gateId, gateRevision })` | | 返回关卡的完整首屏（不受 7.1 预算限制）、`allowedOutcomes`、是否问题关卡，以及「同时提交到 git」的预检结果（`available` 与 `reasons`）；关卡 id 或修订号不符返回 `PROJECT_GATE_STALE`（M13 第 4 节的展开） |
 
 **配置**
 

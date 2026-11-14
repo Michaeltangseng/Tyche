@@ -3,6 +3,7 @@ const path = require('node:path')
 const { createHash, randomUUID } = require('node:crypto')
 const { z } = require('zod')
 const { atomicWritePrivateFile } = require('../security/private-file.cjs')
+const { redactSecrets } = require('../security/secret-redaction.cjs')
 const { claimsOverlap, makeClaim, resolveRoot } = require('../runs/path-claims.cjs')
 const { ShadowRepo, checkGitVersion } = require('./shadow-git.cjs')
 const {
@@ -516,12 +517,71 @@ class ProjectService {
     return true
   }
 
+  #appendDecision(context, params) {
+    const decision = params?.decision
+    if (!decision?.gateId) return null
+    const directory = path.join(context.project.workdir, 'meldwork')
+    const file = path.join(directory, 'decisions.md')
+    const marker = `<!-- meldwork:${params.effectId || decision.gateId} -->`
+    let existing = ''
+    try { existing = fs.readFileSync(file, 'utf8') } catch { existing = '' }
+    if (existing.includes(marker)) return null
+    fs.mkdirSync(directory, { recursive: true })
+    const comment = redactSecrets(String(decision.comment || '')).trim()
+    const lines = [
+      `## ${decision.decidedAt || ''} ${params.checkpointKey || ''}`.trim(),
+      '',
+      `- gate: ${decision.gateId} (revision ${decision.gateRevision})`,
+      `- reason: ${decision.reason}`,
+      `- outcome: ${decision.outcome}`,
+      `- candidate: ${decision.candidateCommit || ''}`,
+      ...(decision.upstreamCheckpointId ? [`- upstream: ${decision.upstreamCheckpointId}`] : []),
+      ...(decision.impactHash ? [`- impact: ${decision.impactHash}`] : []),
+      ...(decision.driftChoice ? [`- drift: ${decision.driftChoice}`] : []),
+      `- commitToGit: ${decision.commitToGit === true}`,
+      '',
+      comment || '(no comment)',
+      '',
+      marker,
+      '',
+    ]
+    fs.appendFileSync(file, `${lines.join('\n')}\n`)
+    return null
+  }
+
+  #stampChanges(context, params) {
+    const commit = String(params?.candidateCommit || '')
+    if (!commit) return null
+    const file = path.join(context.project.workdir, 'meldwork', 'changes.md')
+    let source = ''
+    try { source = fs.readFileSync(file, 'utf8') } catch { return null }
+    const marker = `<!-- meldwork:${params.effectId || commit} -->`
+    if (source.includes(marker)) return null
+    const targets = new Set(Array.isArray(params.targetFiles) ? params.targetFiles : [])
+    let changed = false
+    const lines = source.split(/\r?\n/).map((line) => {
+      const match = /^(-\s*\[path=)([^\s\]]+)([^\]]*)\]/.exec(line)
+      if (!match || /\bto=/.test(match[3])) return line
+      if (targets.size && !targets.has(match[2])) return line
+      changed = true
+      return `${match[1]}${match[2]}${match[3]} to=${commit}]`
+    })
+    if (!changed) return null
+    lines.push('', marker, '')
+    fs.writeFileSync(file, lines.join('\n'))
+    return null
+  }
+
   #handlersFor(context) {
     const projectId = context.project.id
     if (typeof this.effectHandlers === 'function') {
       return this.effectHandlers({ context, projectId })
     }
     const hooks = {
+      writeReviewFile: async () => null,
+      appendDecision: params => this.#appendDecision(context, params),
+      stampChanges: params => this.#stampChanges(context, params),
+      notify: async () => null,
       ...this.effectHooks,
       appendMessage: async (params) => {
         const store = this.pendingMessageStore(projectId)
@@ -618,7 +678,7 @@ class ProjectService {
     )
   }
 
-  gateDetail({ projectId, gateId, gateRevision }) {
+  async gateDetail({ projectId, gateId, gateRevision }) {
     const context = this.#context(projectId)
     const state = context.store?.current()
     if (!state) throw projectError('PROJECT_NOT_FOUND', { projectId })
@@ -627,6 +687,36 @@ class ProjectService {
       throw projectError('PROJECT_GATE_STALE')
     }
     const gate = instance.gate
+    const def = state.config.playbook.checkpointDefs
+      .find(item => item.key === instance.checkpointKey)
+    const paths = def?.targetFiles || []
+    let commitToGit = {
+      available: false,
+      reasons: [{ path: '', reason: 'git-unavailable' }],
+    }
+    if (this.userGit?.userRepoPreflight && context.shadowRepo?.entriesAtCommit
+        && gate.candidateCommit && paths.length) {
+      try {
+        const acceptedEntries = await context.shadowRepo.entriesAtCommit(
+          gate.candidateCommit,
+          paths,
+        )
+        const preflight = await this.userGit.userRepoPreflight({
+          workTree: context.project.workdir,
+          paths,
+          acceptedEntries,
+        })
+        commitToGit = {
+          available: preflight.ok === true,
+          reasons: preflight.reasons || [],
+        }
+      } catch (error) {
+        commitToGit = {
+          available: false,
+          reasons: [{ path: '', reason: String(error?.code || 'git-preflight-failed') }],
+        }
+      }
+    }
     return {
       projectId,
       checkpointId: instance.id,
@@ -638,6 +728,7 @@ class ProjectService {
       candidateCommit: gate.candidateCommit,
       allowedOutcomes: allowedGateOutcomes(gate.reason),
       firstScreen: gate.firstScreen,
+      commitToGit,
     }
   }
 

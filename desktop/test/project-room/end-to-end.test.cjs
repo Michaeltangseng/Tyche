@@ -1,5 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const { execFileSync } = require('node:child_process')
 const fs = require('node:fs')
 const path = require('node:path')
 const { LocalWorkspace } = require('../../src/workspace/local-workspace.cjs')
@@ -8,6 +9,7 @@ const { ShadowRepo } = require('../../src/project-room/shadow-git.cjs')
 const { CustomAgentStore } = require('../../src/agents/custom-agent-store.cjs')
 const { emptyProjectState } = require('../../src/project-room/project-state-schema.cjs')
 const { RunScheduler } = require('../../src/runs/run-scheduler.cjs')
+const userGit = require('../../src/project-room/user-git.cjs')
 const { fixture } = require('../support/local-workspace-test-helpers.cjs')
 
 const at = '2026-01-01T00:00:00.000Z'
@@ -127,12 +129,7 @@ async function setup(t, scriptsOverride = {}) {
     templatesStore: { templates: [], get: () => null, load: async () => [], save: async () => null },
     createId: (() => { let id = 0; return () => `id-${id += 1}` })(),
     now: () => at,
-    effectHooks: {
-      appendDecision: async () => null,
-      stampChanges: async () => null,
-      writeReviewFile: async () => null,
-      notify: async () => null,
-    },
+    ...(scriptsOverride.userGit ? { userGit: scriptsOverride.userGit } : {}),
   })
   await service.start()
   return { service, workspace, directory, workdir, mainGroup }
@@ -140,6 +137,11 @@ async function setup(t, scriptsOverride = {}) {
 
 test('a document checkpoint runs from start to acceptance with fake Agents', async (t) => {
   const { service, workspace, workdir } = await setup(t)
+  fs.mkdirSync(path.join(workdir, 'meldwork'), { recursive: true })
+  fs.writeFileSync(
+    path.join(workdir, 'meldwork', 'changes.md'),
+    `- [path=docs/requirements.md from=${'b'.repeat(40)}]\n`,
+  )
   await service.startProject({ projectId: 'project-1', brief: 'Write the requirements.' })
   const engine = service.engineFor('project-1')
   await engine.runUntilIdle()
@@ -173,6 +175,12 @@ test('a document checkpoint runs from start to acceptance with fake Agents', asy
     fs.existsSync(path.join(workdir, 'meldwork', 'reviews', 'requirements', 'r1-seat-reviewer.md')),
     true,
   )
+  const decisions = fs.readFileSync(path.join(workdir, 'meldwork', 'decisions.md'), 'utf8')
+  assert.match(decisions, /- outcome: accept/)
+  assert.match(decisions, /<!-- meldwork:/)
+  const changes = fs.readFileSync(path.join(workdir, 'meldwork', 'changes.md'), 'utf8')
+  assert.match(changes, /to=[0-9a-f]{40}/)
+  assert.match(changes, /<!-- meldwork:/)
   const messages = workspace.state.messages.filter(message => message.projectRoom)
   assert.ok(messages.some(message => message.role === 'agent' && message.content === 'Draft ready'))
   assert.ok(messages.some(message => message.role === 'agent' && message.content.includes('looks good')))
@@ -583,4 +591,46 @@ test('restarting with an interrupted writable call opens a recovery gate', async
   assert.equal(snapshot.gates[0].reason, 'recovery')
   const state = service.contextFor('project-1').store.current()
   assert.deepEqual(state.instances[0].activeInvocations, [])
+})
+
+test('accepting with commitToGit commits the accepted files to the user repository', async (t) => {
+  const { service, workdir } = await setup(t, { userGit })
+  execFileSync('git', ['init', '-q'], { cwd: workdir })
+  execFileSync('git', ['config', 'user.name', 'Meldwork Test'], { cwd: workdir })
+  execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: workdir })
+
+  await service.startProject({ projectId: 'project-1', brief: 'Write the requirements.' })
+  const engine = service.engineFor('project-1')
+  await engine.runUntilIdle()
+
+  const gate = service.snapshot('project-1').gates[0]
+  const detail = await service.gateDetail({
+    projectId: 'project-1', gateId: gate.gateId, gateRevision: gate.revision,
+  })
+  assert.equal(detail.commitToGit.available, true)
+  assert.deepEqual(detail.commitToGit.reasons, [])
+
+  await service.decideGate({
+    projectId: 'project-1',
+    gateId: gate.gateId,
+    gateRevision: gate.revision,
+    candidateCommit: gate.candidateCommit,
+    outcome: 'accept',
+    comment: 'Accepted.',
+    commitToGit: true,
+  })
+  await engine.runUntilIdle()
+
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: workdir, encoding: 'utf8' }).trim()
+  assert.match(head, /^[0-9a-f]{40}$/)
+  const trailer = execFileSync('git', [
+    'log', '-1', '--format=%(trailers:key=Meldwork-Decision,valueonly)', 'HEAD',
+  ], { cwd: workdir, encoding: 'utf8' }).trim()
+  assert.equal(trailer, gate.gateId)
+  assert.equal(execFileSync('git', ['show', 'HEAD:docs/requirements.md'], {
+    cwd: workdir, encoding: 'utf8',
+  }).trim(), 'Version 1')
+  assert.equal(execFileSync('git', ['status', '--porcelain', '--', 'docs/requirements.md'], {
+    cwd: workdir, encoding: 'utf8',
+  }).trim(), '')
 })

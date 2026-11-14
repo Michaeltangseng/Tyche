@@ -670,6 +670,43 @@ class ShadowRepo {
     }
   }
 
+  async entriesAtCommit(commit, paths = []) {
+    const requested = [...new Set((Array.isArray(paths) ? paths : []).map(String))]
+    const args = ['ls-tree', '-r', '-z', commit]
+    if (requested.length) args.push('--', ...requested)
+    const { stdout } = await this.git(args)
+    const found = new Map()
+    for (const token of String(stdout || '').split('\0')) {
+      if (!token) continue
+      const tab = token.indexOf('\t')
+      if (tab < 0) continue
+      const [mode, type, oid] = token.slice(0, tab).split(' ')
+      found.set(token.slice(tab + 1), { mode, type, oid })
+    }
+    const entries = {}
+    for (const relative of requested) {
+      const entry = found.get(relative)
+      if (!entry) {
+        entries[relative] = { exists: false }
+        continue
+      }
+      if (entry.type !== 'blob') {
+        entries[relative] = { kind: 'other' }
+        continue
+      }
+      const { stdout: content } = await this.gitBuffer(['cat-file', 'blob', entry.oid])
+      const bytes = Buffer.isBuffer(content) ? content : Buffer.from(content || '')
+      entries[relative] = entry.mode === '120000'
+        ? { kind: 'link', target: bytes.toString('utf8') }
+        : {
+          kind: 'file',
+          mode: entry.mode,
+          sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
+        }
+    }
+    return entries
+  }
+
   async fileDiff(a, b, relative, { maxBytes = 2 * 1024 * 1024 } = {}) {
     const args = ['diff', '--no-color', '--no-ext-diff', '-M', a]
     if (b) args.push(b)

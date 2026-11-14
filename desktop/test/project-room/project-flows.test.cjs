@@ -189,7 +189,7 @@ test('gateDetail returns the full first screen and allowed outcomes', async (t) 
   }]
   const { service } = await makeService(t, state)
 
-  const detail = service.gateDetail({
+  const detail = await service.gateDetail({
     projectId: 'project-1', gateId: 'gate-question', gateRevision: 2,
   })
   assert.equal(detail.checkpointId, 'cp-1')
@@ -198,8 +198,9 @@ test('gateDetail returns the full first screen and allowed outcomes', async (t) 
   assert.deepEqual(detail.allowedOutcomes, ['continue', 'reject-upstream'])
   assert.equal(detail.firstScreen.reviewSummaries.length, 1)
   assert.equal(detail.firstScreen.reviewSummaries[0].summary, 'Needs a decision.')
+  assert.equal(detail.commitToGit.available, false)
 
-  assert.throws(() => service.gateDetail({
+  await assert.rejects(service.gateDetail({
     projectId: 'project-1', gateId: 'gate-question', gateRevision: 1,
   }), { code: 'PROJECT_GATE_STALE' })
 })

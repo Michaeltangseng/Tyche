@@ -68,6 +68,11 @@ const {
 } = require('./agents/local-agent-readiness.cjs')
 const { LocalWorkspace } = require('./workspace/local-workspace.cjs')
 const { ProjectService } = require('./project-room/project-service.cjs')
+const {
+  userRepoCheckTrailer,
+  userRepoCommit,
+  userRepoPreflight,
+} = require('./project-room/user-git.cjs')
 const { TemplatesStore } = require('./project-room/templates-store.cjs')
 const { ProjectDeletion } = require('./project-room/project-deletion.cjs')
 const { AppPreferencesStore } = require('./project-room/app-preferences.cjs')
@@ -1191,6 +1196,7 @@ if (!hasSingleInstanceLock) {
         scheduler,
         templatesStore,
         isPreviewEnabled: () => appPreferences?.isProjectRoomEnabled() === true,
+        userGit: { userRepoCheckTrailer, userRepoCommit, userRepoPreflight },
       })
       projectDeletion = new ProjectDeletion({
         workspace: startupWorkspace,

@@ -114,7 +114,7 @@ class CheckpointEngine {
     }
   }
 
-  #prepareEffect(instance, effect) {
+  async #prepareEffect(instance, effect) {
     const state = this.store.current()
     const def = state?.config.playbook.checkpointDefs
       .find(item => item.key === instance.checkpointKey) || null
@@ -169,6 +169,31 @@ class CheckpointEngine {
       ]
       params.parent = instance.artifactVersions.at(-1)?.commit || null
       params.message = `Meldwork checkpoint ${instance.checkpointKey}`
+    } else if (effect.type === 'append-decision') {
+      params.decision = instance.decisions.at(-1) || null
+      params.checkpointKey = instance.checkpointKey
+      params.effectId = effect.id
+    } else if (effect.type === 'stamp-changes') {
+      params.decision = instance.decisions.at(-1) || null
+      params.candidateCommit = instance.candidate
+      params.targetFiles = def?.targetFiles || []
+      params.effectId = effect.id
+    } else if (effect.type === 'user-git-commit') {
+      const decision = instance.decisions.at(-1) || null
+      params.workTree = this.workdir
+      params.paths = def?.targetFiles || []
+      params.message = `Meldwork checkpoint ${instance.checkpointKey}`
+      params.decisionId = decision?.gateId || ''
+      params.effectId = effect.id
+      params.acceptedEntries = {}
+      if (this.shadowRepo?.entriesAtCommit && instance.candidate && params.paths.length) {
+        try {
+          params.acceptedEntries = await this.shadowRepo.entriesAtCommit(
+            instance.candidate,
+            params.paths,
+          )
+        } catch { params.acceptedEntries = {} }
+      }
     }
     return { ...effect, params }
   }
@@ -543,7 +568,7 @@ class CheckpointEngine {
         await this.#markEffect(effect.id, 'consumed')
         continue
       }
-      const prepared = this.#prepareEffect(instance, effect)
+      const prepared = await this.#prepareEffect(instance, effect)
       this.effectParams.set(effect.id, prepared.params)
       const canWrite = !instance.blockedOn && !this.store.getStorageFault?.()
       const callWindow = canWrite ? await this.#beginCallWindow(instance, prepared) : null
