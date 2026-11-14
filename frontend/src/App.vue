@@ -80,12 +80,21 @@
           @select-group="selectGroup"
         />
 
-        <section v-else class="conversation-pane">
+        <section v-else class="conversation-pane" :class="{ 'project-room-pane': isProjectMainGroup }">
           <ConversationHeader ref="conversationHeader" :controller="conversationHeaderController" />
+
+          <ProjectRoomProgress
+            v-if="isProjectMainGroup"
+            :controller="projectRoomProgressController"
+          />
 
           <ConversationTimelineView :controller="timelineController" />
 
-          <ConversationComposer :controller="composerController" />
+          <ProjectRoomComposer
+            v-if="isProjectMainGroup"
+            :controller="projectRoomComposerController"
+          />
+          <ConversationComposer v-else :controller="composerController" />
         </section>
       </section>
 
@@ -204,6 +213,8 @@ import ConversationHeader from './components/ConversationHeader.vue'
 import ConversationTimelineView from './components/ConversationTimelineView.vue'
 import HomeDashboard from './components/HomeDashboard.vue'
 import OnboardingDialog from './components/OnboardingDialog.vue'
+import ProjectRoomComposer from './components/ProjectRoomComposer.vue'
+import ProjectRoomProgress from './components/ProjectRoomProgress.vue'
 import RunTracePanel from './components/RunTracePanel.vue'
 import SystemSettingsView from './components/SystemSettingsView.vue'
 import WorkspaceModalContent from './components/WorkspaceModalContent.vue'
@@ -235,6 +246,7 @@ import { useKnowledgeBaseSettings } from './composables/useKnowledgeBaseSettings
 import { useMessageActions } from './composables/useMessageActions.js'
 import { useOnboarding } from './composables/useOnboarding.js'
 import { useOverlayLifecycle } from './composables/useOverlayLifecycle.js'
+import { useProjectRoomView } from './composables/useProjectRoomView.js'
 import { useRunFinishedNotifications } from './composables/useRunFinishedNotifications.js'
 import { useSystemSettingsNavigation } from './composables/useSystemSettingsNavigation.js'
 import { useWorkspaceNavigationState } from './composables/useWorkspaceNavigationState.js'
@@ -360,6 +372,7 @@ const {
 const conversationNavigation = useConversationNavigation({ agentLabel, locale, snapshot, t })
 const {
   directGroupsFor,
+  formatNavTime,
   groupName,
   isDirectCreationPending,
   recentGroupMeta,
@@ -405,6 +418,7 @@ const {
   pendingDecisionsExpanded,
   projectRoomEntries,
   projectRoomStatusLabel,
+  projectTarget,
   selectGroup,
   selectPendingDecision,
   selectProjectRoom,
@@ -412,6 +426,19 @@ const {
   togglePendingDecisions,
   toggleProjectRoomExpanded,
 } = workspaceNavigationState
+const projectRoomView = useProjectRoomView({
+  activeGroup,
+  formatNavTime,
+  normalizeSnapshot,
+  projectTarget,
+  selectGroup,
+  showError,
+  snapshot,
+  sortByUpdated,
+  t,
+  workspace,
+})
+const isProjectMainGroup = projectRoomView.isMainGroup
 const sending = computed(() => (
   Boolean(selectedGroupId.value && sendingGroupIds.value.has(selectedGroupId.value))
 ))
@@ -813,6 +840,8 @@ const {
 const {
   composerController,
   conversationHeaderController,
+  projectRoomComposerController,
+  projectRoomProgressController,
   timelineController,
 } = createConversationControllers({
   agentCatalog,
@@ -829,6 +858,24 @@ const {
     maxRounds,
     messageScroller,
     productWordmark,
+    activeTargetId: projectRoomView.activeTargetId,
+    canSend: projectRoomView.canSend,
+    currentItem: projectRoomView.currentItem,
+    draft: projectRoomView.draft,
+    lastActivityLabel: projectRoomView.lastActivityLabel,
+    openProjectChat: projectRoomView.openProjectChat,
+    otherGateCount: projectRoomView.otherGateCount,
+    progressItems: projectRoomView.progressItems,
+    requestReopen: projectRoomView.requestReopen,
+    selectNextGateTarget: projectRoomView.selectNextGateTarget,
+    selectTarget: projectRoomView.selectTarget,
+    sendErrorLabel: projectRoomView.sendErrorLabel,
+    sendLabel: projectRoomView.sendLabel,
+    sendTargetText: projectRoomView.sendTargetText,
+    targetAvailable: projectRoomView.targetAvailable,
+    targetHint: projectRoomView.targetHint,
+    targetLabel: projectRoomView.targetLabel,
+    targetPurposeLabel: projectRoomView.targetPurposeLabel,
     requestUnlimitedRounds,
     roundProgressPercent,
     roundSettingsControl,

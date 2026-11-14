@@ -1259,3 +1259,332 @@
 .danger-button:hover {
   filter: brightness(0.96);
 }
+
+.project-room-progress {
+  width: min(var(--conversation-content-width), 100%);
+  min-width: 0;
+  margin: 0 auto;
+  display: grid;
+  gap: 6px;
+  padding: 0 4px 10px;
+}
+
+.progress-chain {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 2px 0;
+}
+
+.progress-step {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-raised);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.progress-step:hover,
+.progress-step:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.progress-step.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+.progress-step.gate {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+  color: var(--accent);
+}
+
+.progress-step.accepted {
+  border-color: color-mix(in srgb, var(--success, #2f8f63) 48%, var(--border));
+  color: var(--success, #2f8f63);
+}
+
+.progress-step.blocked {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.progress-step.stale {
+  border-style: dashed;
+}
+
+.progress-empty {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.progress-summary {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.progress-summary-main {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  text-align: left;
+  cursor: pointer;
+}
+
+.progress-summary-main strong,
+.progress-summary-main span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-summary-main strong {
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.progress-summary-main span {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.progress-activity {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+
+.progress-toggle {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+}
+
+.progress-toggle:hover,
+.progress-toggle:focus-visible {
+  outline: none;
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.progress-list {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-raised) 82%, var(--surface-active) 18%);
+}
+
+.progress-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--radius-sm);
+}
+
+.progress-row.active {
+  background: var(--surface-active);
+}
+
+.progress-row-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-soft);
+  text-align: left;
+  cursor: pointer;
+}
+
+.progress-row-main:hover,
+.progress-row-main:focus-visible {
+  outline: none;
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.progress-row-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.progress-row-copy strong,
+.progress-row-copy small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-row-copy strong {
+  font-size: var(--text-sm);
+}
+
+.progress-row-copy small {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.progress-reopen {
+  margin-right: 6px;
+  padding: 3px 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+}
+
+.progress-reopen:hover,
+.progress-reopen:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.project-room-composer-zone {
+  display: grid;
+  gap: 8px;
+}
+
+.project-target-bar,
+.project-composer-box {
+  width: min(var(--conversation-content-width), 100%);
+  min-width: 0;
+  margin: 0 auto;
+}
+
+.project-target-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.project-target-label {
+  color: var(--text-soft);
+  font-weight: 600;
+}
+
+.project-target-purpose {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+}
+
+.project-target-next,
+.project-target-chat {
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.project-target-chat {
+  margin-left: auto;
+}
+
+.project-target-next:hover,
+.project-target-next:focus-visible,
+.project-target-chat:hover,
+.project-target-chat:focus-visible {
+  outline: none;
+  text-decoration: underline;
+}
+
+.project-composer-box {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface-raised) 88%, var(--surface-active) 12%);
+  box-shadow: 0 8px 22px rgb(32 43 53 / 0.08);
+}
+
+.project-composer-input {
+  width: 100%;
+  min-height: 58px;
+  max-height: 180px;
+  resize: vertical;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+}
+
+.project-composer-input::placeholder {
+  color: var(--muted);
+}
+
+.project-composer-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.project-composer-footer {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.project-composer-error {
+  min-width: 0;
+  margin-right: auto;
+  color: var(--danger);
+  font-size: var(--text-xs);
+}

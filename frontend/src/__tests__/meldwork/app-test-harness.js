@@ -211,6 +211,24 @@ export function createBridge() {
     open: vi.fn(async () => true),
     discard: vi.fn(async ids => ({ discardedIds: [...ids], retainedIds: [] })),
   }
+  const projectRoom = {
+    snapshot: vi.fn(async ({ projectId }) => ({
+      projectId,
+      revision: 1,
+      progress: [],
+      gates: [],
+      driftItems: [],
+      outOfScopeItems: [],
+      residuals: [],
+      config: {},
+    })),
+    onChanged: vi.fn(() => vi.fn()),
+    onOpen: vi.fn(() => vi.fn()),
+    start: vi.fn(async () => ({})),
+    interject: vi.fn(async () => ({})),
+    decideGate: vi.fn(async () => ({})),
+    previewReopen: vi.fn(async () => ({ impact: [] })),
+  }
   return {
     bridge: {
       localWorkspace: workspace,
@@ -221,6 +239,7 @@ export function createBridge() {
       },
       localKnowledgeBase,
       localAttachments,
+      projectRoom,
     },
     state,
     emitWorkspaceChanged(value = state) { workspaceChanged?.(snapshot(value)) },

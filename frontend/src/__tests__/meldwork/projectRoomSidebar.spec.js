@@ -130,6 +130,68 @@ describe('project room sidebar', () => {
     wrapper.unmount()
   })
 
+  it('shows progress and the project composer in the main project chat', async () => {
+    const { wrapper, bridge } = await mountApp(({ state, bridge: desktopBridge }) => {
+      seedProjects(state)
+      state.messages.push({
+        id: 'message-1',
+        groupId: 'main-1',
+        role: 'agent',
+        content: 'Working on the requirements.',
+        createdAt: '2026-07-29T09:50:00Z',
+        projectRoom: { checkpointId: 'cp-1' },
+      })
+      desktopBridge.projectRoom.snapshot.mockResolvedValue({
+        projectId: 'project-1',
+        revision: 1,
+        progress: [{
+          checkpointId: 'cp-1',
+          checkpointKey: 'requirements',
+          name: 'Requirements',
+          state: 'leading',
+          round: 1,
+          roundsSinceHuman: 1,
+          leadSeatId: 'seat-1',
+          leadSeatName: 'Lead',
+          reviewerSeatIds: [],
+          waitingOn: 'lead',
+          hasGate: false,
+          blocked: false,
+        }],
+        gates: [],
+        driftItems: [],
+        outOfScopeItems: [],
+        residuals: [],
+        config: {},
+      })
+    })
+
+    await wrapper.get('.project-room-open').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.project-room-progress').exists()).toBe(true)
+    expect(wrapper.get('.project-room-progress').text()).toContain('Requirements')
+    expect(wrapper.get('.project-room-progress').text()).toContain('Lead working')
+    expect(wrapper.get('.project-room-progress').text()).toContain('Last activity')
+    expect(wrapper.find('.project-room-composer-zone').exists()).toBe(true)
+    expect(wrapper.find('.composer-context-row').exists()).toBe(false)
+    expect(wrapper.get('.project-target-bar').text()).toContain('Operating on: Requirements')
+    expect(wrapper.get('.project-target-bar').text()).toContain('Interjection')
+    expect(wrapper.get('.project-composer-input').attributes('placeholder'))
+      .toContain('Comment on Requirements')
+
+    await wrapper.get('.project-composer-input').setValue('A note')
+    await wrapper.get('.project-room-composer-zone .send-button').trigger('click')
+    await flushPromises()
+    expect(bridge.projectRoom.interject).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      checkpointId: 'cp-1',
+      purpose: 'interjection',
+      text: 'A note',
+    })
+    wrapper.unmount()
+  })
+
   it('shows no project room entries when the workspace snapshot does not include them', async () => {
     const { wrapper } = await mountApp(({ state }) => {
       state.groups.push(

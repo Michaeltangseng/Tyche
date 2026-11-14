@@ -127,6 +127,32 @@ export function createConversationControllers({
     theme: app.theme,
   }
 
+  const projectRoomProgressController = {
+    activeTargetId: app.activeTargetId,
+    currentItem: app.currentItem,
+    lastActivityLabel: app.lastActivityLabel,
+    progressItems: app.progressItems,
+    requestReopen: app.requestReopen,
+    selectTarget: app.selectTarget,
+    t: app.t,
+  }
+
+  const projectRoomComposerController = {
+    canSend: app.canSend,
+    draft: app.draft,
+    openProjectChat: app.openProjectChat,
+    otherGateCount: app.otherGateCount,
+    selectNextGateTarget: app.selectNextGateTarget,
+    sendErrorLabel: app.sendErrorLabel,
+    sendLabel: app.sendLabel,
+    sendTargetText: app.sendTargetText,
+    targetAvailable: app.targetAvailable,
+    targetHint: app.targetHint,
+    targetLabel: app.targetLabel,
+    targetPurposeLabel: app.targetPurposeLabel,
+    t: app.t,
+  }
+
   const composerController = {
     activeGroup: app.activeGroup,
     activeRun: app.activeRun,
@@ -195,5 +221,11 @@ export function createConversationControllers({
     unlimitedRounds: app.unlimitedRounds,
   }
 
-  return { composerController, conversationHeaderController, timelineController }
+  return {
+    composerController,
+    conversationHeaderController,
+    projectRoomComposerController,
+    projectRoomProgressController,
+    timelineController,
+  }
 }
