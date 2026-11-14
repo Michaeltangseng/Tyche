@@ -62,6 +62,9 @@ class EffectRunner {
         ...(invocation?.pendingMessageRef
           ? { pendingMessageRef: invocation.pendingMessageRef }
           : {}),
+        ...(invocation?.pendingMessage
+          ? { pendingMessage: invocation.pendingMessage }
+          : {}),
       }
     }
     if (effect.type === 'cancel-invocation') {

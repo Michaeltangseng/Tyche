@@ -153,6 +153,83 @@ for (const state of states) {
   }
 }
 
+function minimalInstance(state, overrides = {}) {
+  return {
+    id: 'cp-1',
+    checkpointKey: 'requirements',
+    state,
+    seq: 0,
+    epoch: 0,
+    round: 0,
+    roundsSinceHuman: 0,
+    continuations: 0,
+    sessionGeneration: 0,
+    candidate: 'a'.repeat(40),
+    rounds: [],
+    roundsSummary: [],
+    leaseRequests: [],
+    activeInvocations: [],
+    pendingStart: null,
+    drafts: [],
+    interjections: [],
+    gate: null,
+    blockedOn: null,
+    effects: [],
+    artifactVersions: [],
+    readVersions: {},
+    decisions: [],
+    ...overrides,
+  }
+}
+
+test('a staged answer creates append-message after the result is isolated', () => {
+  const testConfig = {
+    checkpoint: {
+      key: 'requirements', leadSeatId: 'seat-lead', reviewerSeatIds: [],
+      draftSeatIds: [], gate: 'hard', roundLimit: 3, continuationLimit: 3,
+    },
+    readExecSeatIds: [],
+  }
+  const leading = minimalInstance('leading', {
+    activeInvocations: [{
+      effectId: 'invoke-1', role: 'lead', seatId: 'seat-lead', agentKind: 'codex',
+      round: 0, sessionGeneration: 0, claims: [], cancellationRequested: false,
+      processRegistryId: null,
+    }],
+  })
+  const result = transition(leading, {
+    type: 'INVOCATION_ENDED',
+    at: '2026-01-01T00:00:00.000Z',
+    payload: {
+      effectId: 'invoke-1', role: 'lead', seatId: 'seat-lead', round: 0,
+      sessionGeneration: 0, marker: 'ready', pendingMessageRef: 'pending-1',
+    },
+  }, testConfig)
+  assert.ok(result.effects.some(effect => effect.type === 'append-message'))
+
+  const reviewing = minimalInstance('reviewing', {
+    round: 1,
+    rounds: [{
+      round: 1, candidate: 'a'.repeat(40), rebuttal: false, bodyChanged: true,
+      startedAt: '2026-01-01T00:00:00.000Z', reviews: [],
+    }],
+    activeInvocations: [{
+      effectId: 'invoke-2', role: 'reviewer', seatId: 'seat-reviewer', agentKind: 'claude',
+      round: 1, sessionGeneration: 0, claims: [], cancellationRequested: true,
+      processRegistryId: null,
+    }],
+  })
+  const cancelled = transition(reviewing, {
+    type: 'INVOCATION_ENDED',
+    at: '2026-01-01T00:00:00.000Z',
+    payload: {
+      effectId: 'invoke-2', role: 'reviewer', seatId: 'seat-reviewer', round: 1,
+      sessionGeneration: 0, cancelled: true, pendingMessageRef: 'pending-2',
+    },
+  }, testConfig)
+  assert.equal(cancelled.effects.some(effect => effect.type === 'append-message'), false)
+})
+
 test('the table covers every row of the documented tables', () => {
   assert.equal(rows.length > 0, true)
   const pairs = new Set(rows.map((row) => {

@@ -334,13 +334,36 @@ class ProjectService {
   }
 
   #handlersFor(context) {
+    const projectId = context.project.id
     if (typeof this.effectHandlers === 'function') {
-      return this.effectHandlers({ context, projectId: context.project.id })
+      return this.effectHandlers({ context, projectId })
+    }
+    const hooks = {
+      ...this.effectHooks,
+      appendMessage: async (params) => {
+        const store = this.pendingMessageStore(projectId)
+        const payload = store.read(params?.ref)
+        if (!payload) return null
+        const metadata = payload.metadata || {}
+        this.workspace.insertProjectRoomMessage({
+          id: metadata.id,
+          groupId: metadata.groupId,
+          role: metadata.role,
+          agentKind: metadata.agentKind,
+          content: payload.body,
+          createdAt: metadata.createdAt,
+          projectRoom: metadata.projectRoom,
+          ...(metadata.trace ? { trace: metadata.trace } : {}),
+          ...(metadata.elapsedMs != null ? { elapsedMs: metadata.elapsedMs } : {}),
+        })
+        await store.consume(params.ref)
+        return null
+      },
     }
     return createEffectHandlers({
       shadowRepo: context.shadowRepo,
       userGit: this.userGit,
-      ...this.effectHooks,
+      ...hooks,
     })
   }
 
@@ -369,6 +392,7 @@ class ProjectService {
       },
       shadowRepo: context.shadowRepo,
       snapshotLimits: state?.config.settings.snapshotLimits || {},
+      stageMessage: input => this.stageProjectMessage(context.project.id, input),
       now: this.now,
     })
     return context.engine

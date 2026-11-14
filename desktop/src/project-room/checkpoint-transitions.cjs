@@ -221,6 +221,9 @@ function handleInvocationEnded(instance, event, config, effects, diagnostics) {
   }
   const removed = removeInvocation(instance, payload.effectId)
   consumeEffect(instance, payload.effectId, 'consumed', eventAt)
+  if (payload.pendingMessageRef && !(payload.cancelled && payload.role === 'reviewer')) {
+    addEffect(effects, 'append-message', { ref: payload.pendingMessageRef })
+  }
   if (payload.role === 'draft') {
     if (instance.state !== 'drafting') return false
     const limit = config?.checkpoint?.continuationLimit ?? 3

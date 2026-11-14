@@ -314,6 +314,55 @@ test('a writable call records its time window and out-of-scope changes', async (
   })
 })
 
+test('the engine stages invocation answers and appends them as messages', async (t) => {
+  const state = baseState()
+  state.instances = [instance('leading', {
+    activeInvocations: [{
+      effectId: 'invoke-lead', role: 'lead', seatId: 'seat-lead', agentKind: 'codex',
+      round: 0, sessionGeneration: 0, claims: [], cancellationRequested: false,
+      processRegistryId: null,
+    }],
+    effects: [effect('invoke-lead', 'invoke-lead', {
+      category: 'invocation', params: { seatId: 'seat-lead', round: 0, sessionGeneration: 0 },
+    })],
+  })]
+  const staged = []
+  const { store, engine } = await engineFixture(t, state, {
+    engineOptions: {
+      invoke: async ({ effect: value, round, sessionGeneration }) => ({
+        role: 'lead',
+        seatId: 'seat-lead',
+        round: value.params?.round ?? round ?? 0,
+        sessionGeneration: value.params?.sessionGeneration ?? sessionGeneration ?? 0,
+        marker: value.type === 'invoke-reviewer' ? 'pass' : 'ready',
+        ...(value.type === 'invoke-lead' ? {
+          pendingMessage: {
+            sourceKey: ['project-1', 'invoke', value.id],
+            body: 'Answer',
+            metadata: { id: 'message-1', groupId: 'group-1', role: 'agent', agentKind: 'codex' },
+          },
+        } : {}),
+      }),
+      stageMessage: async (input) => {
+        staged.push(input)
+        return { ref: 'pending-ref' }
+      },
+      handlers: {
+        ...handlers(),
+        'append-message': async () => null,
+      },
+    },
+  })
+  await engine.runUntilIdle()
+  assert.equal(staged.length, 1)
+  assert.equal(staged[0].body, 'Answer')
+  const current = store.current().instances[0]
+  assert.notEqual(current.state, 'leading')
+  const append = current.effects.find(item => item.type === 'append-message')
+  assert.equal(append.status, 'consumed')
+  assert.equal(append.params.ref, 'pending-ref')
+})
+
 test('a detection barrier turns a soft pass into a hard gate', async (t) => {
   const state = baseState()
   state.config.playbook.checkpointDefs[0].gate = 'soft'

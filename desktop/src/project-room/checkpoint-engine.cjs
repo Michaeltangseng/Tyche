@@ -51,6 +51,7 @@ class CheckpointEngine {
     getManifest = () => null,
     shadowRepo = null,
     snapshotLimits = {},
+    stageMessage = null,
     now = () => new Date().toISOString(),
   } = {}) {
     if (!projectId) throw engineError('PROJECT_INPUT_INVALID', { reason: 'project-id-required' })
@@ -80,6 +81,7 @@ class CheckpointEngine {
     this.getManifest = getManifest
     this.shadowRepo = shadowRepo
     this.snapshotLimits = snapshotLimits
+    this.stageMessage = typeof stageMessage === 'function' ? stageMessage : null
   }
 
   #instance(checkpointId) {
@@ -513,6 +515,13 @@ class CheckpointEngine {
         return
       }
       if (result.type === 'INVOCATION_ENDED') {
+        let pendingMessageRef = result.pendingMessageRef || ''
+        if (!pendingMessageRef && result.pendingMessage && this.stageMessage) {
+          try {
+            const staged = await this.stageMessage(result.pendingMessage)
+            pendingMessageRef = staged?.ref || ''
+          } catch { /* message staging is best effort for the result */ }
+        }
         await this.dispatch(checkpointId, {
           type: 'INVOCATION_ENDED',
           at: this.now(),
@@ -525,7 +534,7 @@ class CheckpointEngine {
             ...(result.marker ? { marker: result.marker } : {}),
             ...(result.failed ? { failed: result.failed } : {}),
             ...(result.cancelled ? { cancelled: true } : {}),
-            ...(result.pendingMessageRef ? { pendingMessageRef: result.pendingMessageRef } : {}),
+            ...(pendingMessageRef ? { pendingMessageRef } : {}),
           },
         })
         continue
