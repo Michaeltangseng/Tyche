@@ -651,6 +651,25 @@ class ShadowRepo {
     return entries
   }
 
+  async fileAtCommit(commit, relative, { maxBytes = 1024 * 1024 } = {}) {
+    const text = String(relative || '')
+    if (!text || text.startsWith('/') || text.includes('\0')
+        || text.split('/').some(segment => segment === '..')) {
+      throw shadowError('SHADOW_PATH_INVALID')
+    }
+    try {
+      const { stdout } = await this.git(['show', `${commit}:${text}`])
+      const source = String(stdout || '')
+      return {
+        text: source.slice(0, maxBytes),
+        truncated: Buffer.byteLength(source, 'utf8') > maxBytes,
+      }
+    } catch (error) {
+      if (error?.code === 128) return null
+      throw error
+    }
+  }
+
   async fileDiff(a, b, relative, { maxBytes = 2 * 1024 * 1024 } = {}) {
     const args = ['diff', '--no-color', '--no-ext-diff', '-M', a]
     if (b) args.push(b)

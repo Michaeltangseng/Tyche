@@ -53,7 +53,7 @@ function platformPrompt({ role, rebuttal, language }) {
 }
 
 function buildProjectRoomPrompt({
-  project, state, instance, def, seat, role, round, mainGroup, brief = '',
+  project, state, instance, def, seat, role, round, mainGroup, brief = '', diffText = '',
 }) {
   const language = projectLanguage(state)
   const english = language === 'en'
@@ -95,6 +95,9 @@ function buildProjectRoomPrompt({
       `Target files: ${lines(def?.targetFiles).join(', ') || '(none)'}`,
       accepted.length ? `Accepted upstream versions:\n${accepted.map(item => `- ${item}`).join('\n')}` : '',
       role === 'review' && instance.candidate ? `Candidate commit under review: ${instance.candidate}` : '',
+      role === 'review' && diffText
+        ? `Diff against the previous round (truncated):\n${String(diffText).slice(0, 20000)}`
+        : '',
       reviewFiles.length ? `Prior review files:\n${reviewFiles.map(item => `- ${item}`).join('\n')}` : '',
       role === 'lead' && round > 1 ? `Prior response file: ${responseFile}` : '',
       pendingInterjections.length
@@ -111,6 +114,9 @@ function buildProjectRoomPrompt({
       `目标文件：${lines(def?.targetFiles).join('、') || '（无）'}`,
       accepted.length ? `已接受的上游版本：\n${accepted.map(item => `- ${item}`).join('\n')}` : '',
       role === 'review' && instance.candidate ? `正在评审的候选提交：${instance.candidate}` : '',
+      role === 'review' && diffText
+        ? `相对上一轮的 diff（可能截断）：\n${String(diffText).slice(0, 20000)}`
+        : '',
       reviewFiles.length ? `之前的评审文件：\n${reviewFiles.map(item => `- ${item}`).join('\n')}` : '',
       role === 'lead' && round > 1 ? `上一轮回应文件：${responseFile}` : '',
       pendingInterjections.length

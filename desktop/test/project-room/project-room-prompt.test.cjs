@@ -76,6 +76,7 @@ test('the reviewer prompt explains rebuttal rounds and asks for a summary', () =
     seat: state.config.seats[1],
     role: 'review',
     round: 1,
+    diffText: 'diff --git a/docs/requirements.md',
   })
   assert.match(prompt, /reviewer/)
   assert.match(prompt, /rebuttal round/)
@@ -83,4 +84,5 @@ test('the reviewer prompt explains rebuttal rounds and asks for a summary', () =
   assert.match(prompt, /MELDWORK_REVIEW/)
   assert.match(prompt, /Prior review files/)
   assert.match(prompt, /Candidate commit/)
+  assert.match(prompt, /diff --git/)
 })

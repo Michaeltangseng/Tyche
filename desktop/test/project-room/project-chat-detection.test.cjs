@@ -138,6 +138,7 @@ test('a writable project chat is checked, snapshotted, and detected before relea
   assert.equal(store.current().projectEffects[0].status, 'consumed')
   const instance = store.current().instances[0]
   assert.equal(instance.gate.reason, 'doc-new-version')
+  assert.equal(instance.gate.firstScreen.changesHeaderMissing, true)
 })
 
 test('non-critical accepted documents form a new artifact version', async (t) => {

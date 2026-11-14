@@ -358,6 +358,25 @@ class ProjectService {
     const startMessage = (this.workspace.state.messages || []).find(message => (
       message.groupId === mainGroup.id && message.projectRoom?.start === true
     ))
+    let diffText = ''
+    if (role === 'reviewer' && context.shadowRepo && instance.candidate) {
+      const previous = instance.rounds.at(-1)?.candidate
+      if (previous && previous !== instance.candidate) {
+        try {
+          const stats = await context.shadowRepo.numstat(
+            previous, instance.candidate, def?.targetFiles || [],
+          )
+          const parts = []
+          for (const entry of stats.slice(0, 20)) {
+            const diff = await context.shadowRepo.fileDiff(
+              previous, instance.candidate, entry.path, { maxBytes: 20000 },
+            )
+            parts.push(`--- ${entry.path} (+${entry.added}/-${entry.removed})\n${diff.text}`)
+          }
+          diffText = parts.join('\n')
+        } catch { /* diff is best effort */ }
+      }
+    }
     const prompt = buildProjectRoomPrompt({
       project: context.project,
       state,
@@ -368,6 +387,7 @@ class ProjectService {
       round,
       mainGroup,
       brief: String(startMessage?.content || ''),
+      diffText,
     })
     const contextPack = this.workspace.createContextPack({
       group: mainGroup,
@@ -1253,6 +1273,17 @@ class ProjectService {
       })
       return
     }
+    let changesHeaderMissing = true
+    try {
+      const changesFile = await context.shadowRepo.fileAtCommit(
+        params.snapshotCommit, 'meldwork/changes.md',
+      )
+      if (changesFile) {
+        const headers = new Set([...String(changesFile.text).matchAll(/^-\s*\[path=([^\]]+?)\s+from=[^\]]*\]/gm)]
+          .map(match => match[1].trim()))
+        changesHeaderMissing = changes.some(change => !headers.has(change.path))
+      }
+    } catch { changesHeaderMissing = true }
     for (const change of changes) {
       const critical = ['requirements', 'architecture'].some(key => (
         change.def?.key === key || String(change.def?.name || '').toLowerCase().includes(key)
@@ -1265,6 +1296,18 @@ class ProjectService {
           critical,
           snapshot: params.snapshotCommit,
         },
+      })
+    }
+    if (changesHeaderMissing) {
+      await context.store.enqueue((next) => {
+        for (const change of changes) {
+          const instance = next.instances.find(item => item.id === change.instance.id)
+          if (instance?.gate) {
+            instance.gate.firstScreen.changesHeaderMissing = true
+            instance.gate.revision += 1
+          }
+        }
+        return { next }
       })
     }
     await context.store.enqueue((next) => {
