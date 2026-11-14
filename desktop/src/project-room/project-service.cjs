@@ -17,6 +17,14 @@ const { PendingMessageStore, TimelineHistoryStore } = require('./project-timelin
 const { CheckpointEngine } = require('./checkpoint-engine.cjs')
 const { validateSeatCapabilities } = require('./agent-capabilities.cjs')
 const { buildProjectChatContext } = require('./project-chat-context.cjs')
+const { buildProjectRoomPrompt } = require('./project-room-prompt.cjs')
+const {
+  CHECKPOINT_MARKER_PREFIX,
+  REVIEW_MARKER_PREFIX,
+  parseCheckpointSignal,
+  parseReviewVerdict,
+} = require('./signal-markers.cjs')
+const { projectRoomSessionKey } = require('../workspace/local-workspace-context.cjs')
 const { createEffectHandlers } = require('./effect-handlers.cjs')
 const {
   pendingDecisions,
@@ -176,6 +184,7 @@ class ProjectService {
     this.effectHooks = effectHooks
     this.effectHandlers = effectHandlers
     this.getManifest = getManifest
+    this.projectControllers = new Map()
     this.projects = new Map()
     this.started = false
     this.pendingStores = new Map()
@@ -333,6 +342,146 @@ class ProjectService {
     ))
   }
 
+  async invokeProjectAgent({
+    effect, projectId, checkpointId, role, seatId, round, sessionGeneration,
+  }) {
+    const context = this.#context(projectId)
+    const state = context.store.current()
+    const instance = state.instances.find(item => item.id === checkpointId)
+    if (!instance) throw projectError('PROJECT_NOT_FOUND', { checkpointId })
+    const def = state.config.playbook.checkpointDefs
+      .find(item => item.key === instance.checkpointKey)
+    const seat = state.config.seats.find(item => item.id === seatId)
+    if (!seat) throw projectError('PROJECT_NOT_FOUND', { seatId })
+    const mainGroup = this.#mainGroupFor(context.project.id)
+    if (!mainGroup) throw inputError('main-chat-missing')
+    const prompt = buildProjectRoomPrompt({
+      project: context.project,
+      state,
+      instance,
+      def,
+      seat,
+      role: role === 'reviewer' ? 'review' : role,
+      round,
+      mainGroup,
+    })
+    const contextPack = this.workspace.createContextPack({
+      group: mainGroup,
+      taskId: instance.id,
+      mode: 'manual',
+      targetKinds: [seat.agentKind],
+      message: { id: instance.id, role: 'user', content: prompt },
+    })
+    const capabilities = seat.capabilities || []
+    const permissionMode = capabilities.includes('write-workdir') || capabilities.includes('write-drafts')
+      ? 'workspace-write'
+      : (capabilities.includes('read-exec') ? 'read-exec' : 'read-only')
+    const sessionKey = projectRoomSessionKey({
+      projectId: context.project.id,
+      checkpointId: instance.id,
+      seatId,
+      kind: seat.agentKind,
+      generation: instance.sessionGeneration,
+    })
+    const controller = new AbortController()
+    this.projectControllers.set(effect.id, controller)
+    let invocation
+    try {
+      invocation = await this.workspace.invokeAgent(
+        mainGroup,
+        seat.agentKind,
+        'manual',
+        controller.signal,
+        instance.id,
+        {
+          taskId: instance.id,
+          sessionPolicy: 'project-room',
+          promptOverride: prompt,
+          contextPackId: contextPack.contextPackId,
+          permissionMode,
+          sessionKey,
+          saveSession: role !== 'reviewer',
+          deferMessage: true,
+          watchdog: { onInactivity: 'remind', hardLimitMs: null },
+        },
+      )
+    } finally {
+      this.projectControllers.delete(effect.id)
+    }
+    const rawText = String(
+      invocation?.pendingMessage?.content
+        || invocation?.pendingMessage?.text
+        || invocation?.message?.content
+        || '',
+    )
+    const textLines = rawText.split(/\r?\n/)
+    let markerIndex = -1
+    for (let index = textLines.length - 1; index >= 0; index -= 1) {
+      if (!textLines[index].trim()) continue
+      markerIndex = index
+      break
+    }
+    const markerLine = markerIndex >= 0 ? textLines[markerIndex].trim() : ''
+    const stripMarker = (prefix) => markerLine.startsWith(prefix) && markerLine.endsWith(']]')
+    let signal = role === 'reviewer' ? null : parseCheckpointSignal(rawText)
+    let verdict = role === 'reviewer' ? parseReviewVerdict(rawText) : null
+    if (role !== 'reviewer' && !signal) signal = null
+    if (role === 'reviewer' && !verdict) verdict = null
+    const bodyLines = [...textLines]
+    if (stripMarker(CHECKPOINT_MARKER_PREFIX) || stripMarker(REVIEW_MARKER_PREFIX)) {
+      bodyLines.splice(markerIndex, 1)
+    }
+    const body = bodyLines.join('\n').trim()
+    let reviewFile = ''
+    if (role === 'reviewer' && body) {
+      reviewFile = path.posix.join(
+        'meldwork', 'reviews', instance.checkpointKey, `r${Math.max(1, round)}-${seatId}.md`,
+      )
+      const absolute = path.join(context.project.workdir, ...reviewFile.split('/'))
+      fs.mkdirSync(path.dirname(absolute), { recursive: true })
+      fs.writeFileSync(absolute, `${body}\n`)
+    }
+    const sourceKey = [context.project.id, 'invoke', effect.id]
+    const pendingMessage = body
+      ? {
+        sourceKey,
+        body,
+        metadata: {
+          id: `msg-${createHash('sha256').update(JSON.stringify(sourceKey), 'utf8').digest('hex')}`,
+          groupId: mainGroup.id,
+          role: 'agent',
+          agentKind: seat.agentKind,
+          createdAt: this.#nowIso(),
+          projectRoom: {
+            projectId: context.project.id,
+            checkpointId: instance.id,
+            seatId,
+            role: role === 'reviewer' ? 'review' : role,
+            round,
+            generation: sessionGeneration,
+            ...(verdict ? { verdict } : {}),
+            ...(signal ? { signal } : {}),
+            ...(reviewFile ? { reviewFile } : {}),
+          },
+        },
+      }
+      : null
+    return {
+      role,
+      seatId,
+      round,
+      sessionGeneration,
+      marker: role === 'reviewer' ? (verdict || '') : (signal || ''),
+      ...(pendingMessage ? { pendingMessage } : {}),
+    }
+  }
+
+  cancelProjectInvocation({ effect }) {
+    const controller = this.projectControllers.get(effect?.id)
+    controller?.abort()
+    return true
+  }
+
   #handlersFor(context) {
     const projectId = context.project.id
     if (typeof this.effectHandlers === 'function') {
@@ -387,8 +536,8 @@ class ProjectService {
       store: context.store,
       scheduler: this.scheduler,
       handlers: this.#handlersFor(context),
-      invoke: this.invoke,
-      cancelInvocation: this.cancelInvocation,
+      invoke: this.invoke || (input => this.invokeProjectAgent(input)),
+      cancelInvocation: this.cancelInvocation || (input => this.cancelProjectInvocation(input)),
       workdir: context.project.workdir,
       readExecSeatIds,
       getManifest: this.getManifest,
