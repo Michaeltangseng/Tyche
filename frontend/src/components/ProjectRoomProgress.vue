@@ -17,7 +17,7 @@
       <span v-if="!progressItems.length" class="progress-empty">{{ t('projectRoom.progress.notStarted') }}</span>
     </div>
 
-    <div class="progress-summary">
+    <div v-if="progressItems.length" class="progress-summary">
       <button
         class="progress-summary-main"
         type="button"

@@ -26,6 +26,7 @@ export function useTraceStream({
   const atBottom = ref(true)
   let cursor = null
   let unsubscribe = null
+  let pollTimer = null
   let requestToken = 0
 
   const runKey = computed(() => `${runId?.value || ''}:${agentRunId?.value || ''}`)
@@ -46,6 +47,19 @@ export function useTraceStream({
   function unsubscribeAppended() {
     if (typeof unsubscribe === 'function') unsubscribe()
     unsubscribe = null
+  }
+
+  function startPolling() {
+    if (pollTimer) return
+    pollTimer = setInterval(() => {
+      if (viewing.value && atBottom.value) void refreshLatest()
+    }, 2000)
+    pollTimer?.unref?.()
+  }
+
+  function stopPolling() {
+    if (pollTimer) clearInterval(pollTimer)
+    pollTimer = null
   }
 
   async function open() {
@@ -136,9 +150,11 @@ export function useTraceStream({
     viewing.value = value === true
     if (viewing.value) {
       subscribe()
+      startPolling()
       if (atBottom.value) void refreshLatest()
     } else {
       unsubscribeAppended()
+      stopPolling()
     }
   }
 
@@ -146,7 +162,10 @@ export function useTraceStream({
     atBottom.value = value === true
   }
 
-  onScopeDispose(unsubscribeAppended)
+  onScopeDispose(() => {
+    unsubscribeAppended()
+    stopPolling()
+  })
 
   return {
     atBottom,

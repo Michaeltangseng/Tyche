@@ -15,10 +15,11 @@
     <TraceRawView v-if="rawView" :steps="rawSteps" />
     <template v-else>
       <template v-for="item in visibleItems" :key="item.key">
-        <TraceToolCard
-          v-if="item.kind === 'tool-group'"
+        <TraceToolActivity
+          v-if="item.kind === 'tool-block'"
           :steps="item.steps"
           :controller="controller"
+          :t="t"
         />
         <details v-else-if="item.kind === 'thinking'" class="trace-activity trace-activity-thinking">
           <summary>
@@ -28,15 +29,6 @@
             <ChevronDownOutline class="trace-activity-chevron" aria-hidden="true" />
           </summary>
           <pre>{{ item.output }}</pre>
-        </details>
-        <details v-else-if="item.kind === 'lifecycle'" class="trace-activity" :data-status="item.status">
-          <summary>
-            <WarningOutline aria-hidden="true" />
-            <span>{{ lifecycleLabel(item) }}</span>
-            <small v-if="item.status">{{ item.status }}</small>
-            <ChevronDownOutline class="trace-activity-chevron" aria-hidden="true" />
-          </summary>
-          <pre v-if="item.output">{{ item.output }}</pre>
         </details>
       </template>
       <p v-if="!items.length && !loading" class="trace-step-empty">
@@ -68,10 +60,9 @@ import { computed, ref } from 'vue'
 import {
   ChevronDownOutline,
   SparklesOutline,
-  WarningOutline,
 } from '@vicons/ionicons5'
 import TraceRawView from './TraceRawView.vue'
-import TraceToolCard from './TraceToolCard.vue'
+import TraceToolActivity from './TraceToolActivity.vue'
 
 const STEP_PAGE = 40
 const RAW_LIMIT = 200
@@ -102,10 +93,11 @@ const rawSteps = computed(() => (steps.value || [])
 
 const items = computed(() => {
   const result = []
-  const tools = new Map()
   let thinking = null
+  let toolBlock = null
   for (const step of meaningfulSteps.value) {
     if (step.kind === 'thinking') {
+      toolBlock = null
       if (!thinking) {
         thinking = {
           key: `thinking:${step.seq}`,
@@ -120,29 +112,21 @@ const items = computed(() => {
       thinking.output += step.output || ''
       continue
     }
-    thinking = null
     if (step.kind === 'tool') {
-      const id = step.toolCallId || `tool-step-${step.seq}`
-      const existing = tools.get(id)
-      if (existing) {
-        existing.steps.push(step)
-      } else {
-        const group = { key: `tool:${id}`, kind: 'tool-group', steps: [step] }
-        tools.set(id, group)
-        result.push(group)
+      thinking = null
+      if (!toolBlock) {
+        toolBlock = {
+          key: `tools:${step.seq}`,
+          kind: 'tool-block',
+          steps: [],
+        }
+        result.push(toolBlock)
       }
+      toolBlock.steps.push(step)
       continue
     }
-    if (step.kind === 'lifecycle') {
-      if (step.status !== 'failed' && step.status !== 'incomplete') continue
-      result.push({
-        key: `lifecycle:${step.seq}`,
-        kind: 'lifecycle',
-        status: step.status,
-        title: step.title,
-        output: step.output || '',
-      })
-    }
+    thinking = null
+    toolBlock = null
   }
   return result
 })
@@ -152,10 +136,4 @@ const visibleItems = computed(() => (
     ? items.value.slice(-visibleCount.value)
     : items.value.slice(0, visibleCount.value)
 ))
-
-function lifecycleLabel(item) {
-  const key = `trace.steps.lifecycle.${item.title}`
-  const label = t(key)
-  return label === key ? item.title || t('trace.steps.status') : label
-}
 </script>

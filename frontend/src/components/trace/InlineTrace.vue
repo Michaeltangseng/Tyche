@@ -11,7 +11,9 @@
       <ChevronDownOutline class="inline-trace-chevron" aria-hidden="true" />
     </summary>
     <TraceStepList v-if="expanded && hasFullTrace" :controller="controller" :live="live" />
-    <p v-else-if="expanded && !loading" class="inline-trace-empty">{{ t('trace.steps.noFullTrace') }}</p>
+    <p v-else-if="expanded && !loading" class="inline-trace-empty">
+      {{ live ? t('trace.inline.waiting') : t('trace.steps.noFullTrace') }}
+    </p>
   </details>
 </template>
 
@@ -52,14 +54,14 @@ const activitySummary = computed(() => {
   const values = steps.value || []
   if (!hasFullTrace.value || !values.length) return ''
   let thinking = 0
-  let tools = 0
+  const tools = new Set()
   for (const step of values) {
     if (step.kind === 'thinking') thinking += 1
-    else if (step.kind === 'tool') tools += 1
+    else if (step.kind === 'tool') tools.add(step.toolCallId || step.seq)
   }
   const parts = []
   if (thinking) parts.push(props.t('trace.inline.thinking', { count: thinking }))
-  if (tools) parts.push(props.t('trace.inline.tools', { count: tools }))
+  if (tools.size) parts.push(props.t('trace.inline.tools', { count: tools.size }))
   return parts.join(' · ')
 })
 

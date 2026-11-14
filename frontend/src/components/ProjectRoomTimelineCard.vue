@@ -50,7 +50,6 @@
     <template v-else-if="card.kind === 'running'">
       <div class="project-timeline-running">
         <div class="project-timeline-running-header">
-          <span class="project-timeline-running-state">{{ runningLabel }}</span>
           <span v-if="card.activeInvocations?.length" class="project-timeline-running-team">
             <span
               v-for="invocation in card.activeInvocations"
@@ -62,6 +61,7 @@
               <small>{{ roleLabel(invocation.role) }}</small>
             </span>
           </span>
+          <span class="project-timeline-running-state">{{ runningLabel }}</span>
         </div>
         <InlineTrace
           v-for="invocation in card.activeInvocations || []"
