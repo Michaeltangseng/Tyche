@@ -12,6 +12,7 @@
           {{ reasonLabel }}
           <template v-if="screen.round"> · {{ t('projectRoom.gate.round', { count: screen.round }) }}</template>
           <template v-if="elapsedLabel"> · {{ elapsedLabel }}</template>
+          · {{ t('projectRoom.usage.unavailable') }}
         </span>
       </button>
       <button class="gate-panel-toggle" type="button" @click="expanded = !expanded">

@@ -321,6 +321,11 @@ test('the project snapshot applies first-screen budgets and hides internals', ()
     },
   }
   state.placeholders = [{ path: 'docs/requirements.md', reason: 'oversize' }]
+  state.instances[0].sessionGeneration = 3
+  state.instances[0].interjections = [{
+    id: 'interjection-1', content: 'A note', status: 'queued',
+    createdAt: at, deliveredAt: null,
+  }]
   const snapshot = projectSnapshot(project, state)
 
   assert.equal(snapshot.projectId, 'project-1')
@@ -330,6 +335,8 @@ test('the project snapshot applies first-screen budgets and hides internals', ()
   assert.equal(snapshot.progress.length, 1)
   assert.equal(snapshot.progress[0].leadSeatName, 'Lead')
   assert.equal(snapshot.progress[0].waitingOn, 'human')
+  assert.equal(snapshot.progress[0].generation, 3)
+  assert.deepEqual(snapshot.progress[0].pendingInterjections.map(item => item.id), ['interjection-1'])
   assert.equal(snapshot.gates.length, 1)
 
   const gate = snapshot.gates[0]

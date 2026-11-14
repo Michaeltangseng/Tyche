@@ -31,6 +31,17 @@
     </section>
 
     <div v-else class="message-stage">
+      <button
+        v-if="projectRoomHasMoreTimeline"
+        class="project-timeline-load-more"
+        type="button"
+        :disabled="projectRoomTimelineLoading"
+        @click="projectRoomLoadMoreTimeline && projectRoomLoadMoreTimeline()"
+      >
+        {{ projectRoomTimelineLoading
+          ? t('projectRoom.timeline.loadingMore')
+          : t('projectRoom.timeline.loadMore') }}
+      </button>
       <nav class="turn-rail" :aria-label="t('conversation.turnRail')">
         <button
           v-for="turn in turnRailItems"
@@ -52,7 +63,7 @@
 
       <div class="message-list">
         <article
-          v-for="message in timelineMessages"
+          v-for="message in displayTimelineMessages"
           :key="message.id"
           :id="messageElementId(message.id)"
           class="message-row"
@@ -68,12 +79,33 @@
               'topic-reply': activeGroup.conversationType !== 'direct' && Boolean(messageThreadRootId(message)),
               'active-topic': isActiveRunTopic(message),
               'agent-reply-collapsed': message.role === 'agent' && !isAgentReplyExpanded(message),
+              'project-card-message': Boolean(message.projectRoomCard),
+              'project-archived-message-row': isArchivedCollapsed(message),
               copied: isMessageCopied(message.id),
             },
           ]"
         >
-          <template v-if="message.role === 'system'">
-            <div class="system-message-stack">
+          <ProjectRoomTimelineCard
+            v-if="message.projectRoomCard"
+            :card="message.projectRoomCard"
+            :format-nav-time="projectRoomFormatNavTime"
+            :select-gate="projectRoomSelectGate"
+            :stop-delivery="projectRoomStopDelivery"
+            :t="t"
+          />
+          <template v-else>
+            <template v-if="isArchivedCollapsed(message)">
+              <button
+                class="project-archived-toggle"
+                type="button"
+                @click="toggleArchivedGeneration(message)"
+              >
+                {{ projectRoomArchivedLabel ? projectRoomArchivedLabel(message) : '' }}
+              </button>
+            </template>
+            <template v-else>
+              <template v-if="message.role === 'system'">
+                <div class="system-message-stack">
               <div class="system-message">
                 <span
                   v-if="isAgentFailureMessage(message) && message.agentKind"
@@ -226,6 +258,9 @@
                   {{ t(activeGroup.conversationType === 'direct' ? 'conversation.activeTask' : 'conversation.activeTopic') }}
                 </span>
                 <time>{{ formatTime(message.createdAt) }}</time>
+                <small v-if="message.projectRoom" class="project-message-usage">
+                  {{ t('projectRoom.usage.unavailable') }}
+                </small>
                 <div class="message-meta-actions">
                   <button
                     v-if="message.role === 'user' && message.content"
@@ -589,6 +624,8 @@
                 </button>
               </div>
             </div>
+              </template>
+            </template>
           </template>
         </article>
 
@@ -877,6 +914,7 @@ import { messageKnowledgeBases, messageSkills, messageTargetKinds } from '../mes
 import { isAgentFailureMessage, responseVersionRootId } from '../conversationTimelineModel.js'
 import AttachmentMediaPreview from './AttachmentMediaPreview.vue'
 import HumanGateDecisionContext from './HumanGateDecisionContext.vue'
+import ProjectRoomTimelineCard from './ProjectRoomTimelineCard.vue'
 import MarkdownMessage from './MarkdownMessage.vue'
 
 const props = defineProps({
@@ -968,6 +1006,15 @@ const {
   terminalSystemConclusion,
   theme,
   timelineMessages,
+  projectRoomArchivedLabel,
+  projectRoomCardMessages,
+  projectRoomFormatNavTime,
+  projectRoomHasMoreTimeline,
+  projectRoomIsArchived,
+  projectRoomLoadMoreTimeline,
+  projectRoomSelectGate,
+  projectRoomStopDelivery,
+  projectRoomTimelineLoading,
   toggleAgentReply,
   toggleTopic,
   topicReplyAgentKinds,
@@ -987,6 +1034,36 @@ const BUDGET_DIMENSIONS = [
 ]
 const directHumanGates = computed(() => props.controller.directHumanGates?.value || [])
 const directRunBudget = computed(() => props.controller.directRunBudget?.value || null)
+const expandedArchivedGenerations = ref(new Set())
+const projectCardMessages = computed(() => projectRoomCardMessages?.value || [])
+const displayTimelineMessages = computed(() => {
+  if (!projectCardMessages.value.length) return timelineMessages.value
+  const all = [...timelineMessages.value, ...projectCardMessages.value]
+  return all.sort((left, right) => (
+    timelineTimestamp(left.createdAt) - timelineTimestamp(right.createdAt)
+      || String(left.id).localeCompare(String(right.id))
+  ))
+})
+
+function timelineTimestamp(value) {
+  if (Number.isFinite(value)) return Number(value)
+  const parsed = Date.parse(String(value || ''))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function isArchivedCollapsed(message) {
+  if (!message?.projectRoom?.checkpointId || !projectRoomIsArchived?.(message)) return false
+  return !expandedArchivedGenerations.value.has(message.projectRoom.generation)
+}
+
+function toggleArchivedGeneration(message) {
+  const generation = Number(message?.projectRoom?.generation)
+  if (!Number.isSafeInteger(generation)) return
+  const next = new Set(expandedArchivedGenerations.value)
+  if (next.has(generation)) next.delete(generation)
+  else next.add(generation)
+  expandedArchivedGenerations.value = next
+}
 const humanGateDecisionPendingIds = computed(() => (
   props.controller.humanGateDecisionPendingIds?.value || []
 ))

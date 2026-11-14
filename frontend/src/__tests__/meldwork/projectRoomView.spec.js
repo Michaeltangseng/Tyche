@@ -92,6 +92,8 @@ function fakeRoom(project) {
     interject: vi.fn(async () => ({})),
     decideGate: vi.fn(async () => ({})),
     resolveDrift: vi.fn(async () => ({})),
+    timelineHistory: vi.fn(async () => ({ items: [], total: 0, nextCursor: null })),
+    stopAndDeliver: vi.fn(async () => ({})),
     gateDetail: vi.fn(async ({ projectId, gateId, gateRevision }) => ({
       projectId,
       checkpointName: 'Requirements',
@@ -433,6 +435,95 @@ describe('project room view', () => {
 
     expect(fixture.view.questionGate.value).toBe(true)
     expect(fixture.view.gateAllowedOutcomes.value).toEqual(['continue', 'reject-upstream'])
+    fixture.scope.stop()
+  })
+
+  it('merges timeline history with live gates, interjections, and running cards', async () => {
+    const project = {
+      progress: [
+        entry('cp-1', 'accepted', {
+          generation: 2,
+          pendingInterjections: [{
+            id: 'interjection-1', content: 'A note', createdAt: '2026-07-29T09:20:00Z',
+          }],
+        }),
+        entry('cp-2', 'leading', { generation: 2 }),
+      ],
+      gates: [gate('cp-2', 'gate-2', '2026-07-29T09:30:00Z')],
+    }
+    const room = fakeRoom(project)
+    room.timelineHistory.mockResolvedValue({
+      items: [
+        {
+          id: 'history-1', type: 'checkpoint-start', checkpointId: 'cp-1',
+          checkpointKey: 'cp-1', generation: 1, at: '2026-07-29T09:00:00Z',
+        },
+        {
+          id: 'history-2', type: 'gate-decided', checkpointId: 'cp-1',
+          checkpointKey: 'cp-1', generation: 1, gateId: 'gate-old', gateRevision: 1,
+          reason: 'needs-human', outcome: 'continue', comment: 'Go on',
+          at: '2026-07-29T09:10:00Z',
+        },
+      ],
+      total: 2,
+      nextCursor: null,
+    })
+    const fixture = mountView({ project, room })
+    await flushPromises()
+
+    const cards = fixture.view.projectTimelineCards.value
+    expect(cards.map(card => card.kind)).toEqual([
+      'checkpoint', 'gate-decided', 'interjection', 'gate', 'running',
+    ])
+    expect(new Set(cards.map(card => card.id)).size).toBe(cards.length)
+    expect(fixture.view.projectRoomCardMessages.value).toHaveLength(cards.length)
+    expect(fixture.view.isArchivedProjectMessage({
+      projectRoom: { checkpointId: 'cp-1', generation: 1 },
+    })).toBe(true)
+    expect(fixture.view.archivedGenerationLabel({
+      projectRoom: { checkpointId: 'cp-1', generation: 1 },
+    })).toBe('projectRoom.timeline.previousRun')
+    fixture.scope.stop()
+  })
+
+  it('pages timeline history, sorts it, and dedupes records by id', async () => {
+    const project = { progress: [entry('cp-1', 'leading', { generation: 1 })], gates: [] }
+    const room = fakeRoom(project)
+    room.timelineHistory
+      .mockResolvedValueOnce({
+        items: [{
+          id: 'history-b', type: 'checkpoint-start', checkpointId: 'cp-1',
+          checkpointKey: 'cp-1', generation: 1, at: '2026-07-29T09:10:00Z',
+        }],
+        total: 2,
+        nextCursor: 'cursor-1',
+      })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 'history-a', type: 'checkpoint-start', checkpointId: 'cp-1',
+            checkpointKey: 'cp-1', generation: 1, at: '2026-07-29T09:00:00Z',
+          },
+          {
+            id: 'history-b', type: 'checkpoint-start', checkpointId: 'cp-1',
+            checkpointKey: 'cp-1', generation: 1, at: '2026-07-29T09:10:00Z',
+          },
+        ],
+        total: 2,
+        nextCursor: null,
+      })
+    const fixture = mountView({ project, room })
+    await flushPromises()
+    await fixture.view.loadMoreTimeline()
+    await flushPromises()
+
+    expect(fixture.view.timelineHistory.value.items.map(item => item.id))
+      .toEqual(['history-a', 'history-b'])
+    expect(room.timelineHistory).toHaveBeenLastCalledWith(expect.objectContaining({
+      projectId: 'project-1',
+      cursor: 'cursor-1',
+      limit: 50,
+    }))
     fixture.scope.stop()
   })
 

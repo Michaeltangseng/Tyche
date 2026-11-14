@@ -303,6 +303,92 @@ describe('project room sidebar', () => {
     wrapper.unmount()
   })
 
+  it('merges timeline cards with messages and collapses previous generations', async () => {
+    const { wrapper, bridge } = await mountApp(({ state, bridge: desktopBridge }) => {
+      seedProjects(state)
+      state.messages.push(
+        {
+          id: 'old-message',
+          groupId: 'main-1',
+          role: 'agent',
+          agentKind: 'codex',
+          content: 'Old generation answer.',
+          createdAt: '2026-07-29T09:00:00Z',
+          projectRoom: { projectId: 'project-1', checkpointId: 'cp-1', generation: 0 },
+        },
+        {
+          id: 'current-message',
+          groupId: 'main-1',
+          role: 'agent',
+          agentKind: 'codex',
+          content: 'Current generation answer.',
+          createdAt: '2026-07-29T09:20:00Z',
+          projectRoom: { projectId: 'project-1', checkpointId: 'cp-1', generation: 1 },
+        },
+      )
+      desktopBridge.projectRoom.snapshot.mockResolvedValue({
+        projectId: 'project-1',
+        revision: 1,
+        progress: [{
+          checkpointId: 'cp-1',
+          checkpointKey: 'requirements',
+          name: 'Requirements',
+          state: 'leading',
+          round: 2,
+          roundsSinceHuman: 2,
+          leadSeatId: 'seat-1',
+          leadSeatName: 'Lead',
+          reviewerSeatIds: [],
+          waitingOn: 'lead',
+          hasGate: false,
+          blocked: false,
+          generation: 1,
+          pendingInterjections: [],
+        }],
+        gates: [],
+        driftItems: [],
+        outOfScopeItems: [],
+        residuals: [],
+        config: {
+          playbook: {
+            checkpointDefs: [{
+              key: 'requirements', name: 'Requirements', leadSeatId: 'seat-1',
+              reviewerSeatIds: [],
+            }],
+          },
+        },
+      })
+      desktopBridge.projectRoom.timelineHistory.mockResolvedValue({
+        items: [{
+          id: 'history-start',
+          type: 'checkpoint-start',
+          checkpointId: 'cp-1',
+          checkpointKey: 'requirements',
+          generation: 0,
+          at: '2026-07-29T08:50:00Z',
+        }],
+        total: 1,
+        nextCursor: null,
+      })
+    })
+
+    await wrapper.get('.project-room-open').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.project-timeline-card[data-kind="checkpoint"]').exists()).toBe(true)
+    expect(wrapper.find('.project-archived-toggle').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Previous run 1')
+    expect(wrapper.text()).toContain('Current generation answer.')
+    expect(wrapper.findAll('.project-message-usage').length).toBeGreaterThan(0)
+    expect(wrapper.text()).toContain('Usage unavailable')
+
+    await wrapper.get('.project-archived-toggle').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.project-archived-toggle').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Old generation answer.')
+    wrapper.unmount()
+  })
+
   it('opens the reject overlay from the gate panel and the delete overlay from the sidebar', async () => {
     const { wrapper, bridge } = await mountApp(({ state, bridge: desktopBridge }) => {
       seedProjects(state)

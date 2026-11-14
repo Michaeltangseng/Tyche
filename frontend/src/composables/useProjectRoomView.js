@@ -103,6 +103,200 @@ export function useProjectRoomView({
   const diagnostics = ref(null)
   const selectedDiff = ref(null)
   const statusErrorKey = ref('')
+  const timelineHistory = ref({ items: [], total: 0, nextCursor: null })
+  const timelineLoading = ref(false)
+  let timelineRequest = 0
+
+  async function loadTimelineHistory({ reset = false } = {}) {
+    if (!projectId.value) return null
+    if (timelineLoading.value) return null
+    const cursor = reset ? undefined : (timelineHistory.value.nextCursor || undefined)
+    if (!reset && !cursor) return timelineHistory.value
+    const request = ++timelineRequest
+    timelineLoading.value = true
+    try {
+      const page = await projectRoom.timelineHistory({
+        projectId: projectId.value,
+        limit: 50,
+        ...(cursor ? { cursor } : {}),
+      })
+      if (request !== timelineRequest) return null
+      const items = reset
+        ? (page.items || [])
+        : [...(page.items || []), ...(timelineHistory.value.items || [])]
+      const byId = new Map(items.map(item => [item.id, item]))
+      const merged = [...byId.values()].sort((left, right) => (
+        timestampValue(left.at) - timestampValue(right.at) || String(left.id).localeCompare(String(right.id))
+      ))
+      timelineHistory.value = {
+        items: merged,
+        total: Number.isSafeInteger(page.total) ? page.total : merged.length,
+        nextCursor: page.nextCursor || null,
+      }
+      return timelineHistory.value
+    } catch (error) {
+      statusErrorKey.value = SEND_ERROR_KEYS[errorCode(error)]
+        || 'projectRoom.composer.errors.generic'
+      return null
+    } finally {
+      timelineLoading.value = false
+    }
+  }
+
+  function timestampValue(value) {
+    if (Number.isFinite(value)) return Number(value)
+    const parsed = Date.parse(String(value || ''))
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+
+  const projectTimelineCards = computed(() => {
+    const defs = new Map((project.value?.config?.playbook?.checkpointDefs || [])
+      .map(def => [def.key, def]))
+    const progressByKey = new Map()
+    for (const item of progress.value) {
+      if (!item.checkpointKey) continue
+      if (!progressByKey.has(item.checkpointKey)) progressByKey.set(item.checkpointKey, item)
+    }
+    const cards = []
+    const seen = new Set()
+    const push = (card) => {
+      if (!card?.id || seen.has(card.id)) return
+      seen.add(card.id)
+      cards.push(card)
+    }
+    for (const record of timelineHistory.value.items || []) {
+      const progressItem = progress.value.find(item => item.checkpointId === record.checkpointId)
+      const def = defs.get(record.checkpointKey)
+      const name = def?.name || progressItem?.name || record.checkpointKey || record.checkpointId
+      if (record.type === 'checkpoint-start' || record.type === 'checkpoint-reopen') {
+        push({
+          id: record.id,
+          kind: 'checkpoint',
+          at: record.at,
+          checkpointId: record.checkpointId,
+          generation: record.generation,
+          name,
+          reopened: record.type === 'checkpoint-reopen',
+          reason: record.reason || '',
+        })
+      } else if (record.type === 'gate-decided') {
+        push({
+          id: record.id,
+          kind: 'gate-decided',
+          at: record.at,
+          checkpointId: record.checkpointId,
+          generation: record.generation,
+          name,
+          gateId: record.gateId,
+          gateRevision: record.gateRevision,
+          reason: record.reason || '',
+          outcome: record.outcome || '',
+          comment: record.comment || '',
+        })
+      } else if (record.type === 'gate-voided') {
+        push({
+          id: record.id,
+          kind: 'gate-voided',
+          at: record.at,
+          checkpointId: record.checkpointId,
+          generation: record.generation,
+          name,
+          reason: record.reason || '',
+        })
+      }
+    }
+    for (const gate of gates.value) {
+      push({
+        id: `gate:${gate.gateId}:${gate.revision}`,
+        kind: 'gate',
+        at: gate.createdAt,
+        checkpointId: gate.checkpointId,
+        name: progress.value.find(item => item.id === gate.checkpointId)?.name || gate.checkpointId,
+        gateId: gate.gateId,
+        gateRevision: gate.revision,
+        reason: gate.reason,
+      })
+    }
+    for (const item of progress.value) {
+      for (const interjection of item.pendingInterjections || []) {
+        push({
+          id: `interjection:${item.id}:${interjection.id}`,
+          kind: 'interjection',
+          at: interjection.createdAt,
+          checkpointId: item.id,
+          name: item.name,
+          content: interjection.content,
+        })
+      }
+      if (['checking', 'drafting', 'leading', 'submitted', 'reviewing', 'accepting']
+        .includes(item.state)) {
+        push({
+          id: `run:${item.id}:${item.generation}:${item.state}`,
+          kind: 'running',
+          at: null,
+          checkpointId: item.id,
+          name: item.name,
+          state: item.state,
+          waitingOn: item.waitingOn,
+          generation: item.generation,
+        })
+      }
+    }
+    return cards.sort((left, right) => {
+      if (left.kind === 'running' && right.kind !== 'running') return 1
+      if (right.kind === 'running' && left.kind !== 'running') return -1
+      return timestampValue(left.at) - timestampValue(right.at)
+        || String(left.id).localeCompare(String(right.id))
+    })
+  })
+
+  const projectRoomCardMessages = computed(() => projectTimelineCards.value.map(card => ({
+    id: `project-card-${card.id}`,
+    role: 'system',
+    createdAt: card.kind === 'running' ? 8640000000000000 : (card.at || 0),
+    projectRoomCard: card,
+  })))
+
+  const projectRoomCurrentGenerations = computed(() => {
+    const generations = {}
+    for (const item of progress.value) {
+      if (!item.checkpointId) continue
+      generations[item.checkpointId] = Number.isSafeInteger(item.generation)
+        ? item.generation
+        : 0
+    }
+    return generations
+  })
+
+  function isArchivedProjectMessage(message) {
+    const checkpointId = String(message?.projectRoom?.checkpointId || '')
+    const generation = Number(message?.projectRoom?.generation)
+    if (!checkpointId || !Number.isSafeInteger(generation)) return false
+    const current = projectRoomCurrentGenerations.value[checkpointId]
+    return Number.isSafeInteger(current) && generation < current
+  }
+
+  function archivedGenerationLabel(message) {
+    const generation = Number(message?.projectRoom?.generation)
+    return t('projectRoom.timeline.previousRun', {
+      count: Number.isSafeInteger(generation) ? generation + 1 : 1,
+    })
+  }
+
+  async function stopAndDeliver(checkpointId) {
+    if (!projectId.value || !checkpointId) return false
+    statusErrorKey.value = ''
+    try {
+      await projectRoom.stopAndDeliver({ projectId: projectId.value, checkpointId })
+      await projectRoom.refresh()
+      return true
+    } catch (error) {
+      statusErrorKey.value = SEND_ERROR_KEYS[errorCode(error)]
+        || 'projectRoom.composer.errors.generic'
+      showError(error)
+      return false
+    }
+  }
 
   async function resolveDriftItems(itemIds, choice) {
     const ids = new Set(Array.isArray(itemIds) ? itemIds : [])
@@ -650,6 +844,7 @@ export function useProjectRoomView({
   watch(project, () => {
     if (!isMainGroup.value) return
     syncTarget()
+    void loadTimelineHistory({ reset: true })
   }, { immediate: true })
 
   watch(() => projectTarget?.value, (requested) => {
@@ -837,6 +1032,7 @@ export function useProjectRoomView({
     acceptCandidateVersion,
     activeCheckpointId,
     activeGate,
+    archivedGenerationLabel,
     activeTargetId,
     allReviewersPass,
     canSend,
@@ -862,13 +1058,19 @@ export function useProjectRoomView({
     gateLoading,
     gateScreen,
     gateStale,
+    isArchivedProjectMessage,
     isMainGroup,
     lastActivityLabel,
     loadDiagnostics,
     loadGateDetail,
+    loadMoreTimeline: () => loadTimelineHistory({ reset: false }),
+    loadTimelineHistory,
     openDriftDiff,
     openProjectChat,
     outOfScopeItems,
+    projectRoomCardMessages,
+    projectRoomCurrentGenerations,
+    projectTimelineCards,
     otherGateCount,
     previewRejectUpstream,
     previewReopenCheckpoint,
@@ -894,6 +1096,9 @@ export function useProjectRoomView({
     selectNextGateTarget,
     selectedDiff,
     statusErrorKey,
+    stopAndDeliver,
+    timelineHistory,
+    timelineLoading,
     selectTarget,
     sendErrorLabel,
     sendLabel,

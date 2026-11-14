@@ -235,6 +235,8 @@ export function createBridge() {
     retryEffect: vi.fn(async () => ({})),
     compact: vi.fn(async () => ({ revision: 1 })),
     diagnostics: vi.fn(async () => ({ diagnostic: 'detail' })),
+    timelineHistory: vi.fn(async () => ({ items: [], total: 0, nextCursor: null })),
+    stopAndDeliver: vi.fn(async () => ({})),
     previewReject: vi.fn(async () => ({
       targetCheckpointId: 'cp-0',
       affectedCheckpointIds: [],

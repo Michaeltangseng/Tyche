@@ -142,6 +142,15 @@ function progressEntry(state, instance) {
     waitingOn: waitingOn(instance),
     hasGate: Boolean(instance.gate),
     blocked: Boolean(instance.blockedOn),
+    generation: instance.sessionGeneration,
+    pendingInterjections: (instance.interjections || [])
+      .filter(item => item.status === 'queued')
+      .slice(0, 20)
+      .map(item => ({
+        id: item.id,
+        content: item.content,
+        createdAt: item.createdAt,
+      })),
   }
 }
 

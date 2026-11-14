@@ -40,6 +40,7 @@
       <span v-if="lastActivityLabel" class="progress-activity">
         {{ t('projectRoom.progress.lastActivity', { time: lastActivityLabel }) }}
       </span>
+      <span class="progress-usage">{{ t('projectRoom.usage.unavailable') }}</span>
       <button
         class="progress-toggle"
         type="button"
