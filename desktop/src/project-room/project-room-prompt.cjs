@@ -53,7 +53,7 @@ function platformPrompt({ role, rebuttal, language }) {
 }
 
 function buildProjectRoomPrompt({
-  project, state, instance, def, seat, role, round, mainGroup,
+  project, state, instance, def, seat, role, round, mainGroup, brief = '',
 }) {
   const language = projectLanguage(state)
   const english = language === 'en'
@@ -91,6 +91,7 @@ function buildProjectRoomPrompt({
   const input = english
     ? [
       `Project: ${project?.name || ''}; checkpoint: ${def?.name || instance.checkpointKey}`,
+      brief ? `Project brief: ${brief}` : '',
       `Target files: ${lines(def?.targetFiles).join(', ') || '(none)'}`,
       accepted.length ? `Accepted upstream versions:\n${accepted.map(item => `- ${item}`).join('\n')}` : '',
       role === 'review' && instance.candidate ? `Candidate commit under review: ${instance.candidate}` : '',
@@ -106,6 +107,7 @@ function buildProjectRoomPrompt({
     ]
     : [
       `项目室：${project?.name || ''}；检查点：${def?.name || instance.checkpointKey}`,
+      brief ? `项目需求：${brief}` : '',
       `目标文件：${lines(def?.targetFiles).join('、') || '（无）'}`,
       accepted.length ? `已接受的上游版本：\n${accepted.map(item => `- ${item}`).join('\n')}` : '',
       role === 'review' && instance.candidate ? `正在评审的候选提交：${instance.candidate}` : '',

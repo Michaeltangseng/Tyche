@@ -355,6 +355,9 @@ class ProjectService {
     if (!seat) throw projectError('PROJECT_NOT_FOUND', { seatId })
     const mainGroup = this.#mainGroupFor(context.project.id)
     if (!mainGroup) throw inputError('main-chat-missing')
+    const startMessage = (this.workspace.state.messages || []).find(message => (
+      message.groupId === mainGroup.id && message.projectRoom?.start === true
+    ))
     const prompt = buildProjectRoomPrompt({
       project: context.project,
       state,
@@ -364,6 +367,7 @@ class ProjectService {
       role: role === 'reviewer' ? 'review' : role,
       round,
       mainGroup,
+      brief: String(startMessage?.content || ''),
     })
     const contextPack = this.workspace.createContextPack({
       group: mainGroup,

@@ -55,11 +55,13 @@ test('the lead prompt contains stance, profile, target, and interjections', () =
     seat: state.config.seats[0],
     role: 'lead',
     round: 1,
+    brief: 'Build a todo app.',
   })
   assert.match(prompt, /主笔/)
   assert.match(prompt, /Care about scope/)
   assert.match(prompt, /docs\/requirements\.md/)
   assert.match(prompt, /Keep it small/)
+  assert.match(prompt, /Build a todo app\./)
   assert.match(prompt, /MELDWORK_CHECKPOINT/)
   assert.match(prompt, /未解决漂移/)
 })
