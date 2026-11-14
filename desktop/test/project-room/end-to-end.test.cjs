@@ -229,3 +229,119 @@ test('a revise round returns to the lead and passes on the second round', async 
   assert.equal(instance.rounds[0].reviews[0].verdict, 'revise')
   assert.equal(instance.rounds[1].reviews[0].verdict, 'pass')
 })
+
+test('needs-human gate continues the same checkpoint after a person answers', async (t) => {
+  const { service, workdir } = await setup(t, {
+    lead: {
+      steps: [{
+        op: 'whenPromptIncludes',
+        text: 'Fix the scope.',
+        then: [
+          { op: 'write', path: 'docs/requirements.md', content: 'Version 2\n' },
+          { op: 'output', text: 'Fixed draft' },
+        ],
+        otherwise: [
+          { op: 'write', path: 'docs/requirements.md', content: 'Version 1\n' },
+          { op: 'output', text: 'Draft ready' },
+        ],
+      }],
+      marker: checkpointMarker,
+    },
+    review: {
+      steps: [{
+        op: 'whenPromptIncludes',
+        text: '之前的评审文件',
+        then: [
+          { op: 'output', text: 'Summary: fixed.' },
+          { op: 'marker', value: '[[MELDWORK_REVIEW:{"verdict":"pass"}]]' },
+        ],
+        otherwise: [
+          { op: 'output', text: 'Summary: needs a human.' },
+          { op: 'marker', value: '[[MELDWORK_REVIEW:{"verdict":"needs-human"}]]' },
+        ],
+      }],
+    },
+  })
+  await service.startProject({ projectId: 'project-1', brief: 'Write it.' })
+  const engine = service.engineFor('project-1')
+  await engine.runUntilIdle()
+  let gate = service.snapshot('project-1').gates[0]
+  assert.equal(gate.reason, 'needs-human')
+
+  await service.decideGate({
+    projectId: 'project-1', gateId: gate.gateId, gateRevision: gate.revision,
+    candidateCommit: gate.candidateCommit, outcome: 'continue',
+    comment: 'Fix the scope.',
+  })
+  await engine.runUntilIdle()
+  const state = service.contextFor('project-1').store.current()
+  assert.equal(state.instances[0].gate.reason, 'hard-gate-passed')
+  assert.equal(
+    fs.readFileSync(path.join(workdir, 'docs', 'requirements.md'), 'utf8'),
+    'Version 2\n',
+  )
+})
+
+test('a lead question becomes a gate and the answer continues the same checkpoint', async (t) => {
+  const { service, workdir } = await setup(t, {
+    lead: {
+      steps: [{
+        op: 'whenPromptIncludes',
+        text: 'Keep the scope small.',
+        then: [
+          { op: 'write', path: 'docs/requirements.md', content: 'Version 1\n' },
+          { op: 'output', text: 'Draft ready' },
+          { op: 'marker', value: checkpointMarker },
+        ],
+        otherwise: [
+          { op: 'output', text: 'Question: which scope?' },
+          { op: 'marker', value: '[[MELDWORK_CHECKPOINT:{"signal":"question"}]]' },
+        ],
+      }],
+    },
+  })
+  await service.startProject({ projectId: 'project-1', brief: 'Write it.' })
+  const engine = service.engineFor('project-1')
+  await engine.runUntilIdle()
+  let gate = service.snapshot('project-1').gates[0]
+  assert.equal(gate.reason, 'question')
+
+  await service.decideGate({
+    projectId: 'project-1', gateId: gate.gateId, gateRevision: gate.revision,
+    candidateCommit: gate.candidateCommit, outcome: 'continue',
+    comment: 'Keep the scope small.',
+  })
+  await engine.runUntilIdle()
+  const state = service.contextFor('project-1').store.current()
+  assert.equal(state.instances[0].gate.reason, 'hard-gate-passed')
+  assert.equal(
+    fs.readFileSync(path.join(workdir, 'docs', 'requirements.md'), 'utf8'),
+    'Version 1\n',
+  )
+})
+
+test('the round limit stops a reviewer that keeps asking for changes', async (t) => {
+  const { service } = await setup(t, {
+    lead: {
+      steps: [{
+        op: 'run',
+        command: process.execPath,
+        args: ['-e', "const fs=require('node:fs');fs.mkdirSync('docs',{recursive:true});fs.appendFileSync('docs/requirements.md','x\\n')"],
+      }],
+      marker: checkpointMarker,
+    },
+    review: {
+      steps: [
+        { op: 'output', text: 'Summary: still changing.' },
+        { op: 'marker', value: '[[MELDWORK_REVIEW:{"verdict":"revise"}]]' },
+      ],
+    },
+  })
+  await service.startProject({ projectId: 'project-1', brief: 'Write it.' })
+  const engine = service.engineFor('project-1')
+  await engine.runUntilIdle()
+  const state = service.contextFor('project-1').store.current()
+  assert.equal(state.instances[0].state, 'gate')
+  assert.equal(state.instances[0].gate.reason, 'round-limit')
+  assert.equal(state.instances[0].round, 3)
+})

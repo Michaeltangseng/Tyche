@@ -494,6 +494,17 @@ function decideGate(instance, event, config, effects, diagnostics) {
     return true
   }
   voidGate(instance)
+  const recordedDecision = instance.decisions.at(-1)
+  if (recordedDecision) {
+    recordedDecision.outcome = payload.outcome
+    recordedDecision.comment = String(payload.comment || '')
+    recordedDecision.candidateCommit = payload.candidateCommit || recordedDecision.candidateCommit
+    recordedDecision.upstreamCheckpointId = payload.upstreamCheckpointId || null
+    recordedDecision.impactHash = payload.impactHash || null
+    recordedDecision.driftChoice = payload.driftChoice || null
+    recordedDecision.commitToGit = payload.commitToGit === true
+    recordedDecision.decidedAt = eventAt
+  }
   if (reason === 'doc-new-version') {
     if (payload.outcome === 'accept') {
       instance.artifactVersions.push({
@@ -527,8 +538,27 @@ function decideGate(instance, event, config, effects, diagnostics) {
     }
     return true
   }
-  if (reason === 'draft-question') instance.state = 'drafting'
-  else instance.state = 'leading'
+  if (reason === 'draft-question') {
+    instance.state = 'drafting'
+    addEffect(effects, 'acquire-scope')
+    addEffect(effects, 'snapshot', { phase: 'before' })
+    for (const seatId of config?.checkpoint?.draftSeatIds || []) {
+      addEffect(effects, 'invoke-draft', {
+        seatId,
+        round: instance.round,
+        sessionGeneration: instance.sessionGeneration,
+      })
+    }
+  } else {
+    instance.state = 'leading'
+    addEffect(effects, 'acquire-scope')
+    addEffect(effects, 'snapshot', { phase: 'before' })
+    addEffect(effects, 'invoke-lead', {
+      seatId: config?.checkpoint?.leadSeatId || '',
+      round: instance.round,
+      sessionGeneration: instance.sessionGeneration,
+    })
+  }
   return true
 }
 
@@ -667,7 +697,8 @@ function handleEvent(instance, event, config, effects, diagnostics) {
     }
     if ([
       'snapshot', 'write-review-file', 'append-decision', 'stamp-changes',
-      'drop-snapshot-refs', 'notify', 'user-git-commit', 'append-message',
+      'drop-snapshot-refs', 'notify', 'user-git-commit', 'append-message', 'cancel-invocation',
+      'release-scope', 'withdraw-lease',
       'append-timeline',
     ].includes(effectType)) {
       return true

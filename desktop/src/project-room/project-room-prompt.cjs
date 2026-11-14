@@ -78,6 +78,8 @@ function buildProjectRoomPrompt({
     .map(review => review.reviewFile)
     .filter(Boolean)
   const responseFile = `meldwork/reviews/${instance.checkpointKey}/r${Math.max(1, instance.round)}-response.md`
+  const lastDecision = instance.decisions.at(-1)
+  const decisionComment = String(lastDecision?.comment || '').trim()
   const pendingInterjections = instance.interjections
     .filter(item => item.status === 'queued')
     .map(item => item.content)
@@ -97,6 +99,7 @@ function buildProjectRoomPrompt({
       pendingInterjections.length
         ? `User interjections to address:\n${pendingInterjections.map(item => `- ${item}`).join('\n')}`
         : '',
+      decisionComment ? `The person's latest decision: ${decisionComment}` : '',
       drift.length ? 'Unresolved drift exists; wait for a person to confirm before relying on those files.' : '',
       outOfScope.length ? `Out-of-scope changes were detected: ${outOfScope.map(item => item.path).join(', ')}` : '',
       'Write in the project language.',
@@ -111,6 +114,7 @@ function buildProjectRoomPrompt({
       pendingInterjections.length
         ? `需要处理的人的插话：\n${pendingInterjections.map(item => `- ${item}`).join('\n')}`
         : '',
+      decisionComment ? `人的最近意见：${decisionComment}` : '',
       drift.length ? '存在未解决漂移，依赖这些文件前需要人确认。' : '',
       outOfScope.length ? `检测到越界改动：${outOfScope.map(item => item.path).join('、')}` : '',
       '用项目语言写作。',
