@@ -185,6 +185,8 @@ class ProjectService {
     this.effectHandlers = effectHandlers
     this.getManifest = getManifest
     this.projectControllers = new Map()
+    this.maintenanceRuns = new Map()
+    this.maintenanceEnsures = new Map()
     this.projects = new Map()
     this.started = false
     this.pendingStores = new Map()
@@ -1211,30 +1213,209 @@ class ProjectService {
       }
       if (effect.type !== 'detect-accepted-changes') break
       await this.#processDetection(context, effect)
+      const latest = context.store.current().projectEffects.find(item => item.id === effect.id)
+      if (latest?.status === 'failed') break
+      if (latest?.status === 'pending' && !latest.params?.snapshotCommit) break
     }
     return { processed: 100 }
+  }
+
+  async #ensureMaintenanceDetection(context, effect) {
+    const existing = this.maintenanceEnsures.get(effect.id)
+    if (existing) return existing
+    const ensure = this.#ensureMaintenanceDetectionInner(context, effect)
+    this.maintenanceEnsures.set(effect.id, ensure)
+    try {
+      return await ensure
+    } finally {
+      if (this.maintenanceEnsures.get(effect.id) === ensure) {
+        this.maintenanceEnsures.delete(effect.id)
+      }
+    }
+  }
+
+  async #ensureMaintenanceDetectionInner(context, effect) {
+    const projectId = context.project.id
+    const requestId = `maintenance-${effect.id}`
+    const state = context.store.current()
+    if (!state || state.deletion) return
+    let request = (state.maintenanceLeaseRequests || []).find(item => item.id === requestId)
+    if (request && request.status === 'released') {
+      await context.store.enqueue((next) => {
+        const target = next.maintenanceLeaseRequests.find(item => item.id === requestId)
+        if (target) {
+          target.status = 'waiting'
+          target.requestedAt = this.#nowIso()
+          target.grantedAt = null
+          target.releasedAt = null
+        }
+        return { next }
+      })
+    } else if (!request) {
+      request = {
+        id: requestId,
+        holder: {
+          kind: 'project-maintenance',
+          projectId,
+          ownerId: requestId,
+        },
+        chainEffectId: effect.id,
+        claims: [{
+          root: context.project.workdir,
+          path: '',
+          mode: 'exclusive',
+        }],
+        epoch: 0,
+        requestedAt: this.#nowIso(),
+        status: 'waiting',
+        grantedAt: null,
+        releasedAt: null,
+      }
+      await context.store.enqueue((next) => {
+        if (next.deletion) return { next }
+        if (!next.maintenanceLeaseRequests.some(item => item.id === requestId)) {
+          next.maintenanceLeaseRequests.push(request)
+        }
+        return { next }
+      })
+    }
+    request = context.store.current().maintenanceLeaseRequests.find(item => item.id === requestId)
+    if (!request || !['waiting', 'granted'].includes(request.status)) return
+    const isGranted = () => (this.scheduler.snapshot?.().claimGrants || [])
+      .some(entry => entry.requestId === requestId)
+    if (!isGranted()) {
+      this.scheduler.request({
+        requestId,
+        holder: request.holder,
+        claims: request.claims,
+        onGranted: () => {
+          this.#runMaintenanceDetection(context, effect.id).catch(() => {})
+        },
+      })
+    }
+    if (isGranted()) await this.#runMaintenanceDetection(context, effect.id)
+  }
+
+  #runMaintenanceDetection(context, effectId) {
+    const running = this.maintenanceRuns.get(effectId)
+    if (running) return running
+    const run = this.#runMaintenanceDetectionInner(context, effectId)
+      .finally(() => {
+        if (this.maintenanceRuns.get(effectId) === run) {
+          this.maintenanceRuns.delete(effectId)
+        }
+      })
+    this.maintenanceRuns.set(effectId, run)
+    return run
+  }
+
+  async #releaseMaintenanceRequest(context, requestId) {
+    await context.store.enqueue((next) => {
+      const target = next.maintenanceLeaseRequests.find(item => item.id === requestId)
+      if (target && target.status !== 'released' && target.status !== 'withdrawn') {
+        target.status = 'released'
+        target.releasedAt = this.#nowIso()
+      }
+      return { next, control: true }
+    })
+    this.scheduler.release(requestId)
+  }
+
+  async #runMaintenanceDetectionInner(context, effectId) {
+    const requestId = `maintenance-${effectId}`
+    const state = context.store.current()
+    const request = (state?.maintenanceLeaseRequests || []).find(item => item.id === requestId)
+    const effect = (state?.projectEffects || []).find(item => item.id === effectId)
+    if (!request || !effect || effect.status !== 'pending'
+        || !['waiting', 'granted'].includes(request.status)
+        || state.deletion) {
+      if (request) await this.#releaseMaintenanceRequest(context, requestId)
+      else this.scheduler.release(requestId)
+      return
+    }
+    if (request.status === 'waiting') {
+      await context.store.enqueue((next) => {
+        const target = next.maintenanceLeaseRequests.find(item => item.id === requestId)
+        if (target && target.status === 'waiting') {
+          target.status = 'granted'
+          target.grantedAt = this.#nowIso()
+        }
+        return { next }
+      })
+    }
+    const current = context.store.current()
+    const currentEffect = (current?.projectEffects || []).find(item => item.id === effectId)
+    const currentRequest = (current?.maintenanceLeaseRequests || []).find(item => item.id === requestId)
+    if (!current || current.deletion || !currentEffect || currentEffect.status !== 'pending'
+        || !currentRequest || currentRequest.status !== 'granted') {
+      await this.#releaseMaintenanceRequest(context, requestId)
+      return
+    }
+    const baseVersions = current.instances
+      .filter(instance => instance.state === 'accepted')
+      .map(instance => ({
+        checkpointId: instance.id,
+        artifactVersionId: instance.artifactVersions.at(-1)?.id || '',
+        instanceEpoch: instance.epoch,
+      }))
+      .filter(entry => entry.artifactVersionId)
+    let snapshotCommit = null
+    let failure = null
+    try {
+      const snapshot = await context.shadowRepo.snapshot({
+        effectId: requestId,
+        targets: [],
+        placeholderList: current.placeholders || [],
+        limits: current.config.settings.snapshotLimits,
+        isOptional: false,
+      })
+      snapshotCommit = snapshot.commit || null
+    } catch (error) {
+      failure = String(error?.code || 'SHADOW_SNAPSHOT_FAILED')
+    }
+    await context.store.enqueue((next) => {
+      const target = next.maintenanceLeaseRequests.find(item => item.id === requestId)
+      if (target) {
+        target.status = 'released'
+        target.releasedAt = this.#nowIso()
+      }
+      const nextEffect = next.projectEffects.find(item => item.id === effectId)
+      if (nextEffect) {
+        nextEffect.params = {
+          ...nextEffect.params,
+          snapshotCommit,
+          baseVersions,
+          failure,
+        }
+        if (failure) {
+          nextEffect.status = 'failed'
+          nextEffect.error = failure
+          nextEffect.finishedAt = this.#nowIso()
+          next.projectBlockedOn = { effectId, error: failure, time: this.#nowIso() }
+        }
+        const check = nextEffect.params.checkId
+          ? next.chatWriteChecks?.[nextEffect.params.checkId]
+          : null
+        if (check) {
+          check.snapshotCommit = snapshotCommit
+          check.baseVersions = baseVersions
+          check.failure = failure
+        }
+      }
+      return { next, control: true }
+    })
+    this.scheduler.release(requestId)
+    if (snapshotCommit) {
+      const refreshed = context.store.current().projectEffects.find(item => item.id === effectId)
+      if (refreshed) await this.#processDetection(context, refreshed)
+    }
   }
 
   async #processDetection(context, effect) {
     const state = context.store.current()
     const params = effect.params || {}
     if (!params.snapshotCommit) {
-      await context.store.enqueue((next) => {
-        const target = next.projectEffects.find(item => item.id === effect.id)
-        if (target) {
-          target.status = 'failed'
-          target.error = params.failure || 'SHADOW_SNAPSHOT_FAILED'
-          target.finishedAt = this.#nowIso()
-        }
-        if (next.projectEffects.filter(item => item.status === 'pending').length === 0) {
-          next.projectBlockedOn = {
-            effectId: effect.id,
-            error: params.failure || 'SHADOW_SNAPSHOT_FAILED',
-            time: this.#nowIso(),
-          }
-        }
-        return { next, control: true }
-      })
+      await this.#ensureMaintenanceDetection(context, effect)
       return
     }
     const changes = []
