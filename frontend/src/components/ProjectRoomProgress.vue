@@ -1,6 +1,6 @@
 <template>
   <section class="project-room-progress" :aria-label="t('projectRoom.progress.title')">
-    <div class="progress-chain">
+    <!-- <div class="progress-chain">
       <button
         v-for="item in progressItems"
         :key="item.checkpointId"
@@ -15,9 +15,9 @@
         <span class="progress-glyph" aria-hidden="true">{{ item.glyph }}</span>
       </button>
       <span v-if="!progressItems.length" class="progress-empty">{{ t('projectRoom.progress.notStarted') }}</span>
-    </div>
+    </div> -->
 
-    <div v-if="progressItems.length" class="progress-summary">
+    <!-- <div v-if="progressItems.length" class="progress-summary">
       <button
         class="progress-summary-main"
         type="button"
@@ -50,7 +50,7 @@
       >
         {{ expanded ? t('projectRoom.progress.collapse') : t('projectRoom.progress.expand') }}
       </button>
-    </div>
+    </div> -->
 
     <div v-if="expanded" class="progress-list">
       <div
