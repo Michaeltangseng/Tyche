@@ -100,6 +100,15 @@ async function resolveForRead(
   const { relative, segments } = normalizeRelativePath(relPath, rootInfo)
   if (!segments.length) throw workdirError()
   const target = path.join(rootInfo.realRoot, ...segments)
+  let preResolved = ''
+  if (platform === 'win32') {
+    try {
+      preResolved = fs.realpathSync.native(target)
+      verifiedRealPath(rootInfo.realRoot, preResolved, rootInfo)
+    } catch {
+      throw workdirError()
+    }
+  }
   let fd
   try {
     fd = fs.openSync(target, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0))
@@ -108,7 +117,15 @@ async function resolveForRead(
   }
   try {
     await hooks.afterOpen?.({ fd, target })
-    const realPath = await fdRealPathFn(fd, { platform })
+    let realPath
+    if (platform === 'win32') {
+      const opened = fs.fstatSync(fd)
+      const current = fs.statSync(target)
+      if (opened.dev !== current.dev || opened.ino !== current.ino) throw workdirError()
+      realPath = preResolved
+    } else {
+      realPath = await fdRealPathFn(fd, { platform })
+    }
     await hooks.afterRealPath?.({ fd, target, realPath })
     verifiedRealPath(rootInfo.realRoot, realPath, rootInfo)
     return { fd, realPath, relative }
@@ -164,6 +181,15 @@ async function listDirectory(
   const { relative, segments } = normalizeRelativePath(relPath, rootInfo)
   const target = path.join(rootInfo.realRoot, ...segments)
   const offset = Number.isSafeInteger(cursor) && cursor > 0 ? cursor : 0
+  let preResolved = ''
+  if (platform === 'win32') {
+    try {
+      preResolved = fs.realpathSync.native(target)
+      verifiedRealPath(rootInfo.realRoot, preResolved, rootInfo)
+    } catch {
+      throw workdirError()
+    }
+  }
   let fd
   try {
     fd = fs.openSync(target, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0))
@@ -171,7 +197,9 @@ async function listDirectory(
     throw workdirError()
   }
   try {
-    const realPath = await fdRealPathFn(fd, { platform })
+    const realPath = platform === 'win32'
+      ? preResolved
+      : await fdRealPathFn(fd, { platform })
     verifiedRealPath(rootInfo.realRoot, realPath, rootInfo)
     await hooks.afterOpen?.({ fd, target, realPath })
     const names = fs.readdirSync(realPath)
