@@ -41,10 +41,42 @@
         </button>
       </header>
 
-      <section v-if="activeTab === 'files'" class="project-room-drawer-body project-room-drawer-files" role="tabpanel">
-        <WorkdirTree :controller="workdirTreeController" />
-        <FilePreview :controller="filePreviewController" />
-        <FileDiff v-if="workdirTree.diff.value" :controller="fileDiffController" />
+      <section
+        v-if="activeTab === 'files'"
+        ref="filesPanel"
+        class="project-room-drawer-body project-room-drawer-files"
+        :class="{ 'preview-hidden': !previewVisible }"
+        role="tabpanel"
+      >
+        <div class="file-panel-toolbar">
+          <span>{{ t('projectRoom.drawer.files') }}</span>
+          <button
+            class="file-panel-toggle"
+            type="button"
+            :aria-pressed="String(previewVisible)"
+            @click="previewVisible = !previewVisible"
+          >
+            <EyeOutline v-if="previewVisible" aria-hidden="true" />
+            <EyeOffOutline v-else aria-hidden="true" />
+            {{ previewVisible ? t('workdir.preview.hide') : t('workdir.preview.show') }}
+          </button>
+        </div>
+        <WorkdirTree
+          :controller="workdirTreeController"
+          :style="treeStyle"
+        />
+        <div
+          v-if="previewVisible"
+          class="file-panel-resizer"
+          role="separator"
+          aria-orientation="horizontal"
+          :aria-label="t('workdir.preview.resize')"
+          @pointerdown.prevent="startFilePanelResize"
+        />
+        <template v-if="previewVisible">
+          <FilePreview :controller="filePreviewController" />
+          <FileDiff v-if="workdirTree.diff.value" :controller="fileDiffController" />
+        </template>
       </section>
 
       <section v-else class="project-room-drawer-body" role="tabpanel">
@@ -64,8 +96,8 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { CloseOutline } from '@vicons/ionicons5'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { CloseOutline, EyeOffOutline, EyeOutline } from '@vicons/ionicons5'
 import { useTraceStream } from '../composables/useTraceStream.js'
 import TraceStepList from './trace/TraceStepList.vue'
 import FileDiff from './workdir/FileDiff.vue'
@@ -102,6 +134,15 @@ const MAX_WIDTH = 760
 const activeTab = ref('files')
 const width = ref(DEFAULT_WIDTH)
 const panelElement = ref(null)
+const filesPanel = ref(null)
+const previewVisible = ref(true)
+const treeHeight = ref(42)
+let fileResizeState = null
+const treeStyle = computed(() => (
+  previewVisible.value
+    ? { flex: `0 0 ${treeHeight.value}%`, height: `${treeHeight.value}%` }
+    : { flex: '1 1 auto', height: 'auto' }
+))
 let resizeState = null
 
 const workdirTree = useWorkdirTree({
@@ -158,6 +199,13 @@ watch(activeTab, (tab) => {
   if (active && traceRunId?.value && traceAgentRunId?.value) void fullTrace.open()
 }, { immediate: true })
 
+watch([traceRunId, traceAgentRunId], () => {
+  if (activeTab.value !== 'trace') return
+  if (!traceRunId?.value || !traceAgentRunId?.value) return
+  fullTrace.setViewing(true)
+  void fullTrace.open()
+})
+
 function applyPreferences() {
   const preferences = projectSnapshot.value?.preferences || {}
   if (Number.isInteger(preferences.drawerWidth)) {
@@ -206,6 +254,28 @@ function finishResize() {
   persistPreferences({ drawerWidth: width.value })
 }
 
+function startFilePanelResize(event) {
+  const rect = filesPanel.value?.getBoundingClientRect?.()
+  if (!rect) return
+  fileResizeState = {
+    top: rect.top,
+    height: rect.height,
+  }
+  window.addEventListener('pointermove', handleFilePanelResize)
+  window.addEventListener('pointerup', finishFilePanelResize, { once: true })
+}
+
+function handleFilePanelResize(event) {
+  if (!fileResizeState) return
+  const ratio = (event.clientY - fileResizeState.top) / fileResizeState.height
+  treeHeight.value = Math.min(72, Math.max(20, Math.round(ratio * 100)))
+}
+
+function finishFilePanelResize() {
+  window.removeEventListener('pointermove', handleFilePanelResize)
+  fileResizeState = null
+}
+
 watch([open, drawer], ([isOpen, isDrawer]) => {
   document.body.classList.toggle('project-room-drawer-open', Boolean(isOpen && isDrawer))
 }, { immediate: true })
@@ -225,6 +295,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('pointermove', handleResize)
+  window.removeEventListener('pointermove', handleFilePanelResize)
   window.removeEventListener('keydown', handleEscape)
   document.body.classList.remove('project-room-drawer-open')
 })

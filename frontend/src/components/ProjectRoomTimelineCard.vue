@@ -48,16 +48,38 @@
     </template>
 
     <template v-else-if="card.kind === 'running'">
-      <p class="project-timeline-running">
-        <span>{{ runningLabel }}</span>
-        <small v-if="waitingOnLabel"> · {{ waitingOnLabel }}</small>
-      </p>
+      <div class="project-timeline-running">
+        <div class="project-timeline-running-header">
+          <span class="project-timeline-running-state">{{ runningLabel }}</span>
+          <span v-if="card.activeInvocations?.length" class="project-timeline-running-team">
+            <span
+              v-for="invocation in card.activeInvocations"
+              :key="invocation.effectId"
+              class="project-timeline-running-agent"
+            >
+              <img :src="agentLogo(invocation.agentKind, theme)" :alt="agentLabel(invocation.agentKind)" />
+              <span>{{ agentLabel(invocation.agentKind) }}</span>
+              <small>{{ roleLabel(invocation.role) }}</small>
+            </span>
+          </span>
+        </div>
+        <InlineTrace
+          v-for="invocation in card.activeInvocations || []"
+          :key="`trace:${invocation.effectId}`"
+          :agent-run-id="invocation.effectId"
+          :run-id="card.checkpointId"
+          live
+          :t="t"
+        />
+      </div>
     </template>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
+import { agentLabel, agentLogo } from '../catalog.js'
+import InlineTrace from './trace/InlineTrace.vue'
 
 const props = defineProps({
   card: { type: Object, required: true },
@@ -65,6 +87,7 @@ const props = defineProps({
   selectGate: { type: Function, default: null },
   stopDelivery: { type: Function, default: null },
   t: { type: Function, required: true },
+  theme: { type: String, default: 'light' },
 })
 
 const reasonLabel = computed(() => (
@@ -98,8 +121,9 @@ const runningLabel = computed(() => {
   return `${props.card.name} · ${props.t(key)}`
 })
 
-const waitingOnLabel = computed(() => {
-  const key = WAITING_ON_KEYS[props.card.waitingOn]
-  return key ? props.t(key) : ''
-})
+function roleLabel(role) {
+  const key = `projectRoom.timeline.role.${role || 'lead'}`
+  const label = props.t(key)
+  return label === key ? String(role || '') : label
+}
 </script>

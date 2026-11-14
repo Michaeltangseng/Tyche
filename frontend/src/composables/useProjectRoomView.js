@@ -239,6 +239,7 @@ export function useProjectRoomView({
           state: item.state,
           waitingOn: item.waitingOn,
           generation: item.generation,
+          activeInvocations: item.activeInvocations || [],
         })
       }
     }

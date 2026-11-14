@@ -92,6 +92,7 @@
             :select-gate="projectRoomSelectGate"
             :stop-delivery="projectRoomStopDelivery"
             :t="t"
+            :theme="theme"
           />
           <template v-else>
             <template v-if="isArchivedCollapsed(message)">
@@ -333,7 +334,6 @@
                 <InlineTrace
                   v-if="messageHasFullTrace(message)"
                   :agent-run-id="message.trace.agentRunId"
-                  :default-open="message.id === latestAgentMessageId"
                   :run-id="message.trace.runId"
                   :t="t"
                 />
@@ -1053,18 +1053,6 @@ const displayTimelineMessages = computed(() => {
     timelineTimestamp(left.createdAt) - timelineTimestamp(right.createdAt)
       || String(left.id).localeCompare(String(right.id))
   ))
-})
-
-const latestAgentMessageId = computed(() => {
-  const messages = displayTimelineMessages.value
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]
-    if (message.role === 'agent' && !message.projectRoomCard
-        && message.trace?.runId && message.trace?.agentRunId) {
-      return message.id
-    }
-  }
-  return ''
 })
 
 function messageHasFullTrace(message) {

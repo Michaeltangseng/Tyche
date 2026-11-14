@@ -5,7 +5,13 @@
     <p v-if="errorLabel" class="overlay-error" role="alert">{{ errorLabel }}</p>
     <p v-if="sameAgentWarning" class="overlay-warning">{{ t('projectRoom.seats.sameAgentWarning') }}</p>
 
-    <article v-for="seat in seats" :key="seat.id" class="setup-seat">
+    <article
+      v-for="seat in seats"
+      :key="seat.id"
+      class="setup-seat"
+      :class="{ focused: focusedSeatId === seat.id }"
+      :data-seat-id="seat.id"
+    >
       <header>
         <strong>{{ seat.roleName || seat.id }}</strong>
         <button
@@ -91,7 +97,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { errorCode, projectRoomErrorKey } from '../desktop.js'
 
 const props = defineProps({
@@ -102,6 +108,7 @@ const {
   agentOptions,
   api,
   close,
+  focusedSeatId,
   projectId,
   projectSnapshot,
   refreshProject,
@@ -136,7 +143,13 @@ function loadSeats() {
   for (const seat of seats.value) ensureCapabilities(seat.agentKind)
 }
 
-onMounted(loadSeats)
+onMounted(async () => {
+  loadSeats()
+  if (!focusedSeatId?.value) return
+  await nextTick()
+  const element = document.querySelector(`[data-seat-id="${CSS.escape(focusedSeatId.value)}"]`)
+  element?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+})
 watch(() => projectSnapshot.value?.config?.configRevision, (value, previous) => {
   if (value !== previous) loadSeats()
 })

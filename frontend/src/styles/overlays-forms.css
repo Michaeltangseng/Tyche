@@ -732,6 +732,11 @@ button.overlay-list-row:focus-visible {
   background: color-mix(in srgb, var(--surface-raised) 82%, var(--surface-active) 18%);
 }
 
+.setup-seat.focused {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
 .setup-seat header {
   display: flex;
   align-items: center;

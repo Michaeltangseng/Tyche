@@ -504,6 +504,8 @@ const projectRoomView = useProjectRoomView({
   workspace,
 })
 const isProjectMainGroup = projectRoomView.isMainGroup
+const projectSeats = computed(() => projectRoomView.project.value?.config?.seats || [])
+const projectSeatFocusId = ref('')
 const projectDrawerWidth = computed(() => {
   const stored = projectDrawerWidthOverride.value
     ?? projectRoomView.project.value?.preferences?.drawerWidth
@@ -572,8 +574,9 @@ async function setProjectRoomPreview(enabled) {
   }
 }
 
-function openProjectSeatSettings() {
+function openProjectSeatSettings(seatId = '') {
   if (!activeGroup.value?.projectId) return
+  projectSeatFocusId.value = String(seatId || '')
   modal.value = 'project-room-seats'
 }
 
@@ -678,6 +681,7 @@ const projectRoomSeatSettingsController = {
   agentOptions: projectRoomAgentOptions,
   api: desktopApi()?.projectRoom || null,
   close: (...args) => closeModal(...args),
+  focusedSeatId: projectSeatFocusId,
   projectId: computed(() => activeGroup.value?.projectId || ''),
   projectSnapshot: projectRoomView.project,
   refreshProject: projectRoomView.refresh,
@@ -845,8 +849,23 @@ const {
   tracePanelOpen,
   tracePanelRunId,
 } = conversationTimeline
+const activeProjectTraceItem = computed(() => {
+  for (const item of projectRoomView.progressItems.value || []) {
+    const invocation = (item.activeInvocations || []).find(entry => entry.effectId)
+    if (invocation) {
+      return {
+        runId: item.checkpointId,
+        agentRunId: invocation.effectId,
+        agentKind: invocation.agentKind,
+        status: 'running',
+      }
+    }
+  }
+  return null
+})
 const projectDrawerTraceItem = computed(() => (
-  tracePanelItems.value.find(item => item.agentRunId === selectedTraceAgentRunId.value)
+  activeProjectTraceItem.value
+  || tracePanelItems.value.find(item => item.agentRunId === selectedTraceAgentRunId.value)
   || tracePanelItems.value.at(-1)
   || allTracePanelItems.value.find(item => item.agentRunId === selectedTraceAgentRunId.value)
   || allTracePanelItems.value.at(-1)
@@ -1160,6 +1179,7 @@ const {
     groupName,
     handleMessageScroll,
     openSeatSettings: openProjectSeatSettings,
+    projectSeats,
     projectDrawerOpen,
     toggleProjectDrawer,
     maxRounds,

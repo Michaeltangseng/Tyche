@@ -95,11 +95,7 @@ function createClaudeStreamJsonMapper() {
       }
       return []
     }
-    return [{
-      kind: 'raw',
-      title: String(update.type || 'stream_event').slice(0, 2000),
-      raw: event,
-    }]
+    return []
   }
 
   function mapAssistant(event) {
@@ -171,6 +167,28 @@ function createClaudeStreamJsonMapper() {
           ...(typeof event.result === 'string' ? { output: event.result } : {}),
           raw: event,
         }]
+      }
+      if (event.type === 'system') {
+        // Token counters and hook chatter dominate the trace without adding
+        // anything a person can act on. Keep only meaningful lifecycle marks.
+        if (event.subtype === 'init') {
+          return [{
+            kind: 'lifecycle',
+            title: 'init',
+            status: 'completed',
+            ...(typeof event.model === 'string' ? { output: event.model } : {}),
+            raw: event,
+          }]
+        }
+        if (event.subtype === 'permission_denied') {
+          return [{
+            kind: 'lifecycle',
+            title: 'permission_denied',
+            status: 'failed',
+            raw: event,
+          }]
+        }
+        return []
       }
       return [{
         kind: 'raw',

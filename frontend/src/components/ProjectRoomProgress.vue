@@ -29,7 +29,8 @@
           <span>
             {{ currentItem.label }}
             <template v-if="currentItem.round"> · {{ t('projectRoom.progress.round', { count: currentItem.round }) }}</template>
-            <template v-if="currentItem.leadSeatName"> · {{ currentItem.leadSeatName }}</template>
+            <template v-if="activeAgentsLabel(currentItem)"> · {{ activeAgentsLabel(currentItem) }}</template>
+            <template v-else-if="currentItem.leadSeatName"> · {{ currentItem.leadSeatName }}</template>
             <template v-if="currentItem.elapsed"> · {{ currentItem.elapsed }}</template>
           </span>
         </template>
@@ -64,7 +65,8 @@
             <strong>{{ item.name }}</strong>
             <small>
               {{ item.label }}
-              <template v-if="item.leadSeatName"> · {{ item.leadSeatName }}</template>
+              <template v-if="activeAgentsLabel(item)"> · {{ activeAgentsLabel(item) }}</template>
+              <template v-else-if="item.leadSeatName"> · {{ item.leadSeatName }}</template>
               <template v-if="item.elapsed"> · {{ item.elapsed }}</template>
             </small>
           </span>
@@ -84,6 +86,7 @@
 
 <script setup>
 import { ref } from 'vue'
+import { agentLabel } from '../catalog.js'
 
 const props = defineProps({
   controller: { type: Object, required: true },
@@ -100,4 +103,11 @@ const {
 } = props.controller
 
 const expanded = ref(false)
+
+function activeAgentsLabel(item) {
+  const kinds = [...new Set((item.activeInvocations || [])
+    .map(invocation => invocation.agentKind)
+    .filter(Boolean))]
+  return kinds.map(kind => agentLabel(kind)).join(' / ')
+}
 </script>

@@ -1549,12 +1549,53 @@
 }
 
 .project-timeline-running {
+  display: grid;
+  gap: 6px;
   margin: 0;
-  padding: 5px 9px;
+  padding: 7px 9px;
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--surface) 70%, transparent);
   color: var(--muted);
   font-size: var(--text-xs);
+}
+
+.project-timeline-running-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.project-timeline-running-state {
+  color: var(--text-soft);
+  font-weight: 600;
+}
+
+.project-timeline-running-team {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.project-timeline-running-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-soft);
+  font-size: var(--text-2xs);
+}
+
+.project-timeline-running-agent img {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+}
+
+.project-timeline-running-agent small {
+  color: var(--muted);
+  font-size: var(--text-2xs);
 }
 
 .project-timeline-running small {
