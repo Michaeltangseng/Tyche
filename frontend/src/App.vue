@@ -150,6 +150,7 @@
                 'unlimited-confirm-modal': modal === 'unlimited-confirm',
                 'project-room-overlay-modal': modal === 'project-room-overlay',
                 'project-room-setup-modal': ['project-room-create', 'project-room-seats'].includes(modal),
+                'seat-persona-modal': modal === 'project-room-seats',
               }"
               role="dialog"
               aria-modal="true"
@@ -691,9 +692,6 @@ const projectRoomSeatSettingsController = {
 const projectRoomDrawerController = {
   close: () => { projectDrawerOpen.value = false },
   drawer: projectDrawerNarrow,
-  traceAgentRunId: ref(''),
-  traceRunId: ref(''),
-  formatNavTime,
   onResize: (width) => { projectDrawerWidthOverride.value = width },
   open: projectDrawerOpen,
   projectId: computed(() => activeGroup.value?.projectId || ''),
@@ -829,7 +827,6 @@ const {
   activeMessages,
   activeRun,
   activeRunTopicSignature,
-  allTracePanelItems,
   closeTracePanel,
   clearActiveTurn,
   clearDeletedTurnState,
@@ -849,32 +846,6 @@ const {
   tracePanelOpen,
   tracePanelRunId,
 } = conversationTimeline
-const activeProjectTraceItem = computed(() => {
-  for (const item of projectRoomView.progressItems.value || []) {
-    const invocation = (item.activeInvocations || []).find(entry => entry.effectId)
-    if (invocation) {
-      return {
-        runId: item.checkpointId,
-        agentRunId: invocation.effectId,
-        agentKind: invocation.agentKind,
-        status: 'running',
-      }
-    }
-  }
-  return null
-})
-const projectDrawerTraceItem = computed(() => (
-  activeProjectTraceItem.value
-  || tracePanelItems.value.find(item => item.agentRunId === selectedTraceAgentRunId.value)
-  || tracePanelItems.value.at(-1)
-  || allTracePanelItems.value.find(item => item.agentRunId === selectedTraceAgentRunId.value)
-  || allTracePanelItems.value.at(-1)
-  || null
-))
-Object.assign(projectRoomDrawerController, {
-  traceAgentRunId: computed(() => projectDrawerTraceItem.value?.agentRunId || ''),
-  traceRunId: computed(() => projectDrawerTraceItem.value?.runId || ''),
-})
 watch(tracePanelOpen, (open) => {
   if (open) projectDrawerOpen.value = false
 })

@@ -1,103 +1,141 @@
 <template>
-  <div class="project-room-seat-settings" @keydown.esc.stop.prevent="close">
-    <p class="overlay-description">{{ t('projectRoom.seats.hint') }}</p>
-    <p v-if="staleNotice" class="overlay-warning">{{ t('projectRoom.seats.staleReloaded') }}</p>
-    <p v-if="errorLabel" class="overlay-error" role="alert">{{ errorLabel }}</p>
-    <p v-if="sameAgentWarning" class="overlay-warning">{{ t('projectRoom.seats.sameAgentWarning') }}</p>
+  <div class="seat-persona-editor" @keydown.esc.stop.prevent="close">
+    <template v-if="activeSeat">
+      <aside class="seat-persona-rail">
+        <div class="seat-persona-portrait">
+          <img :src="agentLogo(activeSeat.agentKind)" :alt="agentLabel(activeSeat.agentKind)" />
+        </div>
+        <strong class="seat-persona-name">{{ activeSeat.roleName || activeSeat.id }}</strong>
+        <p class="seat-persona-agent-name">{{ agentLabel(activeSeat.agentKind) }}</p>
+        <div class="seat-persona-agent-choices" role="radiogroup" :aria-label="t('projectRoom.setup.seatAgent')">
+          <button
+            v-for="agent in agentOptions"
+            :key="agent.kind"
+            type="button"
+            role="radio"
+            :class="{ active: activeSeat.agentKind === agent.kind }"
+            :aria-checked="String(activeSeat.agentKind === agent.kind)"
+            :title="agent.label"
+            :aria-label="agent.label"
+            @click="selectAgent(agent.kind)"
+          >
+            <img :src="agentLogo(agent.kind)" :alt="agent.label" />
+          </button>
+        </div>
+        <p class="seat-persona-rail-label">{{ t('projectRoom.seats.agentLabel') }}</p>
+        <div class="seat-persona-rail-divider" />
+        <div class="seat-persona-capability-list">
+          <span v-for="capability in activeSeat.capabilities" :key="capability">
+            {{ capabilityLabel(capability) }}
+          </span>
+        </div>
+        <div class="seat-persona-rail-actions">
+          <button class="seat-persona-add" type="button" :disabled="busy" @click="addSeat">
+            <AddOutline aria-hidden="true" />
+            {{ t('projectRoom.seats.add') }}
+          </button>
+          <button
+            v-if="seats.length > 1"
+            class="seat-persona-remove"
+            type="button"
+            :disabled="busy || seatReferenced(activeSeat.id)"
+            :title="seatReferenced(activeSeat.id) ? t('projectRoom.setup.seatReferenced') : t('projectRoom.seats.remove')"
+            @click="removeSeat(activeSeat)"
+          >
+            <TrashOutline aria-hidden="true" />
+            {{ t('projectRoom.seats.remove') }}
+          </button>
+        </div>
+      </aside>
 
-    <article
-      v-for="seat in seats"
-      :key="seat.id"
-      class="setup-seat"
-      :class="{ focused: focusedSeatId === seat.id }"
-      :data-seat-id="seat.id"
-    >
-      <header>
-        <strong>{{ seat.roleName || seat.id }}</strong>
-        <button
-          class="gate-link"
-          type="button"
-          :disabled="busy || seats.length <= 1"
-          @click="removeSeat(seat)"
-        >
-          {{ t('projectRoom.seats.remove') }}
-        </button>
-      </header>
-      <label class="overlay-field">
-        <span>{{ t('projectRoom.setup.seatRole') }}</span>
-        <input v-model="seat.roleName" type="text" maxlength="40" />
-      </label>
-      <label class="overlay-field">
-        <span>{{ t('projectRoom.setup.seatDuty') }}</span>
-        <input v-model="seat.duty" type="text" maxlength="200" />
-      </label>
-      <label class="overlay-field">
-        <span>{{ t('projectRoom.setup.seatAgent') }}</span>
-        <select v-model="seat.agentKind" @change="ensureCapabilities(seat.agentKind)">
-          <option v-for="agent in agentOptions" :key="agent.kind" :value="agent.kind">
-            {{ agent.label }}{{ agent.available ? '' : ` (${t('projectRoom.setup.unavailable')})` }}
-          </option>
-        </select>
-      </label>
-      <div class="setup-capabilities">
-        <label v-for="capability in capabilityOptions" :key="capability.value">
-          <input
-            v-model="seat.capabilities"
-            type="checkbox"
-            :value="capability.value"
-            :disabled="!capabilitySupported(seat.agentKind, capability.value)"
-          />
-          <span>{{ t(capability.labelKey) }}</span>
+      <section class="seat-persona-form">
+        <p class="seat-persona-kicker">PERSONA</p>
+        <p class="seat-persona-hint">{{ t('projectRoom.seats.hint') }}</p>
+        <p v-if="staleNotice" class="overlay-warning">{{ t('projectRoom.seats.staleReloaded') }}</p>
+        <p v-if="errorLabel" class="overlay-error" role="alert">{{ errorLabel }}</p>
+
+        <label class="seat-persona-field">
+          <span>{{ t('projectRoom.setup.seatRole') }}</span>
+          <input v-model="activeSeat.roleName" class="seat-persona-name-input" type="text" maxlength="40" />
         </label>
-      </div>
-      <label class="overlay-field">
-        <span>{{ t('projectRoom.setup.profile') }}</span>
-        <textarea v-model="seat.profileText" rows="3" maxlength="16384" />
-      </label>
-      <label v-if="seat.profileVersions?.length" class="overlay-field">
-        <span>{{ t('projectRoom.seats.rollback') }}</span>
-        <select v-model="seat.rollbackProfileId">
-          <option value="">{{ t('projectRoom.seats.currentProfile') }}</option>
-          <option v-for="profile in seat.profileVersions" :key="profile.id" :value="profile.id">
-            v{{ profile.version }} · {{ profileSourceLabel(profile.source) }}
-          </option>
-        </select>
-      </label>
-      <p v-if="seatWarnings(seat).length" class="setup-warning">
-        <span v-for="warning in seatWarnings(seat)" :key="warning">{{ warning }}</span>
-      </p>
-      <footer class="overlay-actions">
-        <button
-          v-if="seat.rollbackProfileId"
-          class="secondary-button"
-          type="button"
-          :disabled="busy"
-          @click="rollbackProfile(seat)"
-        >
-          {{ t('projectRoom.seats.rollbackApply') }}
-        </button>
-        <button class="secondary-button" type="button" :disabled="busy" @click="saveProfile(seat)">
-          {{ t('projectRoom.seats.saveProfile') }}
-        </button>
-        <button class="primary-button" type="button" :disabled="busy" @click="saveSeat(seat)">
-          {{ t('projectRoom.seats.saveSeat') }}
-        </button>
-      </footer>
-    </article>
 
-    <button class="secondary-button" type="button" :disabled="busy" @click="addSeat">
-      {{ t('projectRoom.setup.addSeat') }}
-    </button>
-    <footer class="overlay-actions">
-      <button class="secondary-button" type="button" :disabled="busy" @click="close">
-        {{ t('common.close') }}
-      </button>
-    </footer>
+        <label class="seat-persona-field">
+          <span>{{ t('projectRoom.setup.seatDuty') }}</span>
+          <input v-model="activeSeat.duty" type="text" maxlength="200" />
+        </label>
+
+        <div class="seat-persona-field-row">
+          <label class="seat-persona-field">
+            <span>{{ t('projectRoom.setup.seatAgent') }}</span>
+            <select v-model="activeSeat.agentKind" @change="ensureCapabilities(activeSeat.agentKind)">
+              <option v-for="agent in agentOptions" :key="agent.kind" :value="agent.kind">
+                {{ agent.label }}{{ agent.available ? '' : ` (${t('projectRoom.setup.unavailable')})` }}
+              </option>
+            </select>
+          </label>
+          <fieldset class="seat-persona-capabilities">
+            <legend>{{ t('projectRoom.seats.capabilities') }}</legend>
+            <label v-for="capability in capabilityOptions" :key="capability.value">
+              <input
+                v-model="activeSeat.capabilities"
+                type="checkbox"
+                :value="capability.value"
+                :disabled="!capabilitySupported(activeSeat.agentKind, capability.value)"
+              />
+              <span>{{ t(capability.labelKey) }}</span>
+            </label>
+          </fieldset>
+        </div>
+
+        <label class="seat-persona-field seat-persona-profile">
+          <span>{{ t('projectRoom.setup.profile') }}</span>
+          <textarea v-model="activeSeat.profileText" rows="6" maxlength="16384" />
+          <small>{{ activeSeat.profileText.length }} / 16384</small>
+        </label>
+
+        <details v-if="activeSeat.profileVersions?.length" class="seat-persona-history">
+          <summary>{{ t('projectRoom.seats.rollback') }}</summary>
+          <select v-model="activeSeat.rollbackProfileId">
+            <option value="">{{ t('projectRoom.seats.currentProfile') }}</option>
+            <option v-for="profile in activeSeat.profileVersions" :key="profile.id" :value="profile.id">
+              v{{ profile.version }} · {{ profileSourceLabel(profile.source) }}
+            </option>
+          </select>
+        </details>
+
+        <p v-if="sameAgentWarning" class="setup-warning">{{ t('projectRoom.seats.sameAgentWarning') }}</p>
+        <p v-if="seatWarnings(activeSeat).length" class="setup-warning">
+          <span v-for="warning in seatWarnings(activeSeat)" :key="warning">{{ warning }}</span>
+        </p>
+
+        <footer class="seat-persona-footer">
+          <button
+            v-if="activeSeat.rollbackProfileId"
+            class="seat-persona-history-apply"
+            type="button"
+            :disabled="busy"
+            @click="rollbackProfile(activeSeat)"
+          >
+            {{ t('projectRoom.seats.rollbackApply') }}
+          </button>
+          <span class="seat-persona-footer-spacer" />
+          <button class="secondary-button" type="button" :disabled="busy" @click="saveProfile(activeSeat)">
+            {{ t('projectRoom.seats.saveProfile') }}
+          </button>
+          <button class="primary-button" type="button" :disabled="busy" @click="saveSeat(activeSeat)">
+            {{ t('projectRoom.seats.saveSeat') }}
+          </button>
+        </footer>
+      </section>
+    </template>
+    <p v-else class="seat-persona-empty">{{ t('projectRoom.seats.empty') }}</p>
   </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { AddOutline, TrashOutline } from '@vicons/ionicons5'
+import { agentLabel, agentLogo } from '../catalog.js'
 import { errorCode, projectRoomErrorKey } from '../desktop.js'
 
 const props = defineProps({
@@ -117,6 +155,7 @@ const {
 
 const busy = ref(false)
 const seats = ref([])
+const selectedSeatId = ref('')
 const configRevision = ref(0)
 const capabilityCache = reactive({})
 const staleNotice = ref(false)
@@ -127,6 +166,10 @@ const capabilityOptions = [
   { value: 'write-drafts', labelKey: 'projectRoom.setup.capability.writeDrafts' },
   { value: 'write-workdir', labelKey: 'projectRoom.setup.capability.writeWorkdir' },
 ]
+
+const activeSeat = computed(() => (
+  seats.value.find(seat => seat.id === selectedSeatId.value) || seats.value[0] || null
+))
 
 function loadSeats() {
   const config = projectSnapshot.value?.config
@@ -140,18 +183,22 @@ function loadSeats() {
     profileVersions: [...(seat.profileVersions || [])],
     rollbackProfileId: '',
   }))
+  const preferred = String(focusedSeatId?.value || '')
+  if (!seats.value.some(seat => seat.id === selectedSeatId.value)) {
+    selectedSeatId.value = seats.value.some(seat => seat.id === preferred)
+      ? preferred
+      : (seats.value[0]?.id || '')
+  }
   for (const seat of seats.value) ensureCapabilities(seat.agentKind)
 }
 
-onMounted(async () => {
-  loadSeats()
-  if (!focusedSeatId?.value) return
-  await nextTick()
-  const element = document.querySelector(`[data-seat-id="${CSS.escape(focusedSeatId.value)}"]`)
-  element?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
-})
+onMounted(loadSeats)
 watch(() => projectSnapshot.value?.config?.configRevision, (value, previous) => {
   if (value !== previous) loadSeats()
+})
+watch(() => focusedSeatId?.value, (seatId) => {
+  const id = String(seatId || '')
+  if (id && seats.value.some(seat => seat.id === id)) selectedSeatId.value = id
 })
 
 const sameAgentWarning = computed(() => {
@@ -162,6 +209,26 @@ const sameAgentWarning = computed(() => {
     return lead && reviewer && lead.agentKind === reviewer.agentKind
   })
 })
+
+function capabilityLabel(capability) {
+  const option = capabilityOptions.find(item => item.value === capability)
+  return option ? t(option.labelKey) : capability
+}
+
+function selectAgent(kind) {
+  if (!activeSeat.value) return
+  activeSeat.value.agentKind = kind
+  ensureCapabilities(kind)
+}
+
+function seatReferenced(seatId) {
+  const defs = projectSnapshot.value?.config?.playbook?.checkpointDefs || []
+  return defs.some(def => (
+    def.leadSeatId === seatId
+    || (def.reviewerSeatIds || []).includes(seatId)
+    || (def.draftSeatIds || []).includes(seatId)
+  ))
+}
 
 async function ensureCapabilities(kind) {
   if (!kind || capabilityCache[kind]) return
@@ -326,6 +393,7 @@ async function addSeat() {
       configRevision: configRevision.value,
     })
     await refreshProject()
+    selectedSeatId.value = id
     loadSeats()
   } catch (error) {
     handleError(error)
@@ -348,6 +416,7 @@ async function removeSeat(seat) {
       configRevision: configRevision.value,
     })
     await refreshProject()
+    selectedSeatId.value = ''
     loadSeats()
   } catch (error) {
     handleError(error)

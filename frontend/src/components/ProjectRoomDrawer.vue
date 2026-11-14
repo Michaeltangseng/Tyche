@@ -17,19 +17,7 @@
       tabindex="-1"
     >
       <header class="project-room-drawer-header">
-        <div class="project-room-drawer-tabs" role="tablist">
-          <button
-            v-for="tab in tabs"
-            :key="tab.value"
-            type="button"
-            role="tab"
-            :aria-selected="String(activeTab === tab.value)"
-            :class="{ active: activeTab === tab.value }"
-            @click="selectTab(tab.value)"
-          >
-            {{ t(tab.labelKey) }}
-          </button>
-        </div>
+        <strong class="project-room-drawer-title">{{ t('projectRoom.drawer.files') }}</strong>
         <button
           class="icon-button"
           type="button"
@@ -42,11 +30,9 @@
       </header>
 
       <section
-        v-if="activeTab === 'files'"
         ref="filesPanel"
         class="project-room-drawer-body project-room-drawer-files"
         :class="{ 'preview-hidden': !previewVisible }"
-        role="tabpanel"
       >
         <div class="file-panel-toolbar">
           <span>{{ t('projectRoom.drawer.files') }}</span>
@@ -79,11 +65,6 @@
         </template>
       </section>
 
-      <section v-else class="project-room-drawer-body" role="tabpanel">
-        <TraceStepList v-if="traceHasFull" :controller="traceController" />
-        <p v-else class="project-room-drawer-empty">{{ t('projectRoom.drawer.traceUnavailable') }}</p>
-      </section>
-
       <div
         class="project-room-drawer-resize"
         role="separator"
@@ -98,8 +79,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { CloseOutline, EyeOffOutline, EyeOutline } from '@vicons/ionicons5'
-import { useTraceStream } from '../composables/useTraceStream.js'
-import TraceStepList from './trace/TraceStepList.vue'
 import FileDiff from './workdir/FileDiff.vue'
 import FilePreview from './workdir/FilePreview.vue'
 import WorkdirTree from './workdir/WorkdirTree.vue'
@@ -118,20 +97,13 @@ const {
   projectSnapshot,
   savePreferences,
   t,
-  traceAgentRunId,
-  traceRunId,
   theme,
   workdir,
 } = props.controller
 
-const tabs = [
-  { value: 'files', labelKey: 'projectRoom.drawer.files' },
-  { value: 'trace', labelKey: 'projectRoom.drawer.trace' },
-]
 const DEFAULT_WIDTH = 420
 const MIN_WIDTH = 280
 const MAX_WIDTH = 760
-const activeTab = ref('files')
 const width = ref(DEFAULT_WIDTH)
 const panelElement = ref(null)
 const filesPanel = ref(null)
@@ -176,34 +148,8 @@ const fileDiffController = {
   theme: theme?.value || 'light',
 }
 
-const fullTrace = useTraceStream({ runId: traceRunId, agentRunId: traceAgentRunId })
-const traceHasFull = fullTrace.hasFullTrace
-const traceController = {
-  complete: fullTrace.complete,
-  hasMore: fullTrace.hasMore,
-  incomplete: fullTrace.incomplete,
-  loadBlob: fullTrace.loadBlob,
-  loadOlder: fullTrace.loadOlder,
-  loading: fullTrace.loading,
-  steps: fullTrace.steps,
-  t,
-}
-
 watch(() => projectSnapshot.value?.revision, () => {
-  if (activeTab.value === 'files') void workdirTree.refresh()
-})
-
-watch(activeTab, (tab) => {
-  const active = tab === 'trace'
-  fullTrace.setViewing(active)
-  if (active && traceRunId?.value && traceAgentRunId?.value) void fullTrace.open()
-}, { immediate: true })
-
-watch([traceRunId, traceAgentRunId], () => {
-  if (activeTab.value !== 'trace') return
-  if (!traceRunId?.value || !traceAgentRunId?.value) return
-  fullTrace.setViewing(true)
-  void fullTrace.open()
+  void workdirTree.refresh()
 })
 
 function applyPreferences() {
@@ -213,7 +159,6 @@ function applyPreferences() {
   } else {
     width.value = DEFAULT_WIDTH
   }
-  activeTab.value = preferences.drawerTab === 'trace' ? 'trace' : 'files'
 }
 
 watch(() => projectSnapshot.value?.preferences, applyPreferences, { immediate: true })
@@ -222,12 +167,6 @@ watch(() => projectId.value, applyPreferences)
 function persistPreferences(preferences) {
   if (projectSnapshot.value?.readOnly) return
   void savePreferences(preferences)
-}
-
-function selectTab(tab) {
-  if (activeTab.value === tab) return
-  activeTab.value = tab
-  persistPreferences({ drawerTab: tab })
 }
 
 function startResize(event) {
