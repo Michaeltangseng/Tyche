@@ -48,6 +48,17 @@ function addEffect(effects, type, params = {}) {
   effects.push({ type, category: EFFECT_CATEGORY[type] || 'required', params })
 }
 
+function consumeEffect(instance, effectId, status, eventAt) {
+  if (!effectId) return null
+  const effect = instance.effects.find(item => item.id === effectId)
+  if (!effect) return null
+  effect.status = status
+  if (status === 'consumed' || status === 'voided' || status === 'failed') {
+    effect.finishedAt = eventAt || effect.finishedAt || null
+  }
+  return effect
+}
+
 function removeInvocation(instance, effectId) {
   if (!effectId) return null
   const index = instance.activeInvocations.findIndex(item => item.effectId === effectId)
@@ -175,7 +186,12 @@ function startReview(instance, effects, { rebuttal, eventAt, config }) {
     startedAt: eventAt,
     reviews: [],
   })
-  addEffect(effects, 'invoke-reviewer', { checkpointId: instance.id, round: instance.round })
+  addEffect(effects, 'invoke-reviewer', {
+    checkpointId: instance.id,
+    seatId: config?.checkpoint?.reviewerSeatIds?.[0] || '',
+    round: instance.round,
+    sessionGeneration: instance.sessionGeneration,
+  })
   return config
 }
 
@@ -204,13 +220,18 @@ function handleInvocationEnded(instance, event, config, effects, diagnostics) {
     return false
   }
   const removed = removeInvocation(instance, payload.effectId)
+  consumeEffect(instance, payload.effectId, 'consumed', eventAt)
   if (payload.role === 'draft') {
     if (instance.state !== 'drafting') return false
     const limit = config?.checkpoint?.continuationLimit ?? 3
     if (!payload.failed && !payload.cancelled && payload.marker === 'continue'
         && instance.continuations + 1 < limit) {
       instance.continuations += 1
-      addEffect(effects, 'invoke-draft', { seatId: payload.seatId })
+      addEffect(effects, 'invoke-draft', {
+        seatId: payload.seatId,
+        round: instance.round,
+        sessionGeneration: instance.sessionGeneration,
+      })
       return true
     }
     let draft = instance.drafts.find(item => item.seatId === payload.seatId)
@@ -233,7 +254,11 @@ function handleInvocationEnded(instance, event, config, effects, diagnostics) {
     addEffect(effects, 'release-scope')
     addEffect(effects, 'acquire-scope')
     addEffect(effects, 'snapshot', { phase: 'before' })
-    addEffect(effects, 'invoke-lead', { seatId: config?.checkpoint?.leadSeatId || '' })
+    addEffect(effects, 'invoke-lead', {
+      seatId: config?.checkpoint?.leadSeatId || '',
+      round: instance.round,
+      sessionGeneration: instance.sessionGeneration,
+    })
     return true
   }
   if (payload.role === 'lead') {
@@ -249,7 +274,11 @@ function handleInvocationEnded(instance, event, config, effects, diagnostics) {
     if (!payload.failed && payload.marker === 'continue') {
       if (instance.continuations + 1 < limit) {
         instance.continuations += 1
-        addEffect(effects, 'invoke-lead', { seatId: config?.checkpoint?.leadSeatId || '' })
+        addEffect(effects, 'invoke-lead', {
+      seatId: config?.checkpoint?.leadSeatId || '',
+      round: instance.round,
+      sessionGeneration: instance.sessionGeneration,
+    })
       } else {
         addEffect(effects, 'snapshot', { phase: 'after' })
         addEffect(effects, 'release-scope')
@@ -294,7 +323,11 @@ function handleInvocationEnded(instance, event, config, effects, diagnostics) {
     const readExecLeft = readExecRemaining(instance, config)
     if (readExecLeft) {
       addEffect(effects, 'snapshot', { phase: 'before' })
-      addEffect(effects, 'invoke-reviewer', { seatId: config?.readExecSeatIds?.[0] || '' })
+      addEffect(effects, 'invoke-reviewer', {
+        seatId: config?.readExecSeatIds?.[0] || '',
+        round: instance.round,
+        sessionGeneration: instance.sessionGeneration,
+      })
       return true
     }
     const verdicts = round.reviews.map(review => review.verdict)
@@ -322,7 +355,11 @@ function handleInvocationEnded(instance, event, config, effects, diagnostics) {
       }
       instance.state = 'leading'
       addEffect(effects, 'snapshot', { phase: 'before' })
-      addEffect(effects, 'invoke-lead', { seatId: config?.checkpoint?.leadSeatId || '' })
+      addEffect(effects, 'invoke-lead', {
+      seatId: config?.checkpoint?.leadSeatId || '',
+      round: instance.round,
+      sessionGeneration: instance.sessionGeneration,
+    })
       return true
     }
     addEffect(effects, 'verify-candidate')
@@ -377,7 +414,11 @@ function handleReviewingResult(instance, event, config, effects, diagnostics) {
   if (readExecRemaining(instance, config)) {
     const nextSeat = (config.readExecSeatIds || []).find(seatId => !reviewedSeats(instance).has(seatId))
     addEffect(effects, 'write-review-file', { seatId: nextSeat || '' })
-    addEffect(effects, 'invoke-reviewer', { seatId: nextSeat || '' })
+    addEffect(effects, 'invoke-reviewer', {
+      seatId: nextSeat || '',
+      round: instance.round,
+      sessionGeneration: instance.sessionGeneration,
+    })
     return true
   }
   if (instance.interjections.some(item => item.status === 'queued')) {
@@ -495,6 +536,13 @@ function handleStopAndDeliver(instance, event, effects) {
 function handleEvent(instance, event, config, effects, diagnostics) {
   const type = event?.type
   const eventAt = event?.at || at
+  if (type === 'EFFECT_RESULT') {
+    consumeEffect(instance, event.payload?.effectId, 'consumed', eventAt)
+  } else if (type === 'EFFECT_FAILED') {
+    consumeEffect(instance, event.payload?.effectId, 'failed', eventAt)
+  } else if (type === 'RETRY_EFFECT' || type === 'RESTORED') {
+    consumeEffect(instance, event.payload?.effectId, 'pending', eventAt)
+  }
   if (type === 'DEPS_READY') {
     if (instance.state === 'pending') {
       instance.state = 'checking'
@@ -536,14 +584,27 @@ function handleEvent(instance, event, config, effects, diagnostics) {
         instance.state = 'drafting'
         addEffect(effects, 'acquire-scope')
         addEffect(effects, 'snapshot', { phase: 'before' })
-        addEffect(effects, 'invoke-draft')
+        for (const seatId of config.checkpoint.draftSeatIds) {
+          addEffect(effects, 'invoke-draft', {
+            seatId,
+            round: instance.round,
+            sessionGeneration: instance.sessionGeneration,
+          })
+        }
       } else {
         instance.state = 'leading'
         addEffect(effects, 'acquire-scope')
         addEffect(effects, 'snapshot', { phase: 'before' })
-        addEffect(effects, 'invoke-lead', { seatId: config?.checkpoint?.leadSeatId || '' })
+        addEffect(effects, 'invoke-lead', {
+      seatId: config?.checkpoint?.leadSeatId || '',
+      round: instance.round,
+      sessionGeneration: instance.sessionGeneration,
+    })
       }
       return true
+    }
+    if (effectType === 'snapshot' && instance.state === 'submitted') {
+      return handleSubmittedResult(instance, event, config, effects, diagnostics)
     }
     if (effectType === 'evaluate-submission') {
       return handleSubmittedResult(instance, event, config, effects, diagnostics)
@@ -562,6 +623,13 @@ function handleEvent(instance, event, config, effects, diagnostics) {
         source: 'gate',
         decisionId: null,
       })
+      return true
+    }
+    if ([
+      'snapshot', 'write-review-file', 'append-decision', 'stamp-changes',
+      'drop-snapshot-refs', 'notify', 'user-git-commit', 'append-message',
+      'append-timeline',
+    ].includes(effectType)) {
       return true
     }
     return false
@@ -672,6 +740,48 @@ function transition(instance, event, config) {
     finishedAt: null,
   }))
   next.effects = [...next.effects, ...produced]
+  const invocationRoles = {
+    'invoke-lead': 'lead',
+    'invoke-draft': 'draft',
+    'invoke-reviewer': 'reviewer',
+  }
+  for (const effect of produced) {
+    const role = invocationRoles[effect.type]
+    if (!role) continue
+    if (next.activeInvocations.some(item => item.effectId === effect.id)) continue
+    const seatId = String(effect.params?.seatId || '')
+    const seat = (config?.seats || []).find(item => item.id === seatId)
+    next.activeInvocations.push({
+      effectId: effect.id,
+      role,
+      seatId,
+      agentKind: seat?.agentKind || 'codex',
+      round: next.round,
+      sessionGeneration: next.sessionGeneration,
+      claims: [],
+      cancellationRequested: false,
+      processRegistryId: null,
+    })
+  }
+  for (const effect of produced) {
+    if (effect.type !== 'acquire-scope') continue
+    if (next.leaseRequests.some(request => request.id === effect.id)) continue
+    next.leaseRequests.push({
+      id: effect.id,
+      holder: {
+        kind: 'checkpoint-scope',
+        projectId: String(config?.projectId || 'project-1'),
+        ownerId: instance.id,
+      },
+      chainEffectId: effect.id,
+      claims: Array.isArray(effect.params?.claims) ? effect.params.claims : [],
+      epoch: next.epoch,
+      requestedAt: event?.at || at,
+      status: 'waiting',
+      grantedAt: null,
+      releasedAt: null,
+    })
+  }
   return { instance: next, effects: produced, diagnostics }
 }
 
