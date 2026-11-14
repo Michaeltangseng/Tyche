@@ -697,6 +697,8 @@ const projectRoomDrawerController = {
   projectSnapshot: projectRoomView.project,
   savePreferences: saveProjectPreferences,
   t,
+  theme,
+  workdir: computed(() => api.value?.workdir || null),
 }
 
 const projectRoomOverlayController = {

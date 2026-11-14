@@ -48,7 +48,12 @@
         </p>
         <div v-for="item in acceptedDocuments" :key="item.checkpointId" class="accepted-doc">
           <header>
-            <strong>{{ item.name }}</strong>
+            <button class="accepted-doc-open" type="button" @click="openAcceptedDocument(item)">
+              {{ item.name }}
+            </button>
+            <button class="accepted-doc-diff" type="button" @click="showAcceptedDiff(item)">
+              {{ t('workdir.diff.title') }}
+            </button>
             <span class="accepted-doc-flags">
               <span v-if="item.stale" class="accepted-doc-pending">
                 {{ t('projectRoom.state.stale') }}
@@ -68,6 +73,9 @@
             <li v-for="file in item.acceptedVersion.files || []" :key="file">{{ file }}</li>
           </ul>
         </div>
+        <WorkdirTree :controller="workdirTreeController" />
+        <FilePreview :controller="filePreviewController" />
+        <FileDiff v-if="workdirTree.diff.value" :controller="fileDiffController" />
       </section>
 
       <section v-else class="project-room-drawer-body" role="tabpanel">
@@ -91,6 +99,10 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { CloseOutline } from '@vicons/ionicons5'
 import { useTraceStream } from '../composables/useTraceStream.js'
 import TraceStepList from './trace/TraceStepList.vue'
+import FileDiff from './workdir/FileDiff.vue'
+import FilePreview from './workdir/FilePreview.vue'
+import WorkdirTree from './workdir/WorkdirTree.vue'
+import { useWorkdirTree } from '../composables/useWorkdirTree.js'
 
 const props = defineProps({
   controller: { type: Object, required: true },
@@ -108,6 +120,8 @@ const {
   t,
   traceAgentRunId,
   traceRunId,
+  theme,
+  workdir,
 } = props.controller
 
 const tabs = [
@@ -122,6 +136,53 @@ const width = ref(DEFAULT_WIDTH)
 const panelElement = ref(null)
 let resizeState = null
 
+const workdirTree = useWorkdirTree({
+  projectId,
+  api: workdir?.value || null,
+})
+const workdirTreeController = {
+  error: workdirTree.error,
+  expanded: workdirTree.expanded,
+  loading: workdirTree.loading,
+  rows: workdirTree.visibleRows,
+  select: async (path) => {
+    workdirTree.diff.value = null
+    await workdirTree.readFile(path)
+  },
+  selected: workdirTree.selected,
+  t,
+  toggle: workdirTree.toggle,
+}
+const filePreviewController = {
+  error: workdirTree.error,
+  loadMorePreview: workdirTree.loadMorePreview,
+  loading: workdirTree.loading,
+  preview: workdirTree.preview,
+  t,
+}
+const fileDiffController = {
+  diff: workdirTree.diff,
+  error: workdirTree.error,
+  t,
+  theme: theme?.value || 'light',
+}
+
+function openAcceptedDocument(item) {
+  const file = item.acceptedVersion?.files?.[0]
+  if (!file) return
+  workdirTree.diff.value = null
+  void workdirTree.readFile(file)
+}
+
+function showAcceptedDiff(item) {
+  const file = item.acceptedVersion?.files?.[0]
+  if (!file) return
+  void workdirTree.readFile(file).then(() => workdirTree.loadDiff({
+    checkpointId: item.checkpointId,
+    version: item.acceptedVersion.id,
+  }))
+}
+
 const fullTrace = useTraceStream({ runId: traceRunId, agentRunId: traceAgentRunId })
 const traceHasFull = fullTrace.hasFullTrace
 const traceController = {
@@ -134,6 +195,10 @@ const traceController = {
   steps: fullTrace.steps,
   t,
 }
+
+watch(() => projectSnapshot.value?.revision, () => {
+  if (activeTab.value === 'files') void workdirTree.refresh()
+})
 
 watch(activeTab, (tab) => {
   const active = tab === 'trace'
@@ -215,6 +280,7 @@ function handleEscape(event) {
 onMounted(() => {
   panelElement.value?.focus?.()
   window.addEventListener('keydown', handleEscape)
+  void workdirTree.loadDirectory('')
 })
 
 onBeforeUnmount(() => {
