@@ -179,6 +179,14 @@ describe('project room view', () => {
     fixture.scope.stop()
   })
 
+  it('exposes the project refresh used after preference and seat saves', async () => {
+    const fixture = mountView({ project: { progress: [], gates: [] } })
+    await nextTick()
+    await fixture.view.refresh()
+    expect(fixture.projectRoom.refresh).toHaveBeenCalledTimes(1)
+    fixture.scope.stop()
+  })
+
   it('keeps the target when the project snapshot changes in the background', async () => {
     const project = {
       progress: [entry('cp-1', 'leading'), entry('cp-2', 'reviewing')],

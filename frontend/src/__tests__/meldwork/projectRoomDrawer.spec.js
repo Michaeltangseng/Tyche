@@ -134,7 +134,7 @@ describe('project room drawer', () => {
     expect(wrapper.get('.project-room-drawer').attributes('role')).toBe('dialog')
     expect(document.body.classList.contains('project-room-drawer-open')).toBe(true)
 
-    await wrapper.get('.project-room-drawer').trigger('keydown', { key: 'Escape' })
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     expect(controller.close).toHaveBeenCalledTimes(1)
 
     wrapper.unmount()

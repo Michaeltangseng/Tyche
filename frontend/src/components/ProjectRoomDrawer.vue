@@ -15,7 +15,6 @@
       :aria-label="t('projectRoom.drawer.title')"
       :style="drawer ? undefined : { width: `${width}px` }"
       tabindex="-1"
-      @keydown.esc.stop.prevent="close"
     >
       <header class="project-room-drawer-header">
         <div class="project-room-drawer-tabs" role="tablist">
@@ -182,12 +181,21 @@ watch([open, drawer], ([isOpen, isDrawer]) => {
   document.body.classList.toggle('project-room-drawer-open', Boolean(isOpen && isDrawer))
 }, { immediate: true })
 
+function handleEscape(event) {
+  if (event.key !== 'Escape') return
+  event.preventDefault()
+  event.stopPropagation()
+  close()
+}
+
 onMounted(() => {
   panelElement.value?.focus?.()
+  window.addEventListener('keydown', handleEscape)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('pointermove', handleResize)
+  window.removeEventListener('keydown', handleEscape)
   document.body.classList.remove('project-room-drawer-open')
 })
 </script>

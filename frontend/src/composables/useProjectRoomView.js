@@ -1072,6 +1072,7 @@ export function useProjectRoomView({
     projectRoomCurrentGenerations,
     projectTimelineCards,
     otherGateCount,
+    refresh: () => projectRoom.refresh(),
     previewRejectUpstream,
     previewReopenCheckpoint,
     project,
