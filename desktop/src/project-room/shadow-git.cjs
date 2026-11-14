@@ -6,6 +6,11 @@ const path = require('node:path')
 const ATTRIBUTES_LINE = '* -text -eol -filter -ident -working-tree-encoding\n'
 const FIXED_EXCLUDES = Object.freeze(['.git', 'node_modules/', '.DS_Store'])
 const MANAGED_EXCLUDE_MARKER = '# meldwork: managed placeholders'
+const DEFAULT_SNAPSHOT_LIMITS = Object.freeze({
+  maxDurationMs: 60000,
+  maxFiles: 200000,
+  maxFileBytes: 50 * 1024 * 1024,
+})
 
 function shadowError(code, cause) {
   const error = Object.assign(new Error(code), { code })
@@ -59,6 +64,90 @@ function writeExclude(gitDir, placeholderPaths = []) {
     ...placeholderPaths,
   ]
   fs.writeFileSync(path.join(infoDirectory, 'exclude'), `${lines.join('\n')}\n`)
+}
+
+function normalizeShadowPath(value) {
+  return String(value || '').replace(/\\/g, '/').replace(/^\.\/+/, '')
+}
+
+function parseStatusPaths(output) {
+  const paths = []
+  const tokens = String(output || '').split('\0').filter(Boolean)
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index]
+    const type = token[0]
+    if (type === '?' || type === '!') {
+      if (token[1] === ' ') paths.push(token.slice(2))
+      continue
+    }
+    if (type === '1') {
+      const fields = token.split(' ')
+      if (fields.length >= 9) paths.push(fields.slice(8).join(' '))
+      continue
+    }
+    if (type === '2') {
+      const fields = token.split(' ')
+      if (fields.length >= 10) paths.push(fields.slice(9).join(' '))
+      index += 1
+      continue
+    }
+    if (type === 'u') {
+      const fields = token.split(' ')
+      if (fields.length >= 11) paths.push(fields.slice(10).join(' '))
+    }
+  }
+  return paths
+}
+
+function statRecord(stat) {
+  return {
+    dev: stat.dev,
+    ino: stat.ino,
+    size: stat.size,
+    mtimeMs: stat.mtimeMs,
+    ctimeMs: stat.ctimeMs,
+    recordedAt: Date.now(),
+  }
+}
+
+function sameStat(previous, current) {
+  return previous
+    && ['dev', 'ino', 'size', 'mtimeMs', 'ctimeMs'].every(key => previous[key] === current[key])
+}
+
+function placeholderSha256(filename, stat, previous) {
+  const current = statRecord(stat)
+  if (previous && previous.stat && previous.sha256 && sameStat(previous.stat, current)) {
+    const recordedAt = Number(previous.stat.recordedAt)
+    const notRacy = Number.isFinite(recordedAt)
+      && Math.abs(recordedAt - Number(previous.stat.mtimeMs)) >= 2000
+      && Math.abs(recordedAt - Number(previous.stat.ctimeMs)) >= 2000
+    if (notRacy) return previous.sha256
+  }
+  return crypto.createHash('sha256').update(fs.readFileSync(filename)).digest('hex')
+}
+
+function placeholderText(entry) {
+  return [
+    'meldwork-placeholder 1',
+    `reason ${entry.reason}`,
+    `mode ${entry.mode}`,
+    `size ${entry.size}`,
+    `sha256 ${entry.sha256}`,
+    '',
+  ].join('\n')
+}
+
+function parseLfsPaths(output) {
+  const paths = new Set()
+  const tokens = String(output || '').split('\0')
+  for (let index = 0; index + 2 < tokens.length; index += 3) {
+    const relative = normalizeShadowPath(tokens[index])
+    const attribute = tokens[index + 1]
+    const value = tokens[index + 2]
+    if (relative && attribute === 'filter' && value === 'lfs') paths.add(relative)
+  }
+  return paths
 }
 
 class ShadowRepo {
@@ -119,6 +208,148 @@ class ShadowRepo {
     this.lock = run.then(() => undefined, () => undefined)
     return run
   }
+
+  async userGit(args, { input } = {}) {
+    const env = { ...process.env }
+    delete env.GIT_DIR
+    delete env.GIT_WORK_TREE
+    delete env.GIT_INDEX_FILE
+    env.GIT_TERMINAL_PROMPT = '0'
+    return this.execFileFn(this.gitExecutable, ['-C', this.workTree, ...args], {
+      cwd: this.workTree,
+      env,
+      input,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    })
+  }
+
+  async statusPaths() {
+    try {
+      const { stdout } = await this.git([
+        'status', '--porcelain=v2', '-z', '--untracked-files=all',
+      ])
+      return parseStatusPaths(stdout)
+    } catch {
+      return []
+    }
+  }
+
+  async lfsPaths(candidates) {
+    if (!Array.isArray(candidates) || !candidates.length) return new Set()
+    try {
+      const inside = await this.userGit(['rev-parse', '--is-inside-work-tree'])
+      if (inside.stdout.trim() !== 'true') return new Set()
+    } catch {
+      return new Set()
+    }
+    try {
+      const input = candidates.map(relative => `${relative}\0`).join('')
+      const { stdout } = await this.userGit(['check-attr', '-z', '--stdin', 'filter'], { input })
+      return parseLfsPaths(stdout)
+    } catch {
+      return new Set()
+    }
+  }
+
+  async snapshot({
+    effectId,
+    targets = [],
+    placeholderList = [],
+    limits = {},
+    isOptional = false,
+  } = {}) {
+    if (typeof effectId !== 'string' || !effectId) throw shadowError('SHADOW_EFFECT_ID_REQUIRED')
+    const config = { ...DEFAULT_SNAPSHOT_LIMITS, ...(limits || {}) }
+    return this.withLock(async () => {
+      const started = Date.now()
+      const ref = `refs/meldwork/effects/${encodeId(effectId)}`
+      try {
+        const existing = await this.git(['rev-parse', '--verify', '--quiet', ref])
+        const commit = String(existing.stdout || '').trim()
+        if (commit) {
+          return {
+            commit,
+            placeholderList: Array.isArray(placeholderList) ? placeholderList : [],
+            skipped: false,
+          }
+        }
+      } catch { /* the reference does not exist yet */ }
+
+      const previous = Array.isArray(placeholderList)
+        ? placeholderList.filter(entry => entry && typeof entry.path === 'string')
+        : []
+      const previousByPath = new Map(previous.map(entry => [normalizeShadowPath(entry.path), entry]))
+      const statusPaths = await this.statusPaths()
+      const candidates = [...new Set([...previousByPath.keys(), ...statusPaths])]
+      if (candidates.length > config.maxFiles) {
+        if (isOptional) return { skipped: true, reason: 'files', placeholderList: previous }
+        throw shadowError('SHADOW_SNAPSHOT_LIMIT')
+      }
+
+      const targetSet = new Set(targets.map(normalizeShadowPath).filter(Boolean))
+      const targetFiles = []
+      for (const target of targetSet) {
+        const filename = path.join(this.workTree, target)
+        let stat
+        try { stat = fs.lstatSync(filename) } catch { continue }
+        if (!stat.isFile()) continue
+        if (stat.size > config.maxFileBytes) {
+          throw Object.assign(shadowError('SHADOW_TARGET_TOO_LARGE'), { file: target })
+        }
+        targetFiles.push(target)
+      }
+
+      const lfs = await this.lfsPaths(candidates)
+      const placeholders = []
+      const removeFromIndex = []
+      for (const relative of candidates) {
+        if (targetSet.has(relative)) continue
+        const filename = path.join(this.workTree, relative)
+        let stat
+        try { stat = fs.lstatSync(filename) } catch { continue }
+        if (!stat.isFile()) continue
+        if (stat.size > config.maxFileBytes || lfs.has(relative)) {
+          const previousEntry = previousByPath.get(relative)
+          const sha256 = placeholderSha256(filename, stat, previousEntry)
+          placeholders.push({
+            path: relative,
+            reason: lfs.has(relative) ? 'lfs' : 'oversize',
+            mode: stat.mode & 0o111 ? '100755' : '100644',
+            size: stat.size,
+            sha256,
+            stat: statRecord(stat),
+          })
+          removeFromIndex.push(relative)
+        }
+      }
+
+      writeExclude(this.gitDir, placeholders.map(entry => entry.path))
+      if (removeFromIndex.length) {
+        await this.git(['rm', '--cached', '-f', '-q', '--ignore-unmatch', '--', ...removeFromIndex])
+      }
+      await this.git(['add', '-A'])
+      if (targetFiles.length) await this.git(['add', '-f', '--', ...targetFiles])
+      for (const entry of placeholders) {
+        const object = (await this.git(['hash-object', '-w', '--stdin'], {
+          input: placeholderText(entry),
+        })).stdout.trim()
+        await this.git([
+          'update-index', '--add', '--cacheinfo',
+          `${entry.mode},${object},${entry.path}`,
+        ])
+      }
+
+      if (Date.now() - started > config.maxDurationMs) {
+        if (isOptional) return { skipped: true, reason: 'duration', placeholderList: previous }
+        throw shadowError('SHADOW_SNAPSHOT_LIMIT')
+      }
+      const tree = (await this.git(['write-tree'])).stdout.trim()
+      const commit = (await this.git(['commit-tree', tree, '-m', `snapshot:${effectId}`])).stdout.trim()
+      await this.git(['update-ref', ref, commit])
+      return { commit, placeholderList: placeholders, skipped: false }
+    })
+  }
 }
 
 async function checkGitVersion(gitExecutable = 'git', { execFileFn } = {}) {
@@ -140,11 +371,15 @@ async function checkGitVersion(gitExecutable = 'git', { execFileFn } = {}) {
 
 module.exports = {
   ATTRIBUTES_LINE,
+  DEFAULT_SNAPSHOT_LIMITS,
   FIXED_EXCLUDES,
   MANAGED_EXCLUDE_MARKER,
   ShadowRepo,
   checkGitVersion,
   encodeId,
   gitEnvironment,
+  parseLfsPaths,
+  parseStatusPaths,
+  placeholderText,
   writeExclude,
 }
