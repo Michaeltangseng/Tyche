@@ -1,7 +1,11 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { atomicWritePrivateFile } = require('../security/private-file.cjs')
-const { parseProjectState } = require('./project-state-schema.cjs')
+const {
+  PROJECT_STATE_SCHEMA_VERSION,
+  parseProjectState,
+} = require('./project-state-schema.cjs')
+const { MIGRATIONS } = require('./project-state-migrations.cjs')
 
 const REGULAR_LIMIT_BYTES = 8 * 1024 * 1024
 const CONTROL_LIMIT_BYTES = 9 * 1024 * 1024
@@ -169,6 +173,8 @@ class ProjectStore {
     now = () => new Date().toISOString(),
     writeFile = atomicWritePrivateFile,
     limits = {},
+    migrations = MIGRATIONS,
+    schemaVersion = PROJECT_STATE_SCHEMA_VERSION,
   } = {}) {
     if (!projectDir) throw projectError('PROJECT_STATE_INVALID', { reason: 'project-dir-required' })
     this.projectDir = projectDir
@@ -178,15 +184,21 @@ class ProjectStore {
     this.writeFile = writeFile
     this.regularLimit = limits.regular ?? REGULAR_LIMIT_BYTES
     this.controlLimit = limits.control ?? CONTROL_LIMIT_BYTES
+    this.migrations = migrations
+    this.schemaVersion = schemaVersion
     this.state = null
     this.readOnly = false
+    this.readOnlyCode = ''
     this.storageFault = null
     this.listeners = new Set()
     this.tail = Promise.resolve()
   }
 
   async load() {
-    if (fs.existsSync(this.faultPath)) this.readOnly = true
+    if (fs.existsSync(this.faultPath)) {
+      this.readOnly = true
+      this.readOnlyCode = 'fault-file'
+    }
     let source
     try {
       source = fs.readFileSync(this.statePath, 'utf8')
@@ -202,8 +214,73 @@ class ProjectStore {
     } catch {
       throw projectError('PROJECT_STATE_INVALID', { reason: 'corrupt' })
     }
-    this.state = parseProjectState(value)
+    const rawVersion = value?.schemaVersion
+    if (!Number.isInteger(rawVersion) || rawVersion < 0) {
+      throw projectError('PROJECT_STATE_INVALID', { reason: 'schema-version-invalid' })
+    }
+    if (rawVersion > this.schemaVersion) {
+      this.readOnly = true
+      this.readOnlyCode = this.readOnlyCode || 'schema-version-newer'
+      this.state = null
+      return this.current()
+    }
+    let current = value
+    if (rawVersion < this.schemaVersion) {
+      current = await this.#migrate(value, source, rawVersion)
+      if (!current) return this.current()
+    }
+    this.state = parseProjectState(current)
     return this.current()
+  }
+
+  readOnlyReason() {
+    return this.readOnlyCode
+  }
+
+  async #migrate(value, source, startVersion) {
+    let current = value
+    let backupSource = source
+    try {
+      for (let version = startVersion; version < this.schemaVersion; version += 1) {
+        const migrate = this.migrations[version]
+        if (typeof migrate !== 'function') throw new Error('migration-missing')
+        const backupPath = path.join(this.projectDir, `state.v${version}.backup.json`)
+        if (!fs.existsSync(backupPath)) {
+          try {
+            await this.writeFile(backupPath, backupSource)
+          } catch (error) {
+            if (error?.phase !== 'after-commit') throw error
+          }
+        }
+        const migrated = migrate(structuredClone(current))
+        if (!migrated || typeof migrated !== 'object' || Array.isArray(migrated)) {
+          throw new Error('migration-invalid')
+        }
+        migrated.schemaVersion = version + 1
+        current = migrated
+        backupSource = `${JSON.stringify(current)}\n`
+      }
+      const parsed = parseProjectState(current)
+      try {
+        await this.writeFile(this.statePath, `${JSON.stringify(parsed)}\n`)
+      } catch (error) {
+        if (error?.phase !== 'after-commit') throw error
+        this.storageFault = {
+          phase: 'after-commit',
+          code: error.code || 'PROJECT_STORAGE_FAULT',
+          revision: parsed.revision,
+          control: false,
+          time: this.now(),
+          message: String(error.message || ''),
+          duringMigration: true,
+        }
+      }
+      return parsed
+    } catch {
+      this.readOnly = true
+      this.readOnlyCode = this.readOnlyCode || 'migration-failed'
+      return null
+    }
   }
 
   current() {
@@ -240,8 +317,10 @@ class ProjectStore {
   }
 
   async #perform(operation) {
+    if (this.readOnly) {
+      throw projectError('PROJECT_READ_ONLY', { reason: this.readOnlyCode || 'read-only' })
+    }
     if (!this.state) throw projectError('PROJECT_STATE_INVALID', { reason: 'not-loaded' })
-    if (this.readOnly) throw projectError('PROJECT_READ_ONLY', { reason: 'PROJECT_STATE_FAULT' })
     if (typeof operation !== 'function') {
       throw projectError('PROJECT_STATE_INVALID', { reason: 'operation-required' })
     }
