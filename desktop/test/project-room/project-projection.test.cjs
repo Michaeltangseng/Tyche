@@ -327,6 +327,7 @@ test('the project snapshot applies first-screen budgets and hides internals', ()
 
   const gate = snapshot.gates[0]
   assert.equal(gate.gateId, 'gate-1')
+  assert.deepEqual(gate.allowedOutcomes, ['continue', 'accept', 'reject-upstream'])
   assert.deepEqual(gate.signals.map(item => item.kind), [
     'upstream-pending-version', 'upstream-drift', 'candidate-diverged', 'out-of-scope',
   ])

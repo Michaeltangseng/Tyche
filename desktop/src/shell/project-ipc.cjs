@@ -83,6 +83,9 @@ const schemas = {
   saveAsTemplate: z.strictObject({ projectId: id, name: text(80) }),
   compact: z.strictObject({ projectId: id }),
   diagnostics: z.strictObject({ projectId: id }),
+  gateDetail: z.strictObject({
+    projectId: id, gateId: id, gateRevision: z.number().int().positive(),
+  }),
   start: z.strictObject({ projectId: id, brief: text(32768) }),
   interject: z.strictObject({
     projectId: id, checkpointId: id, purpose: z.literal('interjection'), text: text(32768),
@@ -362,6 +365,8 @@ function registerProjectIpc({
       deletion: deletion()?.progress(input.projectId) || null,
     }
   })
+
+  register('gateDetail', input => service().gateDetail(input))
 
   register('decideGate', (input) => {
     const deletionService = deletion()

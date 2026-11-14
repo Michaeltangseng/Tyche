@@ -196,6 +196,79 @@ test('the engine drives a checkpoint from pending to a hard gate', async (t) => 
   assert.ok(current.effects.every(effect => ['consumed', 'voided', 'failed'].includes(effect.status)))
   assert.deepEqual(scheduler.grants, [])
   assert.equal(scheduler.released.length > 0, true)
+  assert.equal(current.gate.firstScreen.round, 1)
+  assert.equal(current.gate.firstScreen.reviewSummaries.length, 1)
+  assert.equal(current.gate.firstScreen.reviewSummaries[0].seatId, 'seat-reviewer')
+  assert.equal(current.gate.firstScreen.reviewSummaries[0].verdict, 'pass')
+  assert.deepEqual(current.gate.firstScreen.changedFiles, [])
+})
+
+test('UPSTREAM_BLOCKERS_CHANGED refreshes the gate screen without changing the gate', async (t) => {
+  const state = baseState()
+  state.config.playbook.checkpointDefs.push(definition({
+    key: 'research',
+    name: 'Research',
+    targetFiles: ['docs/research.md'],
+  }))
+  const upstream = instance('accepted', {
+    id: 'cp-research',
+    checkpointKey: 'research',
+    artifactVersions: [{
+      id: 'av-research',
+      commit,
+      candidateCommit: null,
+      files: ['docs/research.md'],
+      acceptedAt: at,
+      source: 'gate',
+      decisionId: null,
+    }],
+  })
+  const current = instance('gate', {
+    readVersions: { 'cp-research': 'av-research' },
+    gate: {
+      id: 'gate-1',
+      revision: 1,
+      reason: 'needs-human',
+      candidateCommit: commit,
+      createdAt: at,
+      firstScreen: {
+        round: 1,
+        elapsedMs: 0,
+        signals: [],
+        reviewSummaries: [],
+        changedFiles: [],
+        softGateSummary: [],
+        driftItemIds: [],
+        outOfScopeItemIds: [],
+        blockerCheckpointIds: [],
+        changesHeaderMissing: false,
+        detectionSkipped: false,
+        candidateDiverged: false,
+      },
+    },
+  })
+  state.instances = [upstream, current]
+  state.driftItems = [{
+    id: 'drift-1',
+    revision: 1,
+    path: 'docs/research.md',
+    checkpointId: 'cp-research',
+    baseVersionId: null,
+    acceptedCommit: commit,
+    observedCommit: commit,
+    foundAt: at,
+    source: 'drift-check',
+    status: 'unresolved',
+    resolvedAt: null,
+  }]
+  const { store, engine } = await engineFixture(t, state)
+  await engine.dispatch('cp-1', { type: 'UPSTREAM_BLOCKERS_CHANGED', at })
+
+  const gate = store.current().instances.find(item => item.id === 'cp-1').gate
+  assert.equal(gate.id, 'gate-1')
+  assert.equal(gate.revision, 1)
+  assert.ok(gate.firstScreen.signals.some(signal => signal.kind === 'upstream-drift'))
+  assert.deepEqual(gate.firstScreen.blockerCheckpointIds, ['cp-research'])
 })
 
 test('a dirty drift check persists unresolved drift items with the gate', async (t) => {

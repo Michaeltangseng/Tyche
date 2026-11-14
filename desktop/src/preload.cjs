@@ -126,6 +126,7 @@ if (isLocalDocument) Object.assign(desktopApi, {
     saveAsTemplate: input => ipcRenderer.invoke('project:saveAsTemplate', input),
     compact: input => ipcRenderer.invoke('project:compact', input),
     diagnostics: input => ipcRenderer.invoke('project:diagnostics', input),
+    gateDetail: input => ipcRenderer.invoke('project:gateDetail', input),
     timelineHistory: input => ipcRenderer.invoke('project:timelineHistory', input),
     start: input => ipcRenderer.invoke('project:start', input),
     interject: input => ipcRenderer.invoke('project:interject', input),

@@ -138,6 +138,7 @@ const roundReview = z.strictObject({
   seatId: id,
   verdict: z.enum(REVIEW_VERDICTS),
   reviewFile: relativePath,
+  summary: text(4000).optional(),
   finishedAt: timestamp,
 })
 
@@ -276,6 +277,7 @@ const instance = z.strictObject({
   drafts: z.array(draft).max(64),
   interjections: z.array(interjection).max(500),
   gate: gate.nullable(),
+  lastGateSignals: z.array(blockerSignal).max(16).optional(),
   blockedOn: z.strictObject({
     effectId: id,
     error: text(2000),

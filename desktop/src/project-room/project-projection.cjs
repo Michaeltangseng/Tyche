@@ -1,4 +1,5 @@
 const path = require('node:path')
+const { allowedGateOutcomes } = require('./checkpoint-transitions.cjs')
 
 const MAX_PENDING_DECISIONS = 100
 const MAX_SIGNALS = 4
@@ -187,6 +188,7 @@ function gateProjection(instance) {
     gateId: gate.id,
     revision: gate.revision,
     reason: gate.reason,
+    allowedOutcomes: allowedGateOutcomes(gate.reason),
     candidateCommit: gate.candidateCommit,
     createdAt: gate.createdAt,
     round: screen.round,

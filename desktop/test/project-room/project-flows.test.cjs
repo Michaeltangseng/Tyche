@@ -179,6 +179,31 @@ test('decideGate rejects stale revisions, unavailable outcomes, and missing comm
   }), { code: 'PROJECT_GATE_OUTCOME_UNAVAILABLE' })
 })
 
+test('gateDetail returns the full first screen and allowed outcomes', async (t) => {
+  const state = gatedState('question')
+  state.instances[0].gate.firstScreen.reviewSummaries = [{
+    seatId: 'seat-reviewer',
+    verdict: 'needs-human',
+    summary: 'Needs a decision.',
+    reviewFile: 'meldwork/reviews/requirements/r1-seat-reviewer.md',
+  }]
+  const { service } = await makeService(t, state)
+
+  const detail = service.gateDetail({
+    projectId: 'project-1', gateId: 'gate-question', gateRevision: 2,
+  })
+  assert.equal(detail.checkpointId, 'cp-1')
+  assert.equal(detail.reason, 'question')
+  assert.equal(detail.question, true)
+  assert.deepEqual(detail.allowedOutcomes, ['continue', 'reject-upstream'])
+  assert.equal(detail.firstScreen.reviewSummaries.length, 1)
+  assert.equal(detail.firstScreen.reviewSummaries[0].summary, 'Needs a decision.')
+
+  assert.throws(() => service.gateDetail({
+    projectId: 'project-1', gateId: 'gate-question', gateRevision: 1,
+  }), { code: 'PROJECT_GATE_STALE' })
+})
+
 test('decideGate blocks accept on upstream blockers', async (t) => {
   const state = gatedState('needs-human')
   state.chatWriteChecks = {

@@ -618,6 +618,29 @@ class ProjectService {
     )
   }
 
+  gateDetail({ projectId, gateId, gateRevision }) {
+    const context = this.#context(projectId)
+    const state = context.store?.current()
+    if (!state) throw projectError('PROJECT_NOT_FOUND', { projectId })
+    const instance = state.instances.find(item => item.gate?.id === gateId)
+    if (!instance || instance.gate.revision !== gateRevision) {
+      throw projectError('PROJECT_GATE_STALE')
+    }
+    const gate = instance.gate
+    return {
+      projectId,
+      checkpointId: instance.id,
+      checkpointKey: instance.checkpointKey,
+      gateId: gate.id,
+      gateRevision: gate.revision,
+      reason: gate.reason,
+      question: ['question', 'draft-question'].includes(gate.reason),
+      candidateCommit: gate.candidateCommit,
+      allowedOutcomes: allowedGateOutcomes(gate.reason),
+      firstScreen: gate.firstScreen,
+    }
+  }
+
   assertReady(projectId) {
     const context = this.#context(projectId)
     this.#assertWritable(context)

@@ -1,4 +1,5 @@
 const crypto = require('node:crypto')
+const { buildGateScreen } = require('./gate-screen.cjs')
 const { transition } = require('./checkpoint-transitions.cjs')
 const { EffectRunner, NEVER_EXPIRE } = require('./effect-runner.cjs')
 const { startableInstances } = require('./project-progress.cjs')
@@ -13,6 +14,11 @@ function detectionEffectId(projectId, checkId) {
   return `detect-${crypto.createHash('sha256')
     .update(JSON.stringify([projectId, 'detect', checkId]), 'utf8')
     .digest('hex')}`
+}
+
+function eventTimeMs(value, fallback) {
+  const parsed = Date.parse(String(value || fallback || ''))
+  return Number.isFinite(parsed) ? parsed : Date.now()
 }
 
 function engineError(code, details = {}) {
@@ -220,9 +226,38 @@ class CheckpointEngine {
   async dispatch(checkpointId, event) {
     const instance = this.#instance(checkpointId)
     if (!instance) throw engineError('PROJECT_NOT_FOUND', { checkpointId })
-    const preview = transition(instance, event, this.#config(instance))
+    const config = this.#config(instance)
+    const preview = transition(instance, event, config)
     if (preview.diagnostics.some(item => IGNORED_CODES.has(item.code))) {
       return { ignored: true, diagnostics: preview.diagnostics }
+    }
+    const previousGate = instance.gate
+    const previewGate = preview.instance.gate
+    const needsScreen = Boolean(previewGate) && (
+      ['INVOCATION_ENDED', 'EFFECT_RESULT', 'ACCEPTED_DOC_CHANGED', 'UPSTREAM_BLOCKERS_CHANGED']
+        .includes(event.type)
+      || !previousGate
+      || previousGate.id !== previewGate.id
+      || previousGate.revision !== previewGate.revision
+    )
+    let changedFiles = []
+    let screenTarget = null
+    if (needsScreen) {
+      screenTarget = { id: previewGate.id, revision: previewGate.revision }
+      if (event.type === 'UPSTREAM_BLOCKERS_CHANGED') {
+        changedFiles = previousGate?.firstScreen?.changedFiles || []
+      } else if (this.shadowRepo?.numstat) {
+        const previousCommit = instance.artifactVersions.at(-1)?.commit || ''
+        const candidate = previewGate.candidateCommit || preview.instance.candidate || ''
+        if (previousCommit && candidate) {
+          const paths = config.checkpoint?.type === 'milestone'
+            ? []
+            : (config.checkpoint?.targetFiles || [])
+          try {
+            changedFiles = await this.shadowRepo.numstat(previousCommit, candidate, paths)
+          } catch { changedFiles = [] }
+        }
+      }
     }
     let effects = []
     await this.store.enqueue((state) => {
@@ -240,6 +275,22 @@ class CheckpointEngine {
       if (event.type === 'EFFECT_RESULT' && event.payload?.type === 'drift-check'
           && event.payload?.result?.clean === false) {
         this.#recordDriftItems(state, result.instance, event.payload)
+      }
+      if (needsScreen && result.instance.gate) {
+        const gate = result.instance.gate
+        const files = screenTarget
+          && gate.id === screenTarget.id
+          && gate.revision === screenTarget.revision
+          ? changedFiles
+          : []
+        gate.firstScreen = buildGateScreen({
+          state,
+          instance: result.instance,
+          def: config.checkpoint,
+          gate,
+          changedFiles: files,
+          now: eventTimeMs(event.at, this.now()),
+        })
       }
       const index = state.instances.findIndex(item => item.id === checkpointId)
       state.instances[index] = result.instance
@@ -541,6 +592,9 @@ class CheckpointEngine {
             ...(result.failed ? { failed: result.failed } : {}),
             ...(result.cancelled ? { cancelled: true } : {}),
             ...(pendingMessageRef ? { pendingMessageRef } : {}),
+            ...(result.pendingMessage?.body || result.pendingMessage?.text
+              ? { resultSummary: result.pendingMessage.body || result.pendingMessage.text }
+              : {}),
           },
         })
         continue
@@ -646,6 +700,19 @@ class CheckpointEngine {
       }
       for (const drift of state.driftItems || []) {
         if (drift.status === 'resolving') drift.status = 'unresolved'
+      }
+      for (const instance of state.instances) {
+        if (!instance.gate) continue
+        const def = state.config.playbook.checkpointDefs
+          .find(item => item.key === instance.checkpointKey)
+        instance.gate.firstScreen = buildGateScreen({
+          state,
+          instance,
+          def,
+          gate: instance.gate,
+          changedFiles: instance.gate.firstScreen?.changedFiles || [],
+          now: eventTimeMs(eventAt),
+        })
       }
       if (!state.deletion) {
         const active = new Set((state.projectEffects || [])

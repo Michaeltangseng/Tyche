@@ -41,6 +41,7 @@ function validInputs() {
     saveAsTemplate: { projectId: 'project-1', name: 'Template' },
     compact: { projectId: 'project-1' },
     diagnostics: { projectId: 'project-1' },
+    gateDetail: { projectId: 'project-1', gateId: 'gate-1', gateRevision: 1 },
     timelineHistory: { projectId: 'project-1' },
     start: { projectId: 'project-1', brief: 'Brief' },
     interject: {
@@ -150,6 +151,10 @@ async function setup(t, options = {}) {
     async residual(input) { return input },
     async unlockDirectory(input) { return input },
     snapshot(id) { return { projectId: id } },
+    gateDetail(input) {
+      this.calls.push(['gateDetail', input])
+      return { gateId: input.gateId, gateRevision: input.gateRevision, allowedOutcomes: ['continue'] }
+    },
     timelineHistory(id) { this.calls.push(['timelineHistory', id]); return { items: [], total: 0 } },
     retryEffect(input) {
       this.calls.push(['retryEffect', input])
@@ -385,6 +390,20 @@ test('timelineHistory and retryEffect route to the service', async (t) => {
   }), { code: 'PROJECT_ENGINE_UNAVAILABLE' })
   assert.deepEqual(service.calls[1], ['retryEffect', {
     projectId: 'project-1', effectId: 'effect-1',
+  }])
+})
+
+test('gateDetail routes to the service with the gate revision', async (t) => {
+  const { invoke, service } = await setup(t)
+  assert.deepEqual(await invoke('gateDetail', {
+    projectId: 'project-1', gateId: 'gate-1', gateRevision: 2,
+  }), {
+    gateId: 'gate-1',
+    gateRevision: 2,
+    allowedOutcomes: ['continue'],
+  })
+  assert.deepEqual(service.calls.at(-1), ['gateDetail', {
+    projectId: 'project-1', gateId: 'gate-1', gateRevision: 2,
   }])
 })
 

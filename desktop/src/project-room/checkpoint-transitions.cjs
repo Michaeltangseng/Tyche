@@ -169,6 +169,16 @@ function currentRound(instance, eventAt) {
   return round
 }
 
+function reviewSummary(payload) {
+  const text = String(payload.resultSummary || payload.pendingMessage?.body || '')
+  return text.split(/\r?\n/)
+    .map(line => line.trimEnd())
+    .filter(line => line.trim())
+    .slice(0, 4)
+    .join('\n')
+    .slice(0, 4000)
+}
+
 function recordReview(instance, payload, eventAt) {
   const round = currentRound(instance, eventAt)
   const verdict = payload.failed ? 'failed' : (payload.marker || 'missing')
@@ -177,6 +187,7 @@ function recordReview(instance, payload, eventAt) {
     seatId: payload.seatId,
     verdict,
     reviewFile: `meldwork/reviews/${instance.checkpointKey}/r${round.round}-${payload.seatId}.md`,
+    summary: reviewSummary(payload),
     finishedAt: eventAt,
   }
   if (existing) Object.assign(existing, value)
@@ -503,6 +514,12 @@ function decideGate(instance, event, config, effects, diagnostics) {
     rejectToUpstream(instance, effects)
     return true
   }
+  if (payload.outcome === 'accept' && [
+    'needs-human', 'review-failed', 'rebuttal-rejected', 'round-limit',
+    'artifact-unchanged', 'hard-gate-passed',
+  ].includes(reason)) {
+    instance.lastGateSignals = structuredClone(instance.gate.firstScreen.signals || [])
+  }
   voidGate(instance)
   const recordedDecision = instance.decisions.at(-1)
   if (recordedDecision) {
@@ -800,7 +817,7 @@ function handleEvent(instance, event, config, effects, diagnostics) {
       addEffect(effects, 'drift-check')
       return true
     }
-    return false
+    return Boolean(instance.gate)
   }
   if (type === 'LEASE_GRANTED') {
     const requestId = event.payload?.requestId
