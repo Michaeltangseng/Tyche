@@ -144,14 +144,20 @@ function isPathPrefix(parent, child) {
   return child.startsWith(withSeparator)
 }
 
+function claimsOverlap(a, b) {
+  if (!a || !b || a.volumeId !== b.volumeId) return false
+  return isPathPrefix(a.key, b.key) || isPathPrefix(b.key, a.key)
+}
+
 function claimsConflict(a, b) {
   if (!a || !b || a.volumeId !== b.volumeId) return false
   if (a.mode === 'shared-legacy' && b.mode === 'shared-legacy') return false
-  return isPathPrefix(a.key, b.key) || isPathPrefix(b.key, a.key)
+  return claimsOverlap(a, b)
 }
 
 module.exports = {
   claimsConflict,
+  claimsOverlap,
   makeClaim,
   normalizeRelativePath,
   resolveClaimPath,
