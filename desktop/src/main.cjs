@@ -78,6 +78,7 @@ const { ProjectDeletion } = require('./project-room/project-deletion.cjs')
 const { AppPreferencesStore } = require('./project-room/app-preferences.cjs')
 const { createProjectNotificationCoordinator } = require('./project-room/project-notifications.cjs')
 const { registerProjectIpc } = require('./shell/project-ipc.cjs')
+const { registerWorkdirIpc } = require('./shell/workdir-ipc.cjs')
 const { createTraceReader } = require('./runs/trace/trace-reader.cjs')
 const { cleanupOrphanTraces, createTraceStore, removeTracesForGroup } = require('./runs/trace/trace-store.cjs')
 const { createTraceAppendedNotifier, registerTraceIpc } = require('./shell/trace-ipc.cjs')
@@ -1086,6 +1087,10 @@ function registerIpc() {
   })
   const traceStore = createTraceStore({ tracesRoot })
   registerTraceIpc({ registerTrustedHandle, reader: traceReader, store: traceStore })
+  registerWorkdirIpc({
+    registerTrustedHandle,
+    getProjectService: () => projectService,
+  })
   registerProjectIpc({
     registerTrustedHandle,
     getProjectService: () => projectService,

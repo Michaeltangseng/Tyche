@@ -155,6 +155,12 @@ if (isLocalDocument) Object.assign(desktopApi, {
       return () => ipcRenderer.removeListener('project:open', listener)
     },
   }),
+  workdir: Object.freeze({
+    list: input => ipcRenderer.invoke('workdir:list', input),
+    read: input => ipcRenderer.invoke('workdir:read', input),
+    diff: input => ipcRenderer.invoke('workdir:diff', input),
+    acceptedDocuments: input => ipcRenderer.invoke('workdir:acceptedDocuments', input),
+  }),
   trace: Object.freeze({
     page: input => ipcRenderer.invoke('trace:page', input),
     blob: input => ipcRenderer.invoke('trace:blob', input),

@@ -104,6 +104,18 @@ test('local preload exposes the local-only Meldwork API', async () => {
       'updateProfile', 'updateSeat',
     ].sort(),
   )
+  assert.equal(Object.isFrozen(api.workdir), true)
+  assert.deepEqual(
+    Object.keys(api.workdir).sort(),
+    ['acceptedDocuments', 'diff', 'list', 'read'],
+  )
+  await api.workdir.list({ projectId: 'project-1', relPath: '' })
+  assert.deepEqual(invocations, [{
+    channel: 'workdir:list',
+    args: [{ projectId: 'project-1', relPath: '' }],
+  }])
+  invocations.length = 0
+
   assert.equal(Object.isFrozen(api.trace), true)
   assert.deepEqual(
     Object.keys(api.trace).sort(),
