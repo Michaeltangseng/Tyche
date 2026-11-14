@@ -244,6 +244,7 @@ class ShadowRepo {
     delete env.GIT_WORK_TREE
     delete env.GIT_INDEX_FILE
     env.GIT_TERMINAL_PROMPT = '0'
+    env.GIT_OPTIONAL_LOCKS = '0'
     return this.execFileFn(this.gitExecutable, ['-C', this.workTree, ...args], {
       cwd: this.workTree,
       env,
@@ -653,6 +654,45 @@ class ShadowRepo {
     const bytes = Buffer.from(text, 'utf8')
     if (bytes.length <= maxBytes) return { text, truncated: false }
     return { text: bytes.subarray(0, maxBytes).toString('utf8'), truncated: true }
+  }
+
+  async dropRefs(refNames = []) {
+    for (const ref of refNames) {
+      try {
+        await this.git(['update-ref', '-d', ref])
+      } catch { /* already absent */ }
+    }
+    return refNames.length
+  }
+
+  async collectIfNeeded({ looseObjectThreshold = 5000 } = {}) {
+    return this.withLock(async () => {
+      let count = 0
+      try {
+        const { stdout } = await this.git(['count-objects', '-v'])
+        const match = /^count:\s*(\d+)/m.exec(String(stdout || ''))
+        count = match ? Number(match[1]) : 0
+      } catch {
+        return { collected: false, count: 0 }
+      }
+      if (count <= looseObjectThreshold) return { collected: false, count }
+      await this.git(['gc', '--prune=now'])
+      return { collected: true, count }
+    })
+  }
+
+  async repairIndexIfCorrupt() {
+    try {
+      await this.git(['status', '--porcelain=v2'])
+      return { repaired: false }
+    } catch (error) {
+      const detail = String(error.stderr || error.message || '')
+      if (!/index file (?:corrupt|smaller than expected|checksum)|bad index file|index.*corrupt/i.test(detail)) {
+        throw error
+      }
+      fs.rmSync(path.join(this.gitDir, 'index'), { force: true })
+      return { repaired: true }
+    }
   }
 }
 
