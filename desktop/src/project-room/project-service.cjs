@@ -792,6 +792,8 @@ class ProjectService {
 
   async decideGate(input) {
     const { projectId } = input
+    let rejectPreview = null
+    let acceptDivergence = null
     const context = this.#context(projectId)
     this.#assertWritable(context)
     const state = context.store.current()
@@ -823,31 +825,48 @@ class ProjectService {
       if (preview.impactHash !== input.impactHash) {
         throw projectError('PROJECT_IMPACT_CHANGED')
       }
+      rejectPreview = preview
     }
     if (input.outcome === 'accept') {
       const blockers = acceptanceBlockers(state, instance.id)
       if (blockers.blocked) {
         throw projectError('PROJECT_ACCEPT_BLOCKED', { blockers: blockers.blockers })
       }
-      if (context.shadowRepo && instance.candidate && input.acceptCandidate !== true) {
+      if (context.shadowRepo && instance.candidate) {
         const def = state.config.playbook.checkpointDefs
           .find(item => item.key === instance.checkpointKey)
+        let verified
         try {
-          const verified = await context.shadowRepo.verifyAgainst({
+          verified = await context.shadowRepo.verifyAgainst({
             effectId: `gate-candidate:${gate.id}:${gate.revision}`,
             commit: instance.candidate,
             paths: def?.targetFiles || [],
             placeholderList: state.placeholders || [],
             limits: state.config.settings.snapshotLimits,
           })
-          if (verified.intact === false) {
+        } catch {
+          throw projectError('PROJECT_CANDIDATE_DIVERGED', { files: [] })
+        }
+        if (verified.intact === false) {
+          if (input.acceptCandidate !== true) {
             throw projectError('PROJECT_CANDIDATE_DIVERGED', {
               files: verified.differing || [],
             })
           }
-        } catch (error) {
-          if (error?.code === 'PROJECT_CANDIDATE_DIVERGED') throw error
-          throw projectError('PROJECT_CANDIDATE_DIVERGED', { files: [] })
+          const observed = await context.shadowRepo.snapshot({
+            effectId: `gate-observed:${gate.id}:${gate.revision}`,
+            targets: [],
+            placeholderList: state.placeholders || [],
+            limits: state.config.settings.snapshotLimits,
+            isOptional: false,
+          })
+          acceptDivergence = {
+            files: verified.differing || [],
+            observedCommit: observed.commit,
+            checkpointId: instance.id,
+            acceptedCommit: instance.candidate,
+            baseVersionId: instance.artifactVersions.at(-1)?.id || null,
+          }
         }
       }
     }
@@ -880,6 +899,44 @@ class ProjectService {
       },
     })
     if (result.ignored) throw projectError('PROJECT_GATE_STALE')
+    if (input.outcome === 'reject-upstream' && rejectPreview) {
+      await context.engine.dispatch(input.upstreamCheckpointId, {
+        type: 'REOPEN',
+        at: this.#nowIso(),
+        payload: { reason: String(input.comment || 'Rejected upstream.') },
+      })
+      for (const affectedId of rejectPreview.affectedCheckpointIds) {
+        await context.engine.dispatch(affectedId, {
+          type: 'UPSTREAM_REOPENED',
+          at: this.#nowIso(),
+          payload: { checkpointId: input.upstreamCheckpointId },
+        })
+      }
+    }
+    if (acceptDivergence) {
+      await context.store.enqueue((next) => {
+        for (const path of acceptDivergence.files) {
+          const id = createHash('sha256')
+            .update(`${acceptDivergence.checkpointId}:${path}:${acceptDivergence.observedCommit}`, 'utf8')
+            .digest('hex')
+          if (next.driftItems.some(item => item.id === id)) continue
+          next.driftItems.push({
+            id,
+            revision: 1,
+            path,
+            checkpointId: acceptDivergence.checkpointId,
+            baseVersionId: acceptDivergence.baseVersionId,
+            acceptedCommit: acceptDivergence.acceptedCommit,
+            observedCommit: acceptDivergence.observedCommit,
+            foundAt: this.#nowIso(),
+            source: 'accept-candidate',
+            status: 'unresolved',
+            resolvedAt: null,
+          })
+        }
+        return { next }
+      })
+    }
     await this.#queueProjectMessage(projectId, staged)
     return { revision: context.store.current().revision }
   }

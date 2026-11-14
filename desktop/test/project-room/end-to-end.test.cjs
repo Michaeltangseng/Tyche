@@ -109,7 +109,8 @@ async function setup(t, scriptsOverride = {}) {
   })
   const projectDir = path.join(privateRoot, 'projects', 'project-1')
   fs.mkdirSync(projectDir, { recursive: true })
-  writeJson(path.join(projectDir, 'state.json'), projectState())
+  writeJson(path.join(projectDir, 'state.json'),
+    scriptsOverride.initialState ? scriptsOverride.initialState() : projectState())
   await ShadowRepo.create({
     gitDir: path.join(projectDir, 'shadow.git'),
     workTree: workdir,
@@ -448,4 +449,138 @@ test('reopening an accepted checkpoint starts a new generation', async (t) => {
   assert.equal(reopened.epoch, 1)
   assert.equal(reopened.sessionGeneration, 1)
   assert.ok(reopened.decisions.some(decision => decision.outcome === 'accept'))
+})
+
+test('rejecting a gate to an upstream checkpoint reopens the upstream and stales downstream', async (t) => {
+  const { service, workdir } = await setup(t, {
+    initialState: () => {
+      const state = projectState()
+      state.config.playbook.checkpointDefs.push({
+        key: 'design', name: 'Design', type: 'document',
+        targetFiles: ['docs/design.md'], leadSeatId: 'seat-lead',
+        reviewerSeatIds: ['seat-reviewer'], draftSeatIds: [], gate: 'hard',
+        roundLimit: 3, continuationLimit: 3, producesChecklist: false,
+        dependsOn: ['requirements'],
+      })
+      return state
+    },
+    lead: {
+      steps: [{
+        op: 'whenPromptIncludes',
+        text: 'design.md',
+        then: [
+          { op: 'write', path: 'docs/design.md', content: 'Design 1\n' },
+          { op: 'output', text: 'Design ready' },
+        ],
+        otherwise: [
+          { op: 'write', path: 'docs/requirements.md', content: 'Version 1\n' },
+          { op: 'output', text: 'Draft ready' },
+        ],
+      }],
+      marker: checkpointMarker,
+    },
+  })
+  await service.startProject({ projectId: 'project-1', brief: 'Write it.' })
+  const engine = service.engineFor('project-1')
+  await engine.runUntilIdle()
+  const store = service.contextFor('project-1').store
+  const requirementsId = store.current().instances[0].id
+  let gate = service.snapshot('project-1').gates[0]
+  await service.decideGate({
+    projectId: 'project-1', gateId: gate.gateId, gateRevision: gate.revision,
+    candidateCommit: gate.candidateCommit, outcome: 'accept',
+  })
+  await engine.runUntilIdle()
+
+  await store.enqueue((state) => {
+    state.instances.push({
+      id: 'design-1', checkpointKey: 'design', state: 'pending', seq: 0, epoch: 0,
+      round: 0, roundsSinceHuman: 0, continuations: 0, sessionGeneration: 0,
+      candidate: null, rounds: [], roundsSummary: [], leaseRequests: [],
+      activeInvocations: [], pendingStart: null, drafts: [], interjections: [],
+      gate: null, blockedOn: null, effects: [], artifactVersions: [],
+      readVersions: {}, decisions: [],
+    })
+    return { next: state }
+  })
+  await engine.advanceProgress()
+  await engine.runUntilIdle()
+  gate = service.snapshot('project-1').gates.find(item => item.checkpointId === 'design-1')
+  assert.equal(gate.reason, 'hard-gate-passed')
+
+  const preview = service.previewReject({
+    projectId: 'project-1', checkpointId: 'design-1', upstreamId: requirementsId,
+  })
+  await service.decideGate({
+    projectId: 'project-1', gateId: gate.gateId, gateRevision: gate.revision,
+    candidateCommit: gate.candidateCommit, outcome: 'reject-upstream',
+    upstreamCheckpointId: requirementsId, impactHash: preview.impactHash,
+    comment: 'The requirements must change.',
+  })
+  await engine.runUntilIdle()
+
+  const requirements = store.current().instances.find(item => item.id === requirementsId)
+  const design = store.current().instances.find(item => item.id === 'design-1')
+  assert.equal(design.state, 'stale')
+  assert.equal(requirements.epoch, 1)
+  assert.equal(requirements.sessionGeneration, 1)
+  assert.ok(['gate', 'leading', 'checking'].includes(requirements.state))
+  assert.ok(fs.existsSync(path.join(workdir, 'docs', 'design.md')))
+})
+
+test('accepting a diverged candidate records unresolved drift', async (t) => {
+  const { service, workdir } = await setup(t)
+  await service.startProject({ projectId: 'project-1', brief: 'Write it.' })
+  const engine = service.engineFor('project-1')
+  await engine.runUntilIdle()
+  const gate = service.snapshot('project-1').gates[0]
+  fs.appendFileSync(path.join(workdir, 'docs', 'requirements.md'), 'external change\n')
+
+  await assert.rejects(service.decideGate({
+    projectId: 'project-1', gateId: gate.gateId, gateRevision: gate.revision,
+    candidateCommit: gate.candidateCommit, outcome: 'accept',
+  }), { code: 'PROJECT_CANDIDATE_DIVERGED' })
+
+  await service.decideGate({
+    projectId: 'project-1', gateId: gate.gateId, gateRevision: gate.revision,
+    candidateCommit: gate.candidateCommit, outcome: 'accept', acceptCandidate: true,
+  })
+  await engine.runUntilIdle()
+  const state = service.contextFor('project-1').store.current()
+  assert.equal(state.instances[0].state, 'accepted')
+  assert.equal(state.driftItems.length, 1)
+  assert.equal(state.driftItems[0].path, 'docs/requirements.md')
+  assert.equal(state.driftItems[0].source, 'accept-candidate')
+  assert.equal(state.driftItems[0].status, 'unresolved')
+  assert.equal(state.driftItems[0].acceptedCommit, gate.candidateCommit)
+})
+
+test('restarting with an interrupted writable call opens a recovery gate', async (t) => {
+  const { service } = await setup(t, {
+    initialState: () => {
+      const state = projectState()
+      state.instances = [{
+        id: 'cp-1', checkpointKey: 'requirements', state: 'leading', seq: 1, epoch: 1,
+        round: 0, roundsSinceHuman: 0, continuations: 0, sessionGeneration: 0,
+        candidate: null, rounds: [], roundsSummary: [], leaseRequests: [],
+        activeInvocations: [{
+          effectId: 'invoke-started', role: 'lead', seatId: 'seat-lead',
+          agentKind: leadKind, round: 0, sessionGeneration: 0, claims: [],
+          cancellationRequested: false, processRegistryId: null,
+        }],
+        pendingStart: null, drafts: [], interjections: [], gate: null,
+        blockedOn: null, effects: [{
+          id: 'invoke-started', type: 'invoke-lead', category: 'invocation',
+          status: 'started', epoch: 1, params: {}, result: null, error: null,
+          startedAt: at, finishedAt: null,
+        }], artifactVersions: [], readVersions: {}, decisions: [],
+      }]
+      return state
+    },
+  })
+  const snapshot = service.snapshot('project-1')
+  assert.equal(snapshot.progress[0].state, 'gate')
+  assert.equal(snapshot.gates[0].reason, 'recovery')
+  const state = service.contextFor('project-1').store.current()
+  assert.deepEqual(state.instances[0].activeInvocations, [])
 })
