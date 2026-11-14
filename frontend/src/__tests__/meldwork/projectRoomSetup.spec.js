@@ -165,6 +165,8 @@ describe('project room seat settings', () => {
     const wrapper = mount(ProjectRoomSeatSettings, { props: { controller: fixture } })
     await flushPromises()
     expect(wrapper.text()).toContain('Lead')
+    expect(wrapper.text()).toContain('projectRoom.seats.profileSource.default')
+    expect(wrapper.text()).not.toContain('v1 · default')
     await wrapper.get('.setup-seat input[type="text"]').setValue('Lead writer')
     await wrapper.get('.setup-seat .primary-button').trigger('click')
     await flushPromises()

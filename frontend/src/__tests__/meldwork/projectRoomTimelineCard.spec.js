@@ -25,10 +25,11 @@ describe('project timeline cards', () => {
   it('renders checkpoint and decided/voided gate summaries', () => {
     const checkpoint = mountCard({
       kind: 'checkpoint', name: 'Requirements', at: '2026-11-14T09:00:00Z',
-      generation: 1, reopened: false, reason: '',
+      generation: 1, reopened: false, reason: 'doc-new-version',
     })
     expect(checkpoint.text()).toContain('Requirements')
     expect(checkpoint.text()).toContain('projectRoom.timeline.started')
+    expect(checkpoint.text()).toContain('projectRoom.gate.reason.doc-new-version')
 
     const decided = mountCard({
       kind: 'gate-decided', name: 'Requirements', at: '2026-11-14T09:00:00Z',

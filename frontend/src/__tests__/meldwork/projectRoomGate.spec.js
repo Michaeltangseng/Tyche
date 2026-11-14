@@ -93,6 +93,11 @@ function controller(overrides = {}) {
     requestAccept: vi.fn(),
     requestReject: vi.fn(),
     resolveGateDrift: vi.fn(),
+    seats: ref([
+      { id: 'seat-1', roleName: 'Lead writer' },
+      { id: 'seat-2', roleName: 'Reviewer' },
+      { id: 'seat-3', roleName: 'Arbiter' },
+    ]),
     submitGateContinue: vi.fn(),
     t: (key, params = {}) => (
       params.count == null ? key : `${key}:${params.count}`
@@ -115,6 +120,8 @@ describe('project room gate panel', () => {
     expect(wrapper.get('.gate-signal-more').text()).toBe('projectRoom.gate.moreSignals:1')
     expect(reviews.findAll('.gate-review')).toHaveLength(2)
     expect(reviews.findAll('.gate-review')[1].findAll('p')).toHaveLength(4)
+    expect(reviews.text()).toContain('Lead writer')
+    expect(reviews.text()).toContain('Reviewer')
     expect(reviews.text()).toContain('projectRoom.gate.moreReviews:1')
     expect(files.findAll('.gate-file')).toHaveLength(6)
     expect(files.text()).toContain('projectRoom.gate.moreFiles:1')

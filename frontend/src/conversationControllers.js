@@ -174,6 +174,7 @@ export function createConversationControllers({
     requestAccept: app.requestAccept,
     requestReject: app.requestReject,
     resolveGateDrift: app.resolveGateDrift,
+    seats: app.seats,
     submitGateContinue: app.submitGateContinue,
     t: app.t,
   }

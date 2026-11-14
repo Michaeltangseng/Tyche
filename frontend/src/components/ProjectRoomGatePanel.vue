@@ -53,7 +53,7 @@
           <p v-if="!reviewSummaries.length" class="gate-empty">{{ t('projectRoom.gate.noReviews') }}</p>
           <article v-for="review in visibleReviewSummaries" :key="review.seatId" class="gate-review">
             <header>
-              <strong>{{ review.seatId }}</strong>
+              <strong>{{ seatLabel(review.seatId) }}</strong>
               <span class="gate-verdict" :data-verdict="review.verdict">{{ verdictLabel(review.verdict) }}</span>
             </header>
             <p v-for="(line, index) in visibleSummaryLines(review)" :key="index">{{ line }}</p>
@@ -273,9 +273,15 @@ const {
   requestAccept,
   requestReject,
   resolveGateDrift,
+  seats,
   submitGateContinue,
   t,
 } = props.controller
+
+function seatLabel(seatId) {
+  const seat = (seats?.value || []).find(item => item.id === seatId)
+  return seat?.roleName || seatId
+}
 
 const expanded = ref(true)
 const showAllSummaries = ref(false)

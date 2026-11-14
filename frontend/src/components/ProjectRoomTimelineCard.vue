@@ -6,7 +6,7 @@
         <small>
           {{ card.reopened ? t('projectRoom.timeline.reopened') : t('projectRoom.timeline.started') }}
           <template v-if="card.at"> · {{ formatNavTime(card.at) }}</template>
-          <template v-if="card.reason"> · {{ card.reason }}</template>
+          <template v-if="reasonLabel"> · {{ reasonLabel }}</template>
         </small>
       </div>
     </template>

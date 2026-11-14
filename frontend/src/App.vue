@@ -1194,6 +1194,7 @@ const {
     gateLoading: projectRoomView.gateLoading,
     gateScreen: projectRoomView.gateScreen,
     gateStale: projectRoomView.gateStale,
+    seats: computed(() => projectRoomView.project.value?.config?.seats || []),
     questionGate: projectRoomView.questionGate,
     reloadGate: projectRoomView.reloadGate,
     requestAccept: projectRoomView.requestAccept,

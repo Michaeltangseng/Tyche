@@ -53,7 +53,7 @@
         <select v-model="seat.rollbackProfileId">
           <option value="">{{ t('projectRoom.seats.currentProfile') }}</option>
           <option v-for="profile in seat.profileVersions" :key="profile.id" :value="profile.id">
-            v{{ profile.version }} · {{ profile.source }}
+            v{{ profile.version }} · {{ profileSourceLabel(profile.source) }}
           </option>
         </select>
       </label>
@@ -163,6 +163,18 @@ async function ensureCapabilities(kind) {
       capabilitySupported(kind, capability)
     ))
   }
+}
+
+const PROFILE_SOURCE_KEYS = {
+  default: 'projectRoom.seats.profileSource.default',
+  'user-edit': 'projectRoom.seats.profileSource.user-edit',
+  'retro-adopted': 'projectRoom.seats.profileSource.retro-adopted',
+  rollback: 'projectRoom.seats.profileSource.rollback',
+}
+
+function profileSourceLabel(source) {
+  const key = PROFILE_SOURCE_KEYS[source]
+  return key ? t(key) : String(source || '')
 }
 
 function capabilitySupported(kind, capability) {
