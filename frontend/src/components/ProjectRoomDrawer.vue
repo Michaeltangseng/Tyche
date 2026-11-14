@@ -71,7 +71,8 @@
       </section>
 
       <section v-else class="project-room-drawer-body" role="tabpanel">
-        <p class="project-room-drawer-empty">{{ t('projectRoom.drawer.traceUnavailable') }}</p>
+        <TraceStepList v-if="traceHasFull" :controller="traceController" />
+        <p v-else class="project-room-drawer-empty">{{ t('projectRoom.drawer.traceUnavailable') }}</p>
       </section>
 
       <div
@@ -88,6 +89,8 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { CloseOutline } from '@vicons/ionicons5'
+import { useTraceStream } from '../composables/useTraceStream.js'
+import TraceStepList from './trace/TraceStepList.vue'
 
 const props = defineProps({
   controller: { type: Object, required: true },
@@ -103,6 +106,8 @@ const {
   projectSnapshot,
   savePreferences,
   t,
+  traceAgentRunId,
+  traceRunId,
 } = props.controller
 
 const tabs = [
@@ -116,6 +121,25 @@ const activeTab = ref('files')
 const width = ref(DEFAULT_WIDTH)
 const panelElement = ref(null)
 let resizeState = null
+
+const fullTrace = useTraceStream({ runId: traceRunId, agentRunId: traceAgentRunId })
+const traceHasFull = fullTrace.hasFullTrace
+const traceController = {
+  complete: fullTrace.complete,
+  hasMore: fullTrace.hasMore,
+  incomplete: fullTrace.incomplete,
+  loadBlob: fullTrace.loadBlob,
+  loadOlder: fullTrace.loadOlder,
+  loading: fullTrace.loading,
+  steps: fullTrace.steps,
+  t,
+}
+
+watch(activeTab, (tab) => {
+  const active = tab === 'trace'
+  fullTrace.setViewing(active)
+  if (active && traceRunId?.value && traceAgentRunId?.value) void fullTrace.open()
+}, { immediate: true })
 
 const acceptedDocuments = computed(() => (
   (projectSnapshot.value?.progress || [])

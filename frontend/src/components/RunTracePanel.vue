@@ -141,6 +141,10 @@
       </p>
 
       <div v-if="selectedItem" class="trace-panel-scroll">
+        <TraceStepList v-if="traceHasFull" :controller="traceStepController" />
+        <p v-else-if="traceStatus" class="trace-step-no-full">
+          {{ t('trace.steps.noFullTrace') }}
+        </p>
         <section class="trace-panel-summary">
           <div class="trace-panel-summary-heading">
             <div>
@@ -357,7 +361,7 @@
             <strong>{{ t('trace.events') }}</strong>
             <small>{{ filteredEvents(selectedItem).length }}</small>
           </header>
-          <ol v-if="filteredEvents(selectedItem).length" class="trace-event-list">
+          <ol v-if="!traceHasFull && filteredEvents(selectedItem).length" class="trace-event-list">
             <li v-for="(event, index) in filteredEvents(selectedItem)" :key="eventKey(event, index)">
               <details>
                 <summary>
@@ -424,6 +428,8 @@ import {
 } from '@vicons/ionicons5'
 import { agentLabel, agentLogo } from '../catalog.js'
 import { retainedTraceEvents } from '../conversationTimelineModel.js'
+import { useTraceStream } from '../composables/useTraceStream.js'
+import TraceStepList from './trace/TraceStepList.vue'
 import { orchestrationPhase, orchestrationSlotCompleted } from '../desktop-normalization.js'
 import { locale, t } from '../i18n.js'
 
@@ -452,6 +458,27 @@ const roundSelectTrigger = ref(null)
 const openSelector = ref('')
 const humanGateResponses = reactive({})
 const selectedItem = computed(() => props.items.find(item => item.agentRunId === props.selectedAgentRunId) || props.items.at(-1) || null)
+const traceRunId = computed(() => String(selectedItem.value?.runId || ''))
+const traceAgentRunId = computed(() => String(selectedItem.value?.agentRunId || ''))
+const fullTrace = useTraceStream({ runId: traceRunId, agentRunId: traceAgentRunId })
+const traceSteps = fullTrace.steps
+const traceHasFull = fullTrace.hasFullTrace
+const traceStatus = fullTrace.status
+const traceStepController = {
+  complete: fullTrace.complete,
+  hasMore: fullTrace.hasMore,
+  incomplete: fullTrace.incomplete,
+  loadBlob: fullTrace.loadBlob,
+  loadOlder: fullTrace.loadOlder,
+  loading: fullTrace.loading,
+  steps: traceSteps,
+  t,
+}
+watch([traceRunId, traceAgentRunId, () => props.open], ([runId, agentRunId, open]) => {
+  const active = Boolean(open && runId && agentRunId)
+  fullTrace.setViewing(active)
+  if (active) void fullTrace.open()
+}, { immediate: true })
 const agentGroups = computed(() => {
   const groups = new Map()
   for (const item of props.items) {

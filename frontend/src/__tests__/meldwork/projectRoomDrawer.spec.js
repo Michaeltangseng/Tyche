@@ -35,6 +35,8 @@ function drawerController(overrides = {}) {
     }),
     savePreferences: vi.fn(async () => ({})),
     t: key => key,
+    traceAgentRunId: ref(''),
+    traceRunId: ref(''),
     ...overrides,
   }
 }

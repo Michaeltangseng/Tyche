@@ -688,6 +688,8 @@ const projectRoomSeatSettingsController = {
 const projectRoomDrawerController = {
   close: () => { projectDrawerOpen.value = false },
   drawer: projectDrawerNarrow,
+  traceAgentRunId: ref(''),
+  traceRunId: ref(''),
   formatNavTime,
   onResize: (width) => { projectDrawerWidthOverride.value = width },
   open: projectDrawerOpen,
