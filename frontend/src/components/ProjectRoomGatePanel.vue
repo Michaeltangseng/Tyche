@@ -153,6 +153,12 @@
           <span class="gate-muted">{{ t('projectRoom.gate.resubmitUnavailable') }}</span>
         </p>
 
+        <p v-if="acceptBlockerItems.length" class="gate-blockers">
+          <span v-for="blocker in acceptBlockerItems" :key="`${blocker.type}:${blocker.checkpointId || ''}`">
+            {{ blockerLabel(blocker) }}
+          </span>
+        </p>
+
         <div class="gate-actions">
           <button
             v-if="!questionGate && !driftGate"
@@ -252,6 +258,7 @@ const {
   confirmAcceptNow,
   draft,
   driftGate,
+  gateAcceptBlockers,
   gateAllowedOutcomes,
   gateCheckpointName,
   gateCommitToGit,
@@ -259,6 +266,7 @@ const {
   gateLoading,
   gateScreen,
   gateStale,
+  progressItems,
   questionGate,
   reloadGate,
   requestAccept,
@@ -305,9 +313,21 @@ const softWithoutSignals = computed(() => (
 const visibleSoftGates = computed(() => (
   showAllSoftGates.value ? softGates.value : softGates.value.slice(0, 5)
 ))
-const upstreamBlocked = computed(() => (screen.value.blockerCheckpointIds || []).length > 0)
+const progressById = computed(() => new Map(
+  (progressItems.value || []).map(item => [item.checkpointId, item]),
+))
+const acceptBlockerItems = computed(() => (gateAcceptBlockers.value || []).map((blocker) => {
+  const checkpoint = blocker.checkpointId
+    ? progressById.value.get(blocker.checkpointId)
+    : null
+  return {
+    ...blocker,
+    checkpointName: checkpoint?.name || blocker.checkpointId || '',
+  }
+}))
+const acceptBlocked = computed(() => acceptBlockerItems.value.length > 0)
 const acceptAvailable = computed(() => (
-  gateAllowedOutcomes.value.includes('accept') && !upstreamBlocked.value
+  gateAllowedOutcomes.value.includes('accept') && !acceptBlocked.value
 ))
 const continueAvailable = computed(() => gateAllowedOutcomes.value.includes('continue'))
 const rejectAvailable = computed(() => gateAllowedOutcomes.value.includes('reject-upstream'))
@@ -324,9 +344,21 @@ const elapsedLabel = computed(() => {
 })
 const acceptUnavailableReason = computed(() => {
   if (questionGate.value) return t('projectRoom.gate.acceptQuestionUnavailable')
-  if (upstreamBlocked.value) return t('projectRoom.gate.acceptBlocked')
+  if (acceptBlockerItems.value.some(item => item.type === 'detection')) {
+    return t('projectRoom.gate.blocker.detection')
+  }
+  if (acceptBlocked.value) return t('projectRoom.gate.acceptBlocked')
   return t('projectRoom.gate.outcomeUnavailable')
 })
+
+function blockerLabel(blocker) {
+  const type = blocker.type === 'doc-new-version' ? 'docNewVersion'
+    : blocker.type === 'drift' ? 'drift' : 'detection'
+  const key = `projectRoom.gate.blocker.${type}`
+  return blocker.checkpointName
+    ? t(key, { checkpoint: blocker.checkpointName })
+    : t(key)
+}
 const continueUnavailableReason = computed(() => t('projectRoom.gate.outcomeUnavailable'))
 const COMMIT_REASONS = new Set([
   'not-a-repository', 'staged', 'content', 'outside-repository',

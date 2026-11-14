@@ -314,6 +314,13 @@ test('pending decisions are sorted by waiting time, capped, and counted', () => 
 test('the project snapshot applies first-screen budgets and hides internals', () => {
   const project = sensitiveProject()
   const state = stateWithData()
+  state.chatWriteChecks = {
+    'run-1': {
+      groupId: 'group-1', status: 'running', snapshotCommit: null,
+      baseVersions: null, failure: null,
+    },
+  }
+  state.placeholders = [{ path: 'docs/requirements.md', reason: 'oversize' }]
   const snapshot = projectSnapshot(project, state)
 
   assert.equal(snapshot.projectId, 'project-1')
@@ -328,6 +335,7 @@ test('the project snapshot applies first-screen budgets and hides internals', ()
   const gate = snapshot.gates[0]
   assert.equal(gate.gateId, 'gate-1')
   assert.deepEqual(gate.allowedOutcomes, ['continue', 'accept', 'reject-upstream'])
+  assert.ok(gate.acceptBlockers.some(blocker => blocker.type === 'detection'))
   assert.deepEqual(gate.signals.map(item => item.kind), [
     'upstream-pending-version', 'upstream-drift', 'candidate-diverged', 'out-of-scope',
   ])
@@ -346,6 +354,8 @@ test('the project snapshot applies first-screen budgets and hides internals', ()
   assert.equal(gate.candidateDiverged, true)
 
   assert.deepEqual(snapshot.driftItems.map(item => item.id), ['drift-1'])
+  assert.equal(snapshot.driftItems[0].placeholder, 'oversize')
+  assert.equal(snapshot.driftItems[0].restorable, false)
   assert.deepEqual(snapshot.outOfScopeItems.map(item => item.id), ['scope-1'])
   assert.equal(snapshot.errorBar, null)
   assert.equal(snapshot.residuals.length, 1)

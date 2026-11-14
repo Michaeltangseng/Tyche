@@ -228,6 +228,13 @@ export function createBridge() {
     interject: vi.fn(async () => ({})),
     decideGate: vi.fn(async () => ({})),
     delete: vi.fn(async () => ({ deleted: true })),
+    resolveDrift: vi.fn(async () => ({})),
+    cancelDriftResolution: vi.fn(async () => ({})),
+    resolveOutOfScope: vi.fn(async () => ({})),
+    residual: vi.fn(async () => ({})),
+    retryEffect: vi.fn(async () => ({})),
+    compact: vi.fn(async () => ({ revision: 1 })),
+    diagnostics: vi.fn(async () => ({ diagnostic: 'detail' })),
     previewReject: vi.fn(async () => ({
       targetCheckpointId: 'cp-0',
       affectedCheckpointIds: [],

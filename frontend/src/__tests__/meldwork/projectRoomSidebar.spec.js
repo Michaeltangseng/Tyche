@@ -379,6 +379,106 @@ describe('project room sidebar', () => {
     wrapper.unmount()
   })
 
+  it('shows drift, out-of-scope, residuals, and the error bar, and routes their actions', async () => {
+    const { wrapper, bridge } = await mountApp(({ state, bridge: desktopBridge }) => {
+      seedProjects(state)
+      desktopBridge.projectRoom.snapshot.mockResolvedValue({
+        projectId: 'project-1',
+        revision: 1,
+        progress: [{
+          checkpointId: 'cp-1',
+          checkpointKey: 'requirements',
+          name: 'Requirements',
+          state: 'accepted',
+          round: 1,
+          roundsSinceHuman: 1,
+          leadSeatId: 'seat-1',
+          leadSeatName: 'Lead',
+          reviewerSeatIds: [],
+          waitingOn: 'none',
+          hasGate: false,
+          blocked: false,
+        }],
+        gates: [],
+        driftItems: [{
+          id: 'drift-1',
+          revision: 3,
+          path: 'docs/requirements.md',
+          checkpointId: 'cp-1',
+          checkpointName: 'Requirements',
+          baseVersionId: null,
+          acceptedCommit: 'a'.repeat(40),
+          observedCommit: 'b'.repeat(40),
+          foundAt: '2026-07-29T09:00:00Z',
+          source: 'drift-check',
+          status: 'unresolved',
+          placeholder: null,
+          restorable: true,
+        }],
+        outOfScopeItems: [{
+          id: 'scope-1',
+          path: 'src/app.js',
+          attribution: 'uncertain',
+          effectId: 'effect-1',
+          overlappingEffectIds: [],
+          detectedAt: '2026-07-29T09:00:00Z',
+          status: 'unresolved',
+        }],
+        residuals: [{
+          residualId: 'residual-1',
+          pid: 1234,
+          startedAt: '2026-07-29T09:00:00Z',
+          agentKind: 'codex',
+          programName: 'node',
+          containerMarked: true,
+        }],
+        errorBar: {
+          scope: 'project',
+          checkpointId: null,
+          effectId: 'effect-1',
+          error: 'PROJECT_STORAGE_FAULT',
+          time: '2026-07-29T09:00:00Z',
+          retryable: true,
+        },
+        config: {},
+      })
+    })
+
+    await wrapper.get('.project-room-open').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.project-room-status').exists()).toBe(true)
+    expect(wrapper.get('.project-room-status').text()).toContain('docs/requirements.md')
+    expect(wrapper.get('.project-room-status').text()).toContain('src/app.js')
+    expect(wrapper.get('.project-room-status').text()).toContain('node')
+    expect(wrapper.get('.project-room-status').text()).toContain('PROJECT_STORAGE_FAULT')
+
+    await wrapper.get('.status-row input[type="checkbox"]').setValue(true)
+    await wrapper.findAll('.status-actions .status-action')[1].trigger('click')
+    await flushPromises()
+    expect(bridge.projectRoom.resolveDrift).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      items: [{ itemId: 'drift-1', revision: 3 }],
+      choice: 'workdir',
+    })
+
+    await wrapper.findAll('.status-error .status-action')[0].trigger('click')
+    await flushPromises()
+    expect(bridge.projectRoom.retryEffect).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      effectId: 'effect-1',
+    })
+
+    const residualButtons = wrapper.findAll('.status-section:nth-of-type(3) .status-action')
+    await residualButtons[0].trigger('click')
+    await flushPromises()
+    expect(bridge.projectRoom.residual).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      residualId: 'residual-1',
+      action: 'manuallyEnded',
+    })
+    wrapper.unmount()
+  })
+
   it('shows no project room entries when the workspace snapshot does not include them', async () => {
     const { wrapper } = await mountApp(({ state }) => {
       state.groups.push(

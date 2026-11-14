@@ -79,6 +79,7 @@ function controller(overrides = {}) {
     confirmAcceptNow: vi.fn(),
     draft: ref(''),
     driftGate: false,
+    gateAcceptBlockers: ref([]),
     gateAllowedOutcomes: ref(['continue', 'accept', 'reject-upstream']),
     gateCheckpointName: 'Requirements',
     gateCommitToGit: ref({ available: false, reasons: [] }),
@@ -86,6 +87,7 @@ function controller(overrides = {}) {
     gateLoading: false,
     gateScreen: ref(gateScreen()),
     gateStale: false,
+    progressItems: ref([]),
     questionGate: false,
     reloadGate: vi.fn(),
     requestAccept: vi.fn(),
@@ -144,17 +146,34 @@ describe('project room gate panel', () => {
     expect(wrapper.get('.gate-text-button').attributes('disabled')).toBeDefined()
   })
 
-  it('disables accepting while upstream blockers remain', () => {
-    const wrapper = mount(ProjectRoomGatePanel, {
+  it('disables accepting while upstream or detection blockers remain', () => {
+    const upstream = mount(ProjectRoomGatePanel, {
       props: {
         controller: controller({
-          gateScreen: ref(gateScreen({ blockerCheckpointIds: ['cp-upstream'] })),
+          gateAcceptBlockers: ref([{
+            type: 'doc-new-version', checkpointId: 'cp-upstream',
+          }]),
+          progressItems: ref([{
+            checkpointId: 'cp-upstream', name: 'Upstream', label: 'Gate',
+          }]),
         }),
       },
     })
-    expect(wrapper.get('.gate-primary').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('.gate-primary').attributes('title'))
+    expect(upstream.get('.gate-primary').attributes('disabled')).toBeDefined()
+    expect(upstream.get('.gate-primary').attributes('title'))
       .toBe('projectRoom.gate.acceptBlocked')
+    expect(upstream.get('.gate-blockers').text()).toContain('projectRoom.gate.blocker.docNewVersion')
+
+    const detection = mount(ProjectRoomGatePanel, {
+      props: {
+        controller: controller({
+          gateAcceptBlockers: ref([{ type: 'detection', checkCount: 1 }]),
+        }),
+      },
+    })
+    expect(detection.get('.gate-primary').attributes('disabled')).toBeDefined()
+    expect(detection.get('.gate-primary').attributes('title'))
+      .toBe('projectRoom.gate.blocker.detection')
   })
 
   it('asks for an answer on question gates and confirms accept-as-is', async () => {

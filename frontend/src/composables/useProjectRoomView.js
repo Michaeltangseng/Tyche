@@ -96,6 +96,137 @@ export function useProjectRoomView({
     const workdir = String(project.value?.workdir || activeGroup.value?.workdir || '')
     return workdir.split(/[\\/]/).filter(Boolean).at(-1) || ''
   })
+  const driftItems = computed(() => project.value?.driftItems || [])
+  const outOfScopeItems = computed(() => project.value?.outOfScopeItems || [])
+  const residuals = computed(() => project.value?.residuals || [])
+  const errorBar = computed(() => project.value?.errorBar || null)
+  const diagnostics = ref(null)
+  const selectedDiff = ref(null)
+  const statusErrorKey = ref('')
+
+  async function resolveDriftItems(itemIds, choice) {
+    const ids = new Set(Array.isArray(itemIds) ? itemIds : [])
+    const items = driftItems.value
+      .filter(item => ids.has(item.id))
+      .map(item => ({ itemId: item.id, revision: item.revision }))
+    if (!items.length) return false
+    statusErrorKey.value = ''
+    try {
+      await projectRoom.resolveDrift({ projectId: projectId.value, items, choice })
+      await projectRoom.refresh()
+      return true
+    } catch (error) {
+      statusErrorKey.value = SEND_ERROR_KEYS[errorCode(error)]
+        || 'projectRoom.composer.errors.generic'
+      showError(error)
+      return false
+    }
+  }
+
+  async function cancelDriftResolution(itemId) {
+    const item = driftItems.value.find(entry => entry.id === itemId)
+    if (!item) return false
+    statusErrorKey.value = ''
+    try {
+      await projectRoom.cancelDriftResolution({
+        projectId: projectId.value,
+        itemId: item.id,
+        revision: item.revision,
+      })
+      await projectRoom.refresh()
+      return true
+    } catch (error) {
+      statusErrorKey.value = SEND_ERROR_KEYS[errorCode(error)]
+        || 'projectRoom.composer.errors.generic'
+      showError(error)
+      return false
+    }
+  }
+
+  async function resolveOutOfScopeItems(itemIds) {
+    const ids = Array.isArray(itemIds) ? itemIds : []
+    if (!ids.length) return false
+    statusErrorKey.value = ''
+    try {
+      await projectRoom.resolveOutOfScope({ projectId: projectId.value, itemIds: ids })
+      await projectRoom.refresh()
+      return true
+    } catch (error) {
+      statusErrorKey.value = SEND_ERROR_KEYS[errorCode(error)]
+        || 'projectRoom.composer.errors.generic'
+      showError(error)
+      return false
+    }
+  }
+
+  async function retryProjectError() {
+    const bar = errorBar.value
+    if (!bar?.retryable || !bar.effectId) return false
+    statusErrorKey.value = ''
+    try {
+      const input = { projectId: projectId.value, effectId: bar.effectId }
+      if (bar.scope === 'instance' && bar.checkpointId) input.checkpointId = bar.checkpointId
+      await projectRoom.retryEffect(input)
+      await projectRoom.refresh()
+      return true
+    } catch (error) {
+      statusErrorKey.value = SEND_ERROR_KEYS[errorCode(error)]
+        || 'projectRoom.composer.errors.generic'
+      showError(error)
+      return false
+    }
+  }
+
+  async function compactProject() {
+    statusErrorKey.value = ''
+    try {
+      const result = await projectRoom.compact({ projectId: projectId.value })
+      await projectRoom.refresh()
+      return result
+    } catch (error) {
+      statusErrorKey.value = SEND_ERROR_KEYS[errorCode(error)]
+        || 'projectRoom.composer.errors.generic'
+      showError(error)
+      return null
+    }
+  }
+
+  async function loadDiagnostics() {
+    statusErrorKey.value = ''
+    try {
+      diagnostics.value = await projectRoom.diagnostics({ projectId: projectId.value })
+      return diagnostics.value
+    } catch (error) {
+      statusErrorKey.value = SEND_ERROR_KEYS[errorCode(error)]
+        || 'projectRoom.composer.errors.generic'
+      showError(error)
+      return null
+    }
+  }
+
+  async function resolveResidual(residualId, action) {
+    if (!residualId || !['manuallyEnded', 'notRelated'].includes(action)) return false
+    statusErrorKey.value = ''
+    try {
+      await projectRoom.residual({ projectId: projectId.value, residualId, action })
+      await projectRoom.refresh()
+      return true
+    } catch (error) {
+      statusErrorKey.value = SEND_ERROR_KEYS[errorCode(error)]
+        || 'projectRoom.composer.errors.generic'
+      showError(error)
+      return false
+    }
+  }
+
+  function openDriftDiff(item) {
+    if (!item) return
+    selectedDiff.value = {
+      path: item.path,
+      observedCommit: item.observedCommit,
+      acceptedCommit: item.acceptedCommit,
+    }
+  }
 
   function checkpointActivityAt(checkpointId) {
     const groupId = activeGroup.value?.id
@@ -231,6 +362,9 @@ export function useProjectRoomView({
   ))
   const gateAllowedOutcomes = computed(() => (
     gateDetail.value?.allowedOutcomes || activeGate.value?.allowedOutcomes || []
+  ))
+  const gateAcceptBlockers = computed(() => (
+    gateDetail.value?.acceptBlockers || activeGate.value?.acceptBlockers || []
   ))
   const gateCheckpointName = computed(() => (
     gateDetail.value?.checkpointName
@@ -707,14 +841,20 @@ export function useProjectRoomView({
     allReviewersPass,
     canSend,
     cancelAcceptConfirm,
+    cancelDriftResolution,
     candidateDiverged,
     commitToGit,
+    compactProject,
     confirmAcceptAsIs,
     confirmAcceptNow,
     currentItem,
     deleteProjectRoom,
+    diagnostics,
     draft,
     driftGate,
+    driftItems,
+    errorBar,
+    gateAcceptBlockers,
     gateAllowedOutcomes,
     gateCheckpointName,
     gateCommitToGit,
@@ -724,8 +864,11 @@ export function useProjectRoomView({
     gateStale,
     isMainGroup,
     lastActivityLabel,
+    loadDiagnostics,
     loadGateDetail,
+    openDriftDiff,
     openProjectChat,
+    outOfScopeItems,
     otherGateCount,
     previewRejectUpstream,
     previewReopenCheckpoint,
@@ -742,8 +885,15 @@ export function useProjectRoomView({
     requestAccept,
     requestReject,
     requestReopen,
+    residuals,
+    resolveDriftItems,
     resolveGateDrift,
+    resolveOutOfScopeItems,
+    resolveResidual,
+    retryProjectError,
     selectNextGateTarget,
+    selectedDiff,
+    statusErrorKey,
     selectTarget,
     sendErrorLabel,
     sendLabel,

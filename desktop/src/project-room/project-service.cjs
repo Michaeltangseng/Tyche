@@ -728,6 +728,7 @@ class ProjectService {
       question: ['question', 'draft-question'].includes(gate.reason),
       candidateCommit: gate.candidateCommit,
       allowedOutcomes: allowedGateOutcomes(gate.reason),
+      acceptBlockers: acceptanceBlockers(state, instance.id).blockers,
       firstScreen: gate.firstScreen,
       commitToGit,
     }

@@ -83,10 +83,10 @@
         <section v-else class="conversation-pane" :class="{ 'project-room-pane': isProjectMainGroup }">
           <ConversationHeader ref="conversationHeader" :controller="conversationHeaderController" />
 
-          <ProjectRoomProgress
-            v-if="isProjectMainGroup"
-            :controller="projectRoomProgressController"
-          />
+          <div v-if="isProjectMainGroup" class="project-room-top">
+            <ProjectRoomStatus :controller="projectRoomStatusController" />
+            <ProjectRoomProgress :controller="projectRoomProgressController" />
+          </div>
 
           <ConversationTimelineView :controller="timelineController" />
 
@@ -223,6 +223,7 @@ import ProjectRoomComposer from './components/ProjectRoomComposer.vue'
 import ProjectRoomGatePanel from './components/ProjectRoomGatePanel.vue'
 import ProjectRoomOverlay from './components/ProjectRoomOverlay.vue'
 import ProjectRoomProgress from './components/ProjectRoomProgress.vue'
+import ProjectRoomStatus from './components/ProjectRoomStatus.vue'
 import RunTracePanel from './components/RunTracePanel.vue'
 import SystemSettingsView from './components/SystemSettingsView.vue'
 import WorkspaceModalContent from './components/WorkspaceModalContent.vue'
@@ -492,6 +493,26 @@ watch(() => projectRoomView.reopenRequest.value, (request) => {
 watch(modal, (value) => {
   if (value !== 'project-room-overlay') projectOverlay.value = null
 })
+
+const projectRoomStatusController = {
+  cancelDriftResolution: projectRoomView.cancelDriftResolution,
+  compactProject: projectRoomView.compactProject,
+  diagnostics: projectRoomView.diagnostics,
+  driftItems: projectRoomView.driftItems,
+  errorBar: projectRoomView.errorBar,
+  formatNavTime,
+  loadDiagnostics: projectRoomView.loadDiagnostics,
+  openDriftDiff: projectRoomView.openDriftDiff,
+  outOfScopeItems: projectRoomView.outOfScopeItems,
+  progressItems: projectRoomView.progressItems,
+  resolveDriftItems: projectRoomView.resolveDriftItems,
+  resolveOutOfScopeItems: projectRoomView.resolveOutOfScopeItems,
+  resolveResidual: projectRoomView.resolveResidual,
+  residuals: projectRoomView.residuals,
+  retryProjectError: projectRoomView.retryProjectError,
+  statusErrorKey: projectRoomView.statusErrorKey,
+  t,
+}
 
 const projectRoomOverlayController = {
   checkpointDefs: computed(() => (
@@ -964,6 +985,7 @@ const {
     confirmAcceptAsIs: projectRoomView.confirmAcceptAsIs,
     confirmAcceptNow: projectRoomView.confirmAcceptNow,
     driftGate: projectRoomView.driftGate,
+    gateAcceptBlockers: projectRoomView.gateAcceptBlockers,
     gateAllowedOutcomes: projectRoomView.gateAllowedOutcomes,
     gateCheckpointName: projectRoomView.gateCheckpointName,
     gateCommitToGit: projectRoomView.gateCommitToGit,

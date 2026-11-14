@@ -1,5 +1,6 @@
 const path = require('node:path')
 const { allowedGateOutcomes } = require('./checkpoint-transitions.cjs')
+const { acceptanceBlockers } = require('./project-progress.cjs')
 
 const MAX_PENDING_DECISIONS = 100
 const MAX_SIGNALS = 4
@@ -168,7 +169,7 @@ function boundedReviewSummary(summary) {
   }
 }
 
-function gateProjection(instance) {
+function gateProjection(instance, state) {
   const gate = instance.gate
   if (!gate) return null
   const screen = gate.firstScreen
@@ -189,6 +190,7 @@ function gateProjection(instance) {
     revision: gate.revision,
     reason: gate.reason,
     allowedOutcomes: allowedGateOutcomes(gate.reason),
+    acceptBlockers: state ? acceptanceBlockers(state, instance.id).blockers : [],
     candidateCommit: gate.candidateCommit,
     createdAt: gate.createdAt,
     round: screen.round,
@@ -211,6 +213,8 @@ function gateProjection(instance) {
 }
 
 function driftProjection(state, item) {
+  const placeholder = (state?.placeholders || [])
+    .find(entry => entry.path === item.path) || null
   return {
     id: item.id,
     revision: item.revision,
@@ -223,6 +227,8 @@ function driftProjection(state, item) {
     foundAt: item.foundAt,
     source: item.source,
     status: item.status,
+    placeholder: placeholder ? placeholder.reason : null,
+    restorable: !placeholder,
   }
 }
 
@@ -340,7 +346,10 @@ function projectSnapshot(projectRecord, state) {
       : '',
     deleting: deletingState(projectRecord, state),
     progress: (state?.instances || []).map(instance => progressEntry(state, instance)),
-    gates: (state?.instances || []).map(gateProjection).filter(Boolean).slice(0, 32),
+    gates: (state?.instances || [])
+      .map(instance => gateProjection(instance, state))
+      .filter(Boolean)
+      .slice(0, 32),
     driftItems: unresolvedDrift(state).map(item => driftProjection(state, item)),
     outOfScopeItems: (state?.outOfScopeItems || [])
       .filter(item => item.status === 'unresolved')
