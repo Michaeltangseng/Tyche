@@ -138,6 +138,20 @@ function placeholderText(entry) {
   ].join('\n')
 }
 
+function parseLsTreeEntry(output) {
+  const text = String(output || '')
+  const tab = text.indexOf('\t')
+  if (tab < 0) return null
+  const fields = text.slice(0, tab).split(' ')
+  if (fields.length < 3) return null
+  return {
+    mode: fields[0],
+    type: fields[1],
+    object: fields[2],
+    path: text.slice(tab + 1).replace(/\0$/, ''),
+  }
+}
+
 function parseLfsPaths(output) {
   const paths = new Set()
   const tokens = String(output || '').split('\0')
@@ -416,6 +430,94 @@ class ShadowRepo {
       if (!quiet) drifted.push(relativePath)
     }
     return { snapshotCommit: snapshot.commit, drifted }
+  }
+
+  async acceptCommit({ effectId, candidate, recordPaths = [], parent, message } = {}) {
+    if (typeof effectId !== 'string' || !effectId) throw shadowError('SHADOW_EFFECT_ID_REQUIRED')
+    if (typeof candidate !== 'string' || !candidate) throw shadowError('SHADOW_CANDIDATE_REQUIRED')
+    const ref = `refs/meldwork/effects/${encodeId(effectId)}`
+    try {
+      const existing = await this.git(['rev-parse', '--verify', '--quiet', ref])
+      const commit = String(existing.stdout || '').trim()
+      if (commit) return commit
+    } catch { /* the reference does not exist yet */ }
+    return this.withLock(async () => {
+      const indexFile = path.join(this.gitDir, `accept-${encodeId(effectId)}.index`)
+      try {
+        await this.git(['read-tree', candidate], { indexFile })
+        for (const relative of recordPaths) {
+          const filename = path.join(this.workTree, relative)
+          let stat
+          try { stat = fs.lstatSync(filename) } catch { continue }
+          let mode
+          let object
+          if (stat.isSymbolicLink()) {
+            mode = '120000'
+            const target = fs.readlinkSync(filename)
+            object = (await this.git(['hash-object', '-w', '--stdin'], { input: target })).stdout.trim()
+          } else if (stat.isFile()) {
+            mode = stat.mode & 0o111 ? '100755' : '100644'
+            object = (await this.git(['hash-object', '-w', '--', relative])).stdout.trim()
+          } else {
+            continue
+          }
+          await this.git([
+            'update-index', '--add', '--cacheinfo',
+            `${mode},${object},${relative}`,
+          ], { indexFile })
+        }
+        const tree = (await this.git(['write-tree'], { indexFile })).stdout.trim()
+        const args = ['commit-tree', tree]
+        if (parent) args.push('-p', parent)
+        args.push('-m', message || `accept:${effectId}`)
+        const commit = (await this.git(args)).stdout.trim()
+        await this.git(['update-ref', ref, commit])
+        return commit
+      } finally {
+        try { fs.rmSync(indexFile, { force: true }) } catch { /* already removed */ }
+      }
+    })
+  }
+
+  async driftAcceptCommit({ effectId, base, observed, paths = [], parent, message } = {}) {
+    if (typeof effectId !== 'string' || !effectId) throw shadowError('SHADOW_EFFECT_ID_REQUIRED')
+    if (typeof base !== 'string' || !base) throw shadowError('SHADOW_BASE_REQUIRED')
+    if (typeof observed !== 'string' || !observed) throw shadowError('SHADOW_OBSERVED_REQUIRED')
+    const ref = `refs/meldwork/effects/${encodeId(effectId)}`
+    try {
+      const existing = await this.git(['rev-parse', '--verify', '--quiet', ref])
+      const commit = String(existing.stdout || '').trim()
+      if (commit) return commit
+    } catch { /* the reference does not exist yet */ }
+    return this.withLock(async () => {
+      const indexFile = path.join(this.gitDir, `accept-${encodeId(effectId)}.index`)
+      try {
+        await this.git(['read-tree', base], { indexFile })
+        for (const relative of paths) {
+          const { stdout } = await this.git(['ls-tree', '-z', observed, '--', relative])
+          const entry = parseLsTreeEntry(stdout)
+          if (!entry) {
+            try {
+              await this.git(['update-index', '--force-remove', '--', relative], { indexFile })
+            } catch { /* already absent from the base tree */ }
+            continue
+          }
+          await this.git([
+            'update-index', '--add', '--cacheinfo',
+            `${entry.mode},${entry.object},${relative}`,
+          ], { indexFile })
+        }
+        const tree = (await this.git(['write-tree'], { indexFile })).stdout.trim()
+        const args = ['commit-tree', tree]
+        if (parent) args.push('-p', parent)
+        args.push('-m', message || `drift-accept:${effectId}`)
+        const commit = (await this.git(args)).stdout.trim()
+        await this.git(['update-ref', ref, commit])
+        return commit
+      } finally {
+        try { fs.rmSync(indexFile, { force: true }) } catch { /* already removed */ }
+      }
+    })
   }
 }
 
