@@ -6,7 +6,7 @@ const TEST_SUITES = Object.freeze({
   attachments: ['attachments'],
   collaboration: ['collaboration'],
   core: ['channels', 'knowledge', 'media', 'skills'],
-  projectRoom: ['project-room'],
+  projectroom: ['project-room'],
   runs: ['runs'],
   security: ['security', 'shell'],
   workspace: ['workspace', 'gates'],
