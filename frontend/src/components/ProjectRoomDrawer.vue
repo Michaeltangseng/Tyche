@@ -41,7 +41,7 @@
         </button>
       </header>
 
-      <section v-if="activeTab === 'files'" class="project-room-drawer-body" role="tabpanel">
+      <section v-if="activeTab === 'files'" class="project-room-drawer-body project-room-drawer-files" role="tabpanel">
         <WorkdirTree :controller="workdirTreeController" />
         <FilePreview :controller="filePreviewController" />
         <FileDiff v-if="workdirTree.diff.value" :controller="fileDiffController" />

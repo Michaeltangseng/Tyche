@@ -1094,8 +1094,15 @@
   border-left: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
 }
 
+.project-room-group-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .project-room-group {
-  width: 100%;
+  flex: 1;
   min-width: 0;
   height: 32px;
   display: flex;
@@ -1109,6 +1116,40 @@
   font-size: var(--text-sm);
   text-align: left;
   cursor: pointer;
+}
+
+.project-room-group-delete {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  opacity: 0.35;
+  cursor: pointer;
+}
+
+.project-room-group-delete svg {
+  width: 13px;
+  height: 13px;
+}
+
+.project-room-group-row:hover .project-room-group-delete,
+.project-room-group-row:focus-within .project-room-group-delete {
+  opacity: 1;
+}
+
+.project-room-group-delete:hover,
+.project-room-group-delete:focus-visible {
+  outline: none;
+  background: var(--surface-active);
+  color: var(--danger);
+  opacity: 1;
 }
 
 .project-room-group:hover,

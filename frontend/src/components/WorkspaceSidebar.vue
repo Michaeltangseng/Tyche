@@ -140,37 +140,48 @@
               :id="`project-room-groups-${project.projectId}`"
               class="project-room-groups"
             >
-              <button
-                v-for="group in project.groups"
-                :key="group.id"
-                class="project-room-group"
-                :class="{ active: isSelectedConversation(group) }"
-                type="button"
-                :title="t('nav.openGroup', { name: groupName(group) })"
-                :aria-current="isSelectedConversation(group) ? 'page' : undefined"
-                @click="selectGroup(group.id)"
-              >
-                <span class="project-room-group-name">{{ groupName(group) }}</span>
-                <span v-if="group.projectRole === 'main'" class="project-room-group-badge">
-                  {{ t('projectRoom.sidebar.mainChat') }}
-                </span>
-                <span
-                  v-if="isGroupAwaitingDecision(group.id) && !isSelectedConversation(group)"
-                  class="attention-mark"
-                  role="img"
-                  :title="t('humanGate.waiting')"
-                  :aria-label="t('humanGate.waiting')"
+              <div v-for="group in project.groups" :key="group.id" class="project-room-group-row">
+                <button
+                  class="project-room-group"
+                  :class="{ active: isSelectedConversation(group) }"
+                  type="button"
+                  :title="t('nav.openGroup', { name: groupName(group) })"
+                  :aria-current="isSelectedConversation(group) ? 'page' : undefined"
+                  @click="selectGroup(group.id)"
                 >
-                  <span class="attention-dot" />
-                </span>
-                <span
-                  v-else-if="isGroupRunning(group.id) && !isSelectedConversation(group)"
-                  class="run-mark"
-                  :title="t('conversation.runningGeneric')"
+                  <span class="project-room-group-name">{{ groupName(group) }}</span>
+                  <span v-if="group.projectRole === 'main'" class="project-room-group-badge">
+                    {{ t('projectRoom.sidebar.mainChat') }}
+                  </span>
+                  <span
+                    v-if="isGroupAwaitingDecision(group.id) && !isSelectedConversation(group)"
+                    class="attention-mark"
+                    role="img"
+                    :title="t('humanGate.waiting')"
+                    :aria-label="t('humanGate.waiting')"
+                  >
+                    <span class="attention-dot" />
+                  </span>
+                  <span
+                    v-else-if="isGroupRunning(group.id) && !isSelectedConversation(group)"
+                    class="run-mark"
+                    :title="t('conversation.runningGeneric')"
+                  >
+                    <span class="run-agent-bars" aria-hidden="true"><i /><i /><i /></span>
+                  </span>
+                </button>
+                <button
+                  v-if="group.projectRole !== 'main'"
+                  class="project-room-group-delete"
+                  type="button"
+                  :title="t('nav.deleteGroup', { name: groupName(group) })"
+                  :aria-label="t('nav.deleteGroup', { name: groupName(group) })"
+                  :disabled="isGroupRunning(group.id)"
+                  @click.stop="openSidebarConversationDelete(group, $event)"
                 >
-                  <span class="run-agent-bars" aria-hidden="true"><i /><i /><i /></span>
-                </span>
-              </button>
+                  <TrashOutline />
+                </button>
+              </div>
             </div>
           </div>
         </div>

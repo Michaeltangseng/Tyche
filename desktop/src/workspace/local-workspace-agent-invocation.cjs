@@ -200,6 +200,9 @@ async function awaitProjectEnvironment(refresh, workdir, kind, signals) {
 class LocalWorkspaceAgentInvocation {
   constructor(options) {
     this.state = options.state
+    this.now = typeof options.now === 'function'
+      ? options.now
+      : () => new Date().toISOString()
     this.getContextPack = options.getContextPack
     this.detectedAgents = options.detectedAgents
     this.activeRuns = options.activeRuns
@@ -421,6 +424,7 @@ class LocalWorkspaceAgentInvocation {
   async invokeLeased(
     group, kind, mode, signal, threadRootId = '', context = {}, invocation = {},
   ) {
+    let traceSink = null
     await awaitProjectEnvironment(this.refreshProjectEnvironment, group.workdir, kind,
       [signal, invocation.agentController?.signal])
     const detected = this.detectedAgents()
@@ -1113,7 +1117,7 @@ class LocalWorkspaceAgentInvocation {
         this.emitChanged()
         return prompt
       }
-      let traceSink = null
+      traceSink = null
       const traceRunId = activeRun?.runId || (projectRoom ? String(context.traceRunId || '') : '')
       const traceAgentRunId = harnessRun?.agentRunId
         || (projectRoom ? String(context.traceAgentRunId || '') : '')

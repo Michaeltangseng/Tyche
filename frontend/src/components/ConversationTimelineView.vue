@@ -223,6 +223,13 @@
           </template>
           <template v-else>
             <span
+              v-if="message.role === 'user'"
+              class="message-avatar-wrap user-avatar-wrap"
+              aria-hidden="true"
+            >
+              <span class="user-avatar"><PersonOutline /></span>
+            </span>
+            <span
               v-if="message.role === 'agent'"
               class="message-avatar-wrap"
               :class="{ cloud: isCloudAgentKind(message.agentKind) }"
@@ -901,6 +908,7 @@ import {
   GridOutline,
   LibraryOutline,
   OpenOutline,
+  PersonOutline,
   ReaderOutline,
   RefreshOutline,
   TerminalOutline,

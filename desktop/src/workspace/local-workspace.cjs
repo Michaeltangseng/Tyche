@@ -341,6 +341,7 @@ class LocalWorkspace extends EventEmitter {
       validateSkillSelections: (...args) => this.validateSkillSelectionsFn(...args),
       tracesRoot: this.tracesRoot,
       onTraceAppended: payload => this.onTraceAppended?.(payload),
+      now: () => this.now(),
     })
     this.autoRunner = new LocalWorkspaceAutoRunner({
       reserveTurnSeqs: (...args) => this.reserveTurnSeqs(...args),

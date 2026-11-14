@@ -13,17 +13,35 @@
 }
 
 .message-row.user {
-  justify-content: flex-start;
+  justify-content: flex-end;
 }
 
 .message-row.user .message-body {
   position: relative;
-  max-width: min(760px, 100%);
+  max-width: min(760px, 82%);
   padding: 10px 14px;
-  border-left: 3px solid var(--accent);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  background: color-mix(in srgb, var(--surface-active) 58%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface-active) 72%, transparent);
   text-align: left;
+}
+
+.message-row.user .user-avatar-wrap {
+  order: 2;
+}
+
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface-active);
+  color: var(--text-soft);
+}
+
+.user-avatar svg {
+  width: 18px;
+  height: 18px;
 }
 
 .message-row.user .message-body.has-topic-replies {
