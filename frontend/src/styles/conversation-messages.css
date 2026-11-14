@@ -156,6 +156,7 @@
 
 .message-row.agent .message-body {
   position: relative;
+  flex: 1 1 auto;
   padding: 8px 10px 34px;
   border-radius: var(--radius);
   transition: background 0.14s ease;
@@ -1144,6 +1145,8 @@
 }
 
 .inline-trace {
+  width: 100%;
+  box-sizing: border-box;
   margin: 0 0 10px;
   border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
   border-radius: var(--radius-sm);

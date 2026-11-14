@@ -1,6 +1,9 @@
 <template>
   <header class="conversation-header" :class="{ 'editing-title': inlineTitleEditing }">
-    <div class="conversation-identity">
+    <div
+      class="conversation-identity"
+      :class="{ 'has-team': activeGroup.projectId && activeGroup.projectRole === 'main' }"
+    >
       <div v-if="activeGroup.conversationType === 'direct'" class="conversation-avatar single">
         <img :src="agentLogo(activeGroup.directAgentKind, theme)" alt="" />
       </div>
@@ -72,19 +75,6 @@
           </template>
         </p>
       </div>
-    </div>
-    <div class="conversation-header-actions">
-      <button
-        v-if="activeGroup.projectId && activeGroup.projectRole === 'main'"
-        class="icon-button"
-        type="button"
-        :title="t('projectRoom.drawer.open')"
-        :aria-label="t('projectRoom.drawer.open')"
-        :aria-pressed="projectDrawerOpen ? 'true' : 'false'"
-        @click="toggleProjectDrawer"
-      >
-        <DocumentsOutline />
-      </button>
       <div v-if="activeGroup.projectId && activeGroup.projectRole === 'main'" class="project-team-strip">
         <button
           v-for="seat in projectSeats"
@@ -108,6 +98,19 @@
           <AddOutline />
         </button>
       </div>
+    </div>
+    <div class="conversation-header-actions">
+      <button
+        v-if="activeGroup.projectId && activeGroup.projectRole === 'main'"
+        class="icon-button"
+        type="button"
+        :title="t('projectRoom.drawer.open')"
+        :aria-label="t('projectRoom.drawer.open')"
+        :aria-pressed="projectDrawerOpen ? 'true' : 'false'"
+        @click="toggleProjectDrawer"
+      >
+        <DocumentsOutline />
+      </button>
     </div>
   </header>
 </template>

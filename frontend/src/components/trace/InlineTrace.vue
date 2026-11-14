@@ -4,12 +4,13 @@
       <TerminalOutline aria-hidden="true" />
       <span class="inline-trace-title">{{ t('trace.inline.title') }}</span>
       <small v-if="activitySummary" class="inline-trace-summary">{{ activitySummary }}</small>
+      <small v-else-if="live" class="inline-trace-loading">{{ t('trace.inline.live') }}</small>
       <small v-else-if="loading" class="inline-trace-loading">{{ t('trace.steps.loading') }}</small>
       <span v-if="live" class="inline-trace-live" aria-label="live" />
       <span class="inline-trace-spacer" />
       <ChevronDownOutline class="inline-trace-chevron" aria-hidden="true" />
     </summary>
-    <TraceStepList v-if="expanded && hasFullTrace" :controller="controller" />
+    <TraceStepList v-if="expanded && hasFullTrace" :controller="controller" :live="live" />
     <p v-else-if="expanded && !loading" class="inline-trace-empty">{{ t('trace.steps.noFullTrace') }}</p>
   </details>
 </template>

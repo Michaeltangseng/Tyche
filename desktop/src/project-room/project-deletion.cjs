@@ -59,12 +59,12 @@ class ProjectDeletion {
     this.effects = effects
     this.invocations = invocations
     this.now = now
-    this.removeProjectDir = removeProjectDir || ((projectId) => {
-      fs.rmSync(path.join(this.privateRoot, 'projects', projectId), {
+    this.removeProjectDir = removeProjectDir || ((projectId) => (
+      fs.promises.rm(path.join(this.privateRoot, 'projects', projectId), {
         recursive: true,
         force: true,
       })
-    })
+    ))
     this.projectClaim = projectClaim
     this.hasResidual = hasResidual
     this.onDeleted = onDeleted
@@ -137,6 +137,7 @@ class ProjectDeletion {
     context.project.deleting = { requestedAt, keepChats: keepChats === true }
     await this.#saveWorkspace()
     return this.#beginDraining(context.project, {
+      deferCheck: true,
       keepChats: keepChats === true,
       requestedAt,
     })
@@ -202,7 +203,7 @@ class ProjectDeletion {
     })
   }
 
-  async #beginDraining(project, { keepChats, requestedAt, resumed = false }) {
+  async #beginDraining(project, { deferCheck = false, keepChats, requestedAt, resumed = false }) {
     let record = this.deletions.get(project.id)
     if (!record) {
       record = {
@@ -254,6 +255,22 @@ class ProjectDeletion {
         .catch(() => {})
     }
     this.#installListeners(project.id, record)
+    if (deferCheck) {
+      // The delete call should return right after the draining transition.
+      // Cleanup and data removal continue in the background.
+      queueMicrotask(() => {
+        this.#checkDrain(project.id, 'begin').catch((error) => {
+          const current = this.deletions.get(project.id)
+          if (current) current.error = error
+          this.onError(project.id, error)
+        })
+      })
+      return {
+        projectId: project.id,
+        deleted: false,
+        phase: this.deletions.get(project.id)?.phase || null,
+      }
+    }
     await this.#checkDrain(project.id, 'begin')
     if (!this.deletions.has(project.id)) return { projectId: project.id, deleted: true }
     return {

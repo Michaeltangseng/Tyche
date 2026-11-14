@@ -78,6 +78,7 @@ const RAW_LIMIT = 200
 
 const props = defineProps({
   controller: { type: Object, required: true },
+  live: { type: Boolean, default: false },
 })
 
 const {
@@ -146,7 +147,11 @@ const items = computed(() => {
   return result
 })
 
-const visibleItems = computed(() => items.value.slice(0, visibleCount.value))
+const visibleItems = computed(() => (
+  props.live
+    ? items.value.slice(-visibleCount.value)
+    : items.value.slice(0, visibleCount.value)
+))
 
 function lifecycleLabel(item) {
   const key = `trace.steps.lifecycle.${item.title}`

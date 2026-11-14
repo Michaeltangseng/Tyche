@@ -233,26 +233,41 @@ function selectTab(tab) {
 function startResize(event) {
   resizeState = {
     startX: event.clientX,
+    lastX: event.clientX,
     startWidth: width.value,
   }
+  document.body.classList.add('drawer-resizing')
   window.addEventListener('pointermove', handleResize)
   window.addEventListener('pointerup', finishResize, { once: true })
 }
 
+let resizeFrame = 0
+
 function handleResize(event) {
   if (!resizeState) return
-  width.value = Math.min(
-    MAX_WIDTH,
-    Math.max(MIN_WIDTH, resizeState.startWidth + (resizeState.startX - event.clientX)),
-  )
-  onResize?.(width.value)
+  resizeState.lastX = event.clientX
+  if (resizeFrame) return
+  resizeFrame = requestAnimationFrame(() => {
+    resizeFrame = 0
+    if (!resizeState) return
+    width.value = Math.min(
+      MAX_WIDTH,
+      Math.max(MIN_WIDTH, resizeState.startWidth + (resizeState.startX - resizeState.lastX)),
+    )
+    onResize?.(width.value)
+  })
 }
 
 function finishResize() {
   window.removeEventListener('pointermove', handleResize)
+  if (resizeFrame) cancelAnimationFrame(resizeFrame)
+  resizeFrame = 0
   resizeState = null
+  document.body.classList.remove('drawer-resizing')
   persistPreferences({ drawerWidth: width.value })
 }
+
+let fileResizeFrame = 0
 
 function startFilePanelResize(event) {
   const rect = filesPanel.value?.getBoundingClientRect?.()
@@ -260,20 +275,31 @@ function startFilePanelResize(event) {
   fileResizeState = {
     top: rect.top,
     height: rect.height,
+    lastY: event.clientY,
   }
+  document.body.classList.add('file-panel-resizing')
   window.addEventListener('pointermove', handleFilePanelResize)
   window.addEventListener('pointerup', finishFilePanelResize, { once: true })
 }
 
 function handleFilePanelResize(event) {
   if (!fileResizeState) return
-  const ratio = (event.clientY - fileResizeState.top) / fileResizeState.height
-  treeHeight.value = Math.min(72, Math.max(20, Math.round(ratio * 100)))
+  fileResizeState.lastY = event.clientY
+  if (fileResizeFrame) return
+  fileResizeFrame = requestAnimationFrame(() => {
+    fileResizeFrame = 0
+    if (!fileResizeState) return
+    const ratio = (fileResizeState.lastY - fileResizeState.top) / fileResizeState.height
+    treeHeight.value = Math.min(72, Math.max(20, Math.round(ratio * 100)))
+  })
 }
 
 function finishFilePanelResize() {
   window.removeEventListener('pointermove', handleFilePanelResize)
+  if (fileResizeFrame) cancelAnimationFrame(fileResizeFrame)
+  fileResizeFrame = 0
   fileResizeState = null
+  document.body.classList.remove('file-panel-resizing')
 }
 
 watch([open, drawer], ([isOpen, isDrawer]) => {
@@ -298,5 +324,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointermove', handleFilePanelResize)
   window.removeEventListener('keydown', handleEscape)
   document.body.classList.remove('project-room-drawer-open')
+  document.body.classList.remove('drawer-resizing')
+  document.body.classList.remove('file-panel-resizing')
 })
 </script>

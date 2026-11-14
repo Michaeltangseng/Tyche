@@ -1,40 +1,33 @@
 <template>
   <article class="trace-tool-card" :data-status="status || 'running'">
     <header>
-      <strong>{{ title || t('trace.steps.tool') }}</strong>
+      <div class="trace-tool-title">
+        <strong>{{ title || t('trace.steps.tool') }}</strong>
+        <small v-if="inputSummary">{{ inputSummary }}</small>
+      </div>
       <span v-if="status" class="trace-tool-status" :data-status="status">{{ statusLabel }}</span>
-      <button
-        v-if="command"
-        class="trace-copy"
-        type="button"
-        :title="t('trace.steps.copyCommand')"
-        :aria-label="t('trace.steps.copyCommand')"
-        @click="copy(command)"
-      >
-        {{ t('trace.steps.copy') }}
-      </button>
     </header>
-    <pre v-if="command" class="trace-tool-command">{{ command }}</pre>
-    <div v-if="inputText" class="trace-tool-input">
-      <span>{{ t('trace.steps.input') }}</span>
-      <pre>{{ inputText }}</pre>
-    </div>
     <div class="trace-tool-output">
       <button class="trace-tool-toggle" type="button" @click="toggleExpanded">
-        {{ expanded ? t('trace.steps.hideOutput') : t('trace.steps.showOutput') }}
+        {{ expanded ? t('trace.steps.hideDetails') : t('trace.steps.showDetails') }}
       </button>
       <span v-if="hasBlob" class="trace-tool-blob">{{ t('trace.steps.largeOutput') }}</span>
       <template v-if="expanded">
+        <pre v-if="command" class="trace-tool-command">{{ command }}</pre>
+        <details v-if="inputText" class="trace-tool-input">
+          <summary>{{ t('trace.steps.input') }}</summary>
+          <pre>{{ inputText }}</pre>
+        </details>
         <p v-if="loadingBlob" class="trace-tool-empty">{{ t('trace.steps.loadingOutput') }}</p>
         <pre v-else-if="outputText" class="trace-tool-output-text">{{ outputText }}</pre>
         <p v-else class="trace-tool-empty">{{ t('trace.steps.noOutput') }}</p>
         <button
-          v-if="outputText"
+          v-if="outputText || inputText || command"
           class="trace-copy"
           type="button"
           :title="t('trace.steps.copyOutput')"
           :aria-label="t('trace.steps.copyOutput')"
-          @click="copy(outputText)"
+          @click="copy(outputText || inputText || command)"
         >
           {{ t('trace.steps.copy') }}
         </button>
@@ -73,16 +66,48 @@ const outputBlob = computed(() => {
 })
 const hasBlob = computed(() => Boolean(outputBlob.value))
 const outputText = computed(() => blobText.value || lastOutput.value)
-const title = computed(() => String(first.value.title || ''))
+const title = computed(() => {
+  for (const step of props.steps) {
+    const value = String(step.title || '').trim()
+    if (value && !['tool', 'tool_result', 'event'].includes(value.toLowerCase())) return value
+  }
+  const command = String(first.value.command || '').split('\n')[0].trim()
+  return command ? command.slice(0, 120) : ''
+})
 const command = computed(() => String(first.value.command || ''))
-const status = computed(() => String(first.value.status || props.steps.at(-1)?.status || ''))
+const status = computed(() => {
+  const last = props.steps.at(-1)
+  return String(
+    (last?.status && last.status !== 'running' ? last.status : '')
+      || last?.status
+      || first.value.status
+      || '',
+  )
+})
+const inputStep = computed(() => (
+  props.steps.find(step => step.input !== undefined) || first.value
+))
+const inputSummary = computed(() => {
+  const input = inputStep.value?.input
+  if (input && typeof input === 'object') {
+    const value = input.file_path || input.path || input.pattern || input.query
+      || input.command || input.description
+    if (typeof value === 'string' && value.trim()) return oneLine(value)
+    try { return oneLine(JSON.stringify(input)) } catch { return '' }
+  }
+  if (typeof input === 'string' && input.trim()) return oneLine(input)
+  return oneLine(command.value)
+})
+function oneLine(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 140)
+}
 const statusLabel = computed(() => {
   const key = `trace.steps.status.${status.value}`
   const label = t(key)
   return label === key ? status.value : label
 })
 const inputText = computed(() => {
-  const input = first.value.input
+  const input = inputStep.value?.input
   if (input === undefined || input === null || input === '') return ''
   if (typeof input === 'string') return input
   try { return JSON.stringify(input, null, 2) } catch { return '' }

@@ -1,3 +1,16 @@
+body.drawer-resizing,
+body.file-panel-resizing {
+  user-select: none;
+}
+
+body.drawer-resizing {
+  cursor: col-resize;
+}
+
+body.file-panel-resizing {
+  cursor: row-resize;
+}
+
 .project-room-drawer-files {
   display: flex;
   flex-direction: column;

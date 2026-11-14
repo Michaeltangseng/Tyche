@@ -67,6 +67,7 @@
           v-for="invocation in card.activeInvocations || []"
           :key="`trace:${invocation.effectId}`"
           :agent-run-id="invocation.effectId"
+          :default-open="true"
           :run-id="card.checkpointId"
           live
           :t="t"
