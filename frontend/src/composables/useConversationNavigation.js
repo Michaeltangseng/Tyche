@@ -18,7 +18,7 @@ export function useConversationNavigation({ agentLabel, locale, snapshot, t }) {
     .filter(group => group.conversationType === 'direct')
     .sort(sortByUpdated))
   const groupGroups = computed(() => snapshot.value.groups
-    .filter(group => group.conversationType !== 'direct')
+    .filter(group => group.conversationType !== 'direct' && !group.projectId)
     .sort(sortByUpdated))
   const visibleGroupGroups = computed(() => (
     groupSessionListExpanded.value || groupGroups.value.length <= GROUP_SESSION_PREVIEW_LIMIT

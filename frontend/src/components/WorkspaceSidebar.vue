@@ -40,6 +40,126 @@
     </button>
 
     <nav class="conversation-nav" :aria-label="t('nav.conversations')">
+      <section v-if="pendingDecisionCount" class="nav-section pending-decisions-section">
+        <button
+          class="nav-heading pending-decisions-heading"
+          type="button"
+          :title="pendingDecisionsExpanded ? t('projectRoom.pending.collapse') : t('projectRoom.pending.expand')"
+          :aria-expanded="String(pendingDecisionsExpanded)"
+          aria-controls="pending-decisions-list"
+          @click="togglePendingDecisions"
+        >
+          <span>{{ t('projectRoom.pending.title') }}</span>
+          <span class="nav-heading-count pending-decisions-count">{{ pendingDecisionCount }}</span>
+          <ChevronDownOutline v-if="pendingDecisionsExpanded" class="nav-heading-chevron" aria-hidden="true" />
+          <ChevronForwardOutline v-else class="nav-heading-chevron" aria-hidden="true" />
+        </button>
+        <div v-if="pendingDecisionsExpanded" id="pending-decisions-list" class="pending-decisions-list">
+          <button
+            v-for="item in pendingDecisionItems"
+            :key="`${item.type}:${item.projectId}:${item.itemId}`"
+            class="pending-decision-row"
+            type="button"
+            :title="`${item.projectName} · ${pendingDecisionLabel(item)}`"
+            @click="selectPendingDecision(item)"
+          >
+            <span class="pending-decision-copy">
+              <strong>{{ item.projectName }}</strong>
+              <small>{{ pendingDecisionLabel(item) }}</small>
+            </span>
+            <time>{{ formatWaiting(item.waitingMs) }}</time>
+          </button>
+          <p v-if="pendingDecisionCount > pendingDecisionItems.length" class="pending-decisions-more">
+            {{ t('projectRoom.pending.more', { count: pendingDecisionCount - pendingDecisionItems.length }) }}
+          </p>
+        </div>
+      </section>
+
+      <section v-if="projectRoomEntries.length" class="nav-section project-room-nav-section">
+        <div class="nav-heading project-room-heading" role="heading" aria-level="2">
+          <span>{{ t('projectRoom.sidebar.title') }}</span>
+          <small class="nav-heading-count">{{ projectRoomEntries.length }}</small>
+        </div>
+        <div class="project-room-list">
+          <div v-for="project in projectRoomEntries" :key="project.projectId" class="project-room-entry">
+            <div class="project-room-row" :class="{ active: isProjectRoomSelected(project.projectId) }">
+              <button
+                class="project-room-open"
+                type="button"
+                :title="t('projectRoom.sidebar.open', { name: project.name })"
+                :aria-current="isProjectRoomSelected(project.projectId) ? 'page' : undefined"
+                @click="selectProjectRoom(project.projectId)"
+              >
+                <span class="project-room-avatar" aria-hidden="true">{{ projectInitial(project.name) }}</span>
+                <span class="project-room-copy">
+                  <strong>{{ project.name }}</strong>
+                  <small :data-tone="project.readOnly || project.deleting ? 'warning' : undefined">
+                    {{ projectRoomStatusLabel(project) }}
+                  </small>
+                </span>
+                <span
+                  v-if="project.pendingGateCount || project.unresolvedDriftCount || project.residualCount"
+                  class="attention-dot project-room-attention"
+                  role="img"
+                  :title="t('projectRoom.sidebar.attention')"
+                  :aria-label="t('projectRoom.sidebar.attention')"
+                />
+              </button>
+              <button
+                v-if="project.groups.length"
+                class="project-room-toggle"
+                type="button"
+                :title="t(isProjectRoomExpanded(project.projectId) ? 'projectRoom.sidebar.collapse' : 'projectRoom.sidebar.expand', { name: project.name })"
+                :aria-label="t(isProjectRoomExpanded(project.projectId) ? 'projectRoom.sidebar.collapse' : 'projectRoom.sidebar.expand', { name: project.name })"
+                :aria-expanded="String(isProjectRoomExpanded(project.projectId))"
+                :aria-controls="`project-room-groups-${project.projectId}`"
+                @click="toggleProjectRoomExpanded(project.projectId)"
+              >
+                <ChevronDownOutline v-if="isProjectRoomExpanded(project.projectId)" aria-hidden="true" />
+                <ChevronForwardOutline v-else aria-hidden="true" />
+              </button>
+            </div>
+            <div
+              v-if="project.groups.length && isProjectRoomExpanded(project.projectId)"
+              :id="`project-room-groups-${project.projectId}`"
+              class="project-room-groups"
+            >
+              <button
+                v-for="group in project.groups"
+                :key="group.id"
+                class="project-room-group"
+                :class="{ active: isSelectedConversation(group) }"
+                type="button"
+                :title="t('nav.openGroup', { name: groupName(group) })"
+                :aria-current="isSelectedConversation(group) ? 'page' : undefined"
+                @click="selectGroup(group.id)"
+              >
+                <span class="project-room-group-name">{{ groupName(group) }}</span>
+                <span v-if="group.projectRole === 'main'" class="project-room-group-badge">
+                  {{ t('projectRoom.sidebar.mainChat') }}
+                </span>
+                <span
+                  v-if="isGroupAwaitingDecision(group.id) && !isSelectedConversation(group)"
+                  class="attention-mark"
+                  role="img"
+                  :title="t('humanGate.waiting')"
+                  :aria-label="t('humanGate.waiting')"
+                >
+                  <span class="attention-dot" />
+                </span>
+                <span
+                  v-else-if="isGroupRunning(group.id) && !isSelectedConversation(group)"
+                  class="run-mark"
+                  :title="t('conversation.runningGeneric')"
+                >
+                  <span class="run-agent-bars" aria-hidden="true"><i /><i /><i /></span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="nav-section">
         <button
           class="nav-heading"
@@ -421,6 +541,7 @@ import {
   ChatbubblesOutline,
   CheckmarkCircleOutline,
   ChevronBackOutline,
+  ChevronDownOutline,
   ChevronForwardOutline,
   CloudOutline,
   PencilOutline,
@@ -447,6 +568,7 @@ const {
   discoveringAgents,
   dismissSidebarDeleteConfirmation,
   formatNavTime,
+  formatWaiting,
   goHome,
   groupAgentSummary,
   groupGroups,
@@ -460,15 +582,25 @@ const {
   isDirectSessionListExpanded,
   isGroupAwaitingDecision,
   isGroupRunning,
+  isProjectRoomExpanded,
+  isProjectRoomSelected,
   isSidebarAgentExpanded,
   openConversationRename,
   openNewGroup,
   openSidebarConversationDelete,
+  pendingDecisionCount,
+  pendingDecisionItems,
+  pendingDecisionLabel,
+  pendingDecisionsExpanded,
   productMark,
+  projectRoomEntries,
+  projectRoomStatusLabel,
   remainingDirectGroupsCount,
   remainingGroupGroupsCount,
   saving,
   selectGroup,
+  selectPendingDecision,
+  selectProjectRoom,
   selectedGroupId,
   sidebarAgentSessionListId,
   sidebarAgentGroups,
@@ -482,12 +614,18 @@ const {
   toggleCollapsedGroupMenu,
   toggleDirectSessionListExpanded,
   toggleGroupSessionListExpanded,
+  togglePendingDecisions,
+  toggleProjectRoomExpanded,
   visibleDirectGroupsFor,
   visibleGroupGroups,
 } = props.controller
 
 function isSelectedConversation(group) {
   return unref(activeView) === 'conversation' && unref(selectedGroupId) === group.id
+}
+
+function projectInitial(name) {
+  return String(name || '').trim().slice(0, 1).toUpperCase() || '•'
 }
 
 const sidebarAgentCount = computed(() => (
