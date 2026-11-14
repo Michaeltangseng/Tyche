@@ -75,6 +75,22 @@ class ProjectDeletion {
     this.deletions = new Map()
   }
 
+  #releaseManagedGrants(projectId) {
+    const snapshot = this.scheduler?.snapshot?.()
+    if (!snapshot) return
+    const managed = new Set(['checkpoint-scope', 'project-maintenance'])
+    for (const record of snapshot.claimGrants || []) {
+      if (record.holder?.projectId === projectId && managed.has(record.holder.kind)) {
+        this.scheduler.release(record.requestId)
+      }
+    }
+    for (const entry of snapshot.claimQueue || []) {
+      if (entry.holder?.projectId === projectId && managed.has(entry.holder.kind)) {
+        this.scheduler.withdraw(entry.requestId)
+      }
+    }
+  }
+
   #engine(projectId) {
     const engine = this.engineFor ? this.engineFor(projectId) : null
     return engine || this.engine
@@ -203,6 +219,7 @@ class ProjectDeletion {
     }
     const context = this.getContext?.(project.id)
     if (!context?.store || context.store.isReadOnly() || !context.store.current()) {
+      this.#releaseManagedGrants(project.id)
       record.phase = 'drained'
       await this.#finish(project.id)
       return { projectId: project.id, deleted: true }
@@ -218,10 +235,12 @@ class ProjectDeletion {
       })
     } catch (error) {
       if (error?.code !== 'PROJECT_READ_ONLY') throw error
+      this.#releaseManagedGrants(project.id)
       record.phase = 'drained'
       await this.#finish(project.id)
       return { projectId: project.id, deleted: true }
     }
+    this.#releaseManagedGrants(project.id)
     this.invocations.cancelAll(project.id)
     this.#installListeners(project.id, record)
     await this.#checkDrain(project.id, 'begin')
