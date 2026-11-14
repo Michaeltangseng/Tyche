@@ -124,7 +124,9 @@ describe('project room creation', () => {
     expect(wrapper.text()).toContain('Requirements')
     await wrapper.findAll('.setup-section .primary-button')[0].trigger('click')
     await flushPromises()
-    expect(wrapper.findAll('.setup-seat')).toHaveLength(2)
+    expect(wrapper.findAll('.setup-seat-chip')).toHaveLength(2)
+    expect(wrapper.findAll('.setup-seat-detail')).toHaveLength(1)
+    expect(wrapper.find('.setup-seat-detail').text()).toContain('Lead')
 
     await wrapper.findAll('.setup-section .primary-button')[0].trigger('click')
     await flushPromises()
@@ -140,6 +142,27 @@ describe('project room creation', () => {
     }))
     expect(fixture.onCreated).toHaveBeenCalledWith('project-1')
     expect(fixture.close).toHaveBeenCalled()
+  })
+
+  it('adds a seat from the local Agent avatars and selects it for editing', async () => {
+    const fixture = createController()
+    const wrapper = mount(ProjectRoomCreateDialog, { props: { controller: fixture } })
+    await flushPromises()
+    await wrapper.findAll('.setup-section .primary-button')[0].trigger('click')
+    await flushPromises()
+    await wrapper.findAll('.setup-section .primary-button')[1].trigger('click')
+    await wrapper.findAll('.setup-section .primary-button')[0].trigger('click')
+    await flushPromises()
+
+    const claudeTile = wrapper.findAll('.setup-agent-tile')
+      .find(tile => tile.text().includes('Claude Code'))
+    await claudeTile.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('.setup-seat-chip')).toHaveLength(3)
+    expect(wrapper.find('.setup-seat-detail').text()).toContain('projectRoom.setup.newSeat')
+    expect(wrapper.find('.setup-seat-detail select').element.value).toBe('claude')
+    expect(wrapper.findAll('.setup-seat-chip.active')).toHaveLength(1)
   })
 
   it('opens an existing project room instead of creating a duplicate', async () => {

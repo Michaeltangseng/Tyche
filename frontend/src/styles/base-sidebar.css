@@ -1056,13 +1056,13 @@
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
-  opacity: 0;
+  opacity: 0.45;
   cursor: pointer;
 }
 
 .project-room-row:hover .project-room-delete,
 .project-room-row:focus-within .project-room-delete {
-  opacity: 0.7;
+  opacity: 1;
 }
 
 .project-room-delete:hover,

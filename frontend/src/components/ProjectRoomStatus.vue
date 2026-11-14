@@ -15,7 +15,15 @@
         {{ t('projectRoom.status.compact') }}
       </button>
     </div>
-    <pre v-if="diagnosticsOpen && diagnostics" class="status-diagnostics">{{ diagnosticsText }}</pre>
+    <div v-if="diagnosticsOpen && diagnostics" class="status-diagnostics" role="status">
+      <div v-for="row in diagnosticsRows" :key="row.label" class="status-diagnostics-row">
+        <span>{{ row.label }}</span>
+        <strong>{{ row.value }}</strong>
+      </div>
+      <p v-if="diagnosticsWaiting.length" class="status-diagnostics-waiting">
+        {{ t('projectRoom.status.diagnosticsWaiting', { items: diagnosticsWaitingText }) }}
+      </p>
+    </div>
     <p v-if="statusErrorLabel" class="status-inline-error" role="alert">{{ statusErrorLabel }}</p>
 
     <section v-if="driftItems.length" class="status-section">
@@ -172,7 +180,60 @@ const hasContent = computed(() => Boolean(
     || residuals.value.length,
 ))
 const statusErrorLabel = computed(() => (statusErrorKey.value ? t(statusErrorKey.value) : ''))
-const diagnosticsText = computed(() => diagnostics.value ? JSON.stringify(diagnostics.value, null, 2) : '')
+const READ_ONLY_REASONS = {
+  'read-only': 'projectRoom.status.diagnosticsReason.readOnly',
+  'workdir-unavailable': 'projectRoom.status.diagnosticsReason.workdirUnavailable',
+  'state-invalid': 'projectRoom.status.diagnosticsReason.stateInvalid',
+}
+const diagnosticsRows = computed(() => {
+  const value = diagnostics.value
+  if (!value) return []
+  const rows = [{
+    label: t('projectRoom.status.diagnosticsState'),
+    value: value.readOnly
+      ? t('projectRoom.status.diagnosticsReadOnly')
+      : t('projectRoom.status.diagnosticsWritable'),
+  }]
+  if (value.readOnly && value.readOnlyReason) {
+    const key = READ_ONLY_REASONS[value.readOnlyReason]
+    rows.push({
+      label: t('projectRoom.status.diagnosticsReason'),
+      value: key ? t(key) : String(value.readOnlyReason),
+    })
+  }
+  rows.push({
+    label: t('projectRoom.status.diagnosticsRevision'),
+    value: String(value.revision ?? 0),
+  })
+  rows.push({
+    label: t('projectRoom.status.diagnosticsStorage'),
+    value: value.storageFault
+      ? [
+          value.storageFault.reason || value.storageFault.code || t('projectRoom.status.diagnosticsFault'),
+          value.storageFault.time ? formatNavTime(value.storageFault.time) : '',
+        ].filter(Boolean).join(' · ')
+      : t('projectRoom.status.diagnosticsNone'),
+  })
+  rows.push({
+    label: t('projectRoom.status.diagnosticsDeletion'),
+    value: value.deletion
+      ? t(`projectRoom.status.deletionPhase.${value.deletion.phase}`)
+      : t('projectRoom.status.diagnosticsNone'),
+  })
+  return rows
+})
+const diagnosticsWaiting = computed(() => {
+  const waiting = diagnostics.value?.deletion?.waitingOn
+  if (!waiting) return []
+  const items = []
+  if (waiting.effects) items.push(t('projectRoom.status.diagnosticsWaitingEffects'))
+  if (waiting.invocations) items.push(t('projectRoom.status.diagnosticsWaitingInvocations'))
+  if (waiting.scheduler) items.push(t('projectRoom.status.diagnosticsWaitingScheduler'))
+  return items
+})
+const diagnosticsWaitingText = computed(() => (
+  diagnosticsWaiting.value.join(t('projectRoom.status.diagnosticsSeparator'))
+))
 const errorLabel = computed(() => {
   const code = String(errorBar.value?.error || '')
   if (!code) return t('projectRoom.status.error.generic')
