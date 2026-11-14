@@ -1,4 +1,5 @@
 const fs = require('node:fs')
+const path = require('node:path')
 const { execFile } = require('node:child_process')
 const { promisify } = require('node:util')
 
@@ -69,6 +70,18 @@ function groupEmpty(pgid, options = {}) {
   }
 }
 
+async function processProgramName(pid, options = {}) {
+  if (!validPid(pid)) return null
+  const run = options.execFileFn || execFileAsync
+  try {
+    const { stdout } = await run('ps', ['-o', 'comm=', '-p', String(pid)], EXEC_OPTIONS)
+    const value = String(stdout || '').trim()
+    return value ? path.basename(value) : null
+  } catch {
+    return null
+  }
+}
+
 async function readEnvironmentMarker(pid, marker, options = {}) {
   if (!validPid(pid) || typeof marker !== 'string' || !marker) return 'unreadable'
   const platform = options.platform || process.platform
@@ -107,6 +120,7 @@ module.exports = {
   groupEmpty,
   groupMembers,
   processGroupOf,
+  processProgramName,
   processStartTime,
   readEnvironmentMarker,
 }

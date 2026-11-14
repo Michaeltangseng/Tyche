@@ -6,6 +6,7 @@ const {
   groupEmpty,
   groupMembers,
   processGroupOf,
+  processProgramName,
   processStartTime,
   readEnvironmentMarker,
 } = require('../../../src/agents/process/process-inspect.cjs')
@@ -39,6 +40,21 @@ test('processGroupOf parses the process group and returns null when absent', asy
   assert.deepEqual(calls[0], ['ps', ['-o', 'pgid=', '-p', '321']])
 
   const absent = await processGroupOf(322, {
+    execFileFn: async () => { throw Object.assign(new Error('ps failed'), { code: 1 }) },
+  })
+  assert.equal(absent, null)
+})
+
+test('processProgramName reports the last path segment and null when absent', async () => {
+  const value = await processProgramName(321, {
+    execFileFn: async (file, args) => {
+      assert.equal(file, 'ps')
+      assert.deepEqual(args, ['-o', 'comm=', '-p', '321'])
+      return { stdout: '/usr/local/bin/node\n' }
+    },
+  })
+  assert.equal(value, 'node')
+  const absent = await processProgramName(322, {
     execFileFn: async () => { throw Object.assign(new Error('ps failed'), { code: 1 }) },
   })
   assert.equal(absent, null)
