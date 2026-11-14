@@ -41,6 +41,11 @@ const ATTACHMENT_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/
 const SKILL_SNAPSHOT_ID = /^skill-snapshot-[a-f0-9]{64}$/
 const SHA256 = /^[a-f0-9]{64}$/
 const KNOWLEDGE_BASE_KINDS = new Set(['feishu', 'dingtalk', 'obsidian'])
+const PROJECT_ROOM_ID = /^[A-Za-z0-9._:-]{1,120}$/
+const PROJECT_ROOM_ROLES = new Set(['lead', 'draft', 'review'])
+const PROJECT_ROOM_VERDICTS = new Set(['pass', 'revise', 'needs-human', 'missing', 'failed', 'cancelled'])
+const PROJECT_ROOM_SIGNALS = new Set(['ready', 'question', 'continue', 'missing'])
+const PROJECT_ROOM_OUTCOMES = new Set(['continue', 'accept', 'reject-upstream'])
 
 function emptyState() {
   return {
@@ -210,6 +215,51 @@ function normalizeLoadedGroup(input, options = {}) {
   return group
 }
 
+function projectRoomPath(value) {
+  const text = String(value || '')
+  if (!text || text.length > 4096 || text.includes('\0') || text.startsWith('/')
+      || text.split('/').some(segment => segment === '..')) return ''
+  return text
+}
+
+function normalizeProjectRoom(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null
+  const projectId = cleanText(input.projectId, 120)
+  if (!PROJECT_ROOM_ID.test(projectId)) return null
+  if (input.start === true) return { projectId, start: true }
+  const checkpointId = cleanText(input.checkpointId, 120)
+  if (!PROJECT_ROOM_ID.test(checkpointId)) return null
+  const generation = Number(input.generation)
+  if (!Number.isSafeInteger(generation) || generation < 0) return null
+  if (input.interjection === true) {
+    const interjectionId = cleanText(input.interjectionId, 120)
+    if (!PROJECT_ROOM_ID.test(interjectionId)) return null
+    return {
+      projectId, checkpointId, generation, interjection: true, interjectionId,
+    }
+  }
+  if (input.gateId) {
+    const gateId = cleanText(input.gateId, 120)
+    const revision = Number(input.revision)
+    if (!PROJECT_ROOM_ID.test(gateId) || !Number.isSafeInteger(revision) || revision < 1) return null
+    if (!PROJECT_ROOM_OUTCOMES.has(input.outcome)) return null
+    return {
+      projectId, checkpointId, generation, gateId, revision, outcome: input.outcome,
+    }
+  }
+  const seatId = cleanText(input.seatId, 120)
+  const role = String(input.role || '')
+  const round = Number(input.round)
+  if (!PROJECT_ROOM_ID.test(seatId) || !PROJECT_ROOM_ROLES.has(role)
+      || !Number.isSafeInteger(round) || round < 1) return null
+  const result = { projectId, checkpointId, seatId, role, round, generation }
+  if (PROJECT_ROOM_VERDICTS.has(input.verdict)) result.verdict = input.verdict
+  if (PROJECT_ROOM_SIGNALS.has(input.signal)) result.signal = input.signal
+  const reviewFile = projectRoomPath(input.reviewFile)
+  if (reviewFile) result.reviewFile = reviewFile
+  return result
+}
+
 function normalizeLoadedMessage(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null
   const id = cleanText(input.id, 100)
@@ -286,6 +336,10 @@ function normalizeLoadedMessage(input) {
     if (targetKinds.length) message.targetKinds = targetKinds
     if (routingDecision) message.routingDecision = routingDecision
   }
+  if (role === 'user' || role === 'agent') {
+    const projectRoom = normalizeProjectRoom(input.projectRoom)
+    if (projectRoom) message.projectRoom = projectRoom
+  }
   return message
 }
 
@@ -305,6 +359,7 @@ module.exports = {
   normalizeKnowledgeBaseHint,
   normalizeLoadedGroup,
   normalizeLoadedMessage,
+  normalizeProjectRoom,
   normalizeSkillHint,
   normalizeTargetKinds,
   skillHintsPrompt,

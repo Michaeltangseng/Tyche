@@ -39,6 +39,7 @@ function validInputs() {
     saveAsTemplate: { projectId: 'project-1', name: 'Template' },
     compact: { projectId: 'project-1' },
     diagnostics: { projectId: 'project-1' },
+    timelineHistory: { projectId: 'project-1' },
     start: { projectId: 'project-1', brief: 'Brief' },
     interject: {
       projectId: 'project-1', checkpointId: 'cp-1', purpose: 'interjection', text: 'Text',
@@ -131,6 +132,13 @@ async function setup(t, options = {}) {
     async saveAsTemplate(input) { this.calls.push(['saveAsTemplate', input]); return input },
     async compact() { return { revision: 4 } },
     snapshot(id) { return { projectId: id } },
+    timelineHistory(id) { this.calls.push(['timelineHistory', id]); return { items: [], total: 0 } },
+    retryEffect(input) {
+      this.calls.push(['retryEffect', input])
+      throw Object.assign(new Error('PROJECT_ENGINE_UNAVAILABLE'), {
+        code: 'PROJECT_ENGINE_UNAVAILABLE',
+      })
+    },
   }
   const deletion = {
     deleting: new Set(),
@@ -316,6 +324,20 @@ test('only the four deletion-safe methods work while a project is deleting', asy
   assert.equal((await invoke('snapshot', { projectId: 'project-1' })).deleting, true)
   assert.ok(await invoke('diagnostics', { projectId: 'project-1' }))
   assert.deepEqual(await invoke('retryDeletion', { projectId: 'project-1' }), { deleted: true })
+})
+
+test('timelineHistory and retryEffect route to the service', async (t) => {
+  const { invoke, service } = await setup(t)
+  assert.deepEqual(await invoke('timelineHistory', {
+    projectId: 'project-1', cursor: 'cursor', limit: 20,
+  }), { items: [], total: 0 })
+  assert.deepEqual(service.calls[0], ['timelineHistory', 'project-1'])
+  await assert.rejects(invoke('retryEffect', {
+    projectId: 'project-1', effectId: 'effect-1',
+  }), { code: 'PROJECT_ENGINE_UNAVAILABLE' })
+  assert.deepEqual(service.calls[1], ['retryEffect', {
+    projectId: 'project-1', effectId: 'effect-1',
+  }])
 })
 
 test('delete and retryDeletion route through the deletion service', async (t) => {

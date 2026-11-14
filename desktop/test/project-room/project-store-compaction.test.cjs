@@ -254,6 +254,16 @@ function fullState() {
     lease('maintenance-withdrawn', 'withdrawn'),
     lease('maintenance-released', 'released'),
   ]
+  state.projectBlockedOn = { effectId: 'blocked-effect', error: 'PROJECT_STORAGE_FAULT', time: at }
+  state.chatWriteChecks = {
+    'agent-run-1': {
+      groupId: 'group-1',
+      status: 'pending-detection',
+      snapshotCommit: commit,
+      baseVersions: [{ checkpointId: 'cp-1', artifactVersionId: 'av-1', instanceEpoch: 1 }],
+      failure: null,
+    },
+  }
   state.placeholders = [{
     path: 'assets/video.bin',
     reason: 'oversize',
@@ -328,6 +338,9 @@ test('compaction never removes active records', () => {
   assert.equal(compacted.config.seats.length, 1)
   assert.equal(compacted.config.profiles.length, 1)
   assert.equal(compacted.placeholders.length, 1)
+  assert.equal(compacted.projectBlockedOn.error, 'PROJECT_STORAGE_FAULT')
+  assert.equal(compacted.chatWriteChecks['agent-run-1'].status, 'pending-detection')
+  assert.equal(compacted.maintenanceLeaseRequests[0].status, 'waiting')
   assert.equal(instance.effects.filter(item => item.status === 'pending').length, 1)
   assert.equal(instance.effects.filter(item => item.status === 'started').length, 1)
   assert.equal(instance.effects.filter(item => item.status === 'failed').length, 1)

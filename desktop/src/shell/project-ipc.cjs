@@ -116,6 +116,11 @@ const schemas = {
   retryEffect: z.strictObject({
     projectId: id, checkpointId: id.optional(), effectId: id,
   }),
+  timelineHistory: z.strictObject({
+    projectId: id,
+    cursor: z.string().max(512).optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+  }),
   residual: z.strictObject({
     projectId: id.optional(),
     residualId: id,
@@ -318,6 +323,13 @@ function registerProjectIpc({
 
   register('compact', input => service().compact(input.projectId))
 
+  register('timelineHistory', input => service().timelineHistory(
+    input.projectId,
+    { cursor: input.cursor, limit: input.limit },
+  ))
+
+  register('retryEffect', input => service().retryEffect(input))
+
   register('diagnostics', (input) => {
     const context = service().contextFor(input.projectId)
     if (!context) throw ipcError('PROJECT_NOT_FOUND')
@@ -342,7 +354,7 @@ function registerProjectIpc({
 
   for (const method of [
     'start', 'interject', 'stopAndDeliver', 'previewReject', 'previewReopen', 'reopen',
-    'resolveDrift', 'cancelDriftResolution', 'resolveOutOfScope', 'retryEffect',
+    'resolveDrift', 'cancelDriftResolution', 'resolveOutOfScope',
     'residual', 'unlockDirectory',
   ]) {
     placeholder(method)

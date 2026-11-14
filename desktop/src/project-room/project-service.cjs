@@ -13,6 +13,7 @@ const {
   seatSchema,
 } = require('./project-state-schema.cjs')
 const { ProjectStore } = require('./project-store.cjs')
+const { PendingMessageStore, TimelineHistoryStore } = require('./project-timeline.cjs')
 const {
   pendingDecisions,
   projectSnapshot,
@@ -152,6 +153,8 @@ class ProjectService {
     this.clock = typeof clock === 'function' ? clock : Date.now
     this.projects = new Map()
     this.started = false
+    this.pendingStores = new Map()
+    this.timelineStores = new Map()
     this.changeListeners = new Set()
     this.changeTimers = new Map()
     this.changePending = new Map()
@@ -328,6 +331,87 @@ class ProjectService {
     this.#assertWritable(context)
     const result = await context.store.compactNow()
     return { revision: result.revision, durable: result.durable }
+  }
+
+  pendingMessageStore(projectId) {
+    if (!this.pendingStores.has(projectId)) {
+      this.pendingStores.set(projectId, new PendingMessageStore({
+        projectDir: this.#projectDir(projectId),
+        now: this.now,
+      }))
+    }
+    return this.pendingStores.get(projectId)
+  }
+
+  timelineStore(projectId) {
+    if (!this.timelineStores.has(projectId)) {
+      this.timelineStores.set(projectId, new TimelineHistoryStore({
+        projectDir: this.#projectDir(projectId),
+        now: this.now,
+      }))
+    }
+    return this.timelineStores.get(projectId)
+  }
+
+  async stageProjectMessage(projectId, input) {
+    this.#context(projectId)
+    return this.pendingMessageStore(projectId).stage(input)
+  }
+
+  async consumeProjectMessage(projectId, ref) {
+    this.#context(projectId)
+    return this.pendingMessageStore(projectId).consume(ref)
+  }
+
+  insertProjectMessage(input) {
+    return this.workspace.insertProjectRoomMessage(input)
+  }
+
+  timelineHistory(projectId, { cursor, limit } = {}) {
+    const context = this.#context(projectId)
+    const state = context.store?.current() || null
+    const pending = []
+    for (const effect of state?.projectEffects || []) {
+      if (effect.type === 'append-timeline' && effect.params?.record) {
+        pending.push(effect.params.record)
+      }
+    }
+    for (const instance of state?.instances || []) {
+      for (const effect of instance.effects || []) {
+        if (effect.type === 'append-timeline' && effect.params?.record) {
+          pending.push(effect.params.record)
+        }
+      }
+    }
+    return this.timelineStore(projectId).read({
+      projectId,
+      cursor,
+      limit: limit === undefined ? 50 : limit,
+      pending,
+    })
+  }
+
+  retryEffect({ projectId, checkpointId, effectId }) {
+    const context = this.#context(projectId)
+    const state = context.store?.current()
+    if (!state) {
+      throw projectError('PROJECT_READ_ONLY', {
+        reason: context.readOnlyReason || 'read-only',
+      })
+    }
+    let found = false
+    if (checkpointId) {
+      const instance = state.instances.find(item => item.id === checkpointId)
+      found = Boolean(instance?.effects.some(effect => (
+        effect.id === effectId && effect.status === 'failed'
+      )))
+    } else {
+      found = state.projectEffects.some(effect => (
+        effect.id === effectId && effect.status === 'failed'
+      ))
+    }
+    if (!found) throw projectError('PROJECT_EFFECT_NOT_FOUND')
+    throw projectError('PROJECT_ENGINE_UNAVAILABLE')
   }
 
   pendingDecisions(now = Date.now()) {

@@ -2547,6 +2547,10 @@ class LocalWorkspace extends EventEmitter {
     return this.conversations.createGroup(input)
   }
 
+  insertProjectRoomMessage(input) {
+    return this.conversations.insertProjectRoomMessage(input)
+  }
+
   updateGroup(groupId, input) {
     return this.conversations.updateGroup(groupId, input)
   }

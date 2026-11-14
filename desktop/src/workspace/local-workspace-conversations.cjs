@@ -1,6 +1,7 @@
 const path = require('node:path')
 const { normalizeTraceCapsule } = require('../runs/run-harness.cjs')
 const { normalizeRoutingDecision } = require('../agents/agent-routing.cjs')
+const { normalizeProjectRoom } = require('./local-workspace-message-records.cjs')
 const {
   MAX_MESSAGE_ATTACHMENTS,
   cleanElapsedMs,
@@ -304,10 +305,76 @@ class LocalWorkspaceConversations {
       if (targetKinds.length) message.targetKinds = targetKinds
       if (routingDecision) message.routingDecision = routingDecision
     }
+    if (role === 'user' || role === 'agent') {
+      const projectRoom = normalizeProjectRoom(metadata.projectRoom)
+      if (projectRoom) message.projectRoom = projectRoom
+    }
     return this.commit((state) => {
       state.messages.push(message)
       group.updatedAt = message.createdAt
       return message
+    })
+  }
+
+  // Main-only stable-id insertion for the project timeline. The project store
+  // may replay an append-message effect after a crash; the same id with the
+  // same content is a successful replay, while a different payload is a
+  // storage fault and is never overwritten (M1/M5 4.5).
+  insertProjectRoomMessage(input = {}) {
+    const group = this.getGroup(input.groupId)
+    const id = String(input.id || '')
+    if (!/^[A-Za-z0-9._:-]{1,120}$/.test(id)) {
+      throw Object.assign(new Error('PROJECT_INPUT_INVALID'), { code: 'PROJECT_INPUT_INVALID' })
+    }
+    const role = ['user', 'agent'].includes(input.role) ? input.role : ''
+    if (!role) throw Object.assign(new Error('PROJECT_INPUT_INVALID'), { code: 'PROJECT_INPUT_INVALID' })
+    const agentKind = role === 'agent' ? cleanInline(input.agentKind, 40) : ''
+    if (role === 'agent' && !agentKind) {
+      throw Object.assign(new Error('PROJECT_INPUT_INVALID'), { code: 'PROJECT_INPUT_INVALID' })
+    }
+    const projectRoom = normalizeProjectRoom(input.projectRoom)
+    if (!projectRoom) {
+      throw Object.assign(new Error('PROJECT_INPUT_INVALID'), { code: 'PROJECT_INPUT_INVALID' })
+    }
+    const content = cleanText(input.content, terminalMessageContentLimit(role, agentKind, ''))
+    if (!content) throw Object.assign(new Error('PROJECT_INPUT_INVALID'), { code: 'PROJECT_INPUT_INVALID' })
+    const createdAt = cleanText(input.createdAt, 80) || this.now()
+    const existing = this.state().messages.find(message => message.id === id)
+    if (existing) {
+      const same = existing.groupId === group.id
+        && existing.role === role
+        && existing.content === content
+        && JSON.stringify(existing.projectRoom || null) === JSON.stringify(projectRoom)
+      if (!same) {
+        throw Object.assign(new Error('PROJECT_STORAGE_FAULT'), {
+          code: 'PROJECT_STORAGE_FAULT',
+          details: { reason: 'message-id-conflict', id },
+        })
+      }
+      return { message: existing, deduplicated: true }
+    }
+    const message = {
+      id,
+      groupId: group.id,
+      role,
+      agentKind,
+      senderName: role === 'user' ? 'User' : this.agentLabel(agentKind),
+      content,
+      createdAt,
+      projectRoom,
+    }
+    if (role === 'agent') {
+      const elapsedMs = cleanElapsedMs(input.elapsedMs)
+      const toolCalls = cleanProgressSteps(input.toolCalls)
+      if (elapsedMs != null) message.elapsedMs = elapsedMs
+      if (toolCalls.length) message.toolCalls = toolCalls
+      const trace = normalizeTraceCapsule(input.trace)
+      if (trace) message.trace = trace
+    }
+    return this.commit((state) => {
+      state.messages.push(message)
+      group.updatedAt = message.createdAt
+      return { message, deduplicated: false }
     })
   }
 }
