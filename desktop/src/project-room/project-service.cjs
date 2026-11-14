@@ -3,7 +3,7 @@ const path = require('node:path')
 const { randomUUID } = require('node:crypto')
 const { z } = require('zod')
 const { atomicWritePrivateFile } = require('../security/private-file.cjs')
-const { resolveRoot } = require('../runs/path-claims.cjs')
+const { claimsOverlap, makeClaim, resolveRoot } = require('../runs/path-claims.cjs')
 const { ShadowRepo, checkGitVersion } = require('./shadow-git.cjs')
 const {
   DEFAULT_SNAPSHOT_LIMITS,
@@ -21,6 +21,11 @@ const {
   projectSnapshot,
   sidebarEntry,
 } = require('./project-projection.cjs')
+const {
+  acceptanceBlockers,
+  impactPreview,
+} = require('./project-progress.cjs')
+const { allowedGateOutcomes } = require('./checkpoint-transitions.cjs')
 
 const PROJECT_ID = /^[A-Za-z0-9._:-]{1,120}$/
 const DEFAULT_TEMPLATE_ID = 'builtin-default'
@@ -457,7 +462,271 @@ class ProjectService {
     })
   }
 
-  retryEffect({ projectId, checkpointId, effectId }) {
+  #newInstance(checkpointKey) {
+    return {
+      id: this.createId(),
+      checkpointKey,
+      state: 'pending',
+      seq: 0,
+      epoch: 0,
+      round: 0,
+      roundsSinceHuman: 0,
+      continuations: 0,
+      sessionGeneration: 0,
+      candidate: null,
+      rounds: [],
+      roundsSummary: [],
+      leaseRequests: [],
+      activeInvocations: [],
+      pendingStart: null,
+      drafts: [],
+      interjections: [],
+      gate: null,
+      blockedOn: null,
+      effects: [],
+      artifactVersions: [],
+      readVersions: {},
+      decisions: [],
+    }
+  }
+
+  async startProject({ projectId, brief }) {
+    const context = this.#context(projectId)
+    this.#assertWritable(context)
+    const state = context.store.current()
+    if (state.instances.length) throw projectError('PROJECT_ALREADY_STARTED')
+    const def = state.config.playbook.checkpointDefs[0]
+    if (!def) throw inputError('playbook-empty')
+    const instance = this.#newInstance(def.key)
+    await context.store.enqueue((next) => {
+      next.instances.push(instance)
+      return { next }
+    })
+    if (typeof this.onStart === 'function') {
+      await this.onStart({ context, brief: String(brief || ''), instance })
+    }
+    await context.engine.dispatch(instance.id, {
+      type: 'DEPS_READY',
+      at: this.#nowIso(),
+    })
+    return { checkpointId: instance.id }
+  }
+
+  async interject({ projectId, checkpointId, text }) {
+    const context = this.#context(projectId)
+    this.#assertWritable(context)
+    const result = await context.engine.dispatch(checkpointId, {
+      type: 'INTERJECT',
+      at: this.#nowIso(),
+      payload: { content: text },
+    })
+    if (result.ignored) throw projectError('PROJECT_TARGET_CHANGED')
+    return { checkpointId }
+  }
+
+  async stopAndDeliver({ projectId, checkpointId }) {
+    const context = this.#context(projectId)
+    this.#assertWritable(context)
+    const result = await context.engine.dispatch(checkpointId, {
+      type: 'STOP_AND_DELIVER',
+      at: this.#nowIso(),
+    })
+    if (result.ignored) throw projectError('PROJECT_TARGET_CHANGED')
+    return { checkpointId }
+  }
+
+  async decideGate(input) {
+    const { projectId } = input
+    const context = this.#context(projectId)
+    this.#assertWritable(context)
+    const state = context.store.current()
+    const instance = state.instances.find(item => item.gate?.id === input.gateId)
+    if (!instance) throw projectError('PROJECT_GATE_STALE')
+    const gate = instance.gate
+    if (gate.revision !== input.gateRevision) throw projectError('PROJECT_GATE_STALE')
+    if (!allowedGateOutcomes(gate.reason).includes(input.outcome)) {
+      throw projectError('PROJECT_GATE_OUTCOME_UNAVAILABLE', { reason: gate.reason })
+    }
+    if (gate.candidateCommit && input.candidateCommit !== gate.candidateCommit) {
+      throw projectError('PROJECT_GATE_STALE')
+    }
+    if (input.outcome === 'continue' && !String(input.comment || '').trim()) {
+      throw projectError('PROJECT_GATE_COMMENT_REQUIRED')
+    }
+    if (input.outcome === 'reject-upstream') {
+      const upstreamIds = new Set(Object.keys(instance.readVersions || {}))
+      const def = state.config.playbook.checkpointDefs
+        .find(item => item.key === instance.checkpointKey)
+      for (const key of def?.dependsOn || []) {
+        const upstream = state.instances.find(item => item.checkpointKey === key)
+        if (upstream) upstreamIds.add(upstream.id)
+      }
+      if (!upstreamIds.has(input.upstreamCheckpointId)) {
+        throw projectError('PROJECT_IMPACT_CHANGED')
+      }
+      const preview = impactPreview(state, input.upstreamCheckpointId)
+      if (preview.impactHash !== input.impactHash) {
+        throw projectError('PROJECT_IMPACT_CHANGED')
+      }
+    }
+    if (input.outcome === 'accept') {
+      const blockers = acceptanceBlockers(state, instance.id)
+      if (blockers.blocked) {
+        throw projectError('PROJECT_ACCEPT_BLOCKED', { blockers: blockers.blockers })
+      }
+      if (context.shadowRepo && instance.candidate && input.acceptCandidate !== true) {
+        const def = state.config.playbook.checkpointDefs
+          .find(item => item.key === instance.checkpointKey)
+        try {
+          const verified = await context.shadowRepo.verifyAgainst({
+            effectId: `gate-candidate:${gate.id}:${gate.revision}`,
+            commit: instance.candidate,
+            paths: def?.targetFiles || [],
+            placeholderList: state.placeholders || [],
+            limits: state.config.settings.snapshotLimits,
+          })
+          if (verified.intact === false) {
+            throw projectError('PROJECT_CANDIDATE_DIVERGED', {
+              files: verified.differing || [],
+            })
+          }
+        } catch (error) {
+          if (error?.code === 'PROJECT_CANDIDATE_DIVERGED') throw error
+          throw projectError('PROJECT_CANDIDATE_DIVERGED', { files: [] })
+        }
+      }
+    }
+    const result = await context.engine.dispatch(instance.id, {
+      type: 'GATE_DECIDED',
+      at: this.#nowIso(),
+      payload: {
+        gateId: input.gateId,
+        gateRevision: input.gateRevision,
+        candidateCommit: input.candidateCommit,
+        outcome: input.outcome,
+        comment: input.comment || '',
+        upstreamCheckpointId: input.upstreamCheckpointId,
+        impactHash: input.impactHash,
+        driftChoice: input.driftChoice,
+        commitToGit: input.commitToGit === true,
+      },
+    })
+    if (result.ignored) throw projectError('PROJECT_GATE_STALE')
+    return { revision: context.store.current().revision }
+  }
+
+  previewReject({ projectId, checkpointId, upstreamId }) {
+    const context = this.#context(projectId)
+    const state = context.store.current()
+    if (!state.instances.some(item => item.id === checkpointId)) {
+      throw projectError('PROJECT_NOT_FOUND', { checkpointId })
+    }
+    return impactPreview(state, upstreamId)
+  }
+
+  previewReopen({ projectId, checkpointId }) {
+    const context = this.#context(projectId)
+    const state = context.store.current()
+    const instance = state.instances.find(item => item.id === checkpointId)
+    if (!instance || instance.state !== 'accepted') {
+      throw projectError('PROJECT_NOT_REOPENABLE')
+    }
+    return impactPreview(state, checkpointId)
+  }
+
+  async reopen({ projectId, checkpointId, reason, impactHash }) {
+    const context = this.#context(projectId)
+    this.#assertWritable(context)
+    const state = context.store.current()
+    const instance = state.instances.find(item => item.id === checkpointId)
+    if (!instance || instance.state !== 'accepted') {
+      throw projectError('PROJECT_NOT_REOPENABLE')
+    }
+    const preview = impactPreview(state, checkpointId)
+    if (preview.impactHash !== impactHash) {
+      throw projectError('PROJECT_IMPACT_CHANGED')
+    }
+    await context.engine.dispatch(checkpointId, {
+      type: 'REOPEN',
+      at: this.#nowIso(),
+      payload: { reason },
+    })
+    for (const affectedId of preview.affectedCheckpointIds) {
+      await context.engine.dispatch(affectedId, {
+        type: 'UPSTREAM_REOPENED',
+        at: this.#nowIso(),
+        payload: { checkpointId },
+      })
+    }
+    return { revision: context.store.current().revision }
+  }
+
+  async resolveOutOfScope({ projectId, itemIds }) {
+    const context = this.#context(projectId)
+    this.#assertWritable(context)
+    const ids = new Set(itemIds)
+    await context.store.enqueue((state) => {
+      for (const item of state.outOfScopeItems) {
+        if (ids.has(item.id) && item.status === 'unresolved') {
+          item.status = 'resolved'
+          item.resolvedAt = this.#nowIso()
+        }
+      }
+      return { next: state }
+    })
+    return { resolved: itemIds.length }
+  }
+
+  async resolveDrift({ projectId, items, choice }) {
+    const context = this.#context(projectId)
+    this.#assertWritable(context)
+    const state = context.store.current()
+    const targets = items.map(({ itemId, revision }) => {
+      const item = state.driftItems.find(entry => entry.id === itemId)
+      if (!item || item.revision !== revision || item.status !== 'unresolved') {
+        throw projectError('PROJECT_DRIFT_STALE')
+      }
+      return item
+    })
+    if (choice !== 'workdir') throw projectError('PROJECT_ENGINE_UNAVAILABLE')
+    if (context.shadowRepo) {
+      for (const item of targets) {
+        const verified = await context.shadowRepo.verifyAgainst({
+          effectId: `drift-resolve:${item.id}:${item.revision}`,
+          commit: item.observedCommit,
+          paths: [item.path],
+          placeholderList: state.placeholders || [],
+          limits: state.config.settings.snapshotLimits,
+        })
+        if (verified.intact === false) throw projectError('PROJECT_DRIFT_STALE')
+      }
+    }
+    await context.store.enqueue((next) => {
+      for (const target of targets) {
+        const item = next.driftItems.find(entry => entry.id === target.id)
+        item.status = 'resolved'
+        item.resolvedAt = this.#nowIso()
+      }
+      return { next }
+    })
+    return { resolved: targets.length }
+  }
+
+  async cancelDriftResolution({ projectId, itemId, revision }) {
+    const context = this.#context(projectId)
+    this.#assertWritable(context)
+    await context.store.enqueue((state) => {
+      const item = state.driftItems.find(entry => entry.id === itemId)
+      if (!item || item.revision !== revision || item.status !== 'resolving') {
+        throw projectError('PROJECT_DRIFT_STALE')
+      }
+      item.status = 'unresolved'
+      return { next: state }
+    })
+    return { itemId, status: 'unresolved' }
+  }
+
+  async retryEffect({ projectId, checkpointId, effectId }) {
     const context = this.#context(projectId)
     const state = context.store?.current()
     if (!state) {
@@ -477,7 +746,52 @@ class ProjectService {
       ))
     }
     if (!found) throw projectError('PROJECT_EFFECT_NOT_FOUND')
-    throw projectError('PROJECT_ENGINE_UNAVAILABLE')
+    if (!checkpointId) throw projectError('PROJECT_ENGINE_UNAVAILABLE')
+    await context.engine.dispatch(checkpointId, {
+      type: 'RETRY_EFFECT',
+      at: this.#nowIso(),
+      payload: { effectId },
+    })
+    await context.engine.runUntilIdle()
+    return { effectId, retried: true }
+  }
+
+  async residual({ residualId, action }) {
+    if (!this.scheduler?.snapshot) throw projectError('PROJECT_ENGINE_UNAVAILABLE')
+    if (!['manuallyEnded', 'notRelated'].includes(action)) {
+      throw inputError('residual-action-invalid')
+    }
+    const residual = (this.scheduler.snapshot().residuals || [])
+      .find(item => item.residualId === residualId)
+    if (!residual) throw inputError('residual-not-found', { residualId })
+    this.scheduler.clearResidual(residualId)
+    if (typeof this.onResidual === 'function') await this.onResidual({ residual, action })
+    return { residualId, cleared: true }
+  }
+
+  async unlockDirectory({ projectId, folderName }) {
+    const context = this.#context(projectId)
+    if (String(folderName) !== path.basename(context.project.workdir)) {
+      throw projectError('PROJECT_UNLOCK_CONFIRMATION_MISMATCH')
+    }
+    const residuals = this.scheduler?.snapshot?.().residuals || []
+    const rootClaim = await makeClaim({
+      root: context.project.workdir,
+      path: '',
+      mode: 'exclusive',
+    })
+    const blocking = residuals.filter(residual => (
+      (residual.claims || []).some(claim => claimsOverlap(claim, rootClaim))
+    ))
+    if (blocking.length) {
+      throw projectError('PROJECT_RESIDUAL_UNRESOLVED', {
+        residualIds: blocking.map(item => item.residualId),
+      })
+    }
+    if (typeof this.onUnlockDirectory === 'function') {
+      await this.onUnlockDirectory({ context, folderName })
+    }
+    return { unlocked: true }
   }
 
   pendingDecisions(now = Date.now()) {

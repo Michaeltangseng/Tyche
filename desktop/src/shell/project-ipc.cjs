@@ -99,6 +99,7 @@ const schemas = {
     impactHash: text(128).optional(),
     driftChoice: z.enum(['workdir', 'accepted']).optional(),
     commitToGit: z.boolean().optional(),
+    acceptCandidate: z.boolean().optional(),
   }),
   previewReject: z.strictObject({ projectId: id, checkpointId: id, upstreamId: id }),
   previewReopen: z.strictObject({ projectId: id, checkpointId: id }),
@@ -366,16 +367,29 @@ function registerProjectIpc({
     const deletionService = deletion()
     if (deletionService?.isDeleting(input.projectId)) throw ipcError('PROJECT_DELETING')
     service().assertReady(input.projectId)
-    throw ipcError('PROJECT_ENGINE_UNAVAILABLE')
+    return service().decideGate(input)
   })
 
-  for (const method of [
-    'start', 'interject', 'stopAndDeliver', 'previewReject', 'previewReopen', 'reopen',
-    'resolveDrift', 'cancelDriftResolution', 'resolveOutOfScope',
-    'residual', 'unlockDirectory',
-  ]) {
-    placeholder(method)
-  }
+  register('start', input => service().startProject({
+    ...input,
+    brief: redact(input.brief, 32768),
+  }))
+  register('interject', input => service().interject({
+    ...input,
+    text: redact(input.text, 32768),
+  }))
+  register('stopAndDeliver', input => service().stopAndDeliver(input))
+  register('previewReject', input => service().previewReject(input))
+  register('previewReopen', input => service().previewReopen(input))
+  register('reopen', input => service().reopen({
+    ...input,
+    reason: redact(input.reason, 32768),
+  }))
+  register('resolveDrift', input => service().resolveDrift(input))
+  register('cancelDriftResolution', input => service().cancelDriftResolution(input))
+  register('resolveOutOfScope', input => service().resolveOutOfScope(input))
+  register('residual', input => service().residual(input))
+  register('unlockDirectory', input => service().unlockDirectory(input))
 
   return { handlers, schemas, tokens }
 }

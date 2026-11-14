@@ -785,4 +785,8 @@ function transition(instance, event, config) {
   return { instance: next, effects: produced, diagnostics }
 }
 
-module.exports = { transition }
+function allowedGateOutcomes(reason) {
+  return [...(GATE_OUTCOMES[reason] || [])]
+}
+
+module.exports = { allowedGateOutcomes, transition }

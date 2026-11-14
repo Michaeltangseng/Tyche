@@ -133,6 +133,22 @@ async function setup(t, options = {}) {
     async updatePlaybook(input) { this.calls.push(['updatePlaybook', input]); return input },
     async saveAsTemplate(input) { this.calls.push(['saveAsTemplate', input]); return input },
     async compact() { return { revision: 4 } },
+    decideGate() {
+      throw Object.assign(new Error('PROJECT_ENGINE_UNAVAILABLE'), {
+        code: 'PROJECT_ENGINE_UNAVAILABLE',
+      })
+    },
+    async startProject(input) { return input },
+    async interject(input) { return input },
+    async stopAndDeliver(input) { return input },
+    previewReject() { return { impactHash: 'hash' } },
+    previewReopen() { return { impactHash: 'hash' } },
+    async reopen(input) { return input },
+    async resolveDrift(input) { return input },
+    async cancelDriftResolution(input) { return input },
+    async resolveOutOfScope(input) { return input },
+    async residual(input) { return input },
+    async unlockDirectory(input) { return input },
     snapshot(id) { return { projectId: id } },
     timelineHistory(id) { this.calls.push(['timelineHistory', id]); return { items: [], total: 0 } },
     retryEffect(input) {
