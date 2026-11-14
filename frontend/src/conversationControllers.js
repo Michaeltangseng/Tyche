@@ -121,6 +121,7 @@ export function createConversationControllers({
     inlineTitleDraft: conversationActions.inlineTitleDraft,
     inlineTitleEditing: conversationActions.inlineTitleEditing,
     openGroupSettings: conversationActions.openGroupSettings,
+    openSeatSettings: app.openSeatSettings,
     saveInlineTitle: conversationActions.saveInlineTitle,
     saving: app.saving,
     t: app.t,

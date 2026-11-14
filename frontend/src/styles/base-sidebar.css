@@ -897,6 +897,34 @@
   font-size: var(--text-xs);
 }
 
+.project-room-create {
+  width: 100%;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0;
+  padding: 0 8px;
+  border: 1px dashed color-mix(in srgb, var(--border) 86%, transparent);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.project-room-create:hover,
+.project-room-create:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.project-room-create svg {
+  width: 14px;
+  height: 14px;
+}
+
 .project-room-list {
   min-width: 0;
   display: grid;

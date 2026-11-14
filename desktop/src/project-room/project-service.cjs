@@ -670,6 +670,13 @@ class ProjectService {
     return context
   }
 
+  listTemplates() {
+    const templates = this.templatesStore.list()
+    return {
+      templates: [this.templatesStore.builtin(), ...templates],
+    }
+  }
+
   snapshot(projectId) {
     const context = this.#context(projectId)
     return projectSnapshot(

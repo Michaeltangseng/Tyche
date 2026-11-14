@@ -4,6 +4,7 @@ const { randomUUID } = require('node:crypto')
 const { z } = require('zod')
 const { redactSecrets } = require('../security/secret-redaction.cjs')
 const { seatSchema } = require('../project-room/project-state-schema.cjs')
+const { capabilitiesFor } = require('../project-room/agent-capabilities.cjs')
 const { allowedDuringDeletion } = require('../project-room/project-deletion.cjs')
 
 const ID = /^[A-Za-z0-9._:-]{1,120}$/
@@ -56,6 +57,10 @@ const schemas = {
   chooseWorkdir: emptyInput,
   getPreferences: emptyInput,
   setPreferences: z.strictObject({ projectRoomPreview: z.boolean() }),
+  templates: emptyInput,
+  capabilities: z.strictObject({
+    agentKind: z.string().min(1).max(40).regex(AGENT_KIND),
+  }),
   create: z.strictObject({
     token: z.string().min(1).max(200),
     name: text(80),
@@ -255,6 +260,12 @@ function registerProjectIpc({
     onPreferencesChanged(value)
     return value
   })
+
+  register('templates', () => service().listTemplates())
+  register('capabilities', input => ({
+    agentKind: input.agentKind,
+    capabilities: capabilitiesFor(input.agentKind),
+  }))
 
   register('chooseWorkdir', async () => {
     const result = await dialog.showOpenDialog(getMainWindow(), {

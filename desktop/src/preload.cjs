@@ -111,6 +111,8 @@ if (isLocalDocument) Object.assign(desktopApi, {
   projectRoom: Object.freeze({
     getPreferences: () => ipcRenderer.invoke('project:getPreferences'),
     setPreferences: input => ipcRenderer.invoke('project:setPreferences', input),
+    templates: () => ipcRenderer.invoke('project:templates'),
+    capabilities: input => ipcRenderer.invoke('project:capabilities', input),
     chooseWorkdir: () => ipcRenderer.invoke('project:chooseWorkdir'),
     create: input => ipcRenderer.invoke('project:create', input),
     rename: input => ipcRenderer.invoke('project:rename', input),

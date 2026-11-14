@@ -42,6 +42,22 @@
           </button>
         </div>
       </div>
+
+      <div class="general-settings-row">
+        <div class="general-settings-copy">
+          <h2 id="general-settings-project-room">{{ t('generalSettings.projectRoomTitle') }}</h2>
+          <p>{{ t('generalSettings.projectRoomHint') }}</p>
+        </div>
+        <label class="switch-row">
+          <input
+            type="checkbox"
+            :checked="projectRoomPreviewEnabled"
+            @change="setProjectRoomPreview($event.target.checked)"
+          />
+          <span class="switch-control" />
+          <span>{{ projectRoomPreviewEnabled ? t('generalSettings.projectRoomOn') : t('generalSettings.projectRoomOff') }}</span>
+        </label>
+      </div>
     </div>
     <WorkPreferences />
     <SkillTrustSettings v-if="skillTrustAvailable" />
@@ -57,6 +73,8 @@ import SkillTrustSettings from './SkillTrustSettings.vue'
 import { desktopApi } from '../desktop.js'
 
 const props = defineProps({
+  projectRoomPreviewEnabled: { type: [Boolean, Object], default: false },
+  setProjectRoomPreview: { type: Function, required: true },
   setThemePreference: { type: Function, required: true },
   themePreference: { type: [String, Object], required: true },
 })

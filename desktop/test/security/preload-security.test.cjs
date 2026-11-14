@@ -94,12 +94,12 @@ test('local preload exposes the local-only Meldwork API', async () => {
   assert.deepEqual(
     Object.keys(api.projectRoom).sort(),
     [
-      'addSeat', 'cancelDriftResolution', 'chooseWorkdir', 'compact', 'create',
+      'addSeat', 'cancelDriftResolution', 'capabilities', 'chooseWorkdir', 'compact', 'create',
       'decideGate', 'delete', 'diagnostics', 'gateDetail', 'getPreferences', 'interject', 'onChanged',
       'onOpen', 'previewReject', 'previewReopen', 'removeSeat', 'rename', 'reopen', 'residual',
       'resolveDrift', 'resolveOutOfScope', 'retryDeletion', 'retryEffect',
       'rollbackProfile', 'saveAsTemplate', 'setPreferences', 'snapshot', 'start',
-      'stopAndDeliver', 'timelineHistory', 'unlockDirectory', 'updatePlaybook',
+      'stopAndDeliver', 'templates', 'timelineHistory', 'unlockDirectory', 'updatePlaybook',
       'updateProfile', 'updateSeat',
     ].sort(),
   )

@@ -4,14 +4,22 @@
       <div v-if="activeGroup.conversationType === 'direct'" class="conversation-avatar single">
         <img :src="agentLogo(activeGroup.directAgentKind, theme)" alt="" />
       </div>
-      <div v-else class="conversation-avatar stack">
+      <component
+        :is="activeGroup.projectId ? 'button' : 'div'"
+        class="conversation-avatar stack"
+        :class="{ 'avatar-button': activeGroup.projectId }"
+        :type="activeGroup.projectId ? 'button' : undefined"
+        :title="activeGroup.projectId ? t('projectRoom.seats.open') : undefined"
+        :aria-label="activeGroup.projectId ? t('projectRoom.seats.open') : undefined"
+        @click="activeGroup.projectId ? openSeatSettings() : undefined"
+      >
         <img
           v-for="kind in activeGroup.agentKinds.slice(0, 3)"
           :key="kind"
           :src="agentLogo(kind, theme)"
           alt=""
         />
-      </div>
+      </component>
       <div ref="titleBlock" class="conversation-title-block" tabindex="-1">
         <form v-if="inlineTitleEditing" class="inline-title-form" @submit.prevent="saveInlineTitle">
           <input
@@ -121,6 +129,7 @@ const {
   inlineTitleDraft,
   inlineTitleEditing,
   openGroupSettings,
+  openSeatSettings,
   saveInlineTitle,
   saving,
   t,

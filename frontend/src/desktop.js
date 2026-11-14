@@ -12,7 +12,8 @@ export function desktopApi() {
 }
 
 export const PROJECT_ROOM_METHODS = Object.freeze([
-  'getPreferences', 'setPreferences', 'chooseWorkdir', 'create', 'rename', 'delete',
+  'getPreferences', 'setPreferences', 'templates', 'capabilities',
+  'chooseWorkdir', 'create', 'rename', 'delete',
   'retryDeletion', 'snapshot', 'updateSeat', 'addSeat', 'removeSeat', 'updateProfile',
   'rollbackProfile', 'updatePlaybook', 'saveAsTemplate', 'compact', 'diagnostics',
   'gateDetail', 'timelineHistory', 'start', 'interject', 'stopAndDeliver', 'decideGate',

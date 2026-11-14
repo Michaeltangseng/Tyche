@@ -54,6 +54,9 @@
       <span class="switch-control" />
       <span>{{ groupSelectionIsCloudOnly ? t('group.cloudReadOnly') : t('group.allowWrite') }}</span>
     </label>
+    <p v-if="groupForm.allowWrite && !groupSelectionIsCloudOnly" class="group-cloud-notice">
+      {{ t('group.allowWriteCleanupHint') }}
+    </p>
     <p v-if="groupSelectionIncludesCloud" class="group-cloud-notice">{{ t('group.cloudSelectionNotice') }}</p>
     <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
     <footer class="modal-footer">
@@ -132,6 +135,9 @@
       <span class="switch-control" />
       <span>{{ settingsSelectionIsCloudOnly ? t('group.cloudReadOnly') : t('group.allowWrite') }}</span>
     </label>
+    <p v-if="settingsForm.allowWrite && !settingsSelectionIsCloudOnly" class="group-cloud-notice">
+      {{ t('group.allowWriteCleanupHint') }}
+    </p>
     <p v-if="settingsSelectionIncludesCloud" class="group-cloud-notice">{{ t('group.cloudSelectionNotice') }}</p>
     <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
     <footer class="modal-footer settings-modal-footer">

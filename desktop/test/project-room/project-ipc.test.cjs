@@ -23,6 +23,8 @@ function validInputs() {
     chooseWorkdir: undefined,
     getPreferences: undefined,
     setPreferences: { projectRoomPreview: true },
+    templates: undefined,
+    capabilities: { agentKind: 'codex' },
     create: { token: 'token-1', name: 'Project' },
     rename: { projectId: 'project-1', name: 'Name' },
     delete: { projectId: 'project-1', keepChats: false },
@@ -151,6 +153,7 @@ async function setup(t, options = {}) {
     async residual(input) { return input },
     async unlockDirectory(input) { return input },
     snapshot(id) { return { projectId: id } },
+    listTemplates() { return { templates: [] } },
     gateDetail(input) {
       this.calls.push(['gateDetail', input])
       return { gateId: input.gateId, gateRevision: input.gateRevision, allowedOutcomes: ['continue'] }
@@ -391,6 +394,14 @@ test('timelineHistory and retryEffect route to the service', async (t) => {
   assert.deepEqual(service.calls[1], ['retryEffect', {
     projectId: 'project-1', effectId: 'effect-1',
   }])
+})
+
+test('templates and capabilities expose setup metadata', async (t) => {
+  const { invoke } = await setup(t)
+  assert.deepEqual(await invoke('templates'), { templates: [] })
+  const capabilities = await invoke('capabilities', { agentKind: 'codex' })
+  assert.equal(capabilities.agentKind, 'codex')
+  assert.equal(capabilities.capabilities.readExec, true)
 })
 
 test('gateDetail routes to the service with the gate revision', async (t) => {

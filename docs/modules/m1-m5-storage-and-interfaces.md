@@ -217,7 +217,7 @@ renderer 永远只拿到投影，不拿到项目状态文件本身。投影函�
 | 「待我决定」（随工作区快照） | 跨项目的待决条目列表：类型（关卡 / 漂移 / 残留进程 / 暂停）、项目、检查点、原因、等待时长；最多 100 条，按等待时长排序，附总数 | 同上 |
 | 项目快照 | 一个项目的完整可见状态：进度（实例的状态、轮次、主笔、等待对象）、当前关卡的首屏内容（M13 第 4 节，按预算组装）、漂移与越界条目、错误条、配置（席位、侧写当前版本、playbook）、`revision` | 推送 `project:changed { projectId, revision }`（每个项目最多 10 次/秒，合并相邻的变化）；renderer 收到后调用 `project:snapshot` 拉取。只在用户打开这个项目室时拉取。首屏超出预算需要展开时，renderer 调用 `project:gateDetail` 拉取完整首屏与走向可用性（8.2） |
 
-项目快照的错误条包含实例及 `projectBlockedOn` 的投影（`effectId`、可重试状态、错误码与脱敏说明，项目级不带检查点 id）；关卡可用性包含检测屏障与等待原因。不得直接把发件箱参数、正文暂存引用或维护租约内部路径送给 renderer。
+项目快照的错误条包含实例及 `projectBlockedOn` 的投影（`effectId`、可重试状态、错误码与脱敏说明，项目级不带检查点 id）；关卡可用性包含检测屏障与等待原因。席位配置给出当前侧写，以及历史侧写的 id、版本、来源与时间（不回送历史正文），用于回退选择。不得直接把发件箱参数、正文暂存引用或维护租约内部路径送给 renderer。
 
 ### 7.2 投影中不出现的内容
 
@@ -251,6 +251,8 @@ renderer 永远只拿到投影，不拿到项目状态文件本身。投影函�
 | `retryDeletion({ projectId })` | | 只在删除期间有效，9.2 |
 | `snapshot({ projectId })` | | 返回 7.1 的项目快照 |
 | `gateDetail({ projectId, gateId, gateRevision })` | | 返回关卡的完整首屏（不受 7.1 预算限制）、`allowedOutcomes`、是否问题关卡，以及「同时提交到 git」的预检结果（`available` 与 `reasons`）；关卡 id 或修订号不符返回 `PROJECT_GATE_STALE`（M13 第 4 节的展开） |
+| `templates()` | | 返回内置 playbook 与已保存模板的最新版本，用于新建项目室时选择 playbook |
+| `capabilities({ agentKind })` | | 返回该 Agent 的能力登记（M3 第 10 节），用于席位配置提示与能力可用性判断 |
 
 **配置**
 

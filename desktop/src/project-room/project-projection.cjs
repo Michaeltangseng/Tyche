@@ -302,6 +302,15 @@ function configProjection(state) {
         profile: profile
           ? { id: profile.id, version: profile.version, text: profile.text }
           : null,
+        profileVersions: state.config.profiles
+          .filter(item => item.seatId === seat.id)
+          .sort((left, right) => left.version - right.version)
+          .map(item => ({
+            id: item.id,
+            version: item.version,
+            createdAt: item.createdAt,
+            source: item.source,
+          })),
       }
     }),
     playbook: {

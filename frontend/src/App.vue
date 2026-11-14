@@ -133,10 +133,14 @@
               ref="modalDialog"
               class="modal"
               :class="{
-                medium: ['new-group', 'settings', 'custom-agent', 'project-room-overlay'].includes(modal),
+                medium: [
+                  'new-group', 'settings', 'custom-agent', 'project-room-overlay',
+                  'project-room-create', 'project-room-seats',
+                ].includes(modal),
                 'agent-detail-modal': modal === 'agent-detail',
                 'unlimited-confirm-modal': modal === 'unlimited-confirm',
                 'project-room-overlay-modal': modal === 'project-room-overlay',
+                'project-room-setup-modal': ['project-room-create', 'project-room-seats'].includes(modal),
               }"
               role="dialog"
               aria-modal="true"
@@ -153,8 +157,16 @@
                 </button>
               </header>
 
+              <ProjectRoomCreateDialog
+                v-if="modal === 'project-room-create'"
+                :controller="projectRoomCreateController"
+              />
+              <ProjectRoomSeatSettings
+                v-else-if="modal === 'project-room-seats'"
+                :controller="projectRoomSeatSettingsController"
+              />
               <ProjectRoomOverlay
-                v-if="modal === 'project-room-overlay'"
+                v-else-if="modal === 'project-room-overlay'"
                 :controller="projectRoomOverlayController"
               />
               <WorkspaceModalContent
@@ -206,7 +218,7 @@
 <script setup>
 import PixelBlast from './components/PixelBlast.vue'
 import WavePhysicsLoader from './components/WavePhysicsLoader.vue'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   AlertCircleOutline,
   CheckmarkCircleOutline,
@@ -220,9 +232,11 @@ import ConversationTimelineView from './components/ConversationTimelineView.vue'
 import HomeDashboard from './components/HomeDashboard.vue'
 import OnboardingDialog from './components/OnboardingDialog.vue'
 import ProjectRoomComposer from './components/ProjectRoomComposer.vue'
+import ProjectRoomCreateDialog from './components/ProjectRoomCreateDialog.vue'
 import ProjectRoomGatePanel from './components/ProjectRoomGatePanel.vue'
 import ProjectRoomOverlay from './components/ProjectRoomOverlay.vue'
 import ProjectRoomProgress from './components/ProjectRoomProgress.vue'
+import ProjectRoomSeatSettings from './components/ProjectRoomSeatSettings.vue'
 import ProjectRoomStatus from './components/ProjectRoomStatus.vue'
 import RunTracePanel from './components/RunTracePanel.vue'
 import SystemSettingsView from './components/SystemSettingsView.vue'
@@ -288,6 +302,7 @@ const saving = ref(false)
 const humanGateDecisionPendingIds = ref([])
 const modal = ref('')
 const projectOverlay = ref(null)
+const projectRoomPreviewEnabled = ref(false)
 const composerContextVersion = ref(0)
 const DEFAULT_MAX_ROUNDS = 6
 const maxRounds = ref(DEFAULT_MAX_ROUNDS)
@@ -450,6 +465,39 @@ const projectRoomView = useProjectRoomView({
 })
 const isProjectMainGroup = projectRoomView.isMainGroup
 
+onMounted(async () => {
+  try {
+    const preferences = await api.value?.projectRoom?.getPreferences?.()
+    projectRoomPreviewEnabled.value = preferences?.projectRoomPreview === true
+  } catch { /* the preview stays hidden when preferences cannot be read */ }
+})
+
+function openProjectCreate() {
+  projectRoomPreviewEnabled.value = true
+  modal.value = 'project-room-create'
+}
+
+async function setProjectRoomPreview(enabled) {
+  try {
+    const preferences = await api.value?.projectRoom?.setPreferences?.({
+      projectRoomPreview: enabled === true,
+    })
+    projectRoomPreviewEnabled.value = preferences?.projectRoomPreview === true
+  } catch (error) {
+    showError(error)
+  }
+}
+
+function openProjectSeatSettings() {
+  if (!activeGroup.value?.projectId) return
+  modal.value = 'project-room-seats'
+}
+
+function openProjectRoom(projectId) {
+  const project = projectRoomEntries.value.find(entry => entry.projectId === projectId)
+  if (project) selectProjectRoom(project.projectId)
+}
+
 function openProjectOverlay(payload) {
   projectOverlay.value = payload
   modal.value = 'project-room-overlay'
@@ -511,6 +559,44 @@ const projectRoomStatusController = {
   residuals: projectRoomView.residuals,
   retryProjectError: projectRoomView.retryProjectError,
   statusErrorKey: projectRoomView.statusErrorKey,
+  t,
+}
+
+const projectRoomAgentOptions = computed(() => (
+  (snapshot.value.agents || []).map(agent => ({
+    ...agent,
+    label: agentLabel(agent.kind) || agent.kind,
+  }))
+))
+
+const projectRoomCreateController = {
+  agentOptions: projectRoomAgentOptions,
+  api: desktopApi()?.projectRoom || null,
+  close: (...args) => closeModal(...args),
+  onCreated: async (projectId) => {
+    closeModal()
+    try {
+      snapshot.value = normalizeSnapshot(await workspace.value?.get?.())
+    } catch { /* the workspace change event will refresh it */ }
+    const mainGroup = snapshot.value.groups.find(group => (
+      group.projectId === projectId && group.projectRole === 'main'
+    ))
+    if (mainGroup) selectGroup(mainGroup.id)
+  },
+  onOpenExisting: (projectId) => {
+    closeModal()
+    openProjectRoom(projectId)
+  },
+  t,
+}
+
+const projectRoomSeatSettingsController = {
+  agentOptions: projectRoomAgentOptions,
+  api: desktopApi()?.projectRoom || null,
+  close: (...args) => closeModal(...args),
+  projectId: computed(() => activeGroup.value?.projectId || ''),
+  projectSnapshot: projectRoomView.project,
+  refreshProject: projectRoomView.refresh,
   t,
 }
 
@@ -955,6 +1041,7 @@ const {
     emptyShowcaseIndex,
     groupName,
     handleMessageScroll,
+    openSeatSettings: openProjectSeatSettings,
     maxRounds,
     messageScroller,
     productWordmark,
@@ -1039,12 +1126,15 @@ const modalTitle = computed(() => ({
   'unlimited-confirm': t('composer.unlimitedConfirmTitle'),
   'agent-detail': selectedAgentDetail.value?.label || t('systemSettings.openAgentDetailDefault'),
   'project-room-overlay': t(`projectRoom.overlay.title.${projectOverlay.value?.kind || 'reject'}`),
+  'project-room-create': t('projectRoom.setup.title'),
+  'project-room-seats': t('projectRoom.seats.title'),
 })[modal.value] || '')
 const modalSubtitle = computed(() => ({
   settings: groupName(activeGroup.value),
   'custom-agent': t('customAgent.subtitle'),
   'agent-detail': agentDetailSkillSummary.value,
   'project-room-overlay': projectOverlay.value?.projectName || projectRoomView.projectName.value,
+  'project-room-seats': projectRoomView.projectName.value,
 })[modal.value] || '')
 
 const {
@@ -1080,6 +1170,7 @@ const {
     isProjectRoomSelected,
     modal,
     openAgentManager,
+    openSeatSettings: openProjectSeatSettings,
     openSystemSettings,
     pendingDecisionCount,
     pendingDecisionItems,
@@ -1087,7 +1178,10 @@ const {
     pendingDecisionsExpanded,
     productMark,
     projectRoomEntries,
+    projectRoomPreviewEnabled,
     projectRoomStatusLabel,
+    openProjectCreate,
+    setProjectRoomPreview,
     refreshing,
     saving,
     selectGroup,

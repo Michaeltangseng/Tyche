@@ -74,6 +74,8 @@
 
       <GeneralSettingsPanel
         v-else-if="systemSettingsSection === 'general'"
+        :project-room-preview-enabled="projectRoomPreviewEnabled"
+        :set-project-room-preview="setProjectRoomPreview"
         :set-theme-preference="setThemePreference"
         :theme-preference="themePreference"
       />
@@ -125,6 +127,7 @@ const {
   openAgentDetail,
   openDirect,
   plannedKnowledgeBaseEntries,
+  projectRoomPreviewEnabled,
   readyCount,
   readyKnowledgeBaseCount,
   refreshAgents,
@@ -132,6 +135,7 @@ const {
   requestInstall,
   runKnowledgeBasePrimaryAction,
   selectSystemSettingsSection,
+  setProjectRoomPreview,
   setThemePreference,
   systemSettingsSection,
   t,

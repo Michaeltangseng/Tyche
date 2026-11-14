@@ -182,6 +182,23 @@
   position: relative;
 }
 
+.conversation-avatar.avatar-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.conversation-avatar.avatar-button:hover img,
+.conversation-avatar.avatar-button:focus-visible img {
+  filter: drop-shadow(0 1px 2px rgb(24 31 38 / 0.32));
+}
+
+.conversation-avatar.avatar-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .conversation-avatar.stack img {
   position: absolute;
   width: 26px;

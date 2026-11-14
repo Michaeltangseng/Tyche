@@ -75,11 +75,23 @@
         </div>
       </section>
 
-      <section v-if="projectRoomEntries.length" class="nav-section project-room-nav-section">
+      <section
+        v-if="projectRoomPreviewEnabled || projectRoomEntries.length"
+        class="nav-section project-room-nav-section"
+      >
         <div class="nav-heading project-room-heading" role="heading" aria-level="2">
           <span>{{ t('projectRoom.sidebar.title') }}</span>
           <small class="nav-heading-count">{{ projectRoomEntries.length }}</small>
         </div>
+        <button
+          v-if="projectRoomPreviewEnabled"
+          class="project-room-create"
+          type="button"
+          @click="openProjectCreate"
+        >
+          <AddOutline />
+          <span>{{ t('projectRoom.sidebar.create') }}</span>
+        </button>
         <div class="project-room-list">
           <div v-for="project in projectRoomEntries" :key="project.projectId" class="project-room-entry">
             <div class="project-room-row" :class="{ active: isProjectRoomSelected(project.projectId) }">
@@ -598,6 +610,7 @@ const {
   isSidebarAgentExpanded,
   openConversationRename,
   openNewGroup,
+  openProjectCreate,
   openSidebarConversationDelete,
   pendingDecisionCount,
   pendingDecisionItems,
@@ -605,6 +618,7 @@ const {
   pendingDecisionsExpanded,
   productMark,
   projectRoomEntries,
+  projectRoomPreviewEnabled,
   projectRoomStatusLabel,
   remainingDirectGroupsCount,
   remainingGroupGroupsCount,
