@@ -117,6 +117,7 @@ process.on('unhandledRejection', reason => recordMainProcessFault('unhandledReje
 process.on('uncaughtException', error => recordMainProcessFault('uncaughtException', error))
 let workspace = null
 let workspaceStartupError = ''
+let managedProcessResiduals = []
 let workspaceChangedListener = null
 let workspaceRunFinishedListener = null
 let workspaceRunEventListener = null
@@ -1122,7 +1123,24 @@ if (!hasSingleInstanceLock) {
       }
     })
     try {
-      initializeWorkspace()
+      const startupWorkspace = initializeWorkspace()
+      // Recover managed-process containers before IPC is registered and any
+      // writable Agent invocation can start (A14, M3 3.7).
+      try {
+        const recovery = await startupWorkspace.processRegistry.recover()
+        managedProcessResiduals = recovery.filter(result => result.outcome === 'residual')
+        if (managedProcessResiduals.length) {
+          console.warn('[meldwork] managed process residuals require review', managedProcessResiduals.map(result => ({
+            recordId: result.recordId,
+            workdir: result.residual.workdir,
+            pgid: result.residual.pgid,
+            members: result.residual.members.length,
+          })))
+        }
+      } catch (recoveryError) {
+        console.warn('[meldwork] managed process recovery failed',
+          recoveryError?.message || recoveryError)
+      }
     } catch (error) {
       if (error?.message !== 'RUN_LEDGER_LOAD_FAILED') throw error
       workspaceStartupError = 'RUN_LEDGER_LOAD_FAILED'
