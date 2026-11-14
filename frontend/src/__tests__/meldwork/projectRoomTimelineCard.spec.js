@@ -62,12 +62,14 @@ describe('project timeline cards', () => {
     expect(stopDelivery).toHaveBeenCalledWith('cp-1')
   })
 
-  it('labels a running checkpoint', () => {
+  it('labels a running checkpoint and translates who it waits for', () => {
     const wrapper = mountCard({
       kind: 'running', name: 'Requirements', checkpointId: 'cp-1',
-      state: 'leading', waitingOn: 'lead', generation: 1,
+      state: 'leading', waitingOn: 'reviewers', generation: 1,
     })
     expect(wrapper.text()).toContain('Requirements')
     expect(wrapper.text()).toContain('projectRoom.state.leading')
+    expect(wrapper.text()).toContain('projectRoom.state.reviewing')
+    expect(wrapper.text()).not.toContain('reviewers')
   })
 })

@@ -3,7 +3,6 @@
     <div v-if="errorBar" class="status-error" role="alert">
       <span class="status-error-text">
         {{ errorLabel }}
-        <small v-if="errorBar.error">{{ errorBar.error }}</small>
         <small v-if="errorScopeLabel">· {{ errorScopeLabel }}</small>
       </span>
       <button v-if="errorBar.retryable" class="status-action" type="button" :disabled="busy" @click="retry">
@@ -174,7 +173,13 @@ const hasContent = computed(() => Boolean(
 ))
 const statusErrorLabel = computed(() => (statusErrorKey.value ? t(statusErrorKey.value) : ''))
 const diagnosticsText = computed(() => diagnostics.value ? JSON.stringify(diagnostics.value, null, 2) : '')
-const errorLabel = computed(() => t('projectRoom.status.error.generic'))
+const errorLabel = computed(() => {
+  const code = String(errorBar.value?.error || '')
+  if (!code) return t('projectRoom.status.error.generic')
+  const key = `errors.${code}`
+  const translated = t(key)
+  return translated === key ? t('projectRoom.status.error.generic') : translated
+})
 const errorScopeLabel = computed(() => {
   if (!errorBar.value) return ''
   if (errorBar.value.checkpointId) {

@@ -50,7 +50,7 @@
     <template v-else-if="card.kind === 'running'">
       <p class="project-timeline-running">
         <span>{{ runningLabel }}</span>
-        <small v-if="card.waitingOn"> · {{ card.waitingOn }}</small>
+        <small v-if="waitingOnLabel"> · {{ waitingOnLabel }}</small>
       </p>
     </template>
   </div>
@@ -74,6 +74,18 @@ const outcomeLabel = computed(() => (
   props.card.outcome ? props.t(`projectRoom.gate.outcome.${props.card.outcome}`) : ''
 ))
 
+const WAITING_ON_KEYS = {
+  human: 'projectRoom.state.gate',
+  retry: 'projectRoom.state.paused',
+  lead: 'projectRoom.state.leading',
+  reviewers: 'projectRoom.state.reviewing',
+  drafts: 'projectRoom.state.drafting',
+  upstream: 'projectRoom.state.pending',
+  'drift-check': 'projectRoom.state.checking',
+  candidate: 'projectRoom.state.submitted',
+  accepting: 'projectRoom.state.accepting',
+}
+
 const runningLabel = computed(() => {
   const key = {
     checking: 'projectRoom.state.checking',
@@ -84,5 +96,10 @@ const runningLabel = computed(() => {
     accepting: 'projectRoom.state.accepting',
   }[props.card.state] || 'projectRoom.state.unknown'
   return `${props.card.name} · ${props.t(key)}`
+})
+
+const waitingOnLabel = computed(() => {
+  const key = WAITING_ON_KEYS[props.card.waitingOn]
+  return key ? props.t(key) : ''
 })
 </script>

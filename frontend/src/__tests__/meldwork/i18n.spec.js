@@ -13,6 +13,56 @@ describe('Meldwork i18n', () => {
     expect(messageKeys('en')).toEqual(messageKeys('zh'))
   })
 
+  it('has text for every stable desktop error code in both languages', () => {
+    for (const language of ['en', 'zh']) {
+      const keys = new Set(messageKeys(language))
+      for (const [code, key] of Object.entries(DESKTOP_ERROR_MESSAGE_KEYS)) {
+        expect(keys.has(key), `${language} missing ${code} -> ${key}`).toBe(true)
+      }
+    }
+  })
+
+  it('localizes the project room status wording and gate reasons', () => {
+    const required = [
+      'projectRoom.state.pending',
+      'projectRoom.state.checking',
+      'projectRoom.state.drafting',
+      'projectRoom.state.leading',
+      'projectRoom.state.submitted',
+      'projectRoom.state.reviewing',
+      'projectRoom.state.gate',
+      'projectRoom.state.accepting',
+      'projectRoom.state.accepted',
+      'projectRoom.state.stale',
+      'projectRoom.state.paused',
+      'projectRoom.state.waitingLease',
+      'projectRoom.state.waitingResidual',
+      'projectRoom.state.releasing',
+      'projectRoom.state.detecting',
+      'projectRoom.gate.reason.hard-gate-passed',
+      'projectRoom.gate.reason.needs-human',
+      'projectRoom.gate.reason.question',
+      'projectRoom.gate.reason.draft-question',
+      'projectRoom.gate.reason.artifact-unchanged',
+      'projectRoom.gate.reason.round-limit',
+      'projectRoom.gate.reason.continuation-limit',
+      'projectRoom.gate.reason.marker-missing',
+      'projectRoom.gate.reason.manifest-invalid',
+      'projectRoom.gate.reason.failure',
+      'projectRoom.gate.reason.recovery',
+      'projectRoom.gate.reason.drift',
+      'projectRoom.gate.reason.doc-new-version',
+      'projectRoom.gate.reason.review-failed',
+      'projectRoom.gate.reason.rebuttal-rejected',
+    ]
+    for (const language of ['en', 'zh']) {
+      const keys = new Set(messageKeys(language))
+      for (const key of required) {
+        expect(keys.has(key), `${language} missing ${key}`).toBe(true)
+      }
+    }
+  })
+
   it('interpolates values in both languages', () => {
     setLocale('en')
     expect(t('home.readyCount', { ready: 3, installed: 5 })).toBe('3 ready, 5 installed')

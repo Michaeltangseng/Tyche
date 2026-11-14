@@ -1,6 +1,6 @@
 import { flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { setLocale } from '../../i18n.js'
+import { setLocale, t } from '../../i18n.js'
 import { mountApp } from './app-test-harness.js'
 
 function group(id, name, overrides = {}) {
@@ -536,7 +536,8 @@ describe('project room sidebar', () => {
     expect(wrapper.get('.project-room-status').text()).toContain('docs/requirements.md')
     expect(wrapper.get('.project-room-status').text()).toContain('src/app.js')
     expect(wrapper.get('.project-room-status').text()).toContain('node')
-    expect(wrapper.get('.project-room-status').text()).toContain('PROJECT_STORAGE_FAULT')
+    expect(wrapper.get('.project-room-status').text()).toContain(t('errors.PROJECT_STORAGE_FAULT'))
+    expect(wrapper.get('.project-room-status').text()).not.toContain('PROJECT_STORAGE_FAULT')
 
     await wrapper.get('.status-row input[type="checkbox"]').setValue(true)
     await wrapper.findAll('.status-actions .status-action')[1].trigger('click')

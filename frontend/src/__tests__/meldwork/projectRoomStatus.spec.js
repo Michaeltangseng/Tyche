@@ -58,11 +58,16 @@ function controller(overrides = {}) {
 
 describe('project room status', () => {
   it('shows the error bar and its retry, diagnostics, and compact actions', async () => {
-    const fixture = controller()
+    const fixture = controller({
+      t: (key, params = {}) => {
+        if (key === 'errors.PROJECT_STORAGE_FAULT') return 'projectRoom.status.error.storageFault'
+        return params.count == null ? key : `${key}:${params.count}`
+      },
+    })
     const wrapper = mount(ProjectRoomStatus, { props: { controller: fixture } })
 
-    expect(wrapper.get('.status-error').text()).toContain('projectRoom.status.error.generic')
-    expect(wrapper.get('.status-error').text()).toContain('PROJECT_STORAGE_FAULT')
+    expect(wrapper.get('.status-error').text()).toContain('projectRoom.status.error.storageFault')
+    expect(wrapper.get('.status-error').text()).not.toContain('PROJECT_STORAGE_FAULT')
     expect(wrapper.get('.status-error').text()).toContain('projectRoom.status.projectScope')
     await wrapper.findAll('.status-error .status-action')[0].trigger('click')
     expect(fixture.retryProjectError).toHaveBeenCalledTimes(1)
