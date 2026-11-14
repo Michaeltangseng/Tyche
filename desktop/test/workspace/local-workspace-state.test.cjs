@@ -297,6 +297,35 @@ test('invalid project records are dropped and reported', (t) => {
   )))
 })
 
+test('workspace snapshot hides project rooms while the preview flag is off', () => {
+  const state = { groups: [], messages: [] }
+  const base = {
+    detectedAgents: [], state, preparingRuns: new Map(), activeRuns: new Map(),
+    runLedger: { list: () => [] },
+  }
+  const hidden = workspaceSnapshot({
+    ...base,
+    projectRoom: {
+      isPreviewEnabled: () => false,
+      list: () => { throw new Error('must not be called') },
+      pendingDecisions: () => { throw new Error('must not be called') },
+    },
+  })
+  assert.equal('projectRooms' in hidden, false)
+  assert.equal('pendingDecisions' in hidden, false)
+
+  const visible = workspaceSnapshot({
+    ...base,
+    projectRoom: {
+      isPreviewEnabled: () => true,
+      list: () => [{ projectId: 'project-1' }],
+      pendingDecisions: () => ({ items: [], total: 0 }),
+    },
+  })
+  assert.deepEqual(visible.projectRooms, [{ projectId: 'project-1' }])
+  assert.deepEqual(visible.pendingDecisions, { items: [], total: 0 })
+})
+
 test('a real v3 workspace fixture upgrades without losing groups, messages, or sessions', (t) => {
   const storagePath = fixture(t)
   const fixturePath = path.join(__dirname, '..', 'fixtures', 'meldwork-workspace-v3.json')

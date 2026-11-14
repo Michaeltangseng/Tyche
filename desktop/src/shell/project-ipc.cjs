@@ -10,6 +10,7 @@ const ID = /^[A-Za-z0-9._:-]{1,120}$/
 const AGENT_KIND = /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/
 const COMMIT = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/
 const CAPABILITIES = ['read', 'read-exec', 'write-drafts', 'write-workdir']
+const ALWAYS_ALLOWED = new Set(['snapshot', 'getPreferences', 'setPreferences'])
 
 const id = z.string().min(1).max(120).regex(ID)
 const text = limit => z.string().max(limit)
@@ -53,6 +54,8 @@ const playbookOverrides = z.strictObject({
 
 const schemas = {
   chooseWorkdir: emptyInput,
+  getPreferences: emptyInput,
+  setPreferences: z.strictObject({ projectRoomPreview: z.boolean() }),
   create: z.strictObject({
     token: z.string().min(1).max(200),
     name: text(80),
@@ -205,6 +208,9 @@ function registerProjectIpc({
   registerTrustedHandle,
   getProjectService,
   getDeletion,
+  getPreferences = () => ({ projectRoomPreview: false }),
+  setPreferences = async () => ({ projectRoomPreview: false }),
+  onPreferencesChanged = () => {},
   dialog,
   getMainWindow,
   now = Date.now,
@@ -224,6 +230,9 @@ function registerProjectIpc({
     handlers[method] = handler
     registerTrustedHandle(`project:${method}`, (input) => {
       const parsed = request(schemas[method], input)
+      if (!ALWAYS_ALLOWED.has(method) && getPreferences()?.projectRoomPreview !== true) {
+        throw ipcError('PROJECT_ROOM_DISABLED')
+      }
       if (parsed?.projectId && !allowedDuringDeletion(method)
           && deletion()?.isDeleting(parsed.projectId)) {
         throw ipcError('PROJECT_DELETING')
@@ -234,6 +243,14 @@ function registerProjectIpc({
   const placeholder = (method) => {
     register(method, () => { throw ipcError('PROJECT_ENGINE_UNAVAILABLE') })
   }
+
+  register('getPreferences', () => getPreferences())
+
+  register('setPreferences', async (input) => {
+    const value = await setPreferences(input)
+    onPreferencesChanged(value)
+    return value
+  })
 
   register('chooseWorkdir', async () => {
     const result = await dialog.showOpenDialog(getMainWindow(), {

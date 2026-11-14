@@ -566,6 +566,8 @@ function workspaceSnapshot({
   const deliveryMessages = new Map((state.deliveryTasks || []).flatMap(task => (
     task.attempts.map(attempt => [attempt.messageId, { task, attempt }])
   )))
+  const projectRoomVisible = projectRoom
+    && (typeof projectRoom.isPreviewEnabled !== 'function' || projectRoom.isPreviewEnabled())
   return {
     agents: detectedAgents.map(({ executable, ...agent }) => agent),
     groups: state.groups,
@@ -594,7 +596,7 @@ function workspaceSnapshot({
     humanGates: publicGates,
     runs: publicRuns,
     runOutcomes: [...latestOutcomes.values()],
-    ...(projectRoom ? {
+    ...(projectRoomVisible ? {
       projectRooms: projectRoom.list(),
       pendingDecisions: projectRoom.pendingDecisions(),
     } : {}),

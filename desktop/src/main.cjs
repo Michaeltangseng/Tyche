@@ -70,6 +70,7 @@ const { LocalWorkspace } = require('./workspace/local-workspace.cjs')
 const { ProjectService } = require('./project-room/project-service.cjs')
 const { TemplatesStore } = require('./project-room/templates-store.cjs')
 const { ProjectDeletion } = require('./project-room/project-deletion.cjs')
+const { AppPreferencesStore } = require('./project-room/app-preferences.cjs')
 const { registerProjectIpc } = require('./shell/project-ipc.cjs')
 const { ProcessRegistry } = require('./agents/process/process-registry.cjs')
 const { processRunScheduler } = require('./runs/run-scheduler.cjs')
@@ -124,6 +125,7 @@ process.on('uncaughtException', error => recordMainProcessFault('uncaughtExcepti
 let workspace = null
 let projectService = null
 let projectDeletion = null
+let appPreferences = null
 let workspaceStartupError = ''
 let workspaceChangedListener = null
 let workspaceRunFinishedListener = null
@@ -1046,6 +1048,9 @@ function registerIpc() {
     registerTrustedHandle,
     getProjectService: () => projectService,
     getDeletion: () => projectDeletion,
+    getPreferences: () => appPreferences?.get() || { projectRoomPreview: false },
+    setPreferences: input => appPreferences?.set(input) || Promise.resolve({ projectRoomPreview: false }),
+    onPreferencesChanged: () => workspace?.emitChanged(),
     dialog,
     getMainWindow: () => mainWindow,
   })
@@ -1164,11 +1169,16 @@ if (!hasSingleInstanceLock) {
       const templatesStore = new TemplatesStore({
         storagePath: path.join(privateRoot, 'templates.json'),
       })
+      appPreferences = new AppPreferencesStore({
+        storagePath: path.join(privateRoot, 'app-preferences.json'),
+      })
+      await appPreferences.load()
       projectService = new ProjectService({
         workspace: startupWorkspace,
         privateRoot,
         scheduler,
         templatesStore,
+        isPreviewEnabled: () => appPreferences?.isProjectRoomEnabled() === true,
       })
       projectDeletion = new ProjectDeletion({
         workspace: startupWorkspace,

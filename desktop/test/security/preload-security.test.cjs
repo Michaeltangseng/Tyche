@@ -95,11 +95,12 @@ test('local preload exposes the local-only Meldwork API', async () => {
     Object.keys(api.projectRoom).sort(),
     [
       'addSeat', 'cancelDriftResolution', 'chooseWorkdir', 'compact', 'create',
-      'decideGate', 'delete', 'diagnostics', 'interject', 'onChanged', 'previewReject',
-      'previewReopen', 'removeSeat', 'rename', 'reopen', 'residual', 'resolveDrift',
-      'resolveOutOfScope', 'retryDeletion', 'retryEffect', 'rollbackProfile',
-      'saveAsTemplate', 'snapshot', 'start', 'stopAndDeliver', 'timelineHistory',
-      'unlockDirectory', 'updatePlaybook', 'updateProfile', 'updateSeat',
+      'decideGate', 'delete', 'diagnostics', 'getPreferences', 'interject', 'onChanged',
+      'previewReject', 'previewReopen', 'removeSeat', 'rename', 'reopen', 'residual',
+      'resolveDrift', 'resolveOutOfScope', 'retryDeletion', 'retryEffect',
+      'rollbackProfile', 'saveAsTemplate', 'setPreferences', 'snapshot', 'start',
+      'stopAndDeliver', 'timelineHistory', 'unlockDirectory', 'updatePlaybook',
+      'updateProfile', 'updateSeat',
     ].sort(),
   )
   const cancelProjectChanged = api.projectRoom.onChanged(() => {})

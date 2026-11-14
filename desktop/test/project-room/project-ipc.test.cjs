@@ -21,6 +21,8 @@ function seat(overrides = {}) {
 function validInputs() {
   return {
     chooseWorkdir: undefined,
+    getPreferences: undefined,
+    setPreferences: { projectRoomPreview: true },
     create: { token: 'token-1', name: 'Project' },
     rename: { projectId: 'project-1', name: 'Name' },
     delete: { projectId: 'project-1', keepChats: false },
@@ -157,10 +159,18 @@ async function setup(t, options = {}) {
       return { canceled: this.canceled, filePaths: this.filePaths }
     },
   }
+  const preferences = { version: 1, projectRoomPreview: true }
+  let preferencesChanged = 0
   const ipc = registerProjectIpc({
     registerTrustedHandle: (channel, handler) => handlers.set(channel, handler),
     getProjectService: () => service,
     getDeletion: () => deletion,
+    getPreferences: () => ({ ...preferences }),
+    setPreferences: async (input) => {
+      Object.assign(preferences, input)
+      return { ...preferences }
+    },
+    onPreferencesChanged: () => { preferencesChanged += 1 },
     dialog,
     getMainWindow: () => ({}),
     now: () => clock,
@@ -168,7 +178,8 @@ async function setup(t, options = {}) {
   })
   const invoke = async (method, input) => handlers.get(`project:${method}`)(input)
   return {
-    directory, service, deletion, dialog, ipc, invoke,
+    directory, service, deletion, dialog, ipc, invoke, preferences,
+    preferencesChanged: () => preferencesChanged,
     advance: ms => { clock += ms },
   }
 }
@@ -310,6 +321,27 @@ test('snapshot reports deletion progress and diagnostics stays narrow', async (t
     storageFault: null,
     deletion: { projectId: 'project-1', phase: 'draining' },
   })
+})
+
+test('the preview flag gates project methods except snapshot and preferences', async (t) => {
+  const { invoke, preferences, preferencesChanged } = await setup(t)
+  preferences.projectRoomPreview = false
+
+  await assert.rejects(invoke('rename', { projectId: 'project-1', name: 'Name' }), {
+    code: 'PROJECT_ROOM_DISABLED',
+  })
+  await assert.rejects(invoke('create', { token: 'token-x', name: 'Project' }), {
+    code: 'PROJECT_ROOM_DISABLED',
+  })
+  assert.deepEqual(await invoke('snapshot', { projectId: 'project-1' }), {
+    projectId: 'project-1',
+  })
+  assert.equal((await invoke('getPreferences')).projectRoomPreview, false)
+
+  const enabled = await invoke('setPreferences', { projectRoomPreview: true })
+  assert.equal(enabled.projectRoomPreview, true)
+  assert.equal(preferencesChanged(), 1)
+  await invoke('rename', { projectId: 'project-1', name: 'Name' })
 })
 
 test('only the four deletion-safe methods work while a project is deleting', async (t) => {

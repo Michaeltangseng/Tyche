@@ -134,6 +134,7 @@ class ProjectService {
     createId = () => randomUUID(),
     writeFile = atomicWritePrivateFile,
     clock = Date.now,
+    isPreviewEnabled = () => true,
   } = {}) {
     if (!workspace) throw inputError('workspace-required')
     if (!privateRoot) throw inputError('private-root-required')
@@ -151,6 +152,9 @@ class ProjectService {
     this.createId = createId
     this.writeFile = writeFile
     this.clock = typeof clock === 'function' ? clock : Date.now
+    this.previewEnabledFn = typeof isPreviewEnabled === 'function'
+      ? isPreviewEnabled
+      : () => true
     this.projects = new Map()
     this.started = false
     this.pendingStores = new Map()
@@ -164,6 +168,10 @@ class ProjectService {
   onChanged(listener) {
     this.changeListeners.add(listener)
     return () => this.changeListeners.delete(listener)
+  }
+
+  isPreviewEnabled() {
+    return this.previewEnabledFn() === true
   }
 
   #queueChange(projectId, revision) {
