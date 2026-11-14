@@ -21,6 +21,7 @@ const { validateOpenClawRuntimeGuard } = require('./openclaw-runtime.cjs')
 
 const TERMINATE_GRACE_MS = 500
 const KILL_SETTLE_MS = 500
+const MANAGED_PROCESS = Symbol.for('meldwork.managed-process')
 const OPENCODE_READ_ONLY_PERMISSION = JSON.stringify({
   '*': 'deny',
   read: 'allow',
@@ -280,12 +281,82 @@ function childEnvironment(agent, workdir, options, platform) {
   return childEnv
 }
 
+function waitForManagedClose(child) {
+  if (child.closeEmitted === true) return Promise.resolve()
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
+      child.removeListener('close', finish)
+      child.removeListener('error', finish)
+      resolve()
+    }
+    child.once('close', finish)
+    child.once('error', finish)
+  })
+}
+
+// Single termination entry point for CLI and ACP adapters.
+// Managed children only speak the supervisor's fd 3 stop protocol; direct
+// process signals are reserved for unmanaged (read-only) children so a
+// `SIGKILL` cannot race past the supervisor's finalKill report.
+async function terminateAgentProcess(child, options = {}) {
+  if (!child) return
+  const force = options.force === true
+  const platform = options.platform || process.platform
+  const spawnFn = options.spawnFn
+  if (child[MANAGED_PROCESS]) {
+    if (child.closeEmitted !== true) {
+      try { child.stop({ force }) } catch { /* control channel already closed */ }
+      await waitForManagedClose(child)
+    }
+    return
+  }
+  if (child.exitCode != null || child.signalCode != null) return
+  if (platform === 'win32') return terminateWindowsProcessTree(child, spawnFn)
+  await new Promise((resolve) => {
+    let settled = false
+    let forceKillTimeout
+    let forceSettleTimeout
+    const finish = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(forceKillTimeout)
+      clearTimeout(forceSettleTimeout)
+      child.removeListener('close', finish)
+      child.removeListener('error', finish)
+      resolve()
+    }
+    child.once('close', finish)
+    child.once('error', finish)
+    const signalTree = (signal) => {
+      if (child.pid) {
+        try {
+          process.kill(-child.pid, signal)
+          return
+        } catch { /* fall back to the direct child */ }
+      }
+      try {
+        child.kill(signal)
+      } catch { /* the process has already exited */ }
+    }
+    signalTree(force ? 'SIGKILL' : 'SIGTERM')
+    if (!force) {
+      forceKillTimeout = setTimeout(() => signalTree('SIGKILL'), TERMINATE_GRACE_MS)
+    }
+    forceSettleTimeout = setTimeout(finish, (force ? 0 : TERMINATE_GRACE_MS) + KILL_SETTLE_MS)
+  })
+}
+
 module.exports = {
   KILL_SETTLE_MS,
+  MANAGED_PROCESS,
   TERMINATE_GRACE_MS,
   agentExecutionError,
   childEnvironment,
   failedAgentProcessError,
   invalidSessionFailure,
+  terminateAgentProcess,
   terminateWindowsProcessTree,
 }

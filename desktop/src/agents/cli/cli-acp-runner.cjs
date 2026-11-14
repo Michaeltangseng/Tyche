@@ -18,12 +18,11 @@ const {
 } = require('./cli-runtime-events.cjs')
 const { connectorLimitedRuntimeEvent } = require('./cli-event-profiles.cjs')
 const {
-  KILL_SETTLE_MS,
   TERMINATE_GRACE_MS,
   agentExecutionError,
   childEnvironment,
   failedAgentProcessError,
-  terminateWindowsProcessTree,
+  terminateAgentProcess,
 } = require('./cli-process-support.cjs')
 const { createAcpOutboundPayload } = require('../../collaboration/outbound-payload.cjs')
 const { redactSecrets } = require('../../security/secret-redaction.cjs')
@@ -477,38 +476,7 @@ function destroyChildPipes(child) {
 }
 
 async function terminateChild(child, platform, spawnFn) {
-  if (child.exitCode != null || child.signalCode != null) return
-  if (platform === 'win32') return terminateWindowsProcessTree(child, spawnFn)
-  await new Promise((resolve) => {
-    let settled = false
-    let forceKillTimeout
-    let forceSettleTimeout
-    const finish = () => {
-      if (settled) return
-      settled = true
-      clearTimeout(forceKillTimeout)
-      clearTimeout(forceSettleTimeout)
-      child.removeListener('close', finish)
-      child.removeListener('error', finish)
-      resolve()
-    }
-    child.once('close', finish)
-    child.once('error', finish)
-    const signalTree = (signal) => {
-      if (child.pid) {
-        try {
-          process.kill(-child.pid, signal)
-          return
-        } catch { /* fall back to the direct child */ }
-      }
-      try {
-        child.kill(signal)
-      } catch { /* the process has already exited */ }
-    }
-    signalTree('SIGTERM')
-    forceKillTimeout = setTimeout(() => signalTree('SIGKILL'), TERMINATE_GRACE_MS)
-    forceSettleTimeout = setTimeout(finish, TERMINATE_GRACE_MS + KILL_SETTLE_MS)
-  })
+  return terminateAgentProcess(child, { force: false, platform, spawnFn })
 }
 
 async function settleWithin(promise, timeoutMs) {

@@ -326,6 +326,14 @@ async function runAgent(agent, prompt, workdir, options = {}) {
       callback()
     }
     const signalProcessTree = (signal) => {
+      if (child[Symbol.for('meldwork.managed-process')]) {
+        // Managed children must stop through the supervisor's fd 3 protocol;
+        // signalling the supervisor directly would skip its finalKill report.
+        try {
+          child.stop({ force: signal === 'SIGKILL' })
+        } catch { /* the control channel has already closed */ }
+        return
+      }
       if (platform !== 'win32' && child.pid) {
         try {
           process.kill(-child.pid, signal)
