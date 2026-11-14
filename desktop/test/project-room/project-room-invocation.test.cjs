@@ -17,7 +17,7 @@ async function setup(t, options = {}) {
     workdir: directory,
     allowWrite: options.allowWrite === true,
     projectId: 'project-1',
-    projectRole: 'main',
+    ...(options.mainChat === false ? {} : { projectRole: 'main' }),
   })
   const task = workspace.addMessage(group.id, 'user', 'Task')
   const contextPack = workspace.createContextPack({
@@ -133,6 +133,38 @@ test('project-room read-exec is passed to the adapter without workspace write', 
   await workspace.finishRun(group.id, controller, 'completed')
   assert.equal(calls[0].runOptions.sandbox, 'read-exec')
   assert.equal(calls[0].runOptions.hardLimitMs, null)
+})
+
+test('project chats prepend the project context and record chat reads', async (t) => {
+  const calls = []
+  const recorded = []
+  const { workspace, group, task, contextPack, controller } = await setup(t, {
+    mainChat: false,
+    runAgent: async (agent, prompt, workdir, runOptions) => {
+      calls.push({ prompt })
+      return { text: 'Answer', sessionRef: 'session-1', outcome: 'completed' }
+    },
+  })
+  workspace.setProjectRoom({
+    list: () => [],
+    pendingDecisions: () => ({ items: [], total: 0 }),
+    isPreviewEnabled: () => true,
+    projectChatContext: groupId => (groupId === group.id
+      ? { text: 'PROJECT CONTEXT', versions: { 'cp-1': 'av-1' } }
+      : null),
+    recordChatReads: async (projectId, groupId, versions) => {
+      recorded.push({ projectId, groupId, versions })
+    },
+  })
+  await workspace.invokeAgent(
+    group, 'codex', 'manual', controller.signal, task.id,
+    { taskId: task.id, contextPackId: contextPack.contextPackId },
+  )
+  await workspace.finishRun(group.id, controller, 'completed')
+  assert.equal(calls[0].prompt.startsWith('PROJECT CONTEXT\n\n'), true)
+  assert.deepEqual(recorded, [{
+    projectId: 'project-1', groupId: group.id, versions: { 'cp-1': 'av-1' },
+  }])
 })
 
 test('the project-room session key hash includes project, checkpoint, seat, and generation', () => {

@@ -214,6 +214,9 @@ class LocalWorkspaceAgentInvocation {
     this.recordAgentOutcomes = options.recordAgentOutcomes
     this.sessionKey = options.sessionKey
     this.sessionState = options.sessionState
+    this.getProjectRoom = typeof options.getProjectRoom === 'function'
+      ? options.getProjectRoom
+      : () => null
     this.openClawSessionRef = options.openClawSessionRef
     this.save = options.save
     this.packedPromptContext = options.packedPromptContext
@@ -936,26 +939,41 @@ class LocalWorkspaceAgentInvocation {
       const preferencesText = isolated || projectRoom
         ? ''
         : workPreferencesPrompt(this.state().workPreferences)
-      const buildPrompt = (afterKind, contextPackage) => [assembleInvocationPrompt({
-        group,
-        kind,
-        mode,
-        threadRootId,
-        context,
-        activeRun,
-        isolated,
-        frozen,
-        projectRoom,
-        v4Prompt: projectRoom ? projectRoomContext.promptOverride : v4Prompt,
-        promptMode,
-        afterKind,
-        packed: contextPackage,
-        session,
-        stagedInputs,
-        promptFor: (...args) => this.promptFor(...args),
-        agentLabel: label => this.agentLabel(label),
-      }), preferencesText].filter(Boolean).join('\n\n')
+      const projectChat = isolated || frozen
+        ? null
+        : (this.getProjectRoom()?.projectChatContext?.(group.id) || null)
+      let projectChatRecorded = false
+      const buildPrompt = (afterKind, contextPackage) => {
+        const base = [assembleInvocationPrompt({
+          group,
+          kind,
+          mode,
+          threadRootId,
+          context,
+          activeRun,
+          isolated,
+          frozen,
+          projectRoom,
+          v4Prompt: projectRoom ? projectRoomContext.promptOverride : v4Prompt,
+          promptMode,
+          afterKind,
+          packed: contextPackage,
+          session,
+          stagedInputs,
+          promptFor: (...args) => this.promptFor(...args),
+          agentLabel: label => this.agentLabel(label),
+        }), preferencesText].filter(Boolean).join('\n\n')
+        return projectChat?.text ? `${projectChat.text}\n\n${base}` : base
+      }
       let prompt = buildPrompt(transcriptAfterKind, packedContext)
+      if (projectChat && !projectChatRecorded) {
+        projectChatRecorded = true
+        try {
+          await this.getProjectRoom()?.recordChatReads?.(
+            group.projectId, group.id, projectChat.versions,
+          )
+        } catch { /* chat read tracking is best effort for the call */ }
+      }
       const recordOutboundPayload = (outbound = {}) => {
         watchdog.progress()
         recordOutboundUsage(activeRun?.budget, outbound)

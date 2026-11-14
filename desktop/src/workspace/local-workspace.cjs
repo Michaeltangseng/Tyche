@@ -301,6 +301,7 @@ class LocalWorkspace extends EventEmitter {
       recordAgentOutcomes: (...args) => this.recordAgentOutcomes(...args),
       sessionKey: (...args) => this.sessionKey(...args),
       sessionState: (...args) => this.sessionState(...args),
+      getProjectRoom: () => this.projectRoom,
       openClawSessionRef: (...args) => this.openClawSessionRef(...args),
       save: () => this.save(),
       packedPromptContext: (...args) => this.packedPromptContext(...args),

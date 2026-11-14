@@ -16,6 +16,7 @@ const { ProjectStore } = require('./project-store.cjs')
 const { PendingMessageStore, TimelineHistoryStore } = require('./project-timeline.cjs')
 const { CheckpointEngine } = require('./checkpoint-engine.cjs')
 const { validateSeatCapabilities } = require('./agent-capabilities.cjs')
+const { buildProjectChatContext } = require('./project-chat-context.cjs')
 const { createEffectHandlers } = require('./effect-handlers.cjs')
 const {
   pendingDecisions,
@@ -725,6 +726,30 @@ class ProjectService {
       return { next: state }
     })
     return { itemId, status: 'unresolved' }
+  }
+
+  projectChatContext(groupId) {
+    const group = (this.workspace.state.groups || []).find(item => item.id === groupId)
+    if (!group?.projectId || group.projectRole === 'main') return null
+    const context = this.projects.get(group.projectId)
+    if (!context?.store?.current()) return null
+    const state = context.store.current()
+    return buildProjectChatContext({
+      project: context.project,
+      state,
+      groupId,
+      language: state.config.settings.language,
+    })
+  }
+
+  async recordChatReads(projectId, groupId, versions) {
+    const context = this.#context(projectId)
+    if (!context.store?.current()) return null
+    await context.store.enqueue((state) => {
+      state.chatReads[groupId] = { ...(versions || {}) }
+      return { next: state }
+    })
+    return { groupId }
   }
 
   async retryEffect({ projectId, checkpointId, effectId }) {
