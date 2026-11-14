@@ -120,8 +120,18 @@ async function makeService(t, state, options = {}) {
     workdir: '/tmp/project',
     now: () => at,
   })
+  const inserted = options.inserted || []
   const service = new ProjectService({
-    workspace: { state: { projects: [] }, save() {}, emitChanged() {} },
+    workspace: {
+      state: {
+        projects: [],
+        groups: [{ id: 'main-group', projectId: 'project-1', projectRole: 'main' }],
+      },
+      inserted,
+      save() {},
+      emitChanged() {},
+      insertProjectRoomMessage(message) { this.inserted.push(message) },
+    },
     privateRoot: directory,
     scheduler,
     templatesStore: {
@@ -138,7 +148,7 @@ async function makeService(t, state, options = {}) {
     readOnly: false,
     readOnlyReason: '',
   })
-  return { service, store, engine, scheduler }
+  return { service, store, engine, scheduler, inserted }
 }
 
 function gatedState(reason, overrides = {}) {
@@ -245,14 +255,30 @@ test('decideGate reject validates the upstream and impact hash', async (t) => {
   assert.equal(store.current().instances[0].state, 'stale')
 })
 
+test('a gate opinion is stored as a project-room user message', async (t) => {
+  const { service, inserted } = await makeService(t, gatedState('needs-human'))
+  await service.decideGate({
+    projectId: 'project-1', gateId: 'gate-needs-human', gateRevision: 2,
+    outcome: 'continue', candidateCommit: commit, comment: 'Please fix the scope.',
+  })
+  assert.equal(inserted.length, 1)
+  assert.equal(inserted[0].content, 'Please fix the scope.')
+  assert.equal(inserted[0].role, 'user')
+  assert.equal(inserted[0].projectRoom.gateId, 'gate-needs-human')
+  assert.equal(inserted[0].projectRoom.outcome, 'continue')
+})
+
 test('start creates the first instance once and interject targets the active checkpoint', async (t) => {
   const state = emptyProjectState({ projectId: 'project-1' })
   state.config.playbook.checkpointDefs = [definition()]
-  const { service, store, engine } = await makeService(t, state)
+  const { service, store, engine, inserted } = await makeService(t, state)
   const started = await service.startProject({ projectId: 'project-1', brief: 'Build it.' })
   assert.equal(store.current().instances.length, 1)
   assert.equal(store.current().instances[0].state, 'checking')
   await engine.runUntilIdle()
+  assert.equal(inserted.length, 1)
+  assert.equal(inserted[0].content, 'Build it.')
+  assert.equal(inserted[0].projectRoom.start, true)
   await assert.rejects(service.startProject({ projectId: 'project-1', brief: 'Again' }), {
     code: 'PROJECT_ALREADY_STARTED',
   })

@@ -534,6 +534,62 @@ class ProjectService {
     }
   }
 
+  #mainGroupFor(projectId) {
+    return (this.workspace.state.groups || []).find(group => (
+      group.projectId === projectId && group.projectRole === 'main'
+    )) || null
+  }
+
+  #messageIdFor(sourceKey) {
+    return `msg-${createHash('sha256')
+      .update(JSON.stringify(sourceKey), 'utf8')
+      .digest('hex')}`
+  }
+
+  async #stageUserMessage(projectId, { sourceKey, body, checkpointId, generation, extra = {} }) {
+    const group = this.#mainGroupFor(projectId)
+    if (!group || !String(body || '').trim()) return null
+    const id = this.#messageIdFor(sourceKey)
+    return this.stageProjectMessage(projectId, {
+      sourceKey,
+      body,
+      metadata: {
+        id,
+        groupId: group.id,
+        role: 'user',
+        agentKind: '',
+        createdAt: this.#nowIso(),
+        projectRoom: {
+          projectId,
+          ...(checkpointId ? { checkpointId, generation } : {}),
+          ...extra,
+        },
+      },
+    })
+  }
+
+  async #queueProjectMessage(projectId, staged) {
+    if (!staged?.ref) return
+    const effectId = `message-${staged.ref}`
+    await this.#context(projectId).store.enqueue((state) => {
+      if (!state.projectEffects.some(effect => effect.id === effectId)) {
+        state.projectEffects.push({
+          id: effectId,
+          type: 'append-message',
+          category: 'required',
+          status: 'pending',
+          params: { ref: staged.ref },
+          result: null,
+          error: null,
+          startedAt: null,
+          finishedAt: null,
+        })
+      }
+      return { next: state }
+    })
+    await this.runProjectEffects(projectId)
+  }
+
   async startProject({ projectId, brief }) {
     const context = this.#context(projectId)
     this.#assertWritable(context)
@@ -541,11 +597,17 @@ class ProjectService {
     if (state.instances.length) throw projectError('PROJECT_ALREADY_STARTED')
     const def = state.config.playbook.checkpointDefs[0]
     if (!def) throw inputError('playbook-empty')
+    const staged = await this.#stageUserMessage(projectId, {
+      sourceKey: [projectId, 'start'],
+      body: brief,
+      extra: { start: true },
+    })
     const instance = this.#newInstance(def.key)
     await context.store.enqueue((next) => {
       next.instances.push(instance)
       return { next }
     })
+    await this.#queueProjectMessage(projectId, staged)
     if (typeof this.onStart === 'function') {
       await this.onStart({ context, brief: String(brief || ''), instance })
     }
@@ -640,6 +702,19 @@ class ProjectService {
         }
       }
     }
+    const staged = String(input.comment || '').trim()
+      ? await this.#stageUserMessage(projectId, {
+        sourceKey: [projectId, 'gate', input.gateId, input.gateRevision],
+        body: input.comment,
+        checkpointId: instance.id,
+        generation: instance.sessionGeneration,
+        extra: {
+          gateId: input.gateId,
+          revision: input.gateRevision,
+          outcome: input.outcome,
+        },
+      })
+      : null
     const result = await context.engine.dispatch(instance.id, {
       type: 'GATE_DECIDED',
       at: this.#nowIso(),
@@ -656,6 +731,7 @@ class ProjectService {
       },
     })
     if (result.ignored) throw projectError('PROJECT_GATE_STALE')
+    await this.#queueProjectMessage(projectId, staged)
     return { revision: context.store.current().revision }
   }
 
@@ -865,6 +941,33 @@ class ProjectService {
     return { checkId, snapshotCommit, failure }
   }
 
+  async #processProjectMessage(context, effect) {
+    const projectId = context.project.id
+    const store = this.pendingMessageStore(projectId)
+    const payload = store.read(effect.params?.ref)
+    if (payload) {
+      const metadata = payload.metadata || {}
+      this.workspace.insertProjectRoomMessage({
+        id: metadata.id,
+        groupId: metadata.groupId,
+        role: metadata.role,
+        agentKind: metadata.agentKind,
+        content: payload.body,
+        createdAt: metadata.createdAt,
+        projectRoom: metadata.projectRoom,
+      })
+      await store.consume(effect.params.ref)
+    }
+    await context.store.enqueue((state) => {
+      const target = state.projectEffects.find(item => item.id === effect.id)
+      if (target) {
+        target.status = 'consumed'
+        target.finishedAt = this.#nowIso()
+      }
+      return { next: state, control: true }
+    })
+  }
+
   async runProjectEffects(projectId) {
     const context = this.#context(projectId)
     for (let step = 0; step < 100; step += 1) {
@@ -872,6 +975,10 @@ class ProjectService {
       if (!state) return { processed: step }
       const effect = (state.projectEffects || []).find(item => item.status === 'pending')
       if (!effect) return { processed: step }
+      if (effect.type === 'append-message') {
+        await this.#processProjectMessage(context, effect)
+        continue
+      }
       if (effect.type !== 'detect-accepted-changes') break
       await this.#processDetection(context, effect)
     }
