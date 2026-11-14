@@ -90,6 +90,41 @@ const LOCAL_IPC_CHANNELS = Object.freeze([
   'local-knowledge-base:install',
   'local-knowledge-base:open-guide',
   'local-knowledge-base:pick-obsidian-vault',
+  'project:getPreferences',
+  'project:setPreferences',
+  'project:templates',
+  'project:capabilities',
+  'project:chooseWorkdir',
+  'project:create',
+  'project:rename',
+  'project:delete',
+  'project:retryDeletion',
+  'project:snapshot',
+  'project:updateSeat',
+  'project:addSeat',
+  'project:removeSeat',
+  'project:updateProfile',
+  'project:rollbackProfile',
+  'project:updatePlaybook',
+  'project:saveAsTemplate',
+  'project:compact',
+  'project:updatePreferences',
+  'project:timelineHistory',
+  'project:retryEffect',
+  'project:diagnostics',
+  'project:gateDetail',
+  'project:decideGate',
+  'project:start',
+  'project:interject',
+  'project:stopAndDeliver',
+  'project:previewReject',
+  'project:previewReopen',
+  'project:reopen',
+  'project:resolveDrift',
+  'project:cancelDriftResolution',
+  'project:resolveOutOfScope',
+  'project:residual',
+  'project:unlockDirectory',
 ])
 
 let nextRoutingId = 1
@@ -190,6 +225,7 @@ function loadMain(userData, options = {}) {
     }
 
     snapshot() { return this.state }
+    setProjectRoom(projectRoom) { this.projectRoom = projectRoom || null }
     clearRuntimeCredentialFailures() { this.clearRuntimeCredentialFailuresCount += 1 }
     markRuntimeCredential(kind, credentialState) {
       this.runtimeCredentialMarks.push({ kind, credentialState })
