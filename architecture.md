@@ -89,12 +89,12 @@ Automatic participant selection from a larger roster, production remote Agents, 
 
 ## Trust Boundaries
 
-1. The renderer is not trusted with Node.js, Agent executable paths, native Agent session IDs or storage paths, attachment paths, Skill paths/contents, raw CLI credentials, arbitrary filesystem reads, or arbitrary process execution. User-selected conversation workdirs and the user-selected Obsidian Vault path are intentional UI-visible paths; pasted image bytes use one exact import payload.
+1. The renderer is not trusted with Node.js, Agent executable paths, native Agent session IDs or storage paths, attachment paths, Skill paths/contents, raw CLI credentials, arbitrary filesystem reads, or arbitrary process execution. User-selected conversation workdirs and the user-selected Obsidian Vault path are intentional UI-visible paths; pasted image bytes use one exact import payload. A project room's working directory may be browsed through `workdir:*`: main resolves the project root and every relative path, enforces the `.git` boundary and size limits, and the renderer never submits an absolute path.
 2. Preload exposes only named IPC methods. Main validates that every request comes from the current main frame and exact bundled frontend file.
 3. Main owns local files, OS dialogs, attachment validation/storage, Skill and knowledge-source discovery/revalidation, Connector approval/registration, Agent discovery, child processes, Cloud observation, Channel authentication, installer downloads, and credential encryption.
 4. Agent CLIs are external processes. They receive a selected working directory, a constrained environment, permission flags, main-resolved image paths, target-scoped immutable Skill snapshots, and validated knowledge snapshots or read-only hints after capability checks.
 5. Agent Connector, Cloud Connector, Channel Connector, and installer destinations are external trust boundaries. Manifests and Connector instances fail closed unless explicitly approved; Channel signatures and Workspace scope are verified before Task delivery.
-6. Harness events expose only allowlisted status, conclusion deltas, reasoning summaries, plans, tool lifecycle summaries, bounded result metadata, and source message IDs. Raw chain-of-thought, commands, executable paths, native session references, credentials, unrestricted stdout/stderr, and arbitrary tool payloads remain outside the renderer and shared Agent context.
+6. Summary events expose only allowlisted status, conclusion deltas, reasoning summaries, plans, tool lifecycle summaries, bounded result metadata, and source message IDs. Full traces expose commands, tool inputs and outputs, working-directory paths, and thinking content, with secrets redacted; executable paths may appear only as read-only trace display. The renderer still cannot start processes or execute commands, and native session references and credentials remain outside the renderer and shared Agent context.
 
 ## Local Data
 
@@ -103,6 +103,7 @@ Automatic participant selection from a larger roster, production remote Agents, 
 | Meldwork conversations, messages, native session-reference mappings, Agent preferences/runtime evidence | Electron user data: `meldwork-workspace.json` | Local JSON written through main; group native references are keyed by Task and Agent, direct references by conversation and Agent, all remain main-only, and snapshots remove executable paths |
 | Bounded run checkpoints | Electron user data: `meldwork-run-ledger.json` | Atomic private writes; `0600` file, with new parent directories created as `0700`; at most 64 sanitized runs with bounded Agent output/events/source IDs; no raw commands, paths, credentials, or native session references |
 | Immutable Context Packs, delivery records, content blobs, typed outcomes, and Human Gates | Electron user data under `meldwork-private/` | Content-addressed or atomically written main-only records; renderer snapshots expose only bounded IDs, provenance summaries, budgets, and pending Gate choices |
+| Full run traces | Electron user data under `meldwork-private/traces/` | Append-only `0600` JSONL with `0700` directories; secret-redacted steps, paginated renderer reads, no retention cap; deleted with their group or project room |
 | Cloud operations and Channel Inbox | Electron user data under `meldwork-private/` | Private `0600` stores keep opaque remote references, idempotency state, signed-event-derived Task data, delivery cursors, Task mappings, and outbound audit records; raw signatures, headers, credentials, and complete IM history are not exposed to the renderer |
 | Imported attachments | Electron user data under `attachments/` | App-owned copy; `0700` directories, `0600` files, type/MIME/size validation, image-dimension checks where applicable, metadata checksum, ID-only renderer access |
 | Knowledge-source preference | Electron user data: `meldwork-knowledge-base.json` | Stores the selected absolute Obsidian Vault path only; written atomically as a private file |
@@ -140,6 +141,11 @@ There is no Meldwork-hosted remote data store or application account namespace. 
 - Read-only enforcement is owned by the Obsidian Connector for captured selections. Agent workspace and CLI-mediated remote access still depends partly on each upstream CLI honoring its permission flags; Meldwork adds per-CLI hardening where available (`desktop/src/agents/cli/cli-adapters.cjs`).
 - Native Agent authentication and model requests are external dependencies; Meldwork cannot guarantee their availability or data handling.
 - Agent/Cloud/Channel Connector contracts validate provenance, scope, and idempotency, but the external implementation must honor its CredentialRef, outbound destination, cancellation, and signature-verification obligations. The production build registers no Cloud or Channel Connector by default.
+- Full-trace redaction replaces known secret values and pattern-recognized credentials only. Other secrets read from files remain visible, and assignment-shaped code may be over-redacted (`desktop/src/security/secret-redaction.cjs`).
+- Traces have no retention or disk-size cap, so they can occupy significant local disk space.
+- A working-directory listing can show filenames from an external directory if the path is swapped during `readdir` and swapped back; file contents are always read through the verified descriptor.
+- Windows has no descriptor-path lookup, so working-directory reads retain a path-replacement race; managed-process cleanup is also not implemented there.
+- A single credential with no whitespace and longer than 64 KiB can be split at the streaming forced cut and missed.
 - macOS packaging uses ad-hoc signing for local validation, not a notarized public release (`desktop/scripts/after-pack.cjs`).
 
 ## Capability Absences
