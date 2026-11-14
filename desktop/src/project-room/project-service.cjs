@@ -14,7 +14,7 @@ const {
 } = require('./project-state-schema.cjs')
 const { ProjectStore } = require('./project-store.cjs')
 const { PendingMessageStore, TimelineHistoryStore } = require('./project-timeline.cjs')
-const { CheckpointEngine } = require('./checkpoint-engine.cjs')
+const { CheckpointEngine, detectionEffectId } = require('./checkpoint-engine.cjs')
 const { validateSeatCapabilities } = require('./agent-capabilities.cjs')
 const { buildProjectChatContext } = require('./project-chat-context.cjs')
 const { buildProjectRoomPrompt } = require('./project-room-prompt.cjs')
@@ -333,6 +333,14 @@ class ProjectService {
       }
       if (held) await this.scheduler.openRoot(project.workdir)
       this.#registerContext(project.id, context)
+      if (!context.readOnly) {
+        try {
+          await this.runProjectEffects(project.id)
+        } catch (error) {
+          context.readOnly = true
+          context.readOnlyReason = error?.code || 'project-effects-failed'
+        }
+      }
     }
     return this.list()
   }
@@ -1137,9 +1145,7 @@ class ProjectService {
     } else {
       failure = 'SHADOW_UNAVAILABLE'
     }
-    const detectionId = `detect-${createHash('sha256')
-      .update(JSON.stringify([context.project.id, 'detect', checkId]), 'utf8')
-      .digest('hex')}`
+    const detectionId = detectionEffectId(context.project.id, checkId)
     await context.store.enqueue((next) => {
       const current = next.chatWriteChecks?.[checkId]
       if (current) {
@@ -1205,6 +1211,11 @@ class ProjectService {
     for (let step = 0; step < 100; step += 1) {
       const state = context.store?.current()
       if (!state) return { processed: step }
+      if (state.projectBlockedOn) {
+        const blocked = (state.projectEffects || [])
+          .find(item => item.id === state.projectBlockedOn.effectId)
+        if (blocked?.status === 'failed') return { processed: step, paused: true }
+      }
       const effect = (state.projectEffects || []).find(item => item.status === 'pending')
       if (!effect) return { processed: step }
       if (effect.type === 'append-message') {
@@ -1212,7 +1223,13 @@ class ProjectService {
         continue
       }
       if (effect.type !== 'detect-accepted-changes') break
-      await this.#processDetection(context, effect)
+      const outcome = await this.#processDetection(context, effect)
+      if (outcome === 'requeued') {
+        const pending = context.store.current().projectEffects.find(item => item.id === effect.id)
+        if (pending?.status === 'pending' && !pending.params?.snapshotCommit) {
+          await this.#ensureMaintenanceDetection(context, pending)
+        }
+      }
       const latest = context.store.current().projectEffects.find(item => item.id === effect.id)
       if (latest?.status === 'failed') break
       if (latest?.status === 'pending' && !latest.params?.snapshotCommit) break
@@ -1299,14 +1316,28 @@ class ProjectService {
   #runMaintenanceDetection(context, effectId) {
     const running = this.maintenanceRuns.get(effectId)
     if (running) return running
+    let outcome = null
     const run = this.#runMaintenanceDetectionInner(context, effectId)
+      .then((result) => {
+        outcome = result
+        return result
+      })
       .finally(() => {
         if (this.maintenanceRuns.get(effectId) === run) {
           this.maintenanceRuns.delete(effectId)
         }
+        if (outcome?.requeue) this.#requeueMaintenanceDetection(context, effectId)
       })
     this.maintenanceRuns.set(effectId, run)
     return run
+  }
+
+  #requeueMaintenanceDetection(context, effectId) {
+    const state = context.store.current()
+    if (!state || state.deletion) return
+    const effect = (state.projectEffects || []).find(item => item.id === effectId)
+    if (!effect || effect.status !== 'pending' || effect.params?.snapshotCommit) return
+    this.#ensureMaintenanceDetection(context, effect).catch(() => {})
   }
 
   async #releaseMaintenanceRequest(context, requestId) {
@@ -1328,7 +1359,8 @@ class ProjectService {
     const effect = (state?.projectEffects || []).find(item => item.id === effectId)
     if (!request || !effect || effect.status !== 'pending'
         || !['waiting', 'granted'].includes(request.status)
-        || state.deletion) {
+        || state.deletion
+        || (state.projectBlockedOn && state.projectBlockedOn.effectId !== effectId)) {
       if (request) await this.#releaseMaintenanceRequest(context, requestId)
       else this.scheduler.release(requestId)
       return
@@ -1405,10 +1437,14 @@ class ProjectService {
       return { next, control: true }
     })
     this.scheduler.release(requestId)
+    let requeue = false
     if (snapshotCommit) {
       const refreshed = context.store.current().projectEffects.find(item => item.id === effectId)
-      if (refreshed) await this.#processDetection(context, refreshed)
+      if (refreshed) {
+        requeue = await this.#processDetection(context, refreshed) === 'requeued'
+      }
     }
+    return { requeue }
   }
 
   async #processDetection(context, effect) {
@@ -1416,7 +1452,7 @@ class ProjectService {
     const params = effect.params || {}
     if (!params.snapshotCommit) {
       await this.#ensureMaintenanceDetection(context, effect)
-      return
+      return 'waiting'
     }
     const changes = []
     let baseChanged = false
@@ -1452,7 +1488,7 @@ class ProjectService {
         }
         return { next }
       })
-      return
+      return 'requeued'
     }
     let changesHeaderMissing = true
     try {
@@ -1498,9 +1534,10 @@ class ProjectService {
         target.finishedAt = this.#nowIso()
       }
       if (params.checkId) delete next.chatWriteChecks[params.checkId]
-      next.projectBlockedOn = null
+      if (next.projectBlockedOn?.effectId === effect.id) next.projectBlockedOn = null
       return { next, control: true }
     })
+    return 'consumed'
   }
 
   projectChatContext(groupId) {
@@ -1555,7 +1592,7 @@ class ProjectService {
           effect.error = null
           effect.finishedAt = null
         }
-        next.projectBlockedOn = null
+        if (next.projectBlockedOn?.effectId === effectId) next.projectBlockedOn = null
         return { next, control: true }
       })
       await this.runProjectEffects(projectId)

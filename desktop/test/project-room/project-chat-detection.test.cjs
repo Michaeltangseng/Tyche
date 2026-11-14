@@ -247,6 +247,60 @@ test('a queued maintenance lease pauses the detection chain without blocking the
   assert.deepEqual(scheduler.claimGrants, [])
 })
 
+test('a base change during detection requeues under a maintenance lease', async (t) => {
+  let store
+  let snapshotCalls = 0
+  const snapshot = async () => {
+    snapshotCalls += 1
+    if (snapshotCalls === 1) {
+      await store.enqueue((next) => {
+        next.instances[0].artifactVersions.push({
+          id: 'av-requirements-2',
+          commit: 'c'.repeat(40),
+          candidateCommit: null,
+          files: ['docs/requirements.md'],
+          acceptedAt: at,
+          source: 'gate',
+          decisionId: null,
+        })
+        return { next }
+      })
+    }
+    return { commit: snapshotCommit, placeholderList: [], skipped: false }
+  }
+  const created = await makeService(t, { snapshot, diffQuiet: async () => false })
+  store = created.store
+  await created.service.beginProjectChatWrite('group-1', 'check-1')
+  await created.service.endProjectChatWrite('group-1', 'check-1')
+  assert.equal(snapshotCalls, 2)
+  assert.equal(store.current().chatWriteChecks['check-1'], undefined)
+  assert.equal(store.current().projectEffects[0].status, 'consumed')
+  const maintenance = store.current().maintenanceLeaseRequests
+  assert.equal(maintenance.length, 1)
+  assert.equal(maintenance[0].status, 'released')
+  assert.equal(store.current().instances[0].artifactVersions.length, 2)
+  assert.equal(store.current().instances[0].gate.reason, 'doc-new-version')
+})
+
+test('a recovered unfinished chat write completes its detection on startup', async (t) => {
+  const { service, store } = await makeService(t, { diffQuiet: async () => false })
+  await store.enqueue((next) => {
+    next.chatWriteChecks['run-1'] = {
+      groupId: 'group-1', status: 'pending-detection',
+      snapshotCommit: null, baseVersions: null, failure: null,
+    }
+    return { next }
+  })
+  const context = service.projects.get('project-1')
+  await context.engine.recover()
+  await service.runProjectEffects('project-1')
+  assert.equal(store.current().chatWriteChecks['run-1'], undefined)
+  assert.equal(store.current().projectEffects[0].status, 'consumed')
+  assert.equal(store.current().maintenanceLeaseRequests.length, 1)
+  assert.equal(store.current().maintenanceLeaseRequests[0].status, 'released')
+  assert.equal(store.current().instances[0].gate.reason, 'doc-new-version')
+})
+
 test('a permanently failing snapshot records a project block and can be retried', async (t) => {
   const { service, store } = await makeService(t, {
     snapshot: async () => { throw Object.assign(new Error('EIO'), { code: 'EIO' }) },

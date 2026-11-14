@@ -237,6 +237,41 @@ test('start holds and releases project roots and reports unreadable state', asyn
   assert.deepEqual(second.scheduler.snapshot().heldRoots, [])
 })
 
+test('start completes a recovered chat write detection before continuing', async (t) => {
+  const { paths, workspace, templatesStore, service } = await makeService(t)
+  await service.start()
+  const snapshot = await service.create({ name: 'Recovered', workdir: paths.workdir })
+  const projectId = snapshot.projectId
+  const context = service.projects.get(projectId)
+  await context.store.enqueue((state) => {
+    state.chatWriteChecks['run-1'] = {
+      groupId: 'group-1', status: 'pending-detection',
+      snapshotCommit: null, baseVersions: null, failure: null,
+    }
+    return { next: state }
+  })
+
+  const secondScheduler = new RunScheduler()
+  const second = new ProjectService({
+    workspace,
+    privateRoot: paths.privateRoot,
+    scheduler: secondScheduler,
+    templatesStore,
+    checkGitVersionFn: async () => ({ ok: true, version: '2.39' }),
+    createId: (() => {
+      let id = 0
+      return () => `second-${id += 1}`
+    })(),
+    now: () => at,
+  })
+  await second.start()
+  const recovered = second.projects.get(projectId)
+  assert.equal(recovered.readOnly, false)
+  assert.equal(recovered.store.current().chatWriteChecks['run-1'], undefined)
+  assert.equal(recovered.store.current().projectEffects[0].status, 'consumed')
+  assert.equal(recovered.store.current().maintenanceLeaseRequests[0].status, 'released')
+})
+
 test('rename updates only the workspace record', async (t) => {
   const { workspace, service } = await makeService(t)
   await service.start()

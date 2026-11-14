@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
-const { CheckpointEngine } = require('../../src/project-room/checkpoint-engine.cjs')
+const { CheckpointEngine, detectionEffectId } = require('../../src/project-room/checkpoint-engine.cjs')
 const { ProjectStore } = require('../../src/project-room/project-store.cjs')
 const { emptyProjectState } = require('../../src/project-room/project-state-schema.cjs')
 
@@ -475,6 +475,80 @@ test('recovery restores granted leases and requeues waiting requests', async (t)
   const { scheduler, engine } = await engineFixture(t, state)
   await engine.recover()
   assert.ok(scheduler.grants.some(entry => entry.requestId === 'lease-1'))
+})
+
+test('recovery persists supplementary detection for unfinished chat write checks', async (t) => {
+  const state = baseState()
+  state.chatWriteChecks = {
+    'run-1': {
+      groupId: 'group-1', status: 'pending-detection',
+      snapshotCommit: null, baseVersions: null, failure: 'SHADOW_SNAPSHOT_FAILED',
+    },
+    'run-2': {
+      groupId: 'group-1', status: 'pending-detection',
+      snapshotCommit: commit,
+      baseVersions: [{ checkpointId: 'cp-1', artifactVersionId: 'av-1', instanceEpoch: 1 }],
+      failure: null,
+    },
+    'run-3': {
+      groupId: 'group-1', status: 'running',
+      snapshotCommit: null, baseVersions: null, failure: null,
+    },
+  }
+  state.projectEffects = [{
+    id: 'detect-existing', type: 'detect-accepted-changes', category: 'required',
+    status: 'pending', params: { checkId: 'run-3' }, result: null, error: null,
+    startedAt: null, finishedAt: null,
+  }]
+  state.maintenanceLeaseRequests = [{
+    id: 'maintenance-old',
+    holder: { kind: 'project-maintenance', projectId: 'project-1', ownerId: 'maintenance-old' },
+    chainEffectId: 'detect-old',
+    claims: [{ root: '/tmp/project', path: '', mode: 'exclusive' }],
+    epoch: 0, requestedAt: at, status: 'waiting', grantedAt: null, releasedAt: null,
+  }]
+  const { store, scheduler, engine } = await engineFixture(t, state)
+  await engine.recover()
+  const current = store.current()
+  assert.equal(current.maintenanceLeaseRequests[0].status, 'released')
+  assert.ok(scheduler.withdrawn.includes('maintenance-old'))
+  assert.deepEqual(Object.keys(current.chatWriteChecks).sort(), ['run-1', 'run-2', 'run-3'])
+  const detections = current.projectEffects.filter(effect => (
+    effect.type === 'detect-accepted-changes'
+  ))
+  assert.equal(detections.length, 3)
+  const first = detections.find(effect => effect.params.checkId === 'run-1')
+  assert.equal(first.id, detectionEffectId('project-1', 'run-1'))
+  assert.equal(first.params.snapshotCommit, null)
+  assert.equal(first.params.baseVersions, null)
+  assert.equal(first.params.failure, 'SHADOW_SNAPSHOT_FAILED')
+  const second = detections.find(effect => effect.params.checkId === 'run-2')
+  assert.equal(second.id, detectionEffectId('project-1', 'run-2'))
+  assert.equal(second.params.snapshotCommit, commit)
+  assert.equal(second.params.baseVersions.length, 1)
+  assert.equal(detections.filter(effect => effect.params.checkId === 'run-3').length, 1)
+})
+
+test('recovery leaves failed detections for retry instead of duplicating them', async (t) => {
+  const state = baseState()
+  state.chatWriteChecks = {
+    'run-1': {
+      groupId: 'group-1', status: 'pending-detection',
+      snapshotCommit: null, baseVersions: null, failure: 'EIO',
+    },
+  }
+  state.projectEffects = [{
+    id: detectionEffectId('project-1', 'run-1'),
+    type: 'detect-accepted-changes', category: 'required',
+    status: 'failed', params: { checkId: 'run-1' }, result: null, error: 'EIO',
+    startedAt: null, finishedAt: at,
+  }]
+  const { store, engine } = await engineFixture(t, state)
+  await engine.recover()
+  const current = store.current()
+  assert.equal(current.projectEffects.length, 1)
+  assert.equal(current.projectEffects[0].status, 'failed')
+  assert.ok(current.chatWriteChecks['run-1'])
 })
 
 test('beginDraining voids business effects, abandons leases, and cancels calls', () => {

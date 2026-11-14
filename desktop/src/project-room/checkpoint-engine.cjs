@@ -9,6 +9,12 @@ const IGNORED_CODES = new Set([
 const TERMINAL_EFFECT_STATUSES = new Set(['consumed', 'voided', 'failed'])
 const ENDED_LEASE_STATUSES = new Set(['withdrawn', 'released'])
 
+function detectionEffectId(projectId, checkId) {
+  return `detect-${crypto.createHash('sha256')
+    .update(JSON.stringify([projectId, 'detect', checkId]), 'utf8')
+    .digest('hex')}`
+}
+
 function engineError(code, details = {}) {
   return Object.assign(new Error(code), { code, details })
 }
@@ -604,6 +610,7 @@ class CheckpointEngine {
 
   async recover() {
     const eventAt = this.now()
+    const staleMaintenance = []
     await this.store.enqueue((state) => {
       for (const instance of state.instances) {
         const retryInvocations = []
@@ -640,8 +647,66 @@ class CheckpointEngine {
       for (const drift of state.driftItems || []) {
         if (drift.status === 'resolving') drift.status = 'unresolved'
       }
+      if (!state.deletion) {
+        const active = new Set((state.projectEffects || [])
+          .filter(effect => (
+            effect.type === 'detect-accepted-changes'
+              && !TERMINAL_EFFECT_STATUSES.has(effect.status)
+          ))
+          .map(effect => effect.params?.checkId)
+          .filter(Boolean))
+        for (const [checkId, check] of Object.entries(state.chatWriteChecks || {})) {
+          if (active.has(checkId)) continue
+          const baseId = detectionEffectId(this.projectId, checkId)
+          const existing = (state.projectEffects || []).find(effect => effect.id === baseId)
+          if (existing && existing.status === 'failed') continue
+          let effectId = baseId
+          if (existing) {
+            let suffix = 1
+            while ((state.projectEffects || []).some(effect => (
+              effect.id === `${baseId}-r${suffix}`
+            ))) {
+              suffix += 1
+            }
+            effectId = `${baseId}-r${suffix}`
+          }
+          state.projectEffects.push({
+            id: effectId,
+            type: 'detect-accepted-changes',
+            category: 'required',
+            status: 'pending',
+            params: {
+              checkId,
+              groupId: check?.groupId || '',
+              snapshotCommit: check?.snapshotCommit || null,
+              baseVersions: check?.baseVersions || null,
+              failure: check?.failure || null,
+            },
+            result: null,
+            error: null,
+            startedAt: null,
+            finishedAt: null,
+          })
+        }
+      }
+      for (const request of state.maintenanceLeaseRequests || []) {
+        if (!['waiting', 'granted', 'releasing'].includes(request.status)) continue
+        request.status = 'released'
+        request.releasedAt = eventAt
+        staleMaintenance.push(request.id)
+      }
+      if (state.projectBlockedOn) {
+        const blocked = (state.projectEffects || [])
+          .find(effect => effect.id === state.projectBlockedOn.effectId)
+        if (!blocked || blocked.status === 'consumed' || blocked.status === 'voided') {
+          state.projectBlockedOn = null
+        }
+      }
       return { next: state, control: true }
     })
+    for (const requestId of staleMaintenance) {
+      this.scheduler?.withdraw?.(requestId)
+    }
 
     const state = this.store.current()
     const granted = []
@@ -755,4 +820,5 @@ class CheckpointEngine {
 
 module.exports = {
   CheckpointEngine,
+  detectionEffectId,
 }
