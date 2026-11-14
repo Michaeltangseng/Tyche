@@ -266,6 +266,174 @@ button svg {
   grid-template-columns: var(--sidebar-collapsed-width) minmax(0, 1fr) var(--trace-panel-width);
 }
 
+.app-shell.project-drawer-open {
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--project-room-drawer-width);
+}
+
+.app-shell.sidebar-collapsed.project-drawer-open {
+  grid-template-columns: var(--sidebar-collapsed-width) minmax(0, 1fr) var(--project-room-drawer-width);
+}
+
+.project-room-drawer-layer {
+  min-width: 0;
+  display: contents;
+}
+
+.project-room-drawer {
+  grid-column: 3;
+  grid-row: 1;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--workspace-radius);
+  background: var(--workspace-surface);
+  color: var(--text);
+  box-shadow: var(--workspace-shadow), -18px 0 38px rgb(41 62 73 / 0.09);
+}
+
+.project-room-drawer-header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.project-room-drawer-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--surface-hover);
+}
+
+.project-room-drawer-tabs button {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.project-room-drawer-tabs button.active {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.project-room-drawer-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+}
+
+.project-room-drawer-body h3 {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.project-room-drawer-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.accepted-doc {
+  display: grid;
+  gap: 3px;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-hover);
+}
+
+.accepted-doc + .accepted-doc {
+  margin-top: 4px;
+}
+
+.accepted-doc header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.accepted-doc header strong {
+  color: var(--text-soft);
+  font-size: var(--text-sm);
+}
+
+.accepted-doc-flags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.accepted-doc-pending {
+  color: var(--warning);
+  font-size: var(--text-2xs);
+}
+
+.accepted-doc small {
+  color: var(--muted);
+  font-size: var(--text-2xs);
+}
+
+.accepted-doc ul {
+  margin: 2px 0 0;
+  padding-left: 16px;
+  color: var(--text-soft);
+  font-size: var(--text-xs);
+}
+
+.project-room-drawer-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 6px;
+  cursor: col-resize;
+}
+
+.project-room-drawer-scrim {
+  display: none;
+}
+
+.project-drawer-enter-active .project-room-drawer,
+.project-drawer-leave-active .project-room-drawer {
+  transition:
+    transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.16s ease-out;
+}
+
+.project-drawer-enter-from .project-room-drawer,
+.project-drawer-leave-to .project-room-drawer {
+  transform: translateX(24px);
+  opacity: 0;
+}
+
+.project-drawer-enter-active .project-room-drawer-scrim,
+.project-drawer-leave-active .project-room-drawer-scrim {
+  transition: opacity 0.18s ease-out;
+}
+
+.project-drawer-enter-from .project-room-drawer-scrim,
+.project-drawer-leave-to .project-room-drawer-scrim {
+  opacity: 0;
+}
+
+body.project-room-drawer-open {
+  overflow: hidden;
+}
+
 .trace-panel-layer {
   min-width: 0;
   display: contents;
@@ -334,6 +502,22 @@ button svg {
     width: 100%;
     height: 100%;
   }
+
+  .project-drawer-leave-active {
+    position: fixed;
+    top: calc(var(--desktop-titlebar-height) + var(--shell-gutter));
+    right: var(--shell-gutter);
+    bottom: var(--shell-gutter);
+    z-index: 20;
+    display: block;
+    width: var(--project-room-drawer-width);
+    pointer-events: none;
+  }
+
+  .project-drawer-leave-active .project-room-drawer {
+    width: 100%;
+    height: 100%;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -341,7 +525,11 @@ button svg {
   .trace-panel-enter-active .run-trace-panel,
   .trace-panel-leave-active .run-trace-panel,
   .trace-panel-enter-active .trace-panel-scrim,
-  .trace-panel-leave-active .trace-panel-scrim {
+  .trace-panel-leave-active .trace-panel-scrim,
+  .project-drawer-enter-active .project-room-drawer,
+  .project-drawer-leave-active .project-room-drawer,
+  .project-drawer-enter-active .project-room-drawer-scrim,
+  .project-drawer-leave-active .project-room-drawer-scrim {
     transition: none;
   }
 }

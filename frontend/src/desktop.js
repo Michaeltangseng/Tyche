@@ -15,7 +15,7 @@ export const PROJECT_ROOM_METHODS = Object.freeze([
   'getPreferences', 'setPreferences', 'templates', 'capabilities',
   'chooseWorkdir', 'create', 'rename', 'delete',
   'retryDeletion', 'snapshot', 'updateSeat', 'addSeat', 'removeSeat', 'updateProfile',
-  'rollbackProfile', 'updatePlaybook', 'saveAsTemplate', 'compact', 'diagnostics',
+  'rollbackProfile', 'updatePlaybook', 'saveAsTemplate', 'compact', 'updatePreferences', 'diagnostics',
   'gateDetail', 'timelineHistory', 'start', 'interject', 'stopAndDeliver', 'decideGate',
   'previewReject', 'previewReopen', 'reopen', 'resolveDrift', 'cancelDriftResolution',
   'resolveOutOfScope', 'retryEffect', 'residual', 'unlockDirectory',

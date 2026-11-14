@@ -381,6 +381,39 @@ test('the project snapshot applies first-screen budgets and hides internals', ()
   assertNoSecrets(snapshot)
 })
 
+test('the project snapshot exposes accepted document versions and preferences', () => {
+  const project = sensitiveProject()
+  const state = stateWithData()
+  state.preferences = { drawerWidth: 480, drawerTab: 'trace', commitToGit: true }
+  state.instances[0].artifactVersions = [{
+    id: 'version-1',
+    commit,
+    candidateCommit: null,
+    files: ['docs/requirements.md', 'docs/plan.md'],
+    acceptedAt: at,
+    source: 'gate',
+    decisionId: 'decision-1',
+  }]
+  state.instances[0].gate.reason = 'doc-new-version'
+
+  const snapshot = projectSnapshot(project, state)
+
+  assert.deepEqual(snapshot.preferences, {
+    drawerWidth: 480,
+    drawerTab: 'trace',
+    commitToGit: true,
+  })
+  assert.deepEqual(snapshot.progress[0].acceptedVersion, {
+    id: 'version-1',
+    commit,
+    files: ['docs/requirements.md', 'docs/plan.md'],
+    acceptedAt: at,
+    source: 'gate',
+  })
+  assert.equal(snapshot.progress[0].hasPendingVersion, true)
+  assertNoSecrets(snapshot)
+})
+
 test('the project snapshot reports project and instance storage errors', () => {
   const project = sensitiveProject()
   const state = stateWithData()

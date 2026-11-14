@@ -100,6 +100,7 @@ test('local preload exposes the local-only Meldwork API', async () => {
       'resolveDrift', 'resolveOutOfScope', 'retryDeletion', 'retryEffect',
       'rollbackProfile', 'saveAsTemplate', 'setPreferences', 'snapshot', 'start',
       'stopAndDeliver', 'templates', 'timelineHistory', 'unlockDirectory', 'updatePlaybook',
+      'updatePreferences',
       'updateProfile', 'updateSeat',
     ].sort(),
   )

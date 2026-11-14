@@ -754,6 +754,30 @@ class ProjectService {
     return { revision: result.revision, durable: result.durable }
   }
 
+  async updatePreferences({ projectId, drawerWidth, drawerTab, commitToGit }) {
+    const context = this.#context(projectId)
+    this.#assertWritable(context)
+    if (drawerWidth !== undefined
+        && (!Number.isInteger(drawerWidth) || drawerWidth < 280 || drawerWidth > 760)) {
+      throw inputError('drawer-width-invalid')
+    }
+    if (drawerTab !== undefined && !['files', 'trace'].includes(drawerTab)) {
+      throw inputError('drawer-tab-invalid')
+    }
+    await context.store.enqueue((next) => {
+      const preferences = { ...(next.preferences || {}) }
+      if (drawerWidth !== undefined) preferences.drawerWidth = drawerWidth
+      if (drawerTab !== undefined) preferences.drawerTab = drawerTab
+      if (commitToGit !== undefined) preferences.commitToGit = commitToGit === true
+      next.preferences = preferences
+      return { next, control: true }
+    })
+    return {
+      preferences: { ...(context.store.current().preferences || {}) },
+      revision: context.store.current().revision,
+    }
+  }
+
   pendingMessageStore(projectId) {
     if (!this.pendingStores.has(projectId)) {
       this.pendingStores.set(projectId, new PendingMessageStore({

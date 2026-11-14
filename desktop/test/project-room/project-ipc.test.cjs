@@ -42,6 +42,7 @@ function validInputs() {
     updatePlaybook: { projectId: 'project-1', patch: { roundLimit: 4 }, configRevision: 0 },
     saveAsTemplate: { projectId: 'project-1', name: 'Template' },
     compact: { projectId: 'project-1' },
+    updatePreferences: { projectId: 'project-1', drawerWidth: 420, drawerTab: 'files' },
     diagnostics: { projectId: 'project-1' },
     gateDetail: { projectId: 'project-1', gateId: 'gate-1', gateRevision: 1 },
     timelineHistory: { projectId: 'project-1' },
@@ -136,6 +137,10 @@ async function setup(t, options = {}) {
     async updatePlaybook(input) { this.calls.push(['updatePlaybook', input]); return input },
     async saveAsTemplate(input) { this.calls.push(['saveAsTemplate', input]); return input },
     async compact() { return { revision: 4 } },
+    async updatePreferences(input) {
+      this.calls.push(['updatePreferences', input])
+      return { preferences: { drawerWidth: input.drawerWidth, drawerTab: input.drawerTab } }
+    },
     decideGate() {
       throw Object.assign(new Error('PROJECT_ENGINE_UNAVAILABLE'), {
         code: 'PROJECT_ENGINE_UNAVAILABLE',
@@ -245,6 +250,8 @@ test('rejects overlong text and invalid ids', async (t) => {
     }],
     ['snapshot', { projectId: 'bad id' }],
     ['delete', { projectId: 'project-1', keepChats: 'no' }],
+    ['updatePreferences', { projectId: 'project-1', drawerWidth: 1201 }],
+    ['updatePreferences', { projectId: 'project-1', drawerTab: 'other' }],
   ]
   for (const [method, input] of cases) {
     await assert.rejects(invoke(method, input), { code: 'PROJECT_INPUT_INVALID' }, method)

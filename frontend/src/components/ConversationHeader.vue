@@ -80,6 +80,17 @@
     </div>
     <div class="conversation-header-actions">
       <button
+        v-if="activeGroup.projectId && activeGroup.projectRole === 'main'"
+        class="icon-button"
+        type="button"
+        :title="t('projectRoom.drawer.open')"
+        :aria-label="t('projectRoom.drawer.open')"
+        :aria-pressed="projectDrawerOpen ? 'true' : 'false'"
+        @click="toggleProjectDrawer"
+      >
+        <DocumentsOutline />
+      </button>
+      <button
         class="workspace-chip"
         type="button"
         :title="activeGroup.workdir"
@@ -106,6 +117,7 @@ import { ref } from 'vue'
 import {
   CheckmarkCircleOutline,
   CloseOutline,
+  DocumentsOutline,
   FolderOpenOutline,
   PencilOutline,
   OptionsOutline,
@@ -130,10 +142,12 @@ const {
   inlineTitleEditing,
   openGroupSettings,
   openSeatSettings,
+  projectDrawerOpen,
   saveInlineTitle,
   saving,
   t,
   theme,
+  toggleProjectDrawer,
 } = props.controller
 
 const titleBlock = ref(null)

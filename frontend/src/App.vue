@@ -3,8 +3,10 @@
     class="app-shell"
     :class="{
       'sidebar-collapsed': sidebarCollapsed,
-      'trace-panel-open': tracePanelOpen,
+      'trace-panel-open': tracePanelOpen || projectDrawerOpen,
+      'project-drawer-open': projectDrawerOpen,
     }"
+    :style="{ '--project-room-drawer-width': `${projectDrawerWidth}px` }"
     :data-theme="theme"
     :data-platform="desktopPlatform"
     :aria-busy="agentDiscoveryPending ? 'true' : undefined"
@@ -114,6 +116,13 @@
           @decide-human-gate="decideHumanGate"
           @select="selectTraceAgentRun"
           @jump-source="jumpToTraceSource"
+        />
+      </transition>
+
+      <transition name="project-drawer">
+        <ProjectRoomDrawer
+          v-if="projectDrawerOpen && isProjectMainGroup"
+          :controller="projectRoomDrawerController"
         />
       </transition>
 
@@ -233,6 +242,7 @@ import HomeDashboard from './components/HomeDashboard.vue'
 import OnboardingDialog from './components/OnboardingDialog.vue'
 import ProjectRoomComposer from './components/ProjectRoomComposer.vue'
 import ProjectRoomCreateDialog from './components/ProjectRoomCreateDialog.vue'
+import ProjectRoomDrawer from './components/ProjectRoomDrawer.vue'
 import ProjectRoomGatePanel from './components/ProjectRoomGatePanel.vue'
 import ProjectRoomOverlay from './components/ProjectRoomOverlay.vue'
 import ProjectRoomProgress from './components/ProjectRoomProgress.vue'
@@ -451,6 +461,37 @@ const {
   togglePendingDecisions,
   toggleProjectRoomExpanded,
 } = workspaceNavigationState
+const PROJECT_DRAWER_DEFAULT_WIDTH = 420
+const PROJECT_DRAWER_MIN_WIDTH = 280
+const PROJECT_DRAWER_MAX_WIDTH = 760
+const projectDrawerOpen = ref(false)
+const projectDrawerWidthOverride = ref(null)
+const projectDrawerNarrow = ref(false)
+let projectDrawerMediaQuery = null
+
+function syncProjectDrawerNarrow() {
+  projectDrawerNarrow.value = projectDrawerMediaQuery?.matches === true
+}
+
+function detachProjectDrawerMediaQuery() {
+  if (projectDrawerMediaQuery) {
+    projectDrawerMediaQuery.removeEventListener?.('change', syncProjectDrawerNarrow)
+  }
+  projectDrawerMediaQuery = null
+  projectDrawerNarrow.value = false
+}
+
+watch(projectDrawerOpen, (open) => {
+  if (!open) {
+    detachProjectDrawerMediaQuery()
+    return
+  }
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+  projectDrawerMediaQuery = window.matchMedia('(max-width: 1179px)')
+  projectDrawerMediaQuery.addEventListener?.('change', syncProjectDrawerNarrow)
+  syncProjectDrawerNarrow()
+})
+
 const projectRoomView = useProjectRoomView({
   activeGroup,
   formatNavTime,
@@ -464,6 +505,50 @@ const projectRoomView = useProjectRoomView({
   workspace,
 })
 const isProjectMainGroup = projectRoomView.isMainGroup
+const projectDrawerWidth = computed(() => {
+  const stored = projectDrawerWidthOverride.value
+    ?? projectRoomView.project.value?.preferences?.drawerWidth
+  const numeric = Number(stored)
+  if (!Number.isFinite(numeric)) return PROJECT_DRAWER_DEFAULT_WIDTH
+  return Math.min(
+    PROJECT_DRAWER_MAX_WIDTH,
+    Math.max(PROJECT_DRAWER_MIN_WIDTH, Math.round(numeric)),
+  )
+})
+const projectDrawerBlocking = computed(() => projectDrawerOpen.value && projectDrawerNarrow.value)
+
+function toggleProjectDrawer() {
+  if (!isProjectMainGroup.value) return
+  projectDrawerOpen.value = !projectDrawerOpen.value
+  if (projectDrawerOpen.value) closeTracePanel()
+}
+
+async function saveProjectPreferences(preferences) {
+  if (!projectRoomPreviewEnabled.value) return null
+  try {
+    const result = await api.value?.projectRoom?.updatePreferences?.({
+      projectId: activeGroup.value?.projectId,
+      ...preferences,
+    })
+    await projectRoomView.refresh()
+    return result
+  } catch (error) {
+    showError(error)
+    return null
+  }
+}
+
+watch(() => activeGroup.value?.projectId, () => {
+  projectDrawerOpen.value = false
+  projectDrawerWidthOverride.value = null
+})
+watch(isProjectMainGroup, (isMain) => {
+  if (!isMain) projectDrawerOpen.value = false
+})
+
+onBeforeUnmount(() => {
+  detachProjectDrawerMediaQuery()
+})
 
 onMounted(async () => {
   try {
@@ -597,6 +682,18 @@ const projectRoomSeatSettingsController = {
   projectId: computed(() => activeGroup.value?.projectId || ''),
   projectSnapshot: projectRoomView.project,
   refreshProject: projectRoomView.refresh,
+  t,
+}
+
+const projectRoomDrawerController = {
+  close: () => { projectDrawerOpen.value = false },
+  drawer: projectDrawerNarrow,
+  formatNavTime,
+  onResize: (width) => { projectDrawerWidthOverride.value = width },
+  open: projectDrawerOpen,
+  projectId: computed(() => activeGroup.value?.projectId || ''),
+  projectSnapshot: projectRoomView.project,
+  savePreferences: saveProjectPreferences,
   t,
 }
 
@@ -744,6 +841,9 @@ const {
   tracePanelOpen,
   tracePanelRunId,
 } = conversationTimeline
+watch(tracePanelOpen, (open) => {
+  if (open) projectDrawerOpen.value = false
+})
 const pendingHumanGates = computed(() => (
   snapshot.value.humanGates.filter(gate => gate.status === 'pending')
 ))
@@ -835,7 +935,10 @@ const {
 })
 const { messageDeleteArmedId } = messageActions
 const contentInteractionBlocked = computed(() => (
-  blockingOverlayOpen.value || traceDrawerBlocking.value || agentDiscoveryPending.value
+  blockingOverlayOpen.value
+    || traceDrawerBlocking.value
+    || projectDrawerBlocking.value
+    || agentDiscoveryPending.value
 ))
 const composerContext = useComposerContext({
   activeGroup,
@@ -1042,6 +1145,8 @@ const {
     groupName,
     handleMessageScroll,
     openSeatSettings: openProjectSeatSettings,
+    projectDrawerOpen,
+    toggleProjectDrawer,
     maxRounds,
     messageScroller,
     productWordmark,

@@ -87,6 +87,12 @@ const schemas = {
   }),
   saveAsTemplate: z.strictObject({ projectId: id, name: text(80) }),
   compact: z.strictObject({ projectId: id }),
+  updatePreferences: z.strictObject({
+    projectId: id,
+    drawerWidth: z.number().int().min(280).max(760).optional(),
+    drawerTab: z.enum(['files', 'trace']).optional(),
+    commitToGit: z.boolean().optional(),
+  }),
   diagnostics: z.strictObject({ projectId: id }),
   gateDetail: z.strictObject({
     projectId: id, gateId: id, gateRevision: z.number().int().positive(),
@@ -354,6 +360,7 @@ function registerProjectIpc({
   }))
 
   register('compact', input => service().compact(input.projectId))
+  register('updatePreferences', input => service().updatePreferences(input))
 
   register('timelineHistory', input => service().timelineHistory(
     input.projectId,

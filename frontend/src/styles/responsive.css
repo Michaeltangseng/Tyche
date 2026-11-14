@@ -47,6 +47,52 @@
     box-shadow: var(--shadow);
     pointer-events: auto;
   }
+
+  .app-shell.project-drawer-open,
+  .app-shell.sidebar-collapsed.project-drawer-open {
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  }
+
+  .app-shell.sidebar-collapsed.project-drawer-open {
+    grid-template-columns: var(--sidebar-collapsed-width) minmax(0, 1fr);
+  }
+
+  .project-room-drawer-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: block;
+    pointer-events: none;
+  }
+
+  .project-room-drawer-layer.drawer .project-room-drawer-scrim {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: rgb(15 24 28 / 0.34);
+    cursor: pointer;
+    pointer-events: auto;
+  }
+
+  .project-room-drawer-layer.drawer .project-room-drawer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: clamp(320px, 46vw, 560px);
+    max-width: calc(100vw - 24px);
+    height: 100dvh;
+    border-left: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    pointer-events: auto;
+  }
+
+  .project-room-drawer-layer.drawer .project-room-drawer-resize {
+    display: none;
+  }
 }
 
 @media (max-width: 920px) {
@@ -71,7 +117,9 @@
     overflow-y: auto;
   }
   .app-shell.trace-panel-open,
-  .app-shell.sidebar-collapsed.trace-panel-open { grid-template-columns: 1fr; }
+  .app-shell.sidebar-collapsed.trace-panel-open,
+  .app-shell.project-drawer-open,
+  .app-shell.sidebar-collapsed.project-drawer-open { grid-template-columns: 1fr; }
   .sidebar { height: auto; min-height: 48dvh; border-right: 0; border-bottom: 0; }
   .sidebar.collapsed { min-height: 0; }
   .sidebar.collapsed > :not(.brand-row) { display: none; }
@@ -154,6 +202,7 @@
   .relay-run-agent + .relay-run-agent { margin-left: -6px; }
   .composer-zone { padding-inline: 10px; }
   .trace-panel-layer.drawer .run-trace-panel { width: 100vw; }
+  .project-room-drawer-layer.drawer .project-room-drawer { width: 100vw; max-width: 100vw; }
   .trace-panel-header { padding-inline: 14px; }
   .trace-panel-scroll { padding-inline: 12px; }
   .modal-backdrop { align-items: flex-end; padding: 0; }

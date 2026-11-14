@@ -127,6 +127,45 @@ test('create writes state, shadow repo, project record, and main chat in order',
   assert.equal(reloaded.service.snapshot(projectId).config.seats.length, 2)
 })
 
+test('updatePreferences persists drawer width and tab per project', async (t) => {
+  const { paths, service } = await makeService(t)
+  await service.start()
+  const created = await service.create({ name: 'Project One', workdir: paths.workdir })
+  const projectId = created.projectId
+  const revision = service.snapshot(projectId).revision
+
+  const result = await service.updatePreferences({
+    projectId,
+    drawerWidth: 520,
+    drawerTab: 'trace',
+  })
+  assert.deepEqual(result.preferences, { drawerWidth: 520, drawerTab: 'trace' })
+  const snapshot = service.snapshot(projectId)
+  assert.deepEqual(snapshot.preferences, { drawerWidth: 520, drawerTab: 'trace' })
+  assert.equal(snapshot.revision, revision + 1)
+
+  const updated = await service.updatePreferences({ projectId, commitToGit: true })
+  assert.deepEqual(updated.preferences, {
+    drawerWidth: 520,
+    drawerTab: 'trace',
+    commitToGit: true,
+  })
+
+  await assert.rejects(
+    service.updatePreferences({ projectId, drawerWidth: 200 }),
+    { code: 'PROJECT_INPUT_INVALID', details: { reason: 'drawer-width-invalid' } },
+  )
+  await assert.rejects(
+    service.updatePreferences({ projectId, drawerTab: 'other' }),
+    { code: 'PROJECT_INPUT_INVALID', details: { reason: 'drawer-tab-invalid' } },
+  )
+  assert.deepEqual(service.snapshot(projectId).preferences, {
+    drawerWidth: 520,
+    drawerTab: 'trace',
+    commitToGit: true,
+  })
+})
+
 test('create rejects duplicate, invalid, or unsupported workdirs', async (t) => {
   const { paths, service } = await makeService(t)
   await service.start()

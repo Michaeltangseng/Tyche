@@ -151,6 +151,16 @@ function progressEntry(state, instance) {
         content: item.content,
         createdAt: item.createdAt,
       })),
+    acceptedVersion: instance.artifactVersions.at(-1)
+      ? {
+        id: instance.artifactVersions.at(-1).id,
+        commit: instance.artifactVersions.at(-1).commit,
+        files: [...(instance.artifactVersions.at(-1).files || [])],
+        acceptedAt: instance.artifactVersions.at(-1).acceptedAt,
+        source: instance.artifactVersions.at(-1).source,
+      }
+      : null,
+    hasPendingVersion: instance.gate?.reason === 'doc-new-version',
   }
 }
 
@@ -375,6 +385,7 @@ function projectSnapshot(projectRecord, state) {
     errorBar: errorBar(projectRecord, state),
     residuals: sanitizedResiduals(projectRecord),
     config: configProjection(state),
+    preferences: state?.preferences ? { ...state.preferences } : {},
   }
 }
 
