@@ -27,7 +27,7 @@ function defaultExecFile(file, args, options = {}) {
     const child = execFile(file, args, {
       cwd: options.cwd,
       env: options.env,
-      encoding: 'utf8',
+      encoding: options.encoding === undefined ? 'utf8' : options.encoding,
       maxBuffer: options.maxBuffer || 64 * 1024 * 1024,
       windowsHide: true,
     }, (error, stdout, stderr) => {
@@ -190,8 +190,8 @@ class ShadowRepo {
     return repo
   }
 
-  async git(args, { env = {}, input, indexFile } = {}) {
-    const fullArgs = [
+  commandArgs(args) {
+    return [
       `--git-dir=${this.gitDir}`,
       `--work-tree=${this.workTree}`,
       '-c', 'core.hooksPath=/dev/null',
@@ -205,13 +205,28 @@ class ShadowRepo {
       '-c', 'user.email=meldwork@localhost',
       ...args,
     ]
+  }
+
+  async git(args, { env = {}, input, indexFile } = {}) {
     const extra = { ...env }
     if (indexFile) extra.GIT_INDEX_FILE = indexFile
-    return this.execFileFn(this.gitExecutable, fullArgs, {
+    return this.execFileFn(this.gitExecutable, this.commandArgs(args), {
       cwd: this.workTree,
       env: gitEnvironment(extra),
       input,
       encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    })
+  }
+
+  async gitBuffer(args, { env = {}, input, indexFile } = {}) {
+    const extra = { ...env }
+    if (indexFile) extra.GIT_INDEX_FILE = indexFile
+    return this.execFileFn(this.gitExecutable, this.commandArgs(args), {
+      cwd: this.workTree,
+      env: gitEnvironment(extra),
+      input,
+      encoding: null,
       maxBuffer: 64 * 1024 * 1024,
     })
   }
@@ -518,6 +533,83 @@ class ShadowRepo {
         try { fs.rmSync(indexFile, { force: true }) } catch { /* already removed */ }
       }
     })
+  }
+
+  async restoreFiles({ commit, paths = [], isCancelled } = {}) {
+    if (typeof commit !== 'string' || !commit) throw shadowError('SHADOW_COMMIT_REQUIRED')
+    const restored = []
+    let stoppedAt = null
+    for (const relative of paths) {
+      if (typeof isCancelled === 'function' && await isCancelled()) {
+        stoppedAt = relative
+        break
+      }
+      const { stdout } = await this.git(['ls-tree', '-z', commit, '--', relative])
+      const entry = parseLsTreeEntry(stdout)
+      const filename = path.join(this.workTree, relative)
+      const directory = path.dirname(filename)
+      if (!entry) {
+        try { fs.lstatSync(filename) } catch {
+          restored.push(relative)
+          continue
+        }
+        const temporary = path.join(directory,
+          `.${path.basename(filename)}.meldwork-restore-${crypto.randomBytes(8).toString('hex')}`)
+        fs.renameSync(filename, temporary)
+        fs.rmSync(temporary, { recursive: true, force: true })
+        restored.push(relative)
+        continue
+      }
+      if (entry.mode === '160000') throw shadowError('SHADOW_RESTORE_UNSUPPORTED')
+      fs.mkdirSync(directory, { recursive: true })
+      if (entry.mode === '120000') {
+        const target = (await this.gitBuffer([
+          'cat-file', 'blob', `${commit}:${relative}`,
+        ])).stdout.toString('utf8')
+        const temporary = path.join(directory,
+          `.${path.basename(filename)}.meldwork-restore-${crypto.randomBytes(8).toString('hex')}`)
+        fs.symlinkSync(target, temporary)
+        if (typeof isCancelled === 'function' && await isCancelled()) {
+          fs.rmSync(temporary, { force: true })
+          stoppedAt = relative
+          break
+        }
+        fs.renameSync(temporary, filename)
+        restored.push(relative)
+        continue
+      }
+      const content = (await this.gitBuffer([
+        'cat-file', 'blob', `${commit}:${relative}`,
+      ])).stdout
+      if (content.toString('utf8').startsWith('meldwork-placeholder 1\n')) {
+        throw shadowError('SHADOW_PLACEHOLDER_NOT_RESTORABLE')
+      }
+      const temporary = path.join(directory,
+        `.${path.basename(filename)}.meldwork-restore-${crypto.randomBytes(8).toString('hex')}`)
+      let descriptor
+      try {
+        descriptor = fs.openSync(temporary, 'wx', 0o600)
+        fs.writeSync(descriptor, content)
+        fs.fsyncSync(descriptor)
+        fs.closeSync(descriptor)
+        descriptor = undefined
+        if (typeof isCancelled === 'function' && await isCancelled()) {
+          fs.rmSync(temporary, { force: true })
+          stoppedAt = relative
+          break
+        }
+        fs.renameSync(temporary, filename)
+        fs.chmodSync(filename, entry.mode === '100755' ? 0o755 : 0o644)
+        restored.push(relative)
+      } catch (error) {
+        if (descriptor !== undefined) {
+          try { fs.closeSync(descriptor) } catch { /* already closed */ }
+        }
+        try { fs.rmSync(temporary, { force: true }) } catch { /* already renamed */ }
+        throw error
+      }
+    }
+    return { restored, stoppedAt }
   }
 }
 
