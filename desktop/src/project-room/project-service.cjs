@@ -15,6 +15,7 @@ const {
 const { ProjectStore } = require('./project-store.cjs')
 const { PendingMessageStore, TimelineHistoryStore } = require('./project-timeline.cjs')
 const { CheckpointEngine } = require('./checkpoint-engine.cjs')
+const { validateSeatCapabilities } = require('./agent-capabilities.cjs')
 const { createEffectHandlers } = require('./effect-handlers.cjs')
 const {
   pendingDecisions,
@@ -1070,6 +1071,14 @@ class ProjectService {
     if (available.size && !available.has(seat.agentKind)) {
       throw projectError('PROJECT_CAPABILITY_UNSUPPORTED', {
         seatId: seat.id, agentKind: seat.agentKind, capability: 'agent-kind',
+      })
+    }
+    const validation = validateSeatCapabilities(seat.agentKind, seat.capabilities)
+    if (!validation.ok) {
+      throw projectError('PROJECT_CAPABILITY_UNSUPPORTED', {
+        seatId: seat.id,
+        agentKind: seat.agentKind,
+        unsupported: validation.unsupported,
       })
     }
   }
