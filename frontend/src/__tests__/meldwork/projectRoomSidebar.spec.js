@@ -192,6 +192,117 @@ describe('project room sidebar', () => {
     wrapper.unmount()
   })
 
+  it('renders the gate panel from the detailed gate screen and accepts', async () => {
+    const { wrapper, bridge } = await mountApp(({ state, bridge: desktopBridge }) => {
+      seedProjects(state)
+      const firstScreen = {
+        round: 2,
+        elapsedMs: 12 * 60000,
+        signals: [{
+          kind: 'same-agent-kind', checkpointId: null, count: null,
+        }],
+        reviewSummaries: [{
+          seatId: 'seat-reviewer',
+          verdict: 'pass',
+          summary: 'Looks good.',
+          reviewFile: 'meldwork/reviews/requirements/r1-seat-reviewer.md',
+        }],
+        reviewSummaryCount: 1,
+        changedFiles: [],
+        changedFileCount: 0,
+        softGateSummary: [],
+        softGateCount: 0,
+        driftItemIds: [],
+        outOfScopeItemIds: [],
+        blockerCheckpointIds: [],
+        changesHeaderMissing: false,
+        detectionSkipped: false,
+        candidateDiverged: false,
+      }
+      desktopBridge.projectRoom.snapshot.mockResolvedValue({
+        projectId: 'project-1',
+        revision: 1,
+        progress: [{
+          checkpointId: 'cp-1',
+          checkpointKey: 'requirements',
+          name: 'Requirements',
+          state: 'gate',
+          round: 2,
+          roundsSinceHuman: 2,
+          leadSeatId: 'seat-1',
+          leadSeatName: 'Lead',
+          reviewerSeatIds: [],
+          waitingOn: 'human',
+          hasGate: true,
+          blocked: false,
+        }],
+        gates: [{
+          checkpointId: 'cp-1',
+          gateId: 'gate-1',
+          revision: 1,
+          reason: 'needs-human',
+          allowedOutcomes: ['continue', 'accept', 'reject-upstream'],
+          candidateCommit: 'a'.repeat(40),
+          createdAt: '2026-07-29T09:00:00Z',
+          round: 2,
+          elapsedMs: 12 * 60000,
+          signals: firstScreen.signals,
+          signalCount: 1,
+          reviewSummaries: firstScreen.reviewSummaries,
+          reviewSummaryCount: 1,
+          changedFiles: [],
+          changedFileCount: 0,
+          softGateSummary: [],
+          softGateCount: 0,
+          driftItemIds: [],
+          outOfScopeItemIds: [],
+          blockerCheckpointIds: [],
+          changesHeaderMissing: false,
+          detectionSkipped: false,
+          candidateDiverged: false,
+        }],
+        driftItems: [],
+        outOfScopeItems: [],
+        residuals: [],
+        config: {},
+      })
+      desktopBridge.projectRoom.gateDetail.mockResolvedValue({
+        projectId: 'project-1',
+        checkpointId: 'cp-1',
+        checkpointKey: 'requirements',
+        checkpointName: 'Requirements',
+        gateId: 'gate-1',
+        gateRevision: 1,
+        reason: 'needs-human',
+        question: false,
+        candidateCommit: 'a'.repeat(40),
+        allowedOutcomes: ['continue', 'accept', 'reject-upstream'],
+        commitToGit: { available: false, reasons: [] },
+        firstScreen,
+      })
+    })
+
+    await wrapper.get('.project-room-open').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.project-room-gate-panel').exists()).toBe(true)
+    expect(wrapper.get('.project-room-gate-panel').text()).toContain('Requirements')
+    expect(wrapper.get('.project-room-gate-panel').text()).toContain('Review requests your decision')
+    expect(wrapper.get('.project-room-gate-panel').text()).toContain('Looks good.')
+    expect(wrapper.get('.gate-primary').text()).toBe('Accept')
+    await wrapper.get('.gate-primary').trigger('click')
+    await flushPromises()
+    expect(bridge.projectRoom.decideGate).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: 'project-1',
+      gateId: 'gate-1',
+      gateRevision: 1,
+      candidateCommit: 'a'.repeat(40),
+      outcome: 'accept',
+      commitToGit: false,
+    }))
+    wrapper.unmount()
+  })
+
   it('shows no project room entries when the workspace snapshot does not include them', async () => {
     const { wrapper } = await mountApp(({ state }) => {
       state.groups.push(

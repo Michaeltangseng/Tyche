@@ -227,6 +227,28 @@ export function createBridge() {
     start: vi.fn(async () => ({})),
     interject: vi.fn(async () => ({})),
     decideGate: vi.fn(async () => ({})),
+    gateDetail: vi.fn(async ({ projectId, gateId, gateRevision }) => ({
+      projectId,
+      gateId,
+      gateRevision,
+      allowedOutcomes: ['continue', 'accept', 'reject-upstream'],
+      question: false,
+      commitToGit: { available: false, reasons: [] },
+      firstScreen: {
+        round: 1,
+        elapsedMs: 0,
+        signals: [],
+        reviewSummaries: [],
+        changedFiles: [],
+        softGateSummary: [],
+        driftItemIds: [],
+        outOfScopeItemIds: [],
+        blockerCheckpointIds: [],
+        changesHeaderMissing: false,
+        detectionSkipped: false,
+        candidateDiverged: false,
+      },
+    })),
     previewReopen: vi.fn(async () => ({ impact: [] })),
   }
   return {

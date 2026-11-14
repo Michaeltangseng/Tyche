@@ -90,10 +90,10 @@
 
           <ConversationTimelineView :controller="timelineController" />
 
-          <ProjectRoomComposer
-            v-if="isProjectMainGroup"
-            :controller="projectRoomComposerController"
-          />
+          <div v-if="isProjectMainGroup" class="project-room-bottom">
+            <ProjectRoomGatePanel :controller="projectRoomGateController" />
+            <ProjectRoomComposer :controller="projectRoomComposerController" />
+          </div>
           <ConversationComposer v-else :controller="composerController" />
         </section>
       </section>
@@ -214,6 +214,7 @@ import ConversationTimelineView from './components/ConversationTimelineView.vue'
 import HomeDashboard from './components/HomeDashboard.vue'
 import OnboardingDialog from './components/OnboardingDialog.vue'
 import ProjectRoomComposer from './components/ProjectRoomComposer.vue'
+import ProjectRoomGatePanel from './components/ProjectRoomGatePanel.vue'
 import ProjectRoomProgress from './components/ProjectRoomProgress.vue'
 import RunTracePanel from './components/RunTracePanel.vue'
 import SystemSettingsView from './components/SystemSettingsView.vue'
@@ -841,6 +842,7 @@ const {
   composerController,
   conversationHeaderController,
   projectRoomComposerController,
+  projectRoomGateController,
   projectRoomProgressController,
   timelineController,
 } = createConversationControllers({
@@ -876,6 +878,28 @@ const {
     targetHint: projectRoomView.targetHint,
     targetLabel: projectRoomView.targetLabel,
     targetPurposeLabel: projectRoomView.targetPurposeLabel,
+    acceptCandidateVersion: projectRoomView.acceptCandidateVersion,
+    activeGate: projectRoomView.activeGate,
+    allReviewersPass: projectRoomView.allReviewersPass,
+    cancelAcceptConfirm: projectRoomView.cancelAcceptConfirm,
+    candidateDiverged: projectRoomView.candidateDiverged,
+    commitToGit: projectRoomView.commitToGit,
+    confirmAcceptAsIs: projectRoomView.confirmAcceptAsIs,
+    confirmAcceptNow: projectRoomView.confirmAcceptNow,
+    driftGate: projectRoomView.driftGate,
+    gateAllowedOutcomes: projectRoomView.gateAllowedOutcomes,
+    gateCheckpointName: projectRoomView.gateCheckpointName,
+    gateCommitToGit: projectRoomView.gateCommitToGit,
+    gateErrorLabel: projectRoomView.gateErrorLabel,
+    gateLoading: projectRoomView.gateLoading,
+    gateScreen: projectRoomView.gateScreen,
+    gateStale: projectRoomView.gateStale,
+    questionGate: projectRoomView.questionGate,
+    reloadGate: projectRoomView.reloadGate,
+    requestAccept: projectRoomView.requestAccept,
+    requestReject: projectRoomView.requestReject,
+    resolveGateDrift: projectRoomView.resolveGateDrift,
+    submitGateContinue: projectRoomView.submitGateContinue,
     requestUnlimitedRounds,
     roundProgressPercent,
     roundSettingsControl,

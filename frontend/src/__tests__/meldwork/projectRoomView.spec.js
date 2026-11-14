@@ -1,4 +1,5 @@
 import { effectScope, nextTick, ref } from 'vue'
+import { flushPromises } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import { useProjectRoomView } from '../../composables/useProjectRoomView.js'
 
@@ -64,6 +65,23 @@ function messages() {
   ]
 }
 
+function emptyScreen() {
+  return {
+    round: 1,
+    elapsedMs: 0,
+    signals: [],
+    reviewSummaries: [],
+    changedFiles: [],
+    softGateSummary: [],
+    driftItemIds: [],
+    outOfScopeItemIds: [],
+    blockerCheckpointIds: [],
+    changesHeaderMissing: false,
+    detectionSkipped: false,
+    candidateDiverged: false,
+  }
+}
+
 function fakeRoom(project) {
   return {
     project: ref(project),
@@ -73,6 +91,17 @@ function fakeRoom(project) {
     start: vi.fn(async () => ({})),
     interject: vi.fn(async () => ({})),
     decideGate: vi.fn(async () => ({})),
+    resolveDrift: vi.fn(async () => ({})),
+    gateDetail: vi.fn(async ({ projectId, gateId, gateRevision }) => ({
+      projectId,
+      checkpointName: 'Requirements',
+      gateId,
+      gateRevision,
+      allowedOutcomes: ['continue', 'accept', 'reject-upstream'],
+      question: false,
+      commitToGit: { available: false, reasons: [] },
+      firstScreen: emptyScreen(),
+    })),
     previewReopen: vi.fn(async () => ({ impact: [] })),
   }
 }
@@ -279,6 +308,131 @@ describe('project room view', () => {
       projectId: 'project-1',
       brief: 'build a small tool',
     })
+    fixture.scope.stop()
+  })
+
+  it('loads the full gate screen and accepts with commitToGit', async () => {
+    const project = {
+      progress: [entry('cp-1', 'gate')],
+      gates: [gate('cp-1', 'gate-1', '2026-07-29T09:00:00Z')],
+    }
+    const room = fakeRoom(project)
+    room.gateDetail.mockResolvedValue({
+      projectId: 'project-1',
+      checkpointName: 'Requirements',
+      gateId: 'gate-1',
+      gateRevision: 1,
+      allowedOutcomes: ['continue', 'accept', 'reject-upstream'],
+      question: false,
+      commitToGit: { available: true, reasons: [] },
+      firstScreen: {
+        ...emptyScreen(),
+        reviewSummaries: [{
+          seatId: 'seat-reviewer',
+          verdict: 'pass',
+          summary: 'Looks good.',
+          reviewFile: 'meldwork/reviews/requirements/r1-seat-reviewer.md',
+        }],
+      },
+    })
+    const fixture = mountView({ project, room })
+    await flushPromises()
+
+    expect(fixture.view.gateScreen.value.reviewSummaries).toHaveLength(1)
+    expect(fixture.view.allReviewersPass.value).toBe(true)
+    expect(fixture.view.gateCommitToGit.value.available).toBe(true)
+    fixture.view.draft.value = 'Accepted.'
+    fixture.view.commitToGit.value = true
+    await fixture.view.confirmAcceptNow()
+
+    expect(fixture.projectRoom.decideGate).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: 'project-1',
+      gateId: 'gate-1',
+      gateRevision: 1,
+      candidateCommit: 'a'.repeat(40),
+      outcome: 'accept',
+      comment: 'Accepted.',
+      commitToGit: true,
+    }))
+    fixture.scope.stop()
+  })
+
+  it('keeps the draft and reloads the gate when the decision is stale', async () => {
+    const project = {
+      progress: [entry('cp-1', 'gate')],
+      gates: [gate('cp-1', 'gate-1', '2026-07-29T09:00:00Z')],
+    }
+    const room = fakeRoom(project)
+    room.decideGate.mockRejectedValue(
+      Object.assign(new Error('PROJECT_GATE_STALE'), { code: 'PROJECT_GATE_STALE' }),
+    )
+    const fixture = mountView({ project, room })
+    await flushPromises()
+
+    fixture.view.draft.value = 'keep this'
+    expect(await fixture.view.confirmAcceptNow()).toBe(false)
+    expect(fixture.view.gateStale.value).toBe(true)
+    expect(fixture.view.draft.value).toBe('keep this')
+    expect(fixture.projectRoom.refresh).toHaveBeenCalled()
+    fixture.scope.stop()
+  })
+
+  it('resolves a drift gate with the listed drift items', async () => {
+    const project = {
+      progress: [entry('cp-1', 'gate')],
+      gates: [gate('cp-1', 'gate-1', '2026-07-29T09:00:00Z', { reason: 'drift' })],
+      driftItems: [{
+        id: 'drift-1',
+        revision: 2,
+        path: 'docs/requirements.md',
+      }],
+    }
+    const room = fakeRoom(project)
+    room.gateDetail.mockResolvedValue({
+      projectId: 'project-1',
+      checkpointName: 'Requirements',
+      gateId: 'gate-1',
+      gateRevision: 1,
+      reason: 'drift',
+      allowedOutcomes: ['accept', 'reject-upstream'],
+      question: false,
+      commitToGit: { available: false, reasons: [] },
+      firstScreen: { ...emptyScreen(), driftItemIds: ['drift-1'] },
+    })
+    const fixture = mountView({ project, room })
+    await flushPromises()
+
+    expect(await fixture.view.resolveGateDrift('workdir')).toBe(true)
+    expect(room.resolveDrift).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      items: [{ itemId: 'drift-1', revision: 2 }],
+      choice: 'workdir',
+    })
+    fixture.scope.stop()
+  })
+
+  it('uses question-gate availability from the gate detail', async () => {
+    const project = {
+      progress: [entry('cp-1', 'gate')],
+      gates: [gate('cp-1', 'gate-1', '2026-07-29T09:00:00Z', { reason: 'question' })],
+    }
+    const room = fakeRoom(project)
+    room.gateDetail.mockResolvedValue({
+      projectId: 'project-1',
+      checkpointName: 'Requirements',
+      gateId: 'gate-1',
+      gateRevision: 1,
+      reason: 'question',
+      allowedOutcomes: ['continue', 'reject-upstream'],
+      question: true,
+      commitToGit: { available: false, reasons: [] },
+      firstScreen: emptyScreen(),
+    })
+    const fixture = mountView({ project, room })
+    await flushPromises()
+
+    expect(fixture.view.questionGate.value).toBe(true)
+    expect(fixture.view.gateAllowedOutcomes.value).toEqual(['continue', 'reject-upstream'])
     fixture.scope.stop()
   })
 

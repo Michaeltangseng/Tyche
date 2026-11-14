@@ -721,6 +721,7 @@ class ProjectService {
       projectId,
       checkpointId: instance.id,
       checkpointKey: instance.checkpointKey,
+      checkpointName: def?.name || instance.checkpointKey,
       gateId: gate.id,
       gateRevision: gate.revision,
       reason: gate.reason,

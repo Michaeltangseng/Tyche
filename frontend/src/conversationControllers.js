@@ -137,6 +137,33 @@ export function createConversationControllers({
     t: app.t,
   }
 
+  const projectRoomGateController = {
+    acceptCandidateVersion: app.acceptCandidateVersion,
+    activeGate: app.activeGate,
+    allReviewersPass: app.allReviewersPass,
+    cancelAcceptConfirm: app.cancelAcceptConfirm,
+    candidateDiverged: app.candidateDiverged,
+    commitToGit: app.commitToGit,
+    confirmAcceptAsIs: app.confirmAcceptAsIs,
+    confirmAcceptNow: app.confirmAcceptNow,
+    draft: app.draft,
+    driftGate: app.driftGate,
+    gateAllowedOutcomes: app.gateAllowedOutcomes,
+    gateCheckpointName: app.gateCheckpointName,
+    gateCommitToGit: app.gateCommitToGit,
+    gateErrorLabel: app.gateErrorLabel,
+    gateLoading: app.gateLoading,
+    gateScreen: app.gateScreen,
+    gateStale: app.gateStale,
+    questionGate: app.questionGate,
+    reloadGate: app.reloadGate,
+    requestAccept: app.requestAccept,
+    requestReject: app.requestReject,
+    resolveGateDrift: app.resolveGateDrift,
+    submitGateContinue: app.submitGateContinue,
+    t: app.t,
+  }
+
   const projectRoomComposerController = {
     canSend: app.canSend,
     draft: app.draft,
@@ -225,6 +252,7 @@ export function createConversationControllers({
     composerController,
     conversationHeaderController,
     projectRoomComposerController,
+    projectRoomGateController,
     projectRoomProgressController,
     timelineController,
   }

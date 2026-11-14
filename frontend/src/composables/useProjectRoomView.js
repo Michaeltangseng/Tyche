@@ -207,6 +207,66 @@ export function useProjectRoomView({
   const canSend = computed(() => targetAvailable.value && Boolean(draft.value.trim()))
   const sendErrorLabel = computed(() => (sendErrorKey.value ? t(sendErrorKey.value) : ''))
 
+  const gateDetail = ref(null)
+  const gateLoading = ref(false)
+  const gateErrorKey = ref('')
+  const gateStale = ref(false)
+  const confirmAcceptAsIs = ref(false)
+  const candidateDiverged = ref(null)
+  const rejectRequested = ref(false)
+  const commitToGit = ref(false)
+  const activeGate = computed(() => activeTarget.value?.gate || null)
+  const activeGateKey = computed(() => (
+    activeGate.value
+      ? `${activeGate.value.gateId}:${activeGate.value.revision}`
+      : ''
+  ))
+  const gateScreen = computed(() => (
+    gateDetail.value?.firstScreen || activeGate.value?.firstScreen || null
+  ))
+  const gateAllowedOutcomes = computed(() => (
+    gateDetail.value?.allowedOutcomes || activeGate.value?.allowedOutcomes || []
+  ))
+  const gateCheckpointName = computed(() => (
+    gateDetail.value?.checkpointName
+      || currentItem.value?.name
+      || activeGate.value?.checkpointKey
+      || ''
+  ))
+  const gateCommitToGit = computed(() => (
+    gateDetail.value?.commitToGit || { available: false, reasons: [] }
+  ))
+  const questionGate = computed(() => (
+    gateDetail.value?.question === true
+      || ['question', 'draft-question'].includes(activeGate.value?.reason)
+  ))
+  const driftGate = computed(() => activeGate.value?.reason === 'drift')
+  const allReviewersPass = computed(() => {
+    const reviews = gateScreen.value?.reviewSummaries || []
+    return reviews.length > 0 && reviews.every(review => review.verdict === 'pass')
+  })
+  const gateErrorLabel = computed(() => (gateErrorKey.value ? t(gateErrorKey.value) : ''))
+
+  async function loadGateDetail() {
+    gateDetail.value = null
+    gateErrorKey.value = ''
+    if (!activeGate.value || !projectId.value
+        || typeof projectRoom.gateDetail !== 'function') return
+    gateLoading.value = true
+    try {
+      gateDetail.value = await projectRoom.gateDetail({
+        projectId: projectId.value,
+        gateId: activeGate.value.gateId,
+        gateRevision: activeGate.value.revision,
+      })
+    } catch (error) {
+      gateErrorKey.value = SEND_ERROR_KEYS[errorCode(error)]
+        || 'projectRoom.composer.errors.generic'
+    } finally {
+      gateLoading.value = false
+    }
+  }
+
   const gateTargets = computed(() => [...gates.value].sort((left, right) => (
     timestampMs(left.createdAt) - timestampMs(right.createdAt)
   )))
@@ -354,6 +414,108 @@ export function useProjectRoomView({
     }
   }
 
+  async function submitGateDecision(outcome, options = {}) {
+    const gate = activeGate.value
+    if (!gate) return false
+    const comment = String(options.comment ?? draft.value).trim()
+    if (outcome === 'continue' && !comment) return false
+    if (outcome === 'accept' && !options.confirmed && !allReviewersPass.value) {
+      confirmAcceptAsIs.value = true
+      return false
+    }
+    confirmAcceptAsIs.value = false
+    candidateDiverged.value = null
+    gateErrorKey.value = ''
+    try {
+      await projectRoom.decideGate({
+        projectId: projectId.value,
+        gateId: gate.gateId,
+        gateRevision: gate.revision,
+        ...(gate.candidateCommit ? { candidateCommit: gate.candidateCommit } : {}),
+        outcome,
+        ...(comment ? { comment } : {}),
+        ...(outcome === 'accept' ? { commitToGit: commitToGit.value === true } : {}),
+        ...(options.acceptCandidate ? { acceptCandidate: true } : {}),
+      })
+      drafts.delete(draftKey(projectId.value, activeTargetId.value))
+      draft.value = ''
+      gateStale.value = false
+      commitToGit.value = false
+      await projectRoom.refresh()
+      await loadGateDetail()
+      return true
+    } catch (error) {
+      const code = errorCode(error)
+      if (code === 'PROJECT_GATE_STALE') {
+        gateStale.value = true
+        await projectRoom.refresh()
+        await loadGateDetail()
+      } else if (code === 'PROJECT_CANDIDATE_DIVERGED') {
+        candidateDiverged.value = { files: error?.details?.files || [] }
+      } else {
+        gateErrorKey.value = SEND_ERROR_KEYS[code] || 'projectRoom.composer.errors.generic'
+      }
+      return false
+    }
+  }
+
+  function requestAccept() {
+    return submitGateDecision('accept')
+  }
+
+  function confirmAcceptNow() {
+    return submitGateDecision('accept', { confirmed: true })
+  }
+
+  function acceptCandidateVersion() {
+    return submitGateDecision('accept', { confirmed: true, acceptCandidate: true })
+  }
+
+  function submitGateContinue() {
+    return submitGateDecision('continue')
+  }
+
+  function requestReject() {
+    rejectRequested.value = true
+  }
+
+  function cancelAcceptConfirm() {
+    confirmAcceptAsIs.value = false
+  }
+
+  async function resolveGateDrift(choice) {
+    const ids = new Set(gateScreen.value?.driftItemIds || [])
+    const items = (project.value?.driftItems || [])
+      .filter(item => ids.has(item.id))
+      .map(item => ({ itemId: item.id, revision: item.revision }))
+    if (!items.length) return false
+    gateErrorKey.value = ''
+    try {
+      await projectRoom.resolveDrift({ projectId: projectId.value, items, choice })
+      await projectRoom.refresh()
+      await loadGateDetail()
+      return true
+    } catch (error) {
+      gateErrorKey.value = SEND_ERROR_KEYS[errorCode(error)]
+        || 'projectRoom.composer.errors.generic'
+      return false
+    }
+  }
+
+  async function reloadGate() {
+    gateStale.value = false
+    await projectRoom.refresh()
+    await loadGateDetail()
+  }
+
+  watch(activeGateKey, () => {
+    gateStale.value = false
+    confirmAcceptAsIs.value = false
+    candidateDiverged.value = null
+    commitToGit.value = false
+    void loadGateDetail()
+  }, { immediate: true })
+
   async function openProjectChat() {
     const id = projectId.value
     if (!id) return false
@@ -405,23 +567,47 @@ export function useProjectRoomView({
   }
 
   return {
+    acceptCandidateVersion,
+    activeGate,
     activeTargetId,
+    allReviewersPass,
     canSend,
+    cancelAcceptConfirm,
+    candidateDiverged,
+    commitToGit,
+    confirmAcceptAsIs,
+    confirmAcceptNow,
     currentItem,
     draft,
+    driftGate,
+    gateAllowedOutcomes,
+    gateCheckpointName,
+    gateCommitToGit,
+    gateErrorLabel,
+    gateLoading,
+    gateScreen,
+    gateStale,
     isMainGroup,
     lastActivityLabel,
+    loadGateDetail,
     openProjectChat,
     otherGateCount,
     project,
     progressItems,
-    requestReopen,
+    questionGate,
+    rejectRequested,
+    reloadGate,
     reopenRequest,
+    requestAccept,
+    requestReject,
+    requestReopen,
+    resolveGateDrift,
     selectNextGateTarget,
     selectTarget,
     sendErrorLabel,
     sendLabel,
     sendTargetText,
+    submitGateContinue,
     targetAvailable,
     targetHint,
     targetLabel,
