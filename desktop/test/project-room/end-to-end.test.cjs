@@ -345,3 +345,107 @@ test('the round limit stops a reviewer that keeps asking for changes', async (t)
   assert.equal(state.instances[0].gate.reason, 'round-limit')
   assert.equal(state.instances[0].round, 3)
 })
+
+test('a rebuttal round that is not accepted goes to a human gate', async (t) => {
+  const { service, workdir } = await setup(t, {
+    lead: {
+      steps: [{
+        op: 'whenPromptIncludes',
+        text: '之前的评审文件',
+        then: [
+          { op: 'write', path: 'meldwork/reviews/requirements/r1-response.md', content: 'Rejected all findings.\n' },
+          { op: 'output', text: 'Rejected all findings.' },
+        ],
+        otherwise: [
+          { op: 'write', path: 'docs/requirements.md', content: 'Version 1\n' },
+          { op: 'output', text: 'Draft ready' },
+        ],
+      }],
+      marker: checkpointMarker,
+    },
+    review: {
+      steps: [{
+        op: 'whenPromptIncludes',
+        text: '驳回轮',
+        then: [
+          { op: 'output', text: 'Summary: insist on the changes.' },
+          { op: 'marker', value: '[[MELDWORK_REVIEW:{"verdict":"revise"}]]' },
+        ],
+        otherwise: [
+          { op: 'output', text: 'Summary: revise.' },
+          { op: 'marker', value: '[[MELDWORK_REVIEW:{"verdict":"revise"}]]' },
+        ],
+      }],
+    },
+  })
+  await service.startProject({ projectId: 'project-1', brief: 'Write it.' })
+  const engine = service.engineFor('project-1')
+  await engine.runUntilIdle()
+  const state = service.contextFor('project-1').store.current()
+  assert.equal(state.instances[0].state, 'gate')
+  assert.equal(state.instances[0].gate.reason, 'rebuttal-rejected')
+  assert.equal(
+    fs.readFileSync(path.join(workdir, 'docs', 'requirements.md'), 'utf8'),
+    'Version 1\n',
+  )
+})
+
+test('an interjection is delivered to the lead before acceptance', async (t) => {
+  const { service, workdir } = await setup(t, {
+    lead: {
+      steps: [{
+        op: 'run',
+        command: process.execPath,
+        args: ['-e', "const fs=require('node:fs');fs.mkdirSync('docs',{recursive:true});fs.appendFileSync('docs/requirements.md','line\\n')"],
+      }],
+      marker: checkpointMarker,
+    },
+    review: {
+      steps: [],
+      finalText: 'Summary: pass.',
+      marker: reviewMarker,
+    },
+  })
+  await service.startProject({ projectId: 'project-1', brief: 'Write it.' })
+  await service.interject({
+    projectId: 'project-1', checkpointId: 'id-1', text: 'Keep it small.',
+  })
+  const engine = service.engineFor('project-1')
+  await engine.runUntilIdle()
+  const state = service.contextFor('project-1').store.current()
+  assert.equal(state.instances[0].interjections[0].status, 'delivered')
+  assert.equal(state.instances[0].gate.reason, 'hard-gate-passed')
+  assert.equal(
+    fs.readFileSync(path.join(workdir, 'docs', 'requirements.md'), 'utf8'),
+    'line\nline\n',
+  )
+})
+
+test('reopening an accepted checkpoint starts a new generation', async (t) => {
+  const { service } = await setup(t)
+  await service.startProject({ projectId: 'project-1', brief: 'Write it.' })
+  const engine = service.engineFor('project-1')
+  await engine.runUntilIdle()
+  let gate = service.snapshot('project-1').gates[0]
+  await service.decideGate({
+    projectId: 'project-1', gateId: gate.gateId, gateRevision: gate.revision,
+    candidateCommit: gate.candidateCommit, outcome: 'accept',
+  })
+  await engine.runUntilIdle()
+  const accepted = service.contextFor('project-1').store.current().instances[0]
+  assert.equal(accepted.state, 'accepted')
+
+  const preview = service.previewReopen({
+    projectId: 'project-1', checkpointId: accepted.id,
+  })
+  await service.reopen({
+    projectId: 'project-1', checkpointId: accepted.id,
+    reason: 'Revisit requirements.', impactHash: preview.impactHash,
+  })
+  await engine.runUntilIdle()
+  const reopened = service.contextFor('project-1').store.current().instances[0]
+  assert.equal(reopened.state, 'gate')
+  assert.equal(reopened.epoch, 1)
+  assert.equal(reopened.sessionGeneration, 1)
+  assert.ok(reopened.decisions.some(decision => decision.outcome === 'accept'))
+})

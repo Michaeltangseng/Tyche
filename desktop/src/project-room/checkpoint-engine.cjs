@@ -140,7 +140,7 @@ class CheckpointEngine {
       params.targetFiles = def?.targetFiles || []
       params.previousCandidate = instance.rounds.at(-1)?.candidate || ''
       params.candidate = this.snapshotCommits.get(instance.id) || instance.candidate || ''
-      params.responseFile = `meldwork/reviews/${instance.checkpointKey}/r${instance.round + 1}-response.md`
+      params.responseFile = `meldwork/reviews/${instance.checkpointKey}/r${Math.max(1, instance.round)}-response.md`
       params.manifest = this.getManifest(instance)
     } else if (effect.type === 'verify-candidate') {
       params.candidate = instance.candidate

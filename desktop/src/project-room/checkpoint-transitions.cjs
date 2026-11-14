@@ -198,6 +198,16 @@ function readExecRemaining(instance, config) {
   return (config?.readExecSeatIds || []).some(seatId => !reviewed.has(seatId))
 }
 
+function resumeLeading(instance, effects, config) {
+  instance.state = 'leading'
+  addEffect(effects, 'snapshot', { phase: 'before' })
+  addEffect(effects, 'invoke-lead', {
+    seatId: config?.checkpoint?.leadSeatId || '',
+    round: instance.round,
+    sessionGeneration: instance.sessionGeneration,
+  })
+}
+
 function startReview(instance, effects, { rebuttal, eventAt, config }) {
   instance.round += 1
   instance.roundsSinceHuman += 1
@@ -371,7 +381,7 @@ function handleInvocationEnded(instance, event, config, effects, diagnostics) {
       }
       if (instance.interjections.some(item => item.status === 'queued')) {
         deliverInterjections(instance, eventAt)
-        instance.state = 'leading'
+        resumeLeading(instance, effects, config)
         return true
       }
       const limit = config?.checkpoint?.roundLimit ?? 3
@@ -412,7 +422,7 @@ function handleSubmittedResult(instance, event, config, effects, diagnostics) {
   }
   if (instance.interjections.some(item => item.status === 'queued')) {
     deliverInterjections(instance, eventAt)
-    instance.state = 'leading'
+    resumeLeading(instance, effects, config)
     return true
   }
   if (result.bodyChanged === true || instance.round === 0) {
@@ -450,7 +460,7 @@ function handleReviewingResult(instance, event, config, effects, diagnostics) {
   }
   if (instance.interjections.some(item => item.status === 'queued')) {
     deliverInterjections(instance, event.at || at)
-    instance.state = 'leading'
+    resumeLeading(instance, effects, config)
     return true
   }
   if (config?.checkpoint?.gate === 'hard' || Object.keys(config?.softBlockers || {}).length > 0) {
@@ -743,6 +753,7 @@ function handleEvent(instance, event, config, effects, diagnostics) {
     addTimeline(effects, instance, config, 'checkpoint-reopen', eventAt, {
       reason: String(event.payload?.reason || ''),
     })
+    addEffect(effects, 'drift-check')
     addEffect(effects, 'withdraw-lease')
     return true
   }
