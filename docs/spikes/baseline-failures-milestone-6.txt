@@ -1,0 +1,31 @@
+# 里程碑 6 测试基线
+
+运行时间：2026-11-14
+环境：Node v22.22.2（macOS darwin 24.6.0）
+命令：`npm --prefix desktop test`
+结果：tests 3028 / pass 3016 / fail 10 / skipped 2 / duration 510s
+工作区状态：分支 `project-room`，里程碑 6 任务 6.1–6.9 已提交（含验收修正 3ba7e78）。
+
+## 已知环境失败（10 个，与交接手册 2.5 及里程碑 4 基线一致，与项目室无关）
+
+desktop/test/skills/local-skill-snapshot-selections.test.cjs（7）：
+- captures a trusted current selection without serializing source or materialized paths
+- restores the same trusted immutable snapshot after the live Skill changes or disappears
+- rejects mixed, forged, missing, or tampered snapshot selections
+- content upgrades require a new approval and revoked trust blocks restore
+- a queued Skill handles trust queued
+- a queued Skill handles trust after-lease
+- a queued Skill handles trust never
+
+desktop/test/skills/local-skill-snapshot.test.cjs（3）：
+- materializes only from blobs after the source is changed and deleted
+- materialized directories and files are private and read-only
+- rejects a modified read-only materialization instead of silently rebuilding it
+
+（原因：临时目录 `rename` 时报 `EACCES`。）
+
+## 说明
+
+- Node 22 下 `desktop/test/security/preload-security.test.cjs` 的 16 个 localStorage 失败不再出现，之后的基线以 Node 22 为准。
+- 里程碑 6 验收时补齐了 `desktop/test/support/main-security-test-harness.cjs` 的项目室测试替身（`setProjectRoom` 与 `project:*` 通道），修正后该文件 109/109 通过。
+- 判断标准：改动之后的失败集合必须是以上 10 个的子集；新增测试全部通过。
