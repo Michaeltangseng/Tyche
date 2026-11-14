@@ -104,6 +104,20 @@ test('local preload exposes the local-only Meldwork API', async () => {
       'updateProfile', 'updateSeat',
     ].sort(),
   )
+  assert.equal(Object.isFrozen(api.trace), true)
+  assert.deepEqual(
+    Object.keys(api.trace).sort(),
+    ['blob', 'onAppended', 'page', 'status'],
+  )
+  const cancelTrace = api.trace.onAppended(() => {})
+  cancelTrace()
+  await api.trace.status({ runId: 'run-1', agentRunId: 'agent-1' })
+  assert.deepEqual(invocations, [{
+    channel: 'trace:status',
+    args: [{ runId: 'run-1', agentRunId: 'agent-1' }],
+  }])
+  invocations.length = 0
+
   const cancelProjectChanged = api.projectRoom.onChanged(() => {})
   cancelProjectChanged()
   await api.projectRoom.snapshot('project-1')

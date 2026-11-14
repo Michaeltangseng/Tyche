@@ -155,6 +155,16 @@ if (isLocalDocument) Object.assign(desktopApi, {
       return () => ipcRenderer.removeListener('project:open', listener)
     },
   }),
+  trace: Object.freeze({
+    page: input => ipcRenderer.invoke('trace:page', input),
+    blob: input => ipcRenderer.invoke('trace:blob', input),
+    status: input => ipcRenderer.invoke('trace:status', input),
+    onAppended: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('trace:appended', listener)
+      return () => ipcRenderer.removeListener('trace:appended', listener)
+    },
+  }),
   cloudAgent: Object.freeze({
     provideInput: (runId, requestId, value) => ipcRenderer.invoke(
       'local-cloud-agent:provide-input', runId, requestId, value,

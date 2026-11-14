@@ -78,6 +78,8 @@ const { ProjectDeletion } = require('./project-room/project-deletion.cjs')
 const { AppPreferencesStore } = require('./project-room/app-preferences.cjs')
 const { createProjectNotificationCoordinator } = require('./project-room/project-notifications.cjs')
 const { registerProjectIpc } = require('./shell/project-ipc.cjs')
+const { createTraceReader } = require('./runs/trace/trace-reader.cjs')
+const { createTraceAppendedNotifier, registerTraceIpc } = require('./shell/trace-ipc.cjs')
 const { ProcessRegistry } = require('./agents/process/process-registry.cjs')
 const { processRunScheduler } = require('./runs/run-scheduler.cjs')
 const { makeClaim } = require('./runs/path-claims.cjs')
@@ -111,6 +113,13 @@ const LOCAL_AGENT_KINDS = new Set([
 ])
 const QUIT_CLEANUP_TIMEOUT_MS = 2500
 let mainWindow = null
+const traceAppendedNotifier = createTraceAppendedNotifier({
+  send: payload => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('trace:appended', payload)
+    }
+  },
+})
 
 // Faults outside a request handler are written to a small private log in
 // userData (secrets redacted, size-capped) instead of disappearing or
@@ -775,6 +784,8 @@ function createWorkspace() {
     storagePath: workspaceStoragePath(),
     processRegistry,
     managedSupervisorPath,
+    tracesRoot: path.join(app.getPath('userData'), 'meldwork-private', 'traces'),
+    onTraceAppended: payload => traceAppendedNotifier.notify(payload),
     contentBlobStore,
     contextPackStore: new ContextPackStore({
       rootPath: path.join(privateRoot, 'context-packs'),
@@ -1061,6 +1072,11 @@ function registerIpc() {
     })).env,
     skillCatalog,
   })
+  const traceReader = createTraceReader({
+    tracesRoot: path.join(app.getPath('userData'), 'meldwork-private', 'traces'),
+    isKnownGroup: groupId => Boolean(workspace?.getGroup?.(groupId)),
+  })
+  registerTraceIpc({ registerTrustedHandle, reader: traceReader })
   registerProjectIpc({
     registerTrustedHandle,
     getProjectService: () => projectService,

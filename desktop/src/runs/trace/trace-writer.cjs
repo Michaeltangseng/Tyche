@@ -109,14 +109,15 @@ function createTraceSink({
     fs.mkdirSync(blobsDir, { recursive: true, mode: 0o700 })
   }
 
+  const meta = {
+    runId,
+    groupId,
+    projectId: projectId || null,
+    createdAt: nowIso(),
+  }
   try {
     ensureRunDir()
-    atomicWritePrivateFile(metaPath, `${JSON.stringify({
-      runId,
-      groupId,
-      projectId: projectId || null,
-      createdAt: nowIso(),
-    })}\n`)
+    atomicWritePrivateFile(metaPath, `${JSON.stringify(meta)}\n`)
   } catch (error) {
     recordFailure(error)
   }
@@ -313,6 +314,16 @@ function createTraceSink({
         }
       }
       flush()
+      if (!failed) {
+        try {
+          atomicWritePrivateFile(metaPath, `${JSON.stringify({
+            ...meta,
+            completedAt: nowIso(),
+          })}\n`)
+        } catch (error) {
+          recordFailure(error)
+        }
+      }
       if (failed) {
         try {
           writeStep({
