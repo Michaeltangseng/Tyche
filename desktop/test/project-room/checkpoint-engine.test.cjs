@@ -196,6 +196,50 @@ test('the engine drives a checkpoint from pending to a hard gate', async (t) => 
   assert.equal(scheduler.released.length > 0, true)
 })
 
+test('a dirty drift check persists unresolved drift items with the gate', async (t) => {
+  const state = baseState()
+  state.instances = [instance('pending')]
+  const directory = fixture(t)
+  const store = new ProjectStore({ projectDir: directory, now: () => at })
+  fs.writeFileSync(path.join(directory, 'state.json'), `${JSON.stringify(state)}\n`)
+  await store.load()
+  const engine = new CheckpointEngine({
+    projectId: 'project-1',
+    store,
+    scheduler: fakeScheduler(),
+    handlers: {
+      ...handlers(),
+      'drift-check': async () => ({
+        clean: false,
+        drifted: ['docs/requirements.md'],
+        snapshotCommit: commit,
+      }),
+    },
+    invoke: invocation('pass'),
+    workdir: '/tmp/project',
+    now: () => at,
+  })
+
+  await engine.dispatch('cp-1', { type: 'DEPS_READY', at })
+  await engine.runUntilIdle()
+
+  const current = store.current()
+  assert.equal(current.instances[0].state, 'gate')
+  assert.equal(current.instances[0].gate.reason, 'drift')
+  assert.equal(current.driftItems.length, 1)
+  assert.deepEqual({
+    path: current.driftItems[0].path,
+    source: current.driftItems[0].source,
+    status: current.driftItems[0].status,
+    observedCommit: current.driftItems[0].observedCommit,
+  }, {
+    path: 'docs/requirements.md',
+    source: 'drift-check',
+    status: 'unresolved',
+    observedCommit: commit,
+  })
+})
+
 test('an acquire-scope request waits for LEASE_GRANTED before continuing', async (t) => {
   const state = baseState()
   state.instances = [instance('pending')]
@@ -218,6 +262,55 @@ test('an acquire-scope request waits for LEASE_GRANTED before continuing', async
   await engine.runUntilIdle()
   const after = store.current().instances[0]
   assert.equal(after.effects.some(effect => effect.type === 'acquire-scope' && effect.status === 'consumed'), true)
+})
+
+test('a writable call records its time window and out-of-scope changes', async (t) => {
+  const state = baseState()
+  state.instances = [instance('pending')]
+  const directory = fixture(t)
+  const store = new ProjectStore({ projectDir: directory, now: () => at })
+  fs.writeFileSync(path.join(directory, 'state.json'), `${JSON.stringify(state)}\n`)
+  await store.load()
+  const shadowRepo = {
+    async snapshot({ effectId }) {
+      return {
+        commit: effectId.endsWith(':before') ? 'b'.repeat(40) : 'c'.repeat(40),
+        skipped: false,
+        placeholderList: [],
+      }
+    },
+    async nameStatus() {
+      return [{ status: 'M', path: 'src/out-of-scope.js' }]
+    },
+  }
+  const engine = new CheckpointEngine({
+    projectId: 'project-1',
+    store,
+    scheduler: fakeScheduler(),
+    handlers: handlers(),
+    invoke: invocation('pass'),
+    workdir: '/tmp/project',
+    shadowRepo,
+    snapshotLimits: {},
+    now: () => at,
+  })
+  await engine.dispatch('cp-1', { type: 'DEPS_READY', at })
+  await engine.runUntilIdle()
+
+  const current = store.current()
+  const window = current.callWindows[0]
+  assert.ok(window, 'call window recorded')
+  assert.equal(window.skipped, false)
+  assert.equal(current.outOfScopeItems.length, 1)
+  assert.deepEqual({
+    path: current.outOfScopeItems[0].path,
+    attribution: current.outOfScopeItems[0].attribution,
+    status: current.outOfScopeItems[0].status,
+  }, {
+    path: 'src/out-of-scope.js',
+    attribution: 'unattributed',
+    status: 'unresolved',
+  })
 })
 
 test('recovery turns an interrupted writable call into a recovery gate', async (t) => {

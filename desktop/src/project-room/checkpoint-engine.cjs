@@ -1,3 +1,4 @@
+const crypto = require('node:crypto')
 const { transition } = require('./checkpoint-transitions.cjs')
 const { EffectRunner, NEVER_EXPIRE } = require('./effect-runner.cjs')
 const { startableInstances } = require('./project-progress.cjs')
@@ -48,6 +49,8 @@ class CheckpointEngine {
     readExecSeatIds = [],
     softBlockers = () => ({}),
     getManifest = () => null,
+    shadowRepo = null,
+    snapshotLimits = {},
     now = () => new Date().toISOString(),
   } = {}) {
     if (!projectId) throw engineError('PROJECT_INPUT_INVALID', { reason: 'project-id-required' })
@@ -73,7 +76,10 @@ class CheckpointEngine {
     this.drainQueued = false
     this.waitingAcquisitions = new Set()
     this.snapshotCommits = new Map()
+    this.effectParams = new Map()
     this.getManifest = getManifest
+    this.shadowRepo = shadowRepo
+    this.snapshotLimits = snapshotLimits
   }
 
   #instance(checkpointId) {
@@ -161,6 +167,48 @@ class CheckpointEngine {
     })
   }
 
+  #recordDriftItems(state, instance, payload) {
+    const result = payload.result || {}
+    const params = this.effectParams.get(payload.effectId) || {}
+    const paths = Array.isArray(result.drifted) && result.drifted.length
+      ? result.drifted
+      : Object.keys(params.acceptedByPath || {})
+    const observedCommit = result.snapshotCommit || instance.candidate
+    if (typeof observedCommit !== 'string' || observedCommit.length < 40) return
+    const eventAt = this.now()
+    for (const path of paths) {
+      const existing = state.driftItems.find(item => (
+        item.checkpointId === instance.id
+          && item.path === path
+          && (item.status === 'unresolved' || item.status === 'resolving')
+      ))
+      if (existing) {
+        existing.observedCommit = observedCommit
+        existing.revision += 1
+        existing.foundAt = eventAt
+        existing.status = 'unresolved'
+        continue
+      }
+      const id = crypto.createHash('sha256')
+        .update(`${instance.id}:${path}`, 'utf8').digest('hex')
+      state.driftItems.push({
+        id,
+        revision: 1,
+        path,
+        checkpointId: instance.id,
+        baseVersionId: instance.artifactVersions.at(-1)?.id || null,
+        acceptedCommit: params.acceptedByPath?.[path]
+          || instance.artifactVersions.at(-1)?.commit
+          || '0'.repeat(40),
+        observedCommit,
+        foundAt: eventAt,
+        source: 'drift-check',
+        status: 'unresolved',
+        resolvedAt: null,
+      })
+    }
+  }
+
   async dispatch(checkpointId, event) {
     const instance = this.#instance(checkpointId)
     if (!instance) throw engineError('PROJECT_NOT_FOUND', { checkpointId })
@@ -180,6 +228,10 @@ class CheckpointEngine {
         effect.params.claims = claims
         const request = result.instance.leaseRequests.find(item => item.id === effect.id)
         if (request) request.claims = claims
+      }
+      if (event.type === 'EFFECT_RESULT' && event.payload?.type === 'drift-check'
+          && event.payload?.result?.clean === false) {
+        this.#recordDriftItems(state, result.instance, event.payload)
       }
       const index = state.instances.findIndex(item => item.id === checkpointId)
       state.instances[index] = result.instance
@@ -312,6 +364,110 @@ class CheckpointEngine {
     }
   }
 
+  #writableInvocation(effect) {
+    return effect.type === 'invoke-lead' || effect.type === 'invoke-draft'
+  }
+
+  async #beginCallWindow(instance, effect) {
+    if (!this.#writableInvocation(effect) || !this.shadowRepo) return null
+    let before = { skipped: true }
+    try {
+      before = await this.shadowRepo.snapshot({
+        effectId: `${effect.id}:before`,
+        targets: [],
+        placeholderList: this.store.current()?.placeholders || [],
+        limits: this.snapshotLimits,
+        isOptional: true,
+      })
+    } catch {
+      before = { skipped: true }
+    }
+    const window = {
+      id: effect.id,
+      effectId: effect.id,
+      groupId: null,
+      claims: this.#claimsFor(instance, effect),
+      startedAt: this.now(),
+      endedAt: this.now(),
+      skipped: before.skipped === true,
+    }
+    await this.store.enqueue((state) => {
+      state.callWindows.push(window)
+      return { next: state }
+    })
+    return { window, before }
+  }
+
+  async #endCallWindow(effect, handle) {
+    if (!handle) return
+    let after = { skipped: true }
+    try {
+      after = await this.shadowRepo.snapshot({
+        effectId: `${effect.id}:after`,
+        targets: [],
+        placeholderList: this.store.current()?.placeholders || [],
+        limits: this.snapshotLimits,
+        isOptional: true,
+      })
+    } catch {
+      after = { skipped: true }
+    }
+    const skipped = handle.before.skipped === true || after.skipped === true
+      || !handle.before.commit || !after.commit
+    let changes = []
+    if (!skipped) {
+      try {
+        changes = await this.shadowRepo.nameStatus(handle.before.commit, after.commit)
+      } catch {
+        changes = []
+      }
+    }
+    const pathCovered = (claim, path) => {
+      if (!claim.path) return true
+      if (claim.path === path) return true
+      const prefix = claim.path.endsWith('/') ? claim.path : `${claim.path}/`
+      return path.startsWith(prefix)
+    }
+    await this.store.enqueue((state) => {
+      const window = state.callWindows.find(item => item.id === handle.window.id)
+      if (window) {
+        window.endedAt = this.now()
+        window.skipped = skipped
+      }
+      if (skipped) return { next: state }
+      const start = Date.parse(handle.window.startedAt)
+      const end = Date.parse(this.now())
+      const overlapping = state.callWindows.filter(item => (
+        item.id !== handle.window.id
+          && Date.parse(item.startedAt) <= end
+          && Date.parse(item.endedAt) >= start
+      ))
+      for (const change of changes) {
+        if (handle.window.claims.some(claim => pathCovered(claim, change.path))) continue
+        const owner = overlapping.find(item => (
+          item.claims.some(claim => pathCovered(claim, change.path))
+        ))
+        const id = crypto.createHash('sha256')
+          .update(`${effect.id}:${change.path}`, 'utf8').digest('hex')
+        const existing = state.outOfScopeItems.find(item => (
+          item.id === id && item.status === 'unresolved'
+        ))
+        if (existing) continue
+        state.outOfScopeItems.push({
+          id,
+          path: change.path,
+          attribution: owner ? 'attributed' : (overlapping.length ? 'uncertain' : 'unattributed'),
+          effectId: owner?.effectId || null,
+          overlappingEffectIds: overlapping.map(item => item.effectId).filter(Boolean),
+          detectedAt: this.now(),
+          status: 'unresolved',
+          resolvedAt: null,
+        })
+      }
+      return { next: state }
+    })
+  }
+
   async #drainInstance(checkpointId) {
     for (let step = 0; step < 200; step += 1) {
       const instance = this.#instance(checkpointId)
@@ -329,6 +485,9 @@ class CheckpointEngine {
         continue
       }
       const prepared = this.#prepareEffect(instance, effect)
+      this.effectParams.set(effect.id, prepared.params)
+      const canWrite = !instance.blockedOn && !this.store.getStorageFault?.()
+      const callWindow = canWrite ? await this.#beginCallWindow(instance, prepared) : null
       const result = await this.runner.run(instance, prepared, {
         projectId: this.projectId,
         checkpointId,
@@ -339,6 +498,7 @@ class CheckpointEngine {
         round: instance.round,
         sessionGeneration: instance.sessionGeneration,
       })
+      if (callWindow) await this.#endCallWindow(effect, callWindow)
       if (result.type === 'EFFECT_VOIDED') {
         await this.#markEffect(effect.id, 'voided')
         continue

@@ -352,6 +352,8 @@ class ProjectService {
       workdir: context.project.workdir,
       readExecSeatIds,
       getManifest: this.getManifest,
+      shadowRepo: context.shadowRepo,
+      snapshotLimits: state?.config.settings.snapshotLimits || {},
       now: this.now,
     })
     return context.engine
