@@ -101,6 +101,9 @@ class LocalWorkspaceConversations {
       group.conversationType = 'direct'
       group.directAgentKind = directAgentKind
     }
+    const projectId = cleanText(input.projectId, 120)
+    if (projectId) group.projectId = projectId
+    if (input.projectRole === 'main') group.projectRole = 'main'
     return this.commit((state) => {
       state.groups.unshift(group)
       return group
@@ -162,9 +165,9 @@ class LocalWorkspaceConversations {
   deleteGroup(groupId) {
     if (this.isGroupBusy(groupId)) throw new Error('LOCAL_GROUP_RUNNING')
     const state = this.state()
-    if (!state.groups.some(group => group.id === groupId)) {
-      throw new Error('LOCAL_GROUP_NOT_FOUND')
-    }
+    const group = state.groups.find(candidate => candidate.id === groupId)
+    if (!group) throw new Error('LOCAL_GROUP_NOT_FOUND')
+    if (group.projectRole === 'main') throw new Error('PROJECT_MAIN_CHAT_UNDELETABLE')
     this.commit(() => {
       this.clearSessionState(groupId)
       state.groups = state.groups.filter(group => group.id !== groupId)

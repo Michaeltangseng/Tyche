@@ -44,7 +44,8 @@ const KNOWLEDGE_BASE_KINDS = new Set(['feishu', 'dingtalk', 'obsidian'])
 
 function emptyState() {
   return {
-    version: 3,
+    version: 4,
+    projects: [],
     groups: [],
     messages: [],
     sessions: {},
@@ -203,6 +204,9 @@ function normalizeLoadedGroup(input, options = {}) {
     group.directAgentKind = directAgentKind
     group.agentKinds = [directAgentKind]
   }
+  const projectId = cleanText(input.projectId, 120)
+  if (projectId) group.projectId = projectId
+  if (input.projectRole === 'main') group.projectRole = 'main'
   return group
 }
 

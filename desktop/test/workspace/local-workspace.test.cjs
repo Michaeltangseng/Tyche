@@ -1349,7 +1349,7 @@ for (const failure of ['empty reply', 'message persistence']) {
 test('all supported workspace versions preserve stored or omitted read-only permission', (t) => {
   const { directory, options } = fixture()
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
-  for (const version of [1, 2, 3]) {
+  for (const version of [1, 2, 3, 4]) {
     for (const storedPermission of [false, undefined]) {
       const group = {
         id: `workspace-v${version}-${storedPermission === false ? 'false' : 'omitted'}`,
@@ -1366,10 +1366,33 @@ test('all supported workspace versions preserve stored or omitted read-only perm
       })}\n`)
 
       const restored = new LocalWorkspace(options)
-      assert.equal(restored.state.version, 3)
+      assert.equal(restored.state.version, 4)
       assert.equal(restored.snapshot().groups[0].allowWrite, false)
     }
   }
+})
+
+test('the project main chat cannot be deleted on its own', async (t) => {
+  const { directory, options } = fixture()
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const workspace = new LocalWorkspace(options)
+  await workspace.refreshAgents()
+  const main = workspace.createGroup({
+    name: 'Main', agentKinds: ['codex'], workdir: directory,
+    projectId: 'project-1', projectRole: 'main',
+  })
+  const chat = workspace.createGroup({
+    name: 'Chat', agentKinds: ['codex'], workdir: directory, projectId: 'project-1',
+  })
+  assert.equal(main.projectId, 'project-1')
+  assert.equal(main.projectRole, 'main')
+  assert.equal(chat.projectRole, undefined)
+
+  assert.throws(() => workspace.deleteGroup(main.id), {
+    message: 'PROJECT_MAIN_CHAT_UNDELETABLE',
+  })
+  workspace.deleteGroup(chat.id)
+  assert.deepEqual(workspace.state.groups.map(group => group.id), [main.id])
 })
 
 test('Skills are validated and injected only into their selected target Agent', async (t) => {
