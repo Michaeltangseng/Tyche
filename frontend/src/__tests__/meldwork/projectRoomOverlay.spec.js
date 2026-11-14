@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import ProjectRoomOverlay from '../../components/ProjectRoomOverlay.vue'
 
@@ -95,8 +95,10 @@ describe('project room overlays', () => {
       previewReopenCheckpoint: vi.fn(async () => impact()),
     })
     const wrapper = mount(ProjectRoomOverlay, { props: { controller: fixture } })
-    await wrapper.vm.$nextTick()
+    await flushPromises()
     expect(fixture.previewReopenCheckpoint).toHaveBeenCalledWith('cp-1')
+    expect(wrapper.find('.impact-preview').exists()).toBe(true)
+    expect(wrapper.text()).toContain('projectRoom.overlay.affected:2')
     await wrapper.get('textarea').setValue('Revisit the decision')
     await wrapper.get('.primary-button').trigger('click')
     expect(fixture.submitReopen).toHaveBeenCalledWith('cp-1', 'Revisit the decision', 'impact-hash')

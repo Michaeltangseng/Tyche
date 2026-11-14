@@ -710,10 +710,10 @@ class ProjectService {
           available: preflight.ok === true,
           reasons: preflight.reasons || [],
         }
-      } catch (error) {
+      } catch {
         commitToGit = {
           available: false,
-          reasons: [{ path: '', reason: String(error?.code || 'git-preflight-failed') }],
+          reasons: [{ path: '', reason: 'git-preflight-failed' }],
         }
       }
     }

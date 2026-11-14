@@ -212,8 +212,7 @@
         </div>
 
         <label
-          v-if="!questionGate && !driftGate && acceptAvailable
-            && (gateCommitToGit.available || gateCommitToGit.reasons.length)"
+          v-if="!questionGate && !driftGate && acceptAvailable && commitApplicable"
           class="gate-commit"
         >
           <input v-model="commitToGit" type="checkbox" :disabled="!gateCommitToGit.available" />
@@ -329,8 +328,22 @@ const acceptUnavailableReason = computed(() => {
   return t('projectRoom.gate.outcomeUnavailable')
 })
 const continueUnavailableReason = computed(() => t('projectRoom.gate.outcomeUnavailable'))
+const COMMIT_REASONS = new Set([
+  'not-a-repository', 'staged', 'content', 'outside-repository',
+  'index-check-failed', 'git-unavailable', 'git-preflight-failed',
+])
+const commitReasons = computed(() => (
+  (gateCommitToGit.value.reasons || []).map(item => ({
+    ...item,
+    reason: COMMIT_REASONS.has(item.reason) ? item.reason : 'unknown',
+  }))
+))
+const commitApplicable = computed(() => (
+  gateCommitToGit.value.available
+    || commitReasons.value.some(item => !['not-a-repository', 'git-unavailable'].includes(item.reason))
+))
 const commitUnavailableReason = computed(() => {
-  const reasons = gateCommitToGit.value.reasons || []
+  const reasons = commitReasons.value
   if (!reasons.length) return t('projectRoom.gate.commitUnavailable')
   return reasons.map((item) => {
     const key = `projectRoom.gate.commitReason.${item.reason || 'unknown'}`

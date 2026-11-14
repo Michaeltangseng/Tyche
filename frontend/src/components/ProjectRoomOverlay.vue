@@ -63,7 +63,26 @@
 
     <template v-else-if="kind === 'reopen'">
       <p class="overlay-description">{{ t('projectRoom.overlay.reopenDescription') }}</p>
-      <ImpactPreview :preview="preview" :progress-items="progressItems" :checkpoint-defs="checkpointDefs" :t="t" />
+      <div class="impact-preview">
+        <p class="overlay-description">
+          {{ t('projectRoom.overlay.affected', { count: impactItems.length }) }}
+        </p>
+        <div class="overlay-list">
+          <div v-for="item in impactItems" :key="item.id" class="overlay-list-row">
+            <span>
+              <strong>{{ item.name }}</strong>
+              <small>{{ item.label }}</small>
+            </span>
+            <span class="impact-tags">
+              <em v-if="item.hard">{{ t('projectRoom.overlay.hardGate') }}</em>
+              <em v-if="item.milestone">{{ t('projectRoom.overlay.milestone') }}</em>
+            </span>
+          </div>
+        </div>
+        <p v-if="preview && preview.activeInvocationEffectIds && preview.activeInvocationEffectIds.length" class="overlay-description">
+          {{ t('projectRoom.overlay.cancelCalls', { count: preview.activeInvocationEffectIds.length }) }}
+        </p>
+      </div>
       <p v-if="impactChanged" class="overlay-warning">{{ t('projectRoom.overlay.impactChanged') }}</p>
       <label class="overlay-field">
         <span>{{ t('projectRoom.overlay.reopenReason') }}</span>
