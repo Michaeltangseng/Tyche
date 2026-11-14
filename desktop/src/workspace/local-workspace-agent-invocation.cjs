@@ -725,13 +725,28 @@ class LocalWorkspaceAgentInvocation {
     // Automatic discussions must make progress between rounds even when an
     // Agent keeps emitting heartbeat events without ever returning a result,
     // so they get the strict startup and no-progress limits.
+    const watchdogOptions = context.watchdog || {}
     const watchdog = createInvocationWatchdog({
-      timeoutMs: this.runAgentTimeoutMs,
-      toolTimeoutMs: this.runAgentToolTimeoutMs,
+      timeoutMs: watchdogOptions.inactivityMs ?? this.runAgentTimeoutMs,
+      toolTimeoutMs: watchdogOptions.toolMs ?? this.runAgentToolTimeoutMs,
+      noProgressCapMs: watchdogOptions.noProgressCapMs,
       strict: mode === 'auto',
+      mode: watchdogOptions.onInactivity === 'remind' ? 'remind' : 'abort',
       isStopped: () => parentAbortObserved || Boolean(signal?.aborted)
         || agentController.signal.aborted,
       onTimeout: () => agentController.abort(),
+      onReminder: () => {
+        const reminder = {
+          type: 'agent-inactivity-reminder',
+          groupId: group.id,
+          agentKind: kind,
+          round,
+          inactivityMs: watchdogOptions.inactivityMs ?? this.runAgentTimeoutMs,
+        }
+        try { this.emitRunEvent?.(reminder) } catch { /* reminder is best effort */ }
+        try { this.onInactivityReminder?.(reminder) } catch { /* best effort */ }
+        try { watchdogOptions.onReminder?.(reminder) } catch { /* best effort */ }
+      },
     })
     const closeAgentCallbacks = () => {
       agentCallbacksClosed = true
@@ -1065,6 +1080,9 @@ class LocalWorkspaceAgentInvocation {
         },
         signal: agentController.signal,
         sandbox: allowWrite ? 'workspace-write' : (readExec ? 'read-exec' : 'read-only'),
+        ...(context.watchdog && Object.hasOwn(context.watchdog, 'hardLimitMs')
+          ? { hardLimitMs: context.watchdog.hardLimitMs }
+          : {}),
         ...((allowWrite || readExec) && this.platform !== 'win32'
           && this.processRegistry && this.managedSupervisorPath
           ? {

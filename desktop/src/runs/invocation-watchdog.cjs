@@ -22,9 +22,12 @@ function positiveFinite(value) {
 function createInvocationWatchdog({
   timeoutMs,
   toolTimeoutMs,
+  noProgressCapMs,
   strict = false,
+  mode = 'abort',
   isStopped = () => false,
   onTimeout = () => {},
+  onReminder = () => {},
   clock = REAL_CLOCK,
 } = {}) {
   const enabled = positiveFinite(timeoutMs)
@@ -59,12 +62,21 @@ function createInvocationWatchdog({
     )
     const stallWindowMs = !strict
       ? Number.POSITIVE_INFINITY
-      : (toolActive ? toolTimeoutMs : timeoutMs * 3)
+      : (Number.isFinite(noProgressCapMs) && noProgressCapMs > 0
+        ? noProgressCapMs
+        : (toolActive ? toolTimeoutMs : timeoutMs * 3))
     const stallRemainingMs = Math.max(0, stallWindowMs - (now - lastSubstantiveAt))
     const remainingMs = Math.min(inactivityRemainingMs, startupRemainingMs, stallRemainingMs)
     timer = clock.setTimeout(() => {
       timer = null
       if (paused || isStopped()) return
+      if (mode === 'remind') {
+        onReminder(new Error('LOCAL_AGENT_INACTIVITY'))
+        lastProgressAt = clock.now()
+        lastSubstantiveAt = lastProgressAt
+        arm()
+        return
+      }
       timedOut = true
       timeoutError = new Error('LOCAL_AGENT_TIMEOUT')
       onTimeout(timeoutError)

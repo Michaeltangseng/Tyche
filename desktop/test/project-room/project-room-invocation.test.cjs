@@ -127,10 +127,12 @@ test('project-room read-exec is passed to the adapter without workspace write', 
       permissionMode: 'read-exec',
       sessionKey: 'project:p:cp:c:seat:s:codex:g0',
       saveSession: false,
+      watchdog: { onInactivity: 'remind', hardLimitMs: null },
     },
   )
   await workspace.finishRun(group.id, controller, 'completed')
   assert.equal(calls[0].runOptions.sandbox, 'read-exec')
+  assert.equal(calls[0].runOptions.hardLimitMs, null)
 })
 
 test('the project-room session key hash includes project, checkpoint, seat, and generation', () => {

@@ -952,10 +952,19 @@ async function runAcpTurn(runtime, prompt, options, spec, profile) {
     resolveContribution({ stopReason: 'end_turn' })
   }
   const operation = promise => Promise.race([promise, abortPromise, runtime.failurePromise])
-  const timeout = setTimeout(() => {
-    timeoutRequested = true
-    abort()
-  }, 2 * 60 * 60 * 1000)
+  const hardLimitMs = options.hardLimitMs === undefined
+    ? 2 * 60 * 60 * 1000
+    : (options.hardLimitMs === null
+      ? 0
+      : (Number.isFinite(options.hardLimitMs) && options.hardLimitMs > 0
+        ? options.hardLimitMs
+        : 2 * 60 * 60 * 1000))
+  const timeout = hardLimitMs > 0
+    ? setTimeout(() => {
+      timeoutRequested = true
+      abort()
+    }, hardLimitMs)
+    : null
   if (options.signal?.aborted) abort()
   else options.signal?.addEventListener('abort', abort, { once: true })
 

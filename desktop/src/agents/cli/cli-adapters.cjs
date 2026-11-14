@@ -401,10 +401,19 @@ async function runAgent(agent, prompt, workdir, options = {}) {
         }), KILL_SETTLE_MS)
       }, TERMINATE_GRACE_MS)
     }
-    timeout = setTimeout(() => {
-      timeoutRequested = true
-      abort()
-    }, 2 * 60 * 60 * 1000)
+    const hardLimitMs = options.hardLimitMs === undefined
+      ? 2 * 60 * 60 * 1000
+      : (options.hardLimitMs === null
+        ? 0
+        : (Number.isFinite(options.hardLimitMs) && options.hardLimitMs > 0
+          ? options.hardLimitMs
+          : 2 * 60 * 60 * 1000))
+    if (hardLimitMs > 0) {
+      timeout = setTimeout(() => {
+        timeoutRequested = true
+        abort()
+      }, hardLimitMs)
+    }
     if (options.signal?.aborted) abort()
     else options.signal?.addEventListener('abort', abort, { once: true })
     child.stdout.on('data', (chunk) => {
