@@ -29,25 +29,117 @@ function hasJoseHeader(value) {
   }
 }
 
+// Order matters: redactSecrets applies these in sequence, exactly as the
+// previous chained implementation did.
+const SECRET_RULES = [
+  {
+    name: 'private-key',
+    pattern: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/gi,
+    replacement: '[redacted private key]',
+  },
+  {
+    name: 'bearer',
+    pattern: /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi,
+    replacement: 'Bearer [redacted]',
+  },
+  {
+    name: 'basic-auth',
+    pattern: BASIC_AUTH_CANDIDATE,
+    replace: (match, credential) => (
+      isBasicCredential(credential) ? 'Basic [redacted]' : match
+    ),
+  },
+  {
+    name: 'token-prefix',
+    pattern: /\b(sk|rk|pk|ghp|github_pat|xox[baprs]?)[_-][A-Za-z0-9_-]{12,}\b/gi,
+    replacement: '[redacted]',
+  },
+  {
+    name: 'aws-access-key',
+    pattern: /\bAKIA[0-9A-Z]{16}\b/g,
+    replacement: '[redacted]',
+  },
+  {
+    name: 'google-api-key',
+    pattern: /(?<![0-9A-Za-z_-])AIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])/g,
+    replacement: '[redacted]',
+  },
+  {
+    name: 'jose',
+    pattern: JOSE_COMPACT_CANDIDATE,
+    replace: match => (hasJoseHeader(match) ? '[redacted]' : match),
+  },
+  {
+    name: 'url-credentials',
+    pattern: /([A-Za-z][A-Za-z0-9+.-]*:\/\/)([^\s/@:]+):([^\s/@]+)@/gi,
+    replacement: '$1[redacted]@',
+  },
+  {
+    name: 'sensitive-assignment',
+    pattern: /(["']?)[A-Za-z0-9_.-]*(?:api[_ -]?key|access[_ -]?key(?:[_ -]?id)?|secret[_ -]?access[_ -]?key|access[_ -]?token|refresh[_ -]?token|auth[_ -]?token|database[_ -]?url|connection[_ -]?string|dsn|token|secret|password|credential|authorization|private[_ -]?key|session[_ -]?ref(?:erence)?)[A-Za-z0-9_.-]*\1\s*[:=]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|\[[^\]\r\n]*\]|[^\s,;}\]]+)/gi,
+    replacement: 'credential=[redacted]',
+    appliesTo: text => SENSITIVE_ASSIGNMENT_KEY.test(text),
+  },
+]
+
 function redactSecrets(value) {
   let text = String(value || '')
-    .replace(/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/gi, '[redacted private key]')
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]')
-    .replace(BASIC_AUTH_CANDIDATE, (match, credential) => (
-      isBasicCredential(credential) ? 'Basic [redacted]' : match
-    ))
-    .replace(/\b(sk|rk|pk|ghp|github_pat|xox[baprs]?)[_-][A-Za-z0-9_-]{12,}\b/gi, '[redacted]')
-    .replace(/\bAKIA[0-9A-Z]{16}\b/g, '[redacted]')
-    .replace(/(?<![0-9A-Za-z_-])AIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])/g, '[redacted]')
-    .replace(JOSE_COMPACT_CANDIDATE, match => (hasJoseHeader(match) ? '[redacted]' : match))
-    .replace(
-      /([A-Za-z][A-Za-z0-9+.-]*:\/\/)([^\s/@:]+):([^\s/@]+)@/gi,
-      '$1[redacted]@',
-    )
-  if (SENSITIVE_ASSIGNMENT_KEY.test(text)) {
-    text = text.replace(/(["']?)[A-Za-z0-9_.-]*(?:api[_ -]?key|access[_ -]?key(?:[_ -]?id)?|secret[_ -]?access[_ -]?key|access[_ -]?token|refresh[_ -]?token|auth[_ -]?token|database[_ -]?url|connection[_ -]?string|dsn|token|secret|password|credential|authorization|private[_ -]?key|session[_ -]?ref(?:erence)?)[A-Za-z0-9_.-]*\1\s*[:=]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|\[[^\]\r\n]*\]|[^\s,;}\]]+)/gi, 'credential=[redacted]')
+  for (const rule of SECRET_RULES) {
+    if (rule.appliesTo && !rule.appliesTo(text)) continue
+    text = rule.replace
+      ? text.replace(rule.pattern, rule.replace)
+      : text.replace(rule.pattern, rule.replacement)
   }
   return text
 }
 
-module.exports = { redactSecrets }
+function cloneGlobal(pattern) {
+  const flags = new Set(pattern.flags)
+  flags.add('g')
+  return new RegExp(pattern.source, [...flags].join(''))
+}
+
+function mergeSpans(spans) {
+  spans.sort((left, right) => left.start - right.start || right.end - left.end)
+  const merged = []
+  for (const span of spans) {
+    const previous = merged[merged.length - 1]
+    if (previous && span.start <= previous.end) {
+      previous.end = Math.max(previous.end, span.end)
+    } else {
+      merged.push({ ...span })
+    }
+  }
+  return merged
+}
+
+function secretSpans(value, { knownValues = [] } = {}) {
+  const text = String(value || '')
+  const spans = []
+  for (const rule of SECRET_RULES) {
+    if (rule.appliesTo && !rule.appliesTo(text)) continue
+    const pattern = cloneGlobal(rule.pattern)
+    let match
+    while ((match = pattern.exec(text)) !== null) {
+      const replaced = rule.replace ? rule.replace(...match) : rule.replacement
+      if (replaced !== match[0]) {
+        spans.push({ start: match.index, end: match.index + match[0].length, rule: rule.name })
+      }
+      if (match[0].length === 0) pattern.lastIndex += 1
+    }
+  }
+  for (const valueItem of knownValues) {
+    const needle = String(valueItem ?? '')
+    if (!needle) continue
+    let from = 0
+    while (from <= text.length - needle.length) {
+      const index = text.indexOf(needle, from)
+      if (index < 0) break
+      spans.push({ start: index, end: index + needle.length, rule: 'known-value' })
+      from = index + needle.length
+    }
+  }
+  return mergeSpans(spans)
+}
+
+module.exports = { SECRET_RULES, redactSecrets, secretSpans }
