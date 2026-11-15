@@ -8,7 +8,7 @@
 
 当前切片已接入独立的 v2 Renderer 页面，尚未接入旧 Chat 迁移。`controller-agent.cjs` 已在 main 中通过 `native-runtime.cjs` 连接原生 `invokeAgent`：按 Room Provider 配置顺序选择首个 Provider，验证 Chat/目录归属与已安装 Agent；创建本次调用的临时执行描述，不查找已有 group，也不创建隐藏群聊。Controller 强制只读、不写入旧消息/Session、严格解析 JSON；Worker 写入需要用户授权与根目录独占租约。Assignment Runner 已补齐原生接口要求的 promptOverride/contextPackId，并带入角色 Prompt、任务创建时的协作约定和 Report 输出要求。独立 Controller Session 已支持批次幂等、context revision 校验和结构化决策审计；动态角色创建与 Prompt 更新已受 Room Provider/能力白名单约束。Room schema 已升级到 v3，既有 Room 默认只读。已在 Electron main 使用真实 Claude Code CLI 跑通自动组队、单文档任务、结构化 Report、产物快照/diff 和确认 Attention，并验证账本重开；真实多 Agent 评审、平台心跳和异常恢复均已有闭环验收，原生会话续跑的真实 CLI 验收仍待完成，未运行仓库全量测试。
 
-Assignment Runner 现已在每个运行中的 Assignment 上由平台定时写入 `session_liveness`（默认 30 秒，随运行启动，完成/失败/取消后清理）；这是真实调用仍由平台持有的 liveness 事实，不依赖 Worker 自报消息。Electron Node 定向测试已覆盖长调用期间心跳产生及结束后停止写入。长任务的真实 CLI、原生会话续跑和异常恢复验收仍待完成。
+Assignment Runner 现已在每个运行中的 Assignment 上由平台定时写入 `session_liveness`（默认 30 秒，随运行启动，完成/失败/取消后清理）；这是真实调用仍由平台持有的 liveness 事实，不依赖 Worker 自报消息。Electron Node 定向测试已覆盖长调用期间心跳产生及结束后停止写入；真实 recovery smoke 又验证了 17 条 liveness 事件，并确认替代 Assignment 退出后没有继续写入。原生会话续跑的真实 CLI 验收仍待完成。
 
 Supervisor 的 stale 查询现在按事件序列同时读取 `session_liveness` 与 `session_exited`；退出事件晚于最后心跳时不会再把已结束 Assignment 误报为 stale。该边界已有 Electron Node 定向回归测试。
 

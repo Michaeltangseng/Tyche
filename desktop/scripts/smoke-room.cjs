@@ -85,6 +85,7 @@ async function smoke() {
   }
   const service = createRoomService({ roomDb, repository, invokeAgent, resolveGroup: native.resolveTarget,
     decideController: createControllerAgent({ repository, invokeAgent: native.invokeAgent, resolveGroup: native.resolveTarget }),
+    heartbeatMs: scenario === 'recovery' ? 1_000 : 30_000,
     autoRunEffects: scenario !== 'recovery',
     onControllerError: error => { fatal ||= error; console.error(JSON.stringify({ stage: 'controller_error', code: error.code || error.message })) },
     onEffectError: error => { fatal ||= error; console.error(JSON.stringify({ stage: 'worker_error', code: error.code || error.message })) },

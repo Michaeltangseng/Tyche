@@ -17,7 +17,10 @@ async function runRecoverySmoke({ service, repository, roomId, chatId, processRe
   if (!first || first.effect.status !== 'unknown' || first.error?.unknown !== true) throw new Error('SMOKE_RECOVERY_UNKNOWN_NOT_QUARANTINED')
   const quarantined = repository.getAssignmentContext(assignmentId)
   if (quarantined.status !== 'waiting' || quarantined.outcome !== 'unknown') throw new Error('SMOKE_RECOVERY_ASSIGNMENT_NOT_QUARANTINED')
-  if (repository.listEvents(roomId, { chatId }).some(event => event.type === 'session_exited')) throw new Error('SMOKE_RECOVERY_EXIT_FABRICATED')
+  const firstEvents = repository.listEvents(roomId, { chatId })
+  if (firstEvents.some(event => event.type === 'session_exited')) throw new Error('SMOKE_RECOVERY_EXIT_FABRICATED')
+  const livenessEvents = firstEvents.filter(event => event.type === 'session_liveness')
+  if (livenessEvents.length < 2) throw new Error('SMOKE_RECOVERY_LIVENESS_MISSING')
 
   const reconciled = service.reconcileProcesses({ assignmentId })
   if (reconciled.resolvedAssignmentIds.length !== 1 || reconciled.unresolvedAssignmentIds.length !== 0) {
@@ -37,7 +40,10 @@ async function runRecoverySmoke({ service, repository, roomId, chatId, processRe
   const records = processRegistry.getInvocationRecords(replacement.run_id)
   if (!records.length || records.some(record => record.status !== 'ended')) throw new Error('SMOKE_RECOVERY_PROCESS_RECORD_MISSING')
   if (repository.listAssignments(taskId).length !== 2) throw new Error('SMOKE_RECOVERY_HISTORY_MISSING')
-  return { ok: true, scenario: 'recovery', originalAssignmentId: assignmentId, replacementAssignmentId: retry.assignmentId, taskId, tasks: 1, assignments: 2, reports: reports.length, recoveryVerified: true }
+  const finalEvents = repository.listEvents(roomId, { chatId })
+  const replacementExit = finalEvents.find(event => event.type === 'session_exited' && JSON.parse(event.payload_json).assignmentId === retry.assignmentId)
+  if (!replacementExit || finalEvents.some(event => event.type === 'session_liveness' && event.sequence > replacementExit.sequence)) throw new Error('SMOKE_RECOVERY_LIVENESS_NOT_STOPPED')
+  return { ok: true, scenario: 'recovery', originalAssignmentId: assignmentId, replacementAssignmentId: retry.assignmentId, taskId, tasks: 1, assignments: 2, reports: reports.length, livenessEvents: livenessEvents.length, recoveryVerified: true }
 }
 
 module.exports = { runRecoverySmoke }

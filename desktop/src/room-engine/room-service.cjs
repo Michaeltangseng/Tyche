@@ -20,7 +20,7 @@ const RETRYABLE_CONTROLLER_ERRORS = new Set([
   'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN',
 ])
 
-function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController, controllerBatchDelayMs = 40, onControllerError = error => console.error('[room-controller]', error), autoRunEffects = false, onEffectError = error => console.error('[room-effects]', error), locale, getInvocationRecords, readArtifactDiff } = {}) {
+function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController, controllerBatchDelayMs = 40, heartbeatMs = 30_000, onControllerError = error => console.error('[room-controller]', error), autoRunEffects = false, onEffectError = error => console.error('[room-effects]', error), locale, getInvocationRecords, readArtifactDiff } = {}) {
   if (!roomDb || !repository) throw new TypeError('ROOM_SERVICE_DEPENDENCIES_REQUIRED')
   const ingress = createMessageIngress(roomDb, repository)
   const actions = createRoomActionService({ roomDb, repository })
@@ -44,6 +44,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
       resolveGroup,
       importReport,
       locale,
+      heartbeatMs,
       withTransaction: roomDb.withTransaction,
     })
     : null
