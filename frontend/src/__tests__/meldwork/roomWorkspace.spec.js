@@ -12,6 +12,7 @@ function data(id = 'room-1') {
 }
 function api(snapshot = data()) {
   return { listRooms: vi.fn(async () => [{ id: 'room-1', name: 'Demo' }]), snapshot: vi.fn(async () => snapshot),
+    listStaleAssignments: vi.fn(async () => []),
     bootstrap: vi.fn(async () => ({ roomId: 'room-1', chatId: 'chat-1' })),
     createChat: vi.fn(async () => ({ roomId: 'room-1', chatId: 'chat-2' })),
     artifactDiff: vi.fn(async () => ({ text: '+saved change', truncated: false })),
@@ -193,6 +194,19 @@ describe('v2 team workspace', () => {
     await wrapper.get('.room-permissions button').trigger('click')
     await flushPromises()
     expect(wrapper.get('.room-permissions input').element.disabled).toBe(true)
+  })
+
+  it('shows stale execution warning from platform liveness observations', async () => {
+    const snapshot = data()
+    snapshot.tasks = [{ id: 'task', chat_id: 'chat-1', objective: 'Build API', status: 'active' }]
+    snapshot.assignments = [{ id: 'attempt', task_id: 'task', role_id: 'worker', status: 'running' }]
+    const bridge = api(snapshot)
+    bridge.listStaleAssignments.mockResolvedValue([{ assignmentId: 'attempt', taskId: 'task', state: 'running' }])
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    expect(bridge.listStaleAssignments).toHaveBeenCalledWith({ roomId: 'room-1', timeoutMs: 120000 })
+    expect(wrapper.get('.room-warning').text()).toContain('no platform heartbeat')
+    expect(wrapper.get('.room-assignment').text()).toContain('Possibly disconnected')
   })
 
   it('creates new projects from chosen directories and closes the inline form with Escape', async () => {

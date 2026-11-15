@@ -35,6 +35,8 @@ export default {
     "room.noTasks": "主控派发后，任务会出现在这里。",
     "room.stop": "停止任务",
     "room.exitUnknown": "退出尚未确认",
+    "room.stale": "可能已失联",
+    "room.staleWarning": "有 {count} 个执行超过两分钟没有平台心跳，请检查进程或产物。",
     "room.attemptEnded": "本次执行已结束或中断；重试前请检查已有产物。",
     "room.retry": "重试",
     "room.handoffTo": "交接给…",

@@ -76,6 +76,7 @@
         </section>
 
         <aside class="room-ledger">
+          <p v-if="staleAssignmentIds.size" class="room-warning" role="alert">{{ t('room.staleWarning', { count: staleAssignmentIds.size }) }}</p>
           <h2>{{ t('room.attentions', { count: attentions.length }) }}</h2>
           <p v-if="!attentions.length" class="room-muted">{{ t('room.noAttention') }}</p>
           <article v-for="attention in attentions" :key="attention.id" class="room-card">
@@ -95,7 +96,7 @@
             <header><strong>{{ task.objective }}</strong><span>{{ statusLabel(task.status) }}</span></header>
             <button v-if="!['cancelled', 'done'].includes(task.status)" class="secondary-button" :disabled="busy" @click="command({ type: 'stop_task', taskId: task.id })">{{ t('room.stop') }}</button>
             <div v-for="assignment in taskAssignments(task.id)" :key="assignment.id" class="room-assignment">
-              <p>{{ roleName(assignment.role_id) }} · {{ statusLabel(assignment.status) }}<span v-if="assignment.outcome === 'unknown'"> · {{ t('room.exitUnknown') }}</span></p>
+              <p>{{ roleName(assignment.role_id) }} · {{ statusLabel(assignment.status) }}<span v-if="assignment.outcome === 'unknown'"> · {{ t('room.exitUnknown') }}</span><span v-if="staleAssignmentIds.has(assignment.id)"> · {{ t('room.stale') }}</span></p>
               <p v-if="assignment.ended_reason" class="room-muted">{{ t('room.attemptEnded') }}</p>
               <div v-if="canRetry(assignment)" class="room-actions">
                 <button class="secondary-button" :disabled="busy" @click="command({ type: 'retry_task', taskId: task.id, assignmentId: assignment.id })">{{ t('room.retry') }}</button>
@@ -131,7 +132,7 @@ import { useRoomWorkspace } from '../composables/useRoomWorkspace.js'
 import RoomArtifactDiff from './RoomArtifactDiff.vue'
 
 const props = defineProps({ api: { type: Object, required: true }, pickDirectory: { type: Function, required: true }, agents: { type: Array, default: () => [] } })
-const { rooms, snapshot, roomId, chatId, chat, tasks, assignments, roles, messages, reports, attentions,
+const { rooms, snapshot, roomId, chatId, chat, tasks, assignments, roles, messages, reports, attentions, staleAssignments,
   busy, error, load, refresh, openRoom, createRoom, createChat, send, command } = useRoomWorkspace({ api: props.api })
 const creating = ref(false)
 const name = ref('')
@@ -148,6 +149,9 @@ const picking = ref(false)
 const pickerError = ref(false)
 const timeline = ref(null)
 const permissionBusy = computed(() => snapshot.value?.assignments.some(item => item.status === 'running' || item.outcome === 'unknown'))
+const staleAssignmentIds = computed(() => new Set(staleAssignments.value
+  .filter(item => assignments.value.some(assignment => assignment.id === item.assignmentId))
+  .map(item => item.assignmentId)))
 const entries = computed(() => [
   ...messages.value.map(message => ({ key: message.id, author: message.author_type === 'user' ? t('room.you') : roleName(message.author_id), content: message.content, createdAt: message.created_at })),
   ...reports.value.map(report => ({ key: report.id, author: `${roleName(assignments.value.find(item => item.id === report.assignment_id)?.role_id)} · ${t('room.report')}`, content: report.summary, evidence: report.evidence_json, report: true, createdAt: report.created_at })),
@@ -212,6 +216,6 @@ fieldset { border: 1px solid var(--border); border-radius: 8px; } .room-director
 .room-composer { display: flex; align-items: end; gap: 10px; padding-top: 12px; } .room-composer textarea { flex: 1; resize: vertical; min-width: 0; }
 .room-ledger { overflow: auto; min-height: 0; } .room-assignment { border-top: 1px solid var(--border); margin-top: 10px; font-size: 12px; }
 .room-card form { display: flex; gap: 8px; flex-wrap: wrap; } .room-card select { min-width: 0; } .room-empty { margin: auto; opacity: .65; }
-.room-error { color: var(--danger, #b94c4c); }
+.room-error { color: var(--danger, #b94c4c); } .room-warning { color: var(--warning, #9a6700); border: 1px solid currentColor; border-radius: 8px; padding: 8px 10px; font-size: 12px; }
 @media (max-width: 950px) { .room-body { display: flex; flex-direction: column; overflow: visible; } .room-conversation { min-height: 400px; } .room-timeline { max-height: 55vh; } .room-ledger { overflow: visible; } }
 </style>

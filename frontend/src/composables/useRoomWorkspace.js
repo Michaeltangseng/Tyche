@@ -7,6 +7,7 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
   const chatId = ref('')
   const busy = ref(false)
   const error = ref(false)
+  const staleAssignments = ref([])
   let generation = 0
   let disposed = false
   let timer = null
@@ -41,6 +42,14 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
         const data = await api.snapshot({ roomId: requestedRoom })
         if (disposed || generation !== requestGeneration) return null
         snapshot.value = data
+        if (typeof api.listStaleAssignments === 'function') {
+          try {
+            const stale = await api.listStaleAssignments({ roomId: requestedRoom, timeoutMs: 120_000 }) || []
+            if (disposed || generation !== requestGeneration || roomId.value !== requestedRoom) return null
+            staleAssignments.value = stale
+          }
+          catch { if (!disposed && generation === requestGeneration && roomId.value === requestedRoom) staleAssignments.value = [] }
+        } else staleAssignments.value = []
         if (!data.chats.some(item => item.id === chatId.value)) chatId.value = data.room.primary_chat_id || data.chats[0]?.id || ''
         error.value = false
         return data
@@ -60,6 +69,7 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
     clearTimeout(timer)
     roomId.value = id
     snapshot.value = null
+    staleAssignments.value = []
     chatId.value = ''
     error.value = false
     return refresh()
@@ -126,6 +136,6 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
   }
 
   onScopeDispose(() => { disposed = true; generation++; clearTimeout(timer) })
-  return { rooms, snapshot, roomId, chatId, chat, tasks, assignments, roles, messages, reports, attentions,
+  return { rooms, snapshot, roomId, chatId, chat, tasks, assignments, roles, messages, reports, attentions, staleAssignments,
     busy, error, load, refresh, openRoom, createRoom, createChat, send, command }
 }

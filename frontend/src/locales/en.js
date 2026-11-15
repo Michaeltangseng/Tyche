@@ -35,6 +35,8 @@ export default {
     "room.noTasks": "Tasks appear here when the controller dispatches work.",
     "room.stop": "Stop task",
     "room.exitUnknown": "Exit unconfirmed",
+    "room.stale": "Possibly disconnected",
+    "room.staleWarning": "{count} execution(s) have had no platform heartbeat for two minutes. Check the process or its artifacts.",
     "room.attemptEnded": "This attempt ended or was interrupted. Inspect existing output before retrying.",
     "room.retry": "Retry",
     "room.handoffTo": "Hand off to…",
