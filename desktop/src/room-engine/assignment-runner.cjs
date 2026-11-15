@@ -9,12 +9,13 @@ function assertId(value, code) {
   if (typeof value !== 'string' || value.length === 0) throw new TypeError(code)
 }
 
-function createAssignmentRunner({ repository, supervisor, invokeAgent, resolveGroup, importReport, locale = () => 'en', withTransaction = operation => operation() } = {}) {
+function createAssignmentRunner({ repository, supervisor, invokeAgent, resolveGroup, importReport, locale = () => 'en', withTransaction = operation => operation(), heartbeatMs = 30_000 } = {}) {
   if (!repository || !supervisor || typeof invokeAgent !== 'function' || typeof resolveGroup !== 'function') {
     throw new TypeError('ROOM_ASSIGNMENT_RUNNER_DEPENDENCIES_REQUIRED')
   }
   const active = new Map()
   const cancelled = () => Object.assign(new Error('ROOM_ASSIGNMENT_CANCELLED'), { code: 'ROOM_ASSIGNMENT_CANCELLED' })
+  const heartbeatInterval = Number.isFinite(heartbeatMs) && heartbeatMs > 0 ? heartbeatMs : 0
 
   function start(input = {}) {
     assertId(input.assignmentId, 'ROOM_ASSIGNMENT_ID_INVALID')
@@ -51,6 +52,20 @@ function createAssignmentRunner({ repository, supervisor, invokeAgent, resolveGr
       runId,
       observedAt: input.observedAt,
     })
+
+    // Liveness is a platform observation of an active invocation. It is
+    // deliberately emitted by the runner rather than accepted from Worker
+    // message text, so a long-running Agent remains visible even when it has
+    // no Report or user-facing output yet.
+    let heartbeatTimer = null
+    if (heartbeatInterval > 0) {
+      heartbeatTimer = setInterval(() => {
+        try {
+          supervisor.liveness({ assignmentId: assignment.id, chatId: assignment.chat_id, state: 'running' })
+        } catch { /* best effort; the invocation result remains authoritative */ }
+      }, heartbeatInterval)
+      heartbeatTimer.unref?.()
+    }
 
     const abort = new AbortController()
     const onAbort = () => abort.abort()
@@ -139,6 +154,7 @@ function createAssignmentRunner({ repository, supervisor, invokeAgent, resolveGr
       if (abort.signal.aborted) throw cancelled()
       throw error
     }).finally(() => {
+      if (heartbeatTimer) clearInterval(heartbeatTimer)
       input.signal?.removeEventListener('abort', onAbort)
       active.delete(assignment.id)
     })

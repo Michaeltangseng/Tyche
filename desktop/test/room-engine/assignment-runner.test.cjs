@@ -110,3 +110,30 @@ test('replacement worker receives the previous attempt report and evidence', asy
   assert.ok(prompt.includes(state.assignmentId))
   state.roomDb.close()
 })
+
+test('assignment runner emits platform liveness while a long invocation is active', async () => {
+  const state = setup()
+  let release
+  const invoke = new Promise(resolve => { release = resolve })
+  const runner = createAssignmentRunner({
+    repository: state.repository,
+    supervisor: state.supervisor,
+    heartbeatMs: 5,
+    resolveGroup: () => ({ id: 'host' }),
+    invokeAgent: async () => invoke,
+  })
+  const started = runner.start({ assignmentId: state.assignmentId, prompt: 'Build' })
+  await new Promise(resolve => setTimeout(resolve, 20))
+  const events = state.repository.listEvents(state.roomId)
+    .filter(event => event.type === 'session_liveness')
+  assert.ok(events.length >= 2)
+  assert.ok(events.every(event => JSON.parse(event.payload_json).state === 'running'))
+  release({})
+  await started.promise
+  const after = state.repository.listEvents(state.roomId)
+    .filter(event => event.type === 'session_liveness')
+  await new Promise(resolve => setTimeout(resolve, 15))
+  assert.equal(state.repository.listEvents(state.roomId)
+    .filter(event => event.type === 'session_liveness').length, after.length)
+  state.roomDb.close()
+})
