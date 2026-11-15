@@ -218,7 +218,7 @@ Report 入账和状态推导在同一事务内完成，成功后将 `report_rece
 
 角色 Prompt 的最小用户闭环已接通：Room 快照返回当前 Chat 角色的最新 Prompt，成员卡可展开查看；用户可通过统一、幂等的 `update_role_prompt` UserCommand 更新角色 Prompt revision。更新只影响后续 Assignment，保留历史 revision，不增加角色归档或停用状态机。Prompt 仍受 Chat/Role 归属校验，不能授予新的 Provider、能力或目录权限。
 
-Assignment Trace 的只读入口已接通：执行记录卡片可按需加载该次 Assignment 的 Trace 步骤，并通过不透明 cursor 向前分页读取更早步骤。Room 专用 IPC 不接受 runId、agentRunId 或文件路径；主进程由 Room DB 验证 Assignment 并推导 trace 身份，Trace reader 通过 Room 授权回调确认后读取应用私有区 JSONL。当前展示步骤标题和摘要，完整 Trace 面板与 Blob 内容查看仍未接入。通过 Room IPC/Trace reader 21 项 Desktop Node 测试，以及 RoomWorkspace 12 项 Vitest 定向测试；未运行全量测试或桌面打包。
+Assignment Trace 的只读入口已接通：执行记录卡片可按需加载该次 Assignment 的 Trace 步骤，并通过不透明 cursor 向前分页读取更早步骤。步骤中的大字段可通过 Room 专用 Blob IPC 按 256 KiB 分页读取，读完后隐藏继续加载按钮。Room 专用 IPC 不接受 runId、agentRunId 或文件路径；主进程由 Room DB 验证 Assignment 并推导 trace 身份，Trace reader 通过 Room 授权回调确认后读取应用私有区 JSONL。当前仍是嵌入任务卡的摘要/输出查看，完整 Trace 面板尚未接入。
 
 Assignment 在创建时保存 `role_prompt_revision`，执行时按该 revision 读取 Prompt，避免尚未启动的排队任务被后续 Prompt 编辑暗中改变；旧数据库迁移会为已有 Assignment 固定迁移时的当前角色 revision。定向回归覆盖排队后更新 Prompt、执行仍使用创建时版本的行为。
 

@@ -69,11 +69,27 @@ test('internal execution and platform fact channels are not registered', () => {
   assert.deepEqual([...handlers.keys()].sort(), [
     'room:list', 'room:chat-create', 'room:artifact-diff',
     'room:bootstrap', 'room:snapshot', 'room:message-submit', 'room:user-command', 'room:assignments-stale',
-    'room:assignment-trace',
+    'room:assignment-trace', 'room:assignment-trace-blob',
   ].sort())
   for (const channel of ['room:assignment-start', 'room:controller-action', 'room:report-import', 'room:session-liveness', 'room:effect-enqueue']) {
     assert.equal(handlers.has(channel), false)
   }
+})
+
+test('assignment trace Blob IPC accepts bounded ledger identifiers and forwards pagination', async () => {
+  const { handlers, calls, service, ipcMain } = setup()
+  registerRoomIpc({ ipcMain, service, requireRenderer: () => {} })
+  const input = { roomId: 'room', assignmentId: 'assignment', blobId: 'step-output', offset: 256, length: 4096 }
+  await handlers.get(CHANNELS.assignmentTraceBlob)({}, input)
+  assert.deepEqual(calls[0], ['assignmentTraceBlob', input, undefined])
+  for (const invalid of [
+    { ...input, path: '/tmp/output' },
+    { ...input, offset: -1 },
+    { ...input, offset: 1.5 },
+    { ...input, length: 0 },
+    { ...input, length: 256 * 1024 + 1 },
+  ]) await assert.rejects(handlers.get(CHANNELS.assignmentTraceBlob)({}, invalid))
+  assert.equal(calls.length, 1)
 })
 
 test('artifact diff IPC accepts only bounded ledger IDs, never paths or versions', async () => {

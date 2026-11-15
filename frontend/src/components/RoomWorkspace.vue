@@ -106,6 +106,12 @@
                   <li v-for="(step, index) in traceSteps[assignment.id]" :key="`${assignment.id}:${index}:${step.seq || ''}`">
                     <strong>{{ step.title || step.kind || t('room.trace') }}</strong>
                     <span v-if="step.detail || step.message">{{ step.detail || step.message }}</span>
+                    <div v-for="(blob, field) in step.blobs || {}" :key="`${assignment.id}:${step.seq}:${field}`" class="room-trace-blob">
+                      <button v-if="!traceBlobEof[`${assignment.id}:${step.seq}:${field}`]" class="secondary-button" type="button" :disabled="traceBlobBusy[`${assignment.id}:${step.seq}:${field}`]" @click="loadTraceBlob(assignment, step, field)">
+                        {{ traceBlobOffsets[`${assignment.id}:${step.seq}:${field}`] ? t('room.moreTraceOutput') : t('room.showTraceOutput', { field }) }}
+                      </button>
+                      <pre v-if="traceBlobTexts[`${assignment.id}:${step.seq}:${field}`]">{{ traceBlobTexts[`${assignment.id}:${step.seq}:${field}`] }}</pre>
+                    </div>
                   </li>
                 </ol>
                 <button v-if="traceHasMore[assignment.id]" class="secondary-button" type="button" :disabled="busy || traceBusy[assignment.id]" @click="loadTrace(assignment, true)">{{ t('room.moreTrace') }}</button>
@@ -171,6 +177,10 @@ const traceBusy = ref({})
 const traceErrors = ref({})
 const traceCursors = ref({})
 const traceHasMore = ref({})
+const traceBlobTexts = ref({})
+const traceBlobOffsets = ref({})
+const traceBlobBusy = ref({})
+const traceBlobEof = ref({})
 const entries = computed(() => [
   ...messages.value.map(message => ({ key: message.id, author: message.author_type === 'user' ? t('room.you') : roleName(message.author_id), content: message.content, createdAt: message.created_at })),
   ...reports.value.map(report => ({ key: report.id, author: `${roleName(assignments.value.find(item => item.id === report.assignment_id)?.role_id)} · ${t('room.report')}`, content: report.summary, evidence: report.evidence_json, report: true, createdAt: report.created_at })),
@@ -194,6 +204,19 @@ async function loadTrace(assignment, older = false) {
     traceLoaded.value = { ...traceLoaded.value, [assignment.id]: true }
   } catch { traceErrors.value = { ...traceErrors.value, [assignment.id]: true } }
   finally { traceBusy.value = { ...traceBusy.value, [assignment.id]: false } }
+}
+async function loadTraceBlob(assignment, step, field) {
+  const key = `${assignment.id}:${step.seq}:${field}`
+  const offset = traceBlobOffsets.value[key] || 0
+  traceBlobBusy.value = { ...traceBlobBusy.value, [key]: true }
+  try {
+    const result = await props.api.assignmentTraceBlob({ roomId: roomId.value, assignmentId: assignment.id,
+      blobId: step.blobs[field].blobId, offset, length: 256 * 1024 })
+    traceBlobTexts.value = { ...traceBlobTexts.value, [key]: `${traceBlobTexts.value[key] || ''}${result?.text || ''}` }
+    traceBlobOffsets.value = { ...traceBlobOffsets.value, [key]: offset + new TextEncoder().encode(result?.text || '').length }
+    if (result?.eof) traceBlobEof.value = { ...traceBlobEof.value, [key]: true }
+  } catch { traceErrors.value = { ...traceErrors.value, [assignment.id]: true } }
+  finally { traceBlobBusy.value = { ...traceBlobBusy.value, [key]: false } }
 }
 async function saveRolePrompt(role) {
   const prompt = String(rolePrompts.value[role.id] || '')
@@ -221,7 +244,7 @@ async function answer(attention) {
   await command({ type: 'answer_attention', attentionId: attention.id,
     ...(attention.options_json?.length ? { optionId: answers.value[attention.id] } : { comment: answers.value[attention.id] }) })
 }
-watch([roomId, chatId], () => { handoffRoles.value = {}; answers.value = {}; rolePrompts.value = {}; diffArtifactId.value = ''; traceSteps.value = {}; traceLoaded.value = {}; traceErrors.value = {}; traceCursors.value = {}; traceHasMore.value = {} })
+watch([roomId, chatId], () => { handoffRoles.value = {}; answers.value = {}; rolePrompts.value = {}; diffArtifactId.value = ''; traceSteps.value = {}; traceLoaded.value = {}; traceErrors.value = {}; traceCursors.value = {}; traceHasMore.value = {}; traceBlobTexts.value = {}; traceBlobOffsets.value = {}; traceBlobBusy.value = {}; traceBlobEof.value = {} })
 watch(roles, items => {
   const next = { ...rolePrompts.value }
   for (const role of items) if (!(role.id in next)) next[role.id] = role.current_prompt || ''

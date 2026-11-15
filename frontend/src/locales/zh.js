@@ -45,6 +45,8 @@ export default {
     "room.loadTrace": "查看轨迹",
     "room.traceEmpty": "暂时没有轨迹步骤。",
     "room.moreTrace": "加载更早步骤",
+    "room.showTraceOutput": "查看{field}",
+    "room.moreTraceOutput": "加载更多输出",
     "room.artifacts": "产物",
     "room.diff": "查看改动",
     "room.closeDiff": "关闭改动",

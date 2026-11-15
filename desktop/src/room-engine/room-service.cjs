@@ -199,13 +199,11 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     if (!traceReader || typeof traceReader.page !== 'function') throw new Error('ROOM_TRACE_UNAVAILABLE')
     const assignment = repository.getAssignmentContext(assignmentId)
     if (!assignment || assignment.room_id !== roomId || !assignment.run_id) throw new Error('ROOM_TRACE_NOT_FOUND')
-    const identity = createHash('sha256').update(JSON.stringify([
-      assignment.room_id, assignment.chat_id, assignment.provider, assignment.run_id,
-    ])).digest('hex')
+    const agentRunId = roomAgentRunId(assignment)
     try {
       return traceReader.page({
         runId: assignment.run_id,
-        agentRunId: `room-agent-${identity}`,
+        agentRunId,
         cursor,
         direction,
         limit,
@@ -216,14 +214,30 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     }
   }
 
+  function roomAgentRunId(assignment) {
+    const identity = createHash('sha256').update(JSON.stringify([
+      assignment.room_id, assignment.chat_id, assignment.provider, assignment.run_id,
+    ])).digest('hex')
+    return `room-agent-${identity}`
+  }
+
+  function assignmentTraceBlob({ roomId, assignmentId, blobId, offset = 0, length = 256 * 1024 } = {}) {
+    if (!traceReader || typeof traceReader.blob !== 'function') throw new Error('ROOM_TRACE_UNAVAILABLE')
+    const assignment = repository.getAssignmentContext(assignmentId)
+    if (!assignment || assignment.room_id !== roomId || !assignment.run_id) throw new Error('ROOM_TRACE_NOT_FOUND')
+    try {
+      return traceReader.blob({ runId: assignment.run_id, agentRunId: roomAgentRunId(assignment), blobId, offset, length })
+    } catch (error) {
+      if (error?.code === 'TRACE_NOT_FOUND') throw new Error('ROOM_TRACE_NOT_FOUND')
+      throw error
+    }
+  }
+
   function authorizeTrace({ runId, agentRunId } = {}) {
     if (!runId || !agentRunId) return false
     const assignment = repository.getAssignmentByRunId(runId)
     if (!assignment) return false
-    const identity = createHash('sha256').update(JSON.stringify([
-      assignment.room_id, assignment.chat_id, assignment.provider, runId,
-    ])).digest('hex')
-    return agentRunId === `room-agent-${identity}`
+    return agentRunId === roomAgentRunId(assignment)
   }
 
   function createChat(input) {
@@ -318,6 +332,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     sessionExited: sessions.exited,
     listStaleAssignments: sessions.listStale,
     assignmentTrace,
+    assignmentTraceBlob,
     authorizeTrace,
     enqueueEffect: outbox.enqueue,
     runEffectOnce: outbox.runOnce,

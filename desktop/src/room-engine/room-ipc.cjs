@@ -14,6 +14,7 @@ const CHANNELS = Object.freeze({
   userCommand: 'room:user-command',
   listStale: 'room:assignments-stale',
   assignmentTrace: 'room:assignment-trace',
+  assignmentTraceBlob: 'room:assignment-trace-blob',
 })
 
 function assertInput(input, fields) {
@@ -105,6 +106,15 @@ function registerRoomIpc({ ipcMain, service, requireRenderer, isShuttingDown = (
       if (input.direction !== undefined && !['forward', 'backward'].includes(input.direction)) throw new TypeError('ROOM_TRACE_DIRECTION_INVALID')
       if (input.limit !== undefined && (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 200)) throw new TypeError('ROOM_TRACE_LIMIT_INVALID')
       return service.assignmentTrace(input)
+    }],
+    [CHANNELS.assignmentTraceBlob, input => {
+      assertInput(input, ['roomId', 'assignmentId', 'blobId', 'offset', 'length'])
+      text(input.roomId)
+      text(input.assignmentId)
+      text(input.blobId)
+      if (input.offset !== undefined && (!Number.isSafeInteger(input.offset) || input.offset < 0)) throw new TypeError('ROOM_TRACE_OFFSET_INVALID')
+      if (input.length !== undefined && (!Number.isSafeInteger(input.length) || input.length < 1 || input.length > 256 * 1024)) throw new TypeError('ROOM_TRACE_LENGTH_INVALID')
+      return service.assignmentTraceBlob(input)
     }],
   ])
   for (const [channel, handler] of handlers) {

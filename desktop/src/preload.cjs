@@ -165,6 +165,7 @@ if (isLocalDocument) Object.assign(desktopApi, {
     applyUserCommand: input => ipcRenderer.invoke('room:user-command', input),
     listStaleAssignments: input => ipcRenderer.invoke('room:assignments-stale', input),
     assignmentTrace: input => ipcRenderer.invoke('room:assignment-trace', input),
+    assignmentTraceBlob: input => ipcRenderer.invoke('room:assignment-trace-blob', input),
   }),
   workdir: Object.freeze({
     list: input => ipcRenderer.invoke('workdir:list', input),
