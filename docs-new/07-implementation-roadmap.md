@@ -8,6 +8,12 @@
 
 当前切片已接入独立的 v2 Renderer 页面，尚未接入旧 Chat 迁移。`controller-agent.cjs` 已在 main 中通过 `native-runtime.cjs` 连接原生 `invokeAgent`：按 Room Provider 配置顺序选择首个 Provider，验证 Chat/目录归属与已安装 Agent；创建本次调用的临时执行描述，不查找已有 group，也不创建隐藏群聊。Controller 强制只读、不写入旧消息/Session、严格解析 JSON；Worker 写入需要用户授权与根目录独占租约。Assignment Runner 已补齐原生接口要求的 promptOverride/contextPackId，并带入角色 Prompt、任务创建时的协作约定和 Report 输出要求。独立 Controller Session 已支持批次幂等、context revision 校验和结构化决策审计；动态角色创建与 Prompt 更新已受 Room Provider/能力白名单约束。Room schema 已升级到 v3，既有 Room 默认只读。已在 Electron main 使用真实 Claude Code CLI 跑通自动组队、单文档任务、结构化 Report、产物快照/diff 和确认 Attention，并验证账本重开；真实多 Agent 评审、长任务心跳、原生会话续跑和异常恢复验收仍待完成，未运行仓库全量测试。
 
+本轮补齐动态角色停用：`archive_role` 已从空操作改为持久状态转移，禁止新派发及 Prompt 更新；有未结束或 unknown 执行时拒绝停用，不隐式停止任务。Prompt 更新校验 Chat 归属，并触发后续 Controller 决策。已补跨 Chat 越权、未结束工作保护、历史保留及整批回滚的定向测试。协作约定 `update_context` 的用户来源证据、同批次 revision 切换仍待单独落实。
+
+真实 CLI 复验发现，Report 触发的批次没有保留任务源消息，可能遗漏用户的后续要求（例如“文档完成后请我确认”）。Controller 上下文现携带任务引用的历史 `sourceMessages`，过滤跨 Chat、删除和当前批次重复消息；历史消息不作为新派发触发器，不引入固定审批流程。定向回归已覆盖该缺口。
+
+本轮验证：Electron Node 模式运行 room-actions、controller-session、controller-agent、user-commands、room-db、assignment-runner、mention-fallback 共 48 项测试通过；`git diff --check` 通过。修复后的 `npm --prefix desktop run smoke:room -- --run --provider claude` 在临时项目中以真实 Claude Code CLI 约 30 秒、4 次调用通过文档/Report/快照/diff/Attention/账本重开验证。未跑全量测试、构建或打包；本轮未复验 Renderer 点击交互。
+
 ## 实施原则
 
 1. 新引擎与旧 checkpoint engine 并存。新 Chat 走 v2 账本，旧 Chat 保持 legacy 行为。

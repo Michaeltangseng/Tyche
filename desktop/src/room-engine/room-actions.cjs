@@ -85,6 +85,8 @@ function normalize(action, kind, expectedChatId = null, expectedContextRevision 
     if (!Number.isInteger(action.contextRevision) || action.contextRevision < 0) throw new TypeError('ROOM_ACTION_CONTEXT_REVISION_INVALID')
     if (expectedContextRevision !== null && action.contextRevision !== expectedContextRevision) throw new Error('ROOM_ACTION_CONTEXT_STALE')
     if (action.type === 'update_context' && !isRecord(action.changes)) throw new TypeError('ROOM_ACTION_CONTEXT_CHANGES_INVALID')
+    if (['archive_role', 'update_role_prompt'].includes(action.type)) assertId(action.roleId, 'role_id')
+    if (action.type === 'update_role_prompt') assertString(action.prompt, 'ROOM_ACTION_PROMPT_INVALID')
   }
   return Object.freeze({ ...action })
 }
@@ -132,7 +134,12 @@ function createRoomActionService({ roomDb, repository }) {
       }
       else if (validated.type === 'request_attention') result = { attentionId: repository.createAttention({ ...validated, type: validated.attentionType, requestedBy: actorId }) }
       else if (validated.type === 'update_context') result = { context: repository.createChatContextRevision({ chatId: validated.chatId, instructions: typeof validated.changes?.instructions === 'string' ? validated.changes.instructions : '', changes: validated.changes, createdBy: actorId }) }
-      else if (validated.type === 'update_role_prompt') result = { prompt: repository.createRolePromptRevision({ roleId: validated.roleId, prompt: validated.prompt, createdBy: actorId }) }
+      else if (validated.type === 'update_role_prompt') {
+        const role = repository.listAgentRoles(validated.chatId).find(role => role.id === validated.roleId && role.status === 'active')
+        if (!role) throw new Error('ROOM_ROLE_NOT_FOUND')
+        result = { roleId: validated.roleId, prompt: repository.createRolePromptRevision({ roleId: validated.roleId, prompt: validated.prompt, createdBy: actorId }) }
+      }
+      else if (validated.type === 'archive_role') result = repository.archiveAgentRole(validated)
       else result = {}
       return { ...result, event: recordEvent(validated, actorId) }
     })

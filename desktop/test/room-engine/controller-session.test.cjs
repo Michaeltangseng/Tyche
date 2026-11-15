@@ -7,6 +7,7 @@ const test = require('node:test')
 const { openRoomDatabase } = require('../../src/room-engine/room-db.cjs')
 const { createRoomRepository } = require('../../src/room-engine/room-repository.cjs')
 const { createControllerSession } = require('../../src/room-engine/controller-session.cjs')
+const { createRoomActionService } = require('../../src/room-engine/room-actions.cjs')
 
 function setup() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-controller-'))
@@ -18,6 +19,25 @@ function setup() {
   const roleId = repository.createAgentRole({ chatId, displayName: 'Backend', provider: 'codex', createdBy: 'user' })
   return { roomDb, repository, chatId, message, roleId }
 }
+
+test('retirement followed by assignment rolls back the entire controller batch', async () => {
+  const state = setup()
+  const taskId = state.repository.createTask({ chatId: state.chatId, objective: 'Draft', createdBy: 'controller' })
+  const actions = createRoomActionService(state)
+  const session = createControllerSession({
+    ...state, applyAction: actions.applyController,
+    decide: async () => ({ actions: [
+      { type: 'archive_role', chatId: state.chatId, contextRevision: 0, roleId: state.roleId },
+      { type: 'assign', chatId: state.chatId, contextRevision: 0, taskId, roleId: state.roleId },
+    ] }),
+  })
+  await assert.rejects(session.process({ chatId: state.chatId, batchId: 'invalid-retirement', contextRevision: 0 }), /ROLE_INACTIVE/)
+  assert.equal(state.repository.listAgentRoles(state.chatId)[0].status, 'active')
+  assert.deepEqual(state.repository.listAssignments(taskId), [])
+  assert.equal(state.repository.getControllerDecision({ chatId: state.chatId, batchId: 'invalid-retirement' }), undefined)
+  assert.deepEqual(state.repository.listEvents(state.repository.getChatContext(state.chatId).chat.room_id), [])
+  state.roomDb.close()
+})
 
 test('controller session processes a message batch once and records its decision', async () => {
   const state = setup()

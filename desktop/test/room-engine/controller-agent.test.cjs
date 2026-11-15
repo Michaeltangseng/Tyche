@@ -125,3 +125,27 @@ test('the real-provider action-key failure is rejected atomically without compat
   assert.equal(state.roomDb.database.prepare('SELECT count(*) AS n FROM agent_roles').get().n, 0)
   assert.equal(state.roomDb.database.prepare('SELECT count(*) AS n FROM controller_decisions').get().n, 0)
 })
+
+test('report-only evaluations retain task source requests without foreign, deleted or duplicate messages', async t => {
+  const state = setup(t)
+  const roomId = state.repository.getChatContext(state.chatId).chat.room_id
+  const otherChat = state.repository.createChat({ roomId, title: 'Private' })
+  const message = (chatId, content) => state.repository.appendMessage({ chatId, authorType: 'user', authorId: 'user', content }).messageId
+  const original = message(state.chatId, 'Write the document, then ask me to confirm. No implementation.')
+  const foreign = message(otherChat, 'Private request')
+  const deleted = message(state.chatId, 'Deleted request')
+  state.roomDb.database.prepare('UPDATE messages SET deleted_at = ? WHERE id = ?').run(new Date().toISOString(), deleted)
+  state.repository.createTask({ chatId: state.chatId, objective: 'Write document', createdBy: 'controller', sourceMessageIds: [original, foreign, deleted, original] })
+  let facts
+  const decide = createControllerAgent({ repository: state.repository, resolveGroup: () => ({ id: 'host' }),
+    invokeAgent: async (...args) => {
+      facts = JSON.parse(args[5].promptOverride.split('\n').at(-1))
+      return { pendingMessage: { content: '{"actions":[]}' } }
+    } })
+  const input = { chatId: state.chatId, batchId: 'report-only', contextRevision: 0, messages: [], roles: [] }
+  await decide(input)
+  assert.deepEqual(facts.sourceMessages.map(message => message.id), [original])
+  assert.match(facts.sourceMessages[0].content, /ask me to confirm/)
+  await decide({ ...input, messages: [state.repository.getMessage(original)] })
+  assert.deepEqual(facts.sourceMessages, [])
+})

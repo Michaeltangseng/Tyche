@@ -35,6 +35,8 @@ propose_retry
 note
 ```
 
+已实现的角色停用契约：`archive_role(roleId)` 将当前 Chat 的角色标记为 `archived`，保留历史 Assignment、Report 和 Prompt revision，后续不再向它派发任务或更新 Prompt。存在未被后续 attempt 替代的 queued/running/waiting/blocked Assignment，或任何执行结果为 unknown 的 Assignment 时，拒绝停用；Controller 应等待完成，或请求用户决定停止/交接，不隐式取消任务。角色 Prompt 更新同样校验当前 Chat 归属。动作、角色状态和批次决策在同一事务内提交，批次后续动作失败会整体回滚。
+
 `update_task` 只能修改目标描述、依赖、优先级和输入等元数据；状态转移由 Report、平台运行事实或 `UserCommand` 触发。
 
 `UserCommand` 是另一类结构化动作，例如 `pause_chat`、`resume_chat`、`stop_task`、`retry_task`、`accept_artifact`、`reject_artifact`、`revoke_pending_action` 和 `restore_context_revision`。它们必须由平台确认的用户身份产生。

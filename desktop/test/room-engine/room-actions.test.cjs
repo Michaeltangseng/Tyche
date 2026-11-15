@@ -85,3 +85,51 @@ test('dynamic roles persist prompt revisions and respect room capabilities', () 
   }), /PROVIDER_NOT_ALLOWED/)
   roomDb.close()
 })
+
+test('role retirement persists, preserves history and rejects future assignments and prompt updates', () => {
+  const { roomDb, repository, chatId, roomId } = setup()
+  const service = createRoomActionService({ roomDb, repository })
+  const roleId = repository.createAgentRole({ chatId, displayName: 'Writer', provider: 'codex', createdBy: 'controller' })
+  repository.createRolePromptRevision({ roleId, prompt: 'Original instructions', createdBy: 'controller' })
+  const taskId = repository.createTask({ chatId, objective: 'Draft', createdBy: 'controller' })
+  const assignmentId = repository.createAssignment({ taskId, roleId, status: 'completed' })
+  const action = { type: 'archive_role', chatId, contextRevision: 0, roleId }
+  const result = service.applyController(action)
+  assert.equal(result.status, 'archived')
+  assert.deepEqual(repository.listAgentRoles(chatId), [])
+  assert.equal(repository.listAgentRoles(chatId, { includeArchived: true })[0].status, 'archived')
+  assert.equal(repository.getRolePrompt(roleId).prompt, 'Original instructions')
+  assert.equal(repository.listAssignments(taskId)[0].id, assignmentId)
+  assert.throws(() => repository.createAssignment({ taskId, roleId }), /ROLE_INACTIVE/)
+  assert.throws(() => service.applyController({ type: 'update_role_prompt', chatId, contextRevision: 0, roleId, prompt: 'Changed' }), /ROLE_NOT_FOUND/)
+  assert.equal(repository.listEvents(roomId).filter(event => event.type === 'action_archive_role').length, 1)
+  roomDb.close()
+})
+
+test('unfinished or unknown assignments prevent retirement without changing ledger facts', () => {
+  for (const status of ['queued', 'running', 'waiting', 'blocked', 'unknown']) {
+    const { roomDb, repository, roomId, chatId } = setup()
+    const service = createRoomActionService({ roomDb, repository })
+    const roleId = repository.createAgentRole({ chatId, displayName: 'Writer', provider: 'codex', createdBy: 'controller' })
+    const taskId = repository.createTask({ chatId, objective: 'Draft', createdBy: 'controller' })
+    const assignmentId = repository.createAssignment({ taskId, roleId, status: status === 'unknown' ? 'failed' : status })
+    if (status === 'unknown') roomDb.database.prepare("UPDATE assignments SET outcome = 'unknown' WHERE id = ?").run(assignmentId)
+    assert.throws(() => service.applyController({ type: 'archive_role', chatId, contextRevision: 0, roleId }), /UNFINISHED_ASSIGNMENTS/)
+    assert.equal(repository.listAgentRoles(chatId)[0].status, 'active')
+    assert.equal(repository.listEvents(roomId).length, 0)
+    roomDb.close()
+  }
+})
+
+test('controller cannot retire or update prompts of another chat role', () => {
+  const { roomDb, repository, roomId, chatId } = setup()
+  const service = createRoomActionService({ roomDb, repository })
+  const otherChatId = repository.createChat({ roomId, title: 'Other' })
+  const roleId = repository.createAgentRole({ chatId: otherChatId, displayName: 'Private', provider: 'codex', createdBy: 'controller' })
+  for (const action of [{ type: 'archive_role' }, { type: 'update_role_prompt', prompt: 'Injected' }]) {
+    assert.throws(() => service.applyController({ ...action, chatId, contextRevision: 0, roleId }), /ROLE_NOT_FOUND/)
+  }
+  assert.equal(repository.listAgentRoles(otherChatId)[0].prompt_revision, 0)
+  assert.equal(repository.listEvents(roomId).length, 0)
+  roomDb.close()
+})
