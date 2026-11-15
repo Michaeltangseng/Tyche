@@ -13,7 +13,7 @@ const { DatabaseSync } = (() => {
 
 const { ensurePrivateDirectory } = require('../security/private-file.cjs')
 
-const ROOM_SCHEMA_VERSION = 3
+const ROOM_SCHEMA_VERSION = 4
 
 function json(value) {
   return value === undefined || value === null ? null : JSON.stringify(value)
@@ -150,6 +150,7 @@ function migrate(database) {
         required INTEGER NOT NULL DEFAULT 1,
         attempt INTEGER NOT NULL DEFAULT 1,
         previous_assignment_id TEXT,
+        role_prompt_revision INTEGER NOT NULL DEFAULT 0,
         status TEXT NOT NULL,
         ended_reason TEXT,
         outcome TEXT,
@@ -288,6 +289,17 @@ function migrate(database) {
     database.exec('BEGIN IMMEDIATE')
     try {
       database.exec('ALTER TABLE rooms ADD COLUMN write_authorized_root TEXT; PRAGMA user_version = 3; COMMIT;')
+    } catch (error) {
+      database.exec('ROLLBACK')
+      throw error
+    }
+  }
+  if (current > 0 && current < 4) {
+    database.exec('BEGIN IMMEDIATE')
+    try {
+      database.exec(`ALTER TABLE assignments ADD COLUMN role_prompt_revision INTEGER NOT NULL DEFAULT 0;
+        UPDATE assignments SET role_prompt_revision = COALESCE((SELECT prompt_revision FROM agent_roles WHERE agent_roles.id = assignments.role_id), 0);
+        PRAGMA user_version = 4; COMMIT;`)
     } catch (error) {
       database.exec('ROLLBACK')
       throw error

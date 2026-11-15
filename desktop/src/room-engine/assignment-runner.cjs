@@ -29,7 +29,7 @@ function createAssignmentRunner({ repository, supervisor, invokeAgent, resolveGr
 
     const runId = input.runId || `room-run-${crypto.randomUUID()}`
     const nativeSessionId = `room:${assignment.room_id}:${assignment.chat_id}:${assignment.task_id}:${assignment.id}:${assignment.attempt}`
-    const rolePrompt = repository.getRolePrompt(assignment.role_id)?.prompt || ''
+    const rolePrompt = repository.getRolePrompt(assignment.role_id, assignment.role_prompt_revision)?.prompt || ''
     const collaboration = repository.getChatContext(assignment.chat_id, assignment.context_revision).context
     const previousReport = assignment.previous_assignment_id ? repository.getAssignmentLatestReport(assignment.previous_assignment_id) : null
     const promptOverride = [

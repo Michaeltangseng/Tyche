@@ -149,13 +149,15 @@ function createRoomRepository(roomDb) {
       return rows.map(row => ({ ...row, capabilities: decode(row.capabilities_json) }))
     },
     createAssignment({ assignmentId = id('assignment'), taskId, roleId, nativeSessionId = null, runId = null, workspaceRef = null, writeScopes = [], required = true, attempt = 1, previousAssignmentId = null, status = 'queued' }) {
+      const role = db.prepare('SELECT prompt_revision FROM agent_roles WHERE id = ?').get(roleId)
+      if (!role) throw new Error('ROOM_ROLE_NOT_FOUND')
       const timestamp = now()
       db.prepare(`INSERT INTO assignments
         (id, task_id, role_id, native_session_id, run_id, workspace_ref, write_scopes_json,
-         required, attempt, previous_assignment_id, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+         required, attempt, previous_assignment_id, role_prompt_revision, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
         assignmentId, taskId, roleId, nativeSessionId, runId, workspaceRef, encode(writeScopes),
-        required ? 1 : 0, attempt, previousAssignmentId, status, timestamp, timestamp,
+        required ? 1 : 0, attempt, previousAssignmentId, role.prompt_revision, status, timestamp, timestamp,
       )
       return assignmentId
     },

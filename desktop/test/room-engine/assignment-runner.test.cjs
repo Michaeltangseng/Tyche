@@ -19,7 +19,7 @@ function setup() {
   const taskId = repository.createTask({ chatId, objective: 'Build API', createdBy: 'user' })
   const assignmentId = repository.createAssignment({ taskId, roleId })
   const supervisor = createSessionSupervisor({ roomDb, repository })
-  return { roomDb, repository, roomId, chatId, taskId, assignmentId, supervisor }
+  return { roomDb, repository, roomId, chatId, roleId, taskId, assignmentId, supervisor }
 }
 
 test('assignment runner maps a queued assignment to invokeAgent and records exit without a report', async () => {
@@ -126,6 +126,23 @@ test('replacement worker receives the previous attempt report and evidence', asy
   assert.ok(prompt.includes('Schema ready, database unavailable'))
   assert.ok(prompt.includes('docs/schema.md'))
   assert.ok(prompt.includes(state.assignmentId))
+  state.roomDb.close()
+})
+
+test('queued assignment keeps the role prompt revision it was created with', async () => {
+  const state = setup()
+  state.repository.createRolePromptRevision({ roleId: state.roleId, prompt: 'Use the concise API style.', createdBy: 'user' })
+  const assignmentId = state.repository.createAssignment({ taskId: state.taskId, roleId: state.roleId })
+  state.repository.createRolePromptRevision({ roleId: state.roleId, prompt: 'Use the new verbose API style.', createdBy: 'user' })
+  let prompt
+  const runner = createAssignmentRunner({
+    repository: state.repository, supervisor: state.supervisor, resolveGroup: () => ({ id: 'host' }),
+    invokeAgent: async (...args) => { prompt = args[5].promptOverride; return {} },
+  })
+  await runner.start({ assignmentId, prompt: 'Build' }).promise
+  assert.match(prompt, /Use the concise API style\./)
+  assert.doesNotMatch(prompt, /Use the new verbose API style\./)
+  assert.equal(state.repository.getAssignmentContext(assignmentId).role_prompt_revision, 1)
   state.roomDb.close()
 })
 

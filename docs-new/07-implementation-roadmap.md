@@ -6,7 +6,7 @@
 
 `desktop/src/room-engine/` 已提供私有 SQLite 账本、统一消息入口、ControllerAction/UserCommand/PlatformTransition 校验、Report 导入和状态推导、outbox、Supervisor 事实记录，以及 main/preload 生命周期接线。Controller 的批次动作、派发 effect 和审计在同一事务内提交；Agent 消息不能直接授权派发。数据库目录使用 `0700`、文件使用 `0600`（Windows 除外）。启动恢复会将崩溃遗留 running effects 标为 unknown 并产生 Attention，不自动重放；未启动的 pending effects 仍可继续消费。详细能力和未完成项见 Phase 4 与下方当前实现进度。
 
-当前切片已接入独立的 v2 Renderer 页面，尚未接入旧 Chat 迁移。`controller-agent.cjs` 已在 main 中通过 `native-runtime.cjs` 连接原生 `invokeAgent`：按 Room Provider 配置顺序选择首个 Provider，验证 Chat/目录归属与已安装 Agent；创建本次调用的临时执行描述，不查找已有 group，也不创建隐藏群聊。Controller 强制只读、不写入旧消息/Session、严格解析 JSON；Worker 写入需要用户授权与根目录独占租约。Assignment Runner 已补齐原生接口要求的 promptOverride/contextPackId，并带入角色 Prompt、任务创建时的协作约定和 Report 输出要求。独立 Controller Session 已支持批次幂等、context revision 校验和结构化决策审计；动态角色创建与 Prompt 更新已受 Room Provider/能力白名单约束。Room schema 已升级到 v3，既有 Room 默认只读。已在 Electron main 使用真实 Claude Code CLI 跑通自动组队、单文档任务、结构化 Report、产物快照/diff 和确认 Attention，并验证账本重开；真实多 Agent 评审、平台心跳和异常恢复均已有闭环验收，未运行仓库全量测试。
+当前切片已接入独立的 v2 Renderer 页面，尚未接入旧 Chat 迁移。`controller-agent.cjs` 已在 main 中通过 `native-runtime.cjs` 连接原生 `invokeAgent`：按 Room Provider 配置顺序选择首个 Provider，验证 Chat/目录归属与已安装 Agent；创建本次调用的临时执行描述，不查找已有 group，也不创建隐藏群聊。Controller 强制只读、不写入旧消息/Session、严格解析 JSON；Worker 写入需要用户授权与根目录独占租约。Assignment Runner 已补齐原生接口要求的 promptOverride/contextPackId，并带入角色 Prompt、任务创建时的协作约定和 Report 输出要求。角色 Prompt revision 在创建 Assignment 时固定，排队期间的 Prompt 修改只影响之后创建的 Assignment。独立 Controller Session 已支持批次幂等、context revision 校验和结构化决策审计；动态角色创建与 Prompt 更新已受 Room Provider/能力白名单约束。Room schema 已升级到 v4，既有 Room 默认只读。已在 Electron main 使用真实 Claude Code CLI 跑通自动组队、单文档任务、结构化 Report、产物快照/diff 和确认 Attention，并验证账本重开；真实多 Agent 评审、平台心跳和异常恢复均已有闭环验收，未运行仓库全量测试。
 
 Assignment Runner 现已在每个运行中的 Assignment 上由平台定时写入 `session_liveness`（默认 30 秒，随运行启动，完成/失败/取消后清理）；这是真实调用仍由平台持有的 liveness 事实，不依赖 Worker 自报消息。Electron Node 定向测试已覆盖长调用期间心跳产生及结束后停止写入；真实 recovery smoke 又验证了 17 条 liveness 事件，并确认替代 Assignment 退出后没有继续写入。Room Assignment 采用一次性有界原生调用；重试或交接通过新 Assignment 传递结构化报告、证据和 Artifact 引用，不恢复旧群聊 Session。
 
@@ -217,6 +217,8 @@ Report 入账和状态推导在同一事务内完成，成功后将 `report_rece
 快照补充 roles/reports/artifacts；当前使用 1.5 秒串行轮询，卸载时释放计时器，切换 Room 后丢弃迟到结果。操作完成后等待旧轮询结束并重新读取，避免新 Chat 被旧快照覆盖。草稿按 Chat 隔离，发送失败保留。产物 diff 入口已接通（见下方只读切片）；分页、实时流式消息、Prompt/Skill 编辑、运行阻塞专项提示和完整 Trace 入口仍缺，不能视为 Phase 5 完成。
 
 角色 Prompt 的最小用户闭环已接通：Room 快照返回当前 Chat 角色的最新 Prompt，成员卡可展开查看；用户可通过统一、幂等的 `update_role_prompt` UserCommand 更新角色 Prompt revision。更新只影响后续 Assignment，保留历史 revision，不增加角色归档或停用状态机。Prompt 仍受 Chat/Role 归属校验，不能授予新的 Provider、能力或目录权限。
+
+Assignment 在创建时保存 `role_prompt_revision`，执行时按该 revision 读取 Prompt，避免尚未启动的排队任务被后续 Prompt 编辑暗中改变；旧数据库迁移会为已有 Assignment 固定迁移时的当前角色 revision。定向回归覆盖排队后更新 Prompt、执行仍使用创建时版本的行为。
 
 验收：18 项前端定向测试与 43 项 Electron Node 主进程/IPC/preload 测试通过；前端普通构建与桌面构建通过。Electron 临时用户目录下已检查侧栏入口和新页面的消息、角色、报告、任务及 Attention 布局。窗口内用户已有草稿，未继续自动操作；发送/新 Chat/任务控制的桌面交互和真实 CLI 文档生成闭环仍待验收。临时验收项目未配置 Controller Provider，不能用于验证真实 Agent 产出。未跑全量测试或打包检查。额外尝试的旧 appControllers/App.navigation 测试存在失败，已在未修改的 HEAD 副本复现，未在此切片扩展修复。
 
