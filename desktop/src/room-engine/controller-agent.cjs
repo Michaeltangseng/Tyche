@@ -28,7 +28,7 @@ function createControllerAgent({ repository, invokeAgent, resolveGroup } = {}) {
     const taskIds = new Set(snapshot.tasks.filter(task => task.chat_id === input.chatId).map(task => task.id))
     const data = {
       chatId: input.chatId, batchId: input.batchId, contextRevision: input.contextRevision,
-      collaboration: input.context, messages: input.messages,
+      collaboration: input.context, messages: input.messages, events: input.events || [],
       roles: input.roles.map(role => ({ ...role, prompt: repository.getRolePrompt(role.id)?.prompt || '' })),
       tasks: snapshot.tasks.filter(task => taskIds.has(task.id)),
       reports: snapshot.tasks.filter(task => taskIds.has(task.id) && task.latest_report_id)

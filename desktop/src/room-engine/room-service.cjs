@@ -9,8 +9,9 @@ const { createMentionFallback } = require('./mention-fallback.cjs')
 const { createAssignmentRunner } = require('./assignment-runner.cjs')
 const { createControllerSession } = require('./controller-session.cjs')
 const { createControllerQueue } = require('./controller-queue.cjs')
+const { createEffectPump } = require('./effect-pump.cjs')
 
-function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController, controllerBatchDelayMs = 40, onControllerError = error => console.error('[room-controller]', error) } = {}) {
+function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController, controllerBatchDelayMs = 40, onControllerError = error => console.error('[room-controller]', error), autoRunEffects = false, onEffectError = error => console.error('[room-effects]', error) } = {}) {
   if (!roomDb || !repository) throw new TypeError('ROOM_SERVICE_DEPENDENCIES_REQUIRED')
   const ingress = createMessageIngress(roomDb, repository)
   const actions = createRoomActionService({ roomDb, repository })
@@ -34,32 +35,67 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     : null
   const controllerQueue = controller
     ? createControllerQueue({
-      processBatch: controller.process,
+      processBatch: processControllerBatch,
       getContextRevision: chatId => repository.getChatContext(chatId).revision,
       delayMs: controllerBatchDelayMs,
     })
     : null
+  const effectPump = autoRunEffects ? createEffectPump({ runNext: runNextEffect, onError: onEffectError }) : null
+  let closed = false
+
+  function wakeController(chatId, eventId) {
+    if (!closed && controllerQueue) controllerQueue.enqueue({ chatId, eventId }).catch(error => { if (!closed) onControllerError(error) })
+  }
+
+  async function processControllerBatch(input) {
+    const result = await controller.process(input)
+    if (!result.duplicate) {
+      for (const action of result.decision.results) {
+        if (action.taskId || action.roleId) wakeController(input.chatId, action.event.eventId)
+      }
+    }
+    return result
+  }
+
+  function enqueueAssignment(assignmentId, chatId, actionId = null) {
+    const assignment = repository.getAssignmentContext(assignmentId)
+    return outbox.enqueue({
+      chatId, actionId, kind: 'start_assignment',
+      payload: { assignmentId, prompt: assignment?.objective || '' },
+      idempotencyKey: `start-assignment:${assignmentId}`,
+    })
+  }
 
   function submitMessage(input, { deterministicFallback = true } = {}) {
+    if (closed) throw new Error('ROOM_SERVICE_CLOSED')
     const result = ingress.submit(input)
     let dispatch = null
     if (controllerQueue && (typeof decideController.isAvailable !== 'function' || decideController.isAvailable({ chatId: input.chatId }))) {
-      controllerQueue.enqueue({ chatId: input.chatId, messageId: result.message.messageId }).catch(onControllerError)
+      controllerQueue.enqueue({ chatId: input.chatId, messageId: result.message.messageId }).catch(error => { if (!closed) onControllerError(error) })
     } else if (deterministicFallback && input.author?.type === 'user' && result.mentions.length > 0) {
-      dispatch = fallback.dispatch({
-        chatId: input.chatId,
-        messageId: result.message.messageId,
-        content: input.content,
-        mentions: result.mentions,
-        createdBy: input.author.id,
+      dispatch = roomDb.withTransaction(() => {
+        const dispatched = fallback.dispatch({
+          chatId: input.chatId,
+          messageId: result.message.messageId,
+          content: input.content,
+          mentions: result.mentions,
+          createdBy: input.author.id,
+        })
+        for (const assignmentId of dispatched.assignmentIds) enqueueAssignment(assignmentId, input.chatId)
+        return dispatched
       })
+      effectPump?.request()
     }
     return { ...result, dispatch }
   }
 
   function importReport(input) {
-    const result = reports.importFromMessage(input)
-    if (result.report) result.state = reportState.reconcileTask(input.taskId)
+    const result = roomDb.withTransaction(() => {
+      const imported = reports.importFromMessage(input)
+      if (imported.report) imported.state = reportState.reconcileTask(input.taskId)
+      return imported
+    })
+    if (result.imported) wakeController(input.chatId, result.event.eventId)
     return result
   }
 
@@ -102,24 +138,25 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     return roomDb.withTransaction(() => {
       const result = actions.applyController(input, options)
       if (result.assignmentId) {
-        const assignment = repository.getAssignmentContext(result.assignmentId)
-        outbox.enqueue({
-          chatId: input.chatId,
-          actionId: result.event?.eventId || null,
-          kind: 'start_assignment',
-          payload: { assignmentId: result.assignmentId, prompt: assignment?.objective || '' },
-          idempotencyKey: `start-assignment:${result.assignmentId}`,
-        })
+        enqueueAssignment(result.assignmentId, input.chatId, result.event?.eventId || null)
+        effectPump?.request()
       }
       return result
     })
   }
 
-  async function runNextEffect() {
+  function applyUserCommand(input, options) {
+    const result = userCommands.apply(input, options)
+    if (input.type === 'resume_chat') effectPump?.request()
+    if (input.type !== 'pause_chat') wakeController(input.chatId, result.event.eventId)
+    return result
+  }
+
+  async function runNextEffect({ signal } = {}) {
     return outbox.runOnce(async effect => {
       if (effect.kind === 'start_assignment') {
         if (!assignmentRunner) throw new Error('ROOM_ASSIGNMENT_RUNNER_UNAVAILABLE')
-        const run = assignmentRunner.start(effect.payload)
+        const run = assignmentRunner.start({ ...effect.payload, signal })
         return run.promise
       }
       throw Object.assign(new Error('ROOM_EFFECT_HANDLER_MISSING'), {
@@ -140,7 +177,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     editMessage: ingress.edit,
     deleteMessage: ingress.remove,
     applyControllerAction,
-    applyUserCommand: userCommands.apply,
+    applyUserCommand,
     importReport,
     sessionStarted: sessions.started,
     sessionLiveness: sessions.liveness,
@@ -151,10 +188,14 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     runNextEffect,
     processControllerBatch: input => {
       if (!controller) throw new Error('ROOM_CONTROLLER_UNAVAILABLE')
-      return controller.process(input)
+      return processControllerBatch(input)
     },
     flushController: chatId => controllerQueue ? controllerQueue.flush(chatId) : Promise.resolve(null),
-    close: () => controllerQueue ? controllerQueue.close() : Promise.resolve(),
+    startRuntime: () => effectPump ? effectPump.request() : Promise.resolve(),
+    close: async () => {
+      closed = true
+      await Promise.all([controllerQueue?.close(), effectPump?.close()])
+    },
     retryUnknownEffect: outbox.retryUnknown,
     repository,
   }

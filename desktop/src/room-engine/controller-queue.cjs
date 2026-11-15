@@ -14,9 +14,11 @@ function createControllerQueue({ processBatch, getContextRevision, delayMs = 40 
     }, delayMs)
   }
 
-  function enqueue({ chatId, messageId }) {
+  function enqueue({ chatId, messageId, eventId }) {
     if (closed) return Promise.reject(new Error('ROOM_CONTROLLER_QUEUE_CLOSED'))
-    if (typeof chatId !== 'string' || !chatId || typeof messageId !== 'string' || !messageId) {
+    if (typeof chatId !== 'string' || !chatId || Boolean(messageId) === Boolean(eventId)
+        || (messageId !== undefined && (typeof messageId !== 'string' || !messageId))
+        || (eventId !== undefined && (typeof eventId !== 'string' || !eventId))) {
       return Promise.reject(new TypeError('ROOM_CONTROLLER_QUEUE_MESSAGE_INVALID'))
     }
     let entry = chats.get(chatId)
@@ -25,9 +27,10 @@ function createControllerQueue({ processBatch, getContextRevision, delayMs = 40 
       chats.set(chatId, entry)
     }
     const result = new Promise((resolve, reject) => {
-      const waiters = entry.pending.get(messageId) || []
-      waiters.push({ resolve, reject })
-      entry.pending.set(messageId, waiters)
+      const key = messageId ? `message:${messageId}` : `event:${eventId}`
+      const item = entry.pending.get(key) || { messageId, eventId, waiters: [] }
+      item.waiters.push({ resolve, reject })
+      entry.pending.set(key, item)
     })
     schedule(chatId, entry)
     return result
@@ -47,13 +50,16 @@ function createControllerQueue({ processBatch, getContextRevision, delayMs = 40 
       if (entry.abort.signal.aborted) throw new Error('ROOM_CONTROLLER_QUEUE_CLOSED')
       return processBatch({
         chatId, batchId: `batch-${crypto.randomUUID()}`,
-        contextRevision: getContextRevision(chatId), messageIds: [...batch.keys()], signal: entry.abort.signal,
+        contextRevision: getContextRevision(chatId),
+        messageIds: [...batch.values()].map(item => item.messageId).filter(Boolean),
+        triggerEventIds: [...batch.values()].map(item => item.eventId).filter(Boolean),
+        signal: entry.abort.signal,
       })
     }).then(result => {
-      for (const waiters of batch.values()) for (const waiter of waiters) waiter.resolve(result)
+      for (const item of batch.values()) for (const waiter of item.waiters) waiter.resolve(result)
       return result
     }, error => {
-      for (const waiters of batch.values()) for (const waiter of waiters) waiter.reject(error)
+      for (const item of batch.values()) for (const waiter of item.waiters) waiter.reject(error)
       throw error
     }).finally(() => {
       entry.running = null
@@ -69,7 +75,7 @@ function createControllerQueue({ processBatch, getContextRevision, delayMs = 40 
     const running = []
     for (const entry of chats.values()) {
       clearTimeout(entry.timer)
-      for (const waiters of entry.pending.values()) for (const waiter of waiters) waiter.reject(new Error('ROOM_CONTROLLER_QUEUE_CLOSED'))
+      for (const item of entry.pending.values()) for (const waiter of item.waiters) waiter.reject(new Error('ROOM_CONTROLLER_QUEUE_CLOSED'))
       entry.pending.clear()
       entry.abort?.abort()
       if (entry.running) running.push(entry.running)

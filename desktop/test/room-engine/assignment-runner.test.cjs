@@ -79,3 +79,17 @@ test('assignment runner imports a structured report returned by the Agent invoca
   assert.equal(state.repository.getReport(result.roomReport.id).summary, 'API built')
   state.roomDb.close()
 })
+
+test('malformed Worker report records an exited failure rather than leaving the assignment running', async () => {
+  const state = setup()
+  const runner = createAssignmentRunner({
+    repository: state.repository, supervisor: state.supervisor,
+    resolveGroup: () => ({ id: 'host' }),
+    invokeAgent: async () => ({ pendingMessage: { content: '[[MELDWORK_REPORT:{invalid}]]' } }),
+    importReport: require('../../src/room-engine/report-importer.cjs').createReportImporter(state).importFromMessage,
+  })
+  await assert.rejects(runner.start({ assignmentId: state.assignmentId, prompt: 'Build' }).promise, /MARKER_JSON_INVALID/)
+  assert.equal(state.repository.getAssignmentContext(state.assignmentId).status, 'failed')
+  assert.equal(state.repository.listEvents(state.roomId).at(-1).type, 'session_exited')
+  state.roomDb.close()
+})

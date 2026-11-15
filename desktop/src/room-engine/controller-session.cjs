@@ -43,7 +43,7 @@ function createControllerSession({ roomDb, repository, applyAction, decide, now 
     })
   }
 
-  async function processBatch({ chatId, batchId = `batch-${crypto.randomUUID()}`, contextRevision, messageIds = [], model = null, signal } = {}) {
+  async function processBatch({ chatId, batchId = `batch-${crypto.randomUUID()}`, contextRevision, messageIds = [], triggerEventIds = [], model = null, signal } = {}) {
     if (signal?.aborted) throw new Error('ROOM_CONTROLLER_CANCELLED')
     assertId(chatId, 'ROOM_CHAT_ID_INVALID')
     assertId(batchId, 'ROOM_CONTROLLER_BATCH_ID_INVALID')
@@ -53,22 +53,28 @@ function createControllerSession({ roomDb, repository, applyAction, decide, now 
     }
     const existing = repository.getControllerDecision({ chatId, batchId })
     if (existing) return { decision: { ...existing, inputIds: decode(existing.input_ids_json), actionIds: decode(existing.action_ids_json), results: decode(existing.results_json) }, duplicate: true }
-    const chat = roomDb.database.prepare('SELECT context_revision FROM chats WHERE id = ?').get(chatId)
+    const chat = roomDb.database.prepare('SELECT context_revision, status FROM chats WHERE id = ?').get(chatId)
     if (!chat) throw new Error('ROOM_CHAT_NOT_FOUND')
+    if (chat.status !== 'active') throw new Error('ROOM_CONTROLLER_CHAT_NOT_ACTIVE')
     if (chat.context_revision !== contextRevision) throw new Error('ROOM_CONTROLLER_CONTEXT_STALE')
     const messages = messageIds.map(messageId => repository.getMessage(messageId)).filter(Boolean)
     if (messages.length !== messageIds.length) throw new Error('ROOM_CONTROLLER_MESSAGE_NOT_FOUND')
     if (messages.some(message => message.chat_id !== chatId || message.deleted_at)) throw new Error('ROOM_CONTROLLER_MESSAGE_SCOPE_INVALID')
     const chatContext = repository.getChatContext(chatId, contextRevision)
+    if (!Array.isArray(triggerEventIds) || triggerEventIds.some(id => typeof id !== 'string' || !id)) throw new TypeError('ROOM_CONTROLLER_EVENT_IDS_INVALID')
+    const eventById = new Map(repository.listEvents(chatContext.chat.room_id, { chatId }).map(event => [event.id, event]))
+    const events = triggerEventIds.map(id => eventById.get(id))
+    if (events.some(event => !event)) throw new Error('ROOM_CONTROLLER_EVENT_SCOPE_INVALID')
     const roles = repository.listAgentRoles(chatId)
     const startedAt = now()
-    const proposal = await evaluate({ chatId, batchId, contextRevision, messages, context: chatContext.context, roles }, signal)
+    const proposal = await evaluate({ chatId, batchId, contextRevision, messages, events, context: chatContext.context, roles }, signal)
     if (signal?.aborted) throw new Error('ROOM_CONTROLLER_CANCELLED')
     if (!proposal || !Array.isArray(proposal.actions)) throw new TypeError('ROOM_CONTROLLER_DECISION_INVALID')
     return roomDb.withTransaction(() => {
       const committed = repository.getControllerDecision({ chatId, batchId })
       if (committed) return { decision: { ...committed, inputIds: decode(committed.input_ids_json), actionIds: decode(committed.action_ids_json), results: decode(committed.results_json) }, duplicate: true }
       const currentChat = repository.getChatContext(chatId).chat
+      if (currentChat.status !== 'active') throw new Error('ROOM_CONTROLLER_CHAT_NOT_ACTIVE')
       if (currentChat.context_revision !== contextRevision) throw new Error('ROOM_CONTROLLER_CONTEXT_STALE')
       if (messages.some(message => JSON.stringify(repository.getMessage(message.id)) !== JSON.stringify(message))) {
         throw new Error('ROOM_CONTROLLER_MESSAGES_STALE')
@@ -83,14 +89,14 @@ function createControllerSession({ roomDb, repository, applyAction, decide, now 
         chatId,
         batchId,
         contextRevision,
-        inputIds: messageIds,
+        inputIds: [...messageIds, ...triggerEventIds],
         actionIds,
         results,
         model: proposal.model || model,
         latencyMs: Math.max(0, now() - startedAt),
         cost: proposal.cost ?? null,
       })
-      return { decision: { id: decisionId, chatId, batchId, contextRevision, inputIds: messageIds, actionIds, results }, duplicate: false }
+      return { decision: { id: decisionId, chatId, batchId, contextRevision, inputIds: [...messageIds, ...triggerEventIds], actionIds, results }, duplicate: false }
     })
   }
 

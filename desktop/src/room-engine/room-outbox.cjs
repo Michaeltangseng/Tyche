@@ -36,8 +36,9 @@ function createRoomOutbox({ roomDb, repository }) {
   function claimPending({ limit = 10 } = {}) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new TypeError('ROOM_OUTBOX_LIMIT_INVALID')
     return roomDb.withTransaction(() => {
-      const rows = db.prepare(`SELECT * FROM effects WHERE status = 'pending'
-        ORDER BY created_at, id LIMIT ?`).all(limit)
+      const rows = db.prepare(`SELECT e.* FROM effects e JOIN chats c ON c.id = e.chat_id
+        WHERE e.status = 'pending' AND c.status = 'active'
+        ORDER BY e.created_at, e.id LIMIT ?`).all(limit)
       const claimed = []
       const timestamp = new Date().toISOString()
       for (const row of rows) {

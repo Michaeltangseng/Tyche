@@ -175,3 +175,73 @@ test('configured controller batches user and agent messages without duplicate fa
   await service.close()
   state.roomDb.close()
 })
+
+test('runtime routes task creation, automatic worker execution and Report follow-up to Attention', async () => {
+  const state = setup()
+  const calls = []
+  const errors = []
+  const service = createRoomService({
+    roomDb: state.roomDb, repository: state.repository, autoRunEffects: true,
+    onControllerError: error => errors.push(error), onEffectError: error => errors.push(error),
+    resolveGroup: () => ({ id: 'host', workdir: '/tmp/demo' }),
+    invokeAgent: async () => ({ pendingMessage: { content: 'Done [[MELDWORK_REPORT:{"reportId":"runtime-report","kind":"ready","summary":"Draft ready"}]]' } }),
+    decideController: async input => {
+      calls.push(input)
+      const base = { chatId: input.chatId, contextRevision: input.contextRevision }
+      if (input.messages.length) return { actions: [{ ...base, type: 'create_task', objective: 'Runtime draft', kind: 'draft' }] }
+      if (input.events.some(event => event.type === 'action_create_task')) {
+        const task = service.snapshot({ roomId: state.roomId }).tasks.find(task => task.objective === 'Runtime draft')
+        return { actions: [{ ...base, type: 'assign', taskId: task.id, roleId: state.roleId }] }
+      }
+      if (input.events.some(event => event.type === 'report_received')) return { actions: [{
+        ...base, type: 'request_attention', taskId: state.repository.getReport('runtime-report').task_id,
+        attentionType: 'approval', question: 'Accept draft?', options: [{ id: 'yes', label: 'Accept' }],
+      }] }
+      return { actions: [] }
+    },
+  })
+  try {
+    service.submitMessage({ chatId: state.chatId, author: { type: 'user', id: 'user' }, content: 'Write a draft' })
+    await service.flushController(state.chatId)
+    await service.flushController(state.chatId)
+    await service.startRuntime()
+    await service.flushController(state.chatId)
+    const snapshot = service.snapshot({ roomId: state.roomId })
+    const task = snapshot.tasks.find(task => task.objective === 'Runtime draft')
+    assert.equal(task.status, 'done')
+    assert.equal(snapshot.attentions[0].question, 'Accept draft?')
+    assert.equal(state.roomDb.database.prepare('SELECT status FROM effects').get().status, 'succeeded')
+    assert.equal(calls.length, 3)
+    const assignment = snapshot.assignments.find(assignment => assignment.task_id === task.id)
+    const duplicate = service.importReport({ chatId: state.chatId, taskId: task.id, assignmentId: assignment.id, actorId: state.roleId, content: '[[MELDWORK_REPORT:{"reportId":"runtime-report","kind":"ready","summary":"Draft ready"}]]' })
+    assert.equal(duplicate.duplicate, true)
+    assert.equal(await service.flushController(state.chatId), null)
+    assert.equal(calls.length, 3)
+    assert.deepEqual(errors, [])
+    service.applyUserCommand({ type: 'answer_attention', chatId: state.chatId, attentionId: snapshot.attentions[0].id, optionId: 'yes' })
+    await service.flushController(state.chatId)
+    assert.equal(calls.length, 4)
+    assert.equal(calls[3].events[0].type, 'user_answer_attention')
+  } finally {
+    await service.close()
+    state.roomDb.close()
+  }
+})
+
+test('runtime defers paused chat effects and automatically wakes on resume', async () => {
+  const state = setup()
+  let invocations = 0
+  const service = createRoomService({
+    roomDb: state.roomDb, repository: state.repository, autoRunEffects: true,
+    resolveGroup: () => ({ id: 'host' }), invokeAgent: async () => { invocations += 1; return {} },
+  })
+  service.applyUserCommand({ type: 'pause_chat', chatId: state.chatId })
+  service.submitMessage({ chatId: state.chatId, author: { type: 'user', id: 'user' }, content: '@Backend build' })
+  await service.startRuntime()
+  assert.equal(invocations, 0)
+  service.applyUserCommand({ type: 'resume_chat', chatId: state.chatId })
+  await service.startRuntime()
+  assert.equal(invocations, 1)
+  await service.close()
+  state.roomDb.close()
+})

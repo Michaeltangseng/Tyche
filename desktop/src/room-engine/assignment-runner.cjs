@@ -90,17 +90,16 @@ function createAssignmentRunner({ repository, supervisor, invokeAgent, resolveGr
         supervisor.exited({ assignmentId: assignment.id, chatId: assignment.chat_id, runId, reason: 'completed' })
         return report?.report ? { ...result, roomReport: report.report } : result
       },
-      error => {
-        repository.markAssignmentExited({
-          assignmentId: assignment.id,
-          status: 'failed',
-          endedReason: error?.message || 'invoke_failed',
-          outcome: 'failed',
-        })
-        supervisor.exited({ assignmentId: assignment.id, chatId: assignment.chat_id, runId, reason: 'failed' })
-        throw error
-      },
-    )
+    ).catch(error => {
+      if (repository.getAssignmentContext(assignment.id)?.status === 'running') repository.markAssignmentExited({
+        assignmentId: assignment.id,
+        status: 'failed',
+        endedReason: error?.message || 'invoke_failed',
+        outcome: 'failed',
+      })
+      supervisor.exited({ assignmentId: assignment.id, chatId: assignment.chat_id, runId, reason: 'failed' })
+      throw error
+    })
     return { assignmentId: assignment.id, runId, nativeSessionId, promise: execution }
   }
 

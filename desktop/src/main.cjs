@@ -1249,6 +1249,7 @@ if (!hasSingleInstanceLock) {
         repository: roomRepository,
         invokeAgent: invokeRoomAgent,
         resolveGroup: resolveRoomGroup,
+        autoRunEffects: true,
         decideController: createControllerAgent({ repository: roomRepository, invokeAgent: invokeRoomAgent, resolveGroup: resolveRoomGroup }),
       })
       const templatesStore = new TemplatesStore({
@@ -1374,6 +1375,7 @@ if (!hasSingleInstanceLock) {
       }
     } finally {
       scheduler.exitRecoveryMode()
+      roomEngineService?.startRuntime()
     }
     if (attachmentStore && attachmentReferences) {
       try {

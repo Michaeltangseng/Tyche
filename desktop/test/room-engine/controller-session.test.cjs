@@ -195,3 +195,22 @@ test('pre-cancelled batches never call the router', async () => {
   assert.throws(() => createControllerSession({ ...state, applyAction: () => ({}), decide: () => ({}), timeoutMs: 0 }), /TIMEOUT_INVALID/)
   state.roomDb.close()
 })
+
+test('controller events are scoped to the current chat and recorded as decision inputs', async () => {
+  const state = setup()
+  const roomId = state.repository.getChatContext(state.chatId).chat.room_id
+  const event = state.repository.appendEvent({ roomId, chatId: state.chatId, actorId: 'supervisor', type: 'report_received' })
+  const session = createControllerSession({
+    ...state, applyAction: () => ({}),
+    decide: async input => {
+      assert.equal(input.events[0].id, event.eventId)
+      return { actions: [] }
+    },
+  })
+  const result = await session.process({ chatId: state.chatId, contextRevision: 0, triggerEventIds: [event.eventId] })
+  assert.deepEqual(result.decision.inputIds, [event.eventId])
+  const otherChat = state.repository.createChat({ roomId, title: 'Other' })
+  const foreign = state.repository.appendEvent({ roomId, chatId: otherChat, actorId: 'supervisor', type: 'report_received' })
+  await assert.rejects(session.process({ chatId: state.chatId, contextRevision: 0, triggerEventIds: [foreign.eventId] }), /EVENT_SCOPE_INVALID/)
+  state.roomDb.close()
+})
