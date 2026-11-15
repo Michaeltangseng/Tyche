@@ -107,6 +107,10 @@ const {
   resolveKnowledgeBaseSources,
 } = require('./knowledge/local-knowledge-base.cjs')
 const { LocalKnowledgeConnectors } = require('./knowledge/local-knowledge-connectors.cjs')
+const { openRoomDatabase } = require('./room-engine/room-db.cjs')
+const { createRoomRepository } = require('./room-engine/room-repository.cjs')
+const { createRoomService } = require('./room-engine/room-service.cjs')
+const { registerRoomIpc } = require('./room-engine/room-ipc.cjs')
 const { nativeOpenClawOptions } = require('./agents/cli/openclaw-runtime.cjs')
 const { migrateLegacyProductData } = require('./product-data-migration.cjs')
 const LOCAL_AGENT_KINDS = new Set([
@@ -165,6 +169,9 @@ let attachmentStore = null
 let skillCatalog = null
 let skillTrustStore = null
 let shutdownStarted = false
+let roomEngineDb = null
+let roomEngineService = null
+let disposeRoomIpc = null
 const knowledgeInstallShutdown = new AbortController()
 let quitCleanup = null
 let cachedAppIcon
@@ -1101,6 +1108,12 @@ function registerIpc() {
     dialog,
     getMainWindow: () => mainWindow,
   })
+  disposeRoomIpc = registerRoomIpc({
+    ipcMain,
+    service: roomEngineService,
+    requireRenderer: requireDesktopRenderer,
+    isShuttingDown: () => shutdownStarted,
+  })
 }
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
@@ -1213,6 +1226,13 @@ if (!hasSingleInstanceLock) {
       // M4/M6 C: protect every known project root, recover the process
       // registry, register residual occupancy, then leave recovery mode.
       const privateRoot = path.join(app.getPath('userData'), 'meldwork-private')
+      roomEngineDb = openRoomDatabase({
+        directory: path.join(privateRoot, 'room-engine'),
+      })
+      roomEngineService = createRoomService({
+        roomDb: roomEngineDb,
+        repository: createRoomRepository(roomEngineDb),
+      })
       const templatesStore = new TemplatesStore({
         storagePath: path.join(privateRoot, 'templates.json'),
       })
@@ -1380,6 +1400,10 @@ if (!hasSingleInstanceLock) {
     const installRunning = Boolean(installerState?.canCancel)
     if (installRunning) installer.cancel(installerState.taskId)
     quitCleanup = runQuitCleanup([
+      () => {
+        disposeRoomIpc?.()
+        disposeRoomIpc = null
+      },
       () => channelIngressRuntime?.shutdown(),
       () => cloudAgentBridges?.close(),
       () => cloudAgentRuntime?.shutdown(),
@@ -1391,6 +1415,11 @@ if (!hasSingleInstanceLock) {
         }
       },
       () => installer?.waitForIdle(),
+      () => {
+        roomEngineDb?.close()
+        roomEngineDb = null
+        roomEngineService = null
+      },
     ]).then(() => {
       app.exit(0)
     })

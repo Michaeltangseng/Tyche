@@ -82,6 +82,11 @@ test('local preload exposes the local-only Meldwork API', async () => {
   )
   assert.equal('configure' in api.localWorkspace, false)
   assert.equal('cancelConfigure' in api.localWorkspace, false)
+  assert.equal(Object.isFrozen(api.room), true)
+  assert.deepEqual(Object.keys(api.room).sort(), [
+    'applyControllerAction', 'applyUserCommand', 'enqueueEffect', 'importReport',
+    'listStaleAssignments', 'sessionLiveness', 'submitMessage',
+  ].sort())
   assert.equal('localAgentProvider' in api, false)
   await api.localWorkspace.deleteMessage('group-1', 'message-1')
   assert.deepEqual(invocations, [{

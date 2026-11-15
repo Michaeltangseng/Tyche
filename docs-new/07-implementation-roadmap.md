@@ -227,3 +227,15 @@ npm --prefix desktop run pack
 9. 可选隔离 workspace 与旧模式清理。
 
 每个提交都应附带迁移说明、测试结果和回滚方式；未经 Phase 0/1 验收，不开始动态组队和旧模式删除。
+
+## 当前实现进度（2026-11-15）
+
+Room Engine 的第一条主进程纵向切片已经接入 Electron 生命周期：
+
+- SQLite ledger 初始化在应用私有目录 `userData/meldwork-private/room-engine`，不写入用户项目目录；
+- `room-service` 通过 `room-ipc` 注册到受信任的主进程 IPC 边界；Renderer 只能通过窄的 preload API 调用；
+- preload 已暴露消息提交、ControllerAction、UserCommand、Report、Session liveness、stale 查询和 effect 入队接口；
+- 退出流程先停止 Room IPC 接收，再关闭数据库，避免关闭期间产生新的写入；
+- Room Engine 专项测试当前为 38 项通过；尚未运行 Desktop 全量测试和打包检查。
+
+这一步只接入底层能力，不改变旧 project-room/checkpoint UI，也不把新 ledger 强行映射进旧状态机。下一步应补 Room/Chat bootstrap 与主目录项目映射，再接入 Assignment 到现有 invokeAgent/Run Ledger 的运行时桥接。

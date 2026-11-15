@@ -155,6 +155,15 @@ if (isLocalDocument) Object.assign(desktopApi, {
       return () => ipcRenderer.removeListener('project:open', listener)
     },
   }),
+  room: Object.freeze({
+    submitMessage: input => ipcRenderer.invoke('room:message-submit', input),
+    applyControllerAction: input => ipcRenderer.invoke('room:controller-action', input),
+    applyUserCommand: input => ipcRenderer.invoke('room:user-command', input),
+    importReport: input => ipcRenderer.invoke('room:report-import', input),
+    sessionLiveness: input => ipcRenderer.invoke('room:session-liveness', input),
+    listStaleAssignments: input => ipcRenderer.invoke('room:assignments-stale', input),
+    enqueueEffect: input => ipcRenderer.invoke('room:effect-enqueue', input),
+  }),
   workdir: Object.freeze({
     list: input => ipcRenderer.invoke('workdir:list', input),
     read: input => ipcRenderer.invoke('workdir:read', input),
