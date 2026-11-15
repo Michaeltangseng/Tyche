@@ -16,6 +16,7 @@ const { createRoomNativeRuntime } = require('../src/room-engine/native-runtime.c
 const { createControllerAgent } = require('../src/room-engine/controller-agent.cjs')
 const { createArtifactSnapshots } = require('../src/room-engine/artifact-snapshots.cjs')
 const { createArtifactReader } = require('../src/room-engine/artifact-reader.cjs')
+const { ProcessRegistry } = require('../src/agents/process/process-registry.cjs')
 
 const argument = name => { const index = process.argv.indexOf(name); return index < 0 ? '' : process.argv[index + 1] || '' }
 const provider = argument('--provider')
@@ -43,10 +44,12 @@ async function smoke() {
   const agents = await detectAgents({ env, resolveExecutableFn: kind => kind === provider ? executable : null })
   if (!agents.some(agent => agent.kind === provider && agent.available !== false && agent.invocable !== false)) throw new Error('SMOKE_PROVIDER_NOT_INVOCABLE')
   const calls = []
+  const processRegistry = new ProcessRegistry({ storagePath: path.join(privateRoot, 'process-registry.json') })
   let fatal = null
   const workspace = new LocalWorkspace({
     storagePath: path.join(privateRoot, 'workspace.json'),
     tracesRoot: path.join(privateRoot, 'traces'),
+    processRegistry,
     detectAgents: async () => agents,
     credentialState: (kind, agent) => resolveNativeCredentialState(kind, { env, executable: agent.executable }),
     naturalAgentResponses: true,
@@ -74,6 +77,7 @@ async function smoke() {
     autoRunEffects: true,
     onControllerError: error => { fatal ||= error; console.error(JSON.stringify({ stage: 'controller_error', code: error.code || error.message })) },
     onEffectError: error => { fatal ||= error; console.error(JSON.stringify({ stage: 'worker_error', code: error.code || error.message })) },
+    getInvocationRecords: runId => processRegistry.getInvocationRecords(runId),
   })
   const read = createArtifactReader({ roomDb, directory })
   const { roomId, chatId } = service.bootstrap({ name: 'Real CLI smoke', workspace: workdir, providers: [provider], allowedCapabilities: ['text'] })

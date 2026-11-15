@@ -26,6 +26,8 @@ Assignment Runner 对所有明确标记为未知结果的原生调用统一进�
 
 本轮完成真实的“多 Agent 评审 → 用户决定 → 继续实施”纵向复验：Electron main 中使用真实 Claude Code CLI，在临时 Room/Chat 内自动创建文档作者、只读评审者和实施者三个独立角色。文档任务与评审任务各完成一次 Assignment；评审完成后才创建 approval Attention，smoke 通过同一 UserCommand 入口接受文档并回答 `implement`，之后才创建并派发实施任务。实施者写入 `src/add.cjs` 与 `test/add.test.cjs`，平台在同一临时项目中用 Electron 内置 Node 执行 `node --test` 和额外契约断言；最终 3 个 Task、3 个 Assignment、3 个 Report、文档/实施 Artifact、Attention 和用户决定事件均通过数据库重开校验，实施派发事件序号晚于用户决定。最近一次复验 10 次真实 CLI 调用、约 129 秒，`reopenVerified: true`。
 
+真实 CLI smoke 现在也接入了受管理 `ProcessRegistry`，并将其记录提供给 v2 Room Service 的进程对账入口；普通文档场景复验 6 次 CLI 调用、约 47 秒，数据库重开和协作约定更新均通过。异常退出场景尚未在真实 Provider 上自动注入，下一步只补这一条纵向 smoke，不引入旧 Session 续跑机制。
+
 验收过程中发现原生 CLI 可能在机器 Report 标记后追加说明文字，导致原先要求标记位于回复末尾的解析器误判“无 Report”。`report-importer` 现从消息中读取最后一个 `[[MELDWORK_REPORT:{...}]]` 标记，仍对 JSON 字段、kind、摘要、Artifact 范围做严格校验；新增定向测试覆盖标记后有 prose tail 的情况。实施 Agent 的 `workspace-write` 会话在本机仍可能因 CLI Bash 审批策略返回 blocked，因此该 smoke 明确由 Agent 写入代码与测试，平台验收阶段执行测试命令；这保留了真实评审/用户决定/实施调度链路，同时不把交互式审批假设硬编码进产品。
 
 真实 CLI 复验发现，Report 触发的批次没有保留任务源消息，可能遗漏用户的后续要求（例如“文档完成后请我确认”）。Controller 上下文现携带任务引用的历史 `sourceMessages`，过滤跨 Chat、删除和当前批次重复消息；历史消息不作为新派发触发器，不引入固定审批流程。定向回归已覆盖该缺口。
