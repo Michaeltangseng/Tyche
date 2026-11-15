@@ -41,6 +41,8 @@ Message
 
 面向工程落地的代码分层、阶段退出条件、测试矩阵和提交顺序见 [07-implementation-roadmap.md](07-implementation-roadmap.md)。
 
+尚未完成、部分完成和文档/实现不一致的事项集中在 [08-pending-work.md](08-pending-work.md)。完成一项后在该文档勾选并记录提交/验收结果，再回写长期有效的结论。
+
 关键取舍见 [06-architecture-decisions.md](06-architecture-decisions.md)。`docs/product-target.md` 和 `docs/functional-architecture.md` 保留为 v1/legacy 参考；新项目室的 v2 语义以本目录为准。
 
 ## Glossary
