@@ -80,7 +80,7 @@ Assignment Runner 对所有明确标记为未知结果的原生调用统一进�
 - `room-service.cjs`：Room Engine 的组合入口，后续 IPC、Controller Session 和 Agent 调用只依赖此门面。
 - `room-ipc.cjs`：将 Room Service 映射为窄 IPC channel；绑定 main/preload 时沿用现有 renderer 信任校验，不暴露数据库或进程能力。
 
-当前 v2 IPC/preload 提供 listRooms、createChat、bootstrap、snapshot、artifactDiff、submitMessage、applyUserCommand、listStaleAssignments 八个入口。直接启动 Assignment、ControllerAction、Report 导入、Session liveness 写入和 effect 入队已从 Renderer 接口与 main channel 注册中删除，不保留旧调用兼容层；这些能力仅由主进程执行链使用。注册时必须提供 Renderer 信任校验，所有调用先完成信任与退出状态检查，再校验 DTO 字段和有界标量值。消息作者固定由 main 赋为本地 user，bootstrap 创建者和 UserCommand 审计 actor 同样由 main 赋值，Renderer 不得传入 author/actorId/createdBy 或自行指定生成对象 ID。Message 的 replyTo/taskId 必须引用同一 Chat 的有效对象。正文里的 action/Report 标记只属于消息内容，不进入平台事实写入通道。消息编辑/删除与实时订阅接口尚未开放。
+当前 v2 IPC/preload 提供 listRooms、createChat、bootstrap、snapshot、artifactDiff、submitMessage、applyUserCommand、listStaleAssignments、assignmentTrace 九个入口。assignmentTrace 只接收 Room/Assignment ID 与分页参数；主进程按数据库中的 Assignment 归属及 runId 推导 traceAgentRunId，再由 Trace reader 对照 Room Assignment 授权，不接受 Renderer 提交 Trace 路径或执行标识。直接启动 Assignment、ControllerAction、Report 导入、Session liveness 写入和 effect 入队已从 Renderer 接口与 main channel 注册中删除，不保留旧调用兼容层；这些能力仅由主进程执行链使用。注册时必须提供 Renderer 信任校验，所有调用先完成信任与退出状态检查，再校验 DTO 字段和有界标量值。消息作者固定由 main 赋为本地 user，bootstrap 创建者和 UserCommand 审计 actor 同样由 main 赋值，Renderer 不得传入 author/actorId/createdBy 或自行指定生成对象 ID。Message 的 replyTo/taskId 必须引用同一 Chat 的有效对象。正文里的 action/Report 标记只属于消息内容，不进入平台事实写入通道。消息编辑/删除与实时订阅接口尚未开放。
 
 复用 `desktop/src/project-room/project-state-schema.cjs`、`project-state-migrations.cjs`、`project-store.cjs` 的迁移经验，但不把新的 Task 状态继续塞进 checkpoint engine。复用 `desktop/src/security/private-file.cjs` 保证数据库目录权限，数据库放在应用私有区，不放入 Room 主目录。
 
@@ -217,6 +217,8 @@ Report 入账和状态推导在同一事务内完成，成功后将 `report_rece
 快照补充 roles/reports/artifacts；当前使用 1.5 秒串行轮询，卸载时释放计时器，切换 Room 后丢弃迟到结果。操作完成后等待旧轮询结束并重新读取，避免新 Chat 被旧快照覆盖。草稿按 Chat 隔离，发送失败保留。产物 diff 入口已接通（见下方只读切片）；分页、实时流式消息、Prompt/Skill 编辑、运行阻塞专项提示和完整 Trace 入口仍缺，不能视为 Phase 5 完成。
 
 角色 Prompt 的最小用户闭环已接通：Room 快照返回当前 Chat 角色的最新 Prompt，成员卡可展开查看；用户可通过统一、幂等的 `update_role_prompt` UserCommand 更新角色 Prompt revision。更新只影响后续 Assignment，保留历史 revision，不增加角色归档或停用状态机。Prompt 仍受 Chat/Role 归属校验，不能授予新的 Provider、能力或目录权限。
+
+Assignment Trace 的只读入口已接通：执行记录卡片可按需加载该次 Assignment 的 Trace 步骤。Room 专用 IPC 不接受 runId、agentRunId 或文件路径；主进程由 Room DB 验证 Assignment 并推导 trace 身份，Trace reader 通过 Room 授权回调确认后读取应用私有区 JSONL。当前展示最新一页的步骤标题和摘要，完整 Trace 面板、Blob 内容查看与滚动分页仍未接入。通过 Room IPC/Trace reader 21 项 Desktop Node 测试，以及 RoomWorkspace 11 项 Vitest 定向测试；未运行全量测试或桌面打包。
 
 Assignment 在创建时保存 `role_prompt_revision`，执行时按该 revision 读取 Prompt，避免尚未启动的排队任务被后续 Prompt 编辑暗中改变；旧数据库迁移会为已有 Assignment 固定迁移时的当前角色 revision。定向回归覆盖排队后更新 Prompt、执行仍使用创建时版本的行为。
 

@@ -129,6 +129,16 @@ test('an unknown run or group is rejected', (t) => {
   )
 })
 
+test('Room traces require the main-process assignment authorization callback', (t) => {
+  const paths = fixture(t)
+  writeTrace(paths)
+  const denied = createTraceReader({ tracesRoot: paths.tracesRoot })
+  assert.throws(() => denied.page({ runId: 'run-1', agentRunId: 'agent-1' }), error => error.code === 'TRACE_NOT_FOUND')
+  const allowed = createTraceReader({ tracesRoot: paths.tracesRoot,
+    isAuthorizedTrace: ({ runId, agentRunId, meta }) => runId === 'run-1' && agentRunId === 'agent-1' && meta.groupId === 'group-1' })
+  assert.equal(allowed.page({ runId: 'run-1', agentRunId: 'agent-1' }).steps.length, 5)
+})
+
 test('a trailing half line is ignored and marks the trace incomplete', (t) => {
   const paths = fixture(t)
   writeTrace(paths)

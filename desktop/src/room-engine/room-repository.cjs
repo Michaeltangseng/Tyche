@@ -230,6 +230,16 @@ function createRoomRepository(roomDb) {
         JOIN agent_roles r ON r.id = a.role_id
         WHERE a.id = ?`).get(assignmentId)
     },
+    getAssignmentByRunId(runId) {
+      return db.prepare(`SELECT a.*, t.chat_id, t.objective, t.context_revision, c.room_id,
+        room.workspace, r.display_name, r.provider, r.status AS role_status
+        FROM assignments a
+        JOIN tasks t ON t.id = a.task_id
+        JOIN chats c ON c.id = t.chat_id
+        JOIN rooms room ON room.id = c.room_id
+        JOIN agent_roles r ON r.id = a.role_id
+        WHERE a.run_id = ? ORDER BY a.updated_at DESC LIMIT 1`).get(runId)
+    },
     markAssignmentStarted({ assignmentId, runId, nativeSessionId }) {
       const timestamp = now()
       const result = db.prepare(`UPDATE assignments

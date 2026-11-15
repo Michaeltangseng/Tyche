@@ -13,6 +13,7 @@ const CHANNELS = Object.freeze({
   submitMessage: 'room:message-submit',
   userCommand: 'room:user-command',
   listStale: 'room:assignments-stale',
+  assignmentTrace: 'room:assignment-trace',
 })
 
 function assertInput(input, fields) {
@@ -95,6 +96,15 @@ function registerRoomIpc({ ipcMain, service, requireRenderer, isShuttingDown = (
       text(input.roomId)
       if (!Number.isSafeInteger(input.timeoutMs) || input.timeoutMs < 1) throw new TypeError('ROOM_SESSION_TIMEOUT_INVALID')
       return service.listStaleAssignments(input)
+    }],
+    [CHANNELS.assignmentTrace, input => {
+      assertInput(input, ['roomId', 'assignmentId', 'cursor', 'direction', 'limit'])
+      text(input.roomId)
+      text(input.assignmentId)
+      if (input.cursor !== undefined) text(input.cursor, 4096)
+      if (input.direction !== undefined && !['forward', 'backward'].includes(input.direction)) throw new TypeError('ROOM_TRACE_DIRECTION_INVALID')
+      if (input.limit !== undefined && (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 200)) throw new TypeError('ROOM_TRACE_LIMIT_INVALID')
+      return service.assignmentTrace(input)
     }],
   ])
   for (const [channel, handler] of handlers) {

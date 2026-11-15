@@ -1095,6 +1095,7 @@ function registerIpc() {
   const traceReader = createTraceReader({
     tracesRoot,
     isKnownGroup: groupId => Boolean(workspace?.getGroup?.(groupId)),
+    isAuthorizedTrace: input => Boolean(roomEngineService?.authorizeTrace?.(input)),
   })
   const traceStore = createTraceStore({ tracesRoot })
   registerTraceIpc({ registerTrustedHandle, reader: traceReader, store: traceStore })
@@ -1241,6 +1242,7 @@ if (!hasSingleInstanceLock) {
         roomDb: roomEngineDb,
         repository: roomRepository,
         readArtifactDiff: createArtifactReader({ roomDb: roomEngineDb, directory: path.join(privateRoot, 'room-engine', 'artifacts') }),
+        traceReader,
         invokeAgent: roomNativeRuntime.invokeAgent,
         resolveGroup: roomNativeRuntime.resolveTarget,
         autoRunEffects: true,

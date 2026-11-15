@@ -13,6 +13,7 @@ const { createEffectPump } = require('./effect-pump.cjs')
 const { createRuntimeRecovery } = require('./runtime-recovery.cjs')
 const { createProcessReconciliation } = require('./process-reconciliation.cjs')
 const { createControllerBacklog } = require('./controller-backlog.cjs')
+const { createHash } = require('node:crypto')
 
 const RETRYABLE_CONTROLLER_ERRORS = new Set([
   'ROOM_CONTROLLER_TIMEOUT', 'ROOM_CONTROLLER_GROUP_NOT_FOUND', 'ROOM_CONTROLLER_CHAT_BUSY',
@@ -20,7 +21,7 @@ const RETRYABLE_CONTROLLER_ERRORS = new Set([
   'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN',
 ])
 
-function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController, controllerBatchDelayMs = 40, heartbeatMs = 30_000, onControllerError = error => console.error('[room-controller]', error), autoRunEffects = false, onEffectError = error => console.error('[room-effects]', error), locale, getInvocationRecords, readArtifactDiff } = {}) {
+function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController, controllerBatchDelayMs = 40, heartbeatMs = 30_000, onControllerError = error => console.error('[room-controller]', error), autoRunEffects = false, onEffectError = error => console.error('[room-effects]', error), locale, getInvocationRecords, readArtifactDiff, traceReader } = {}) {
   if (!roomDb || !repository) throw new TypeError('ROOM_SERVICE_DEPENDENCIES_REQUIRED')
   const ingress = createMessageIngress(roomDb, repository)
   const actions = createRoomActionService({ roomDb, repository })
@@ -194,6 +195,37 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     return repository.getRoomSnapshot(input.roomId)
   }
 
+  function assignmentTrace({ roomId, assignmentId, cursor, direction = 'forward', limit = 50 } = {}) {
+    if (!traceReader || typeof traceReader.page !== 'function') throw new Error('ROOM_TRACE_UNAVAILABLE')
+    const assignment = repository.getAssignmentContext(assignmentId)
+    if (!assignment || assignment.room_id !== roomId || !assignment.run_id) throw new Error('ROOM_TRACE_NOT_FOUND')
+    const identity = createHash('sha256').update(JSON.stringify([
+      assignment.room_id, assignment.chat_id, assignment.provider, assignment.run_id,
+    ])).digest('hex')
+    try {
+      return traceReader.page({
+        runId: assignment.run_id,
+        agentRunId: `room-agent-${identity}`,
+        cursor,
+        direction,
+        limit,
+      })
+    } catch (error) {
+      if (error?.code === 'TRACE_NOT_FOUND') throw new Error('ROOM_TRACE_NOT_FOUND')
+      throw error
+    }
+  }
+
+  function authorizeTrace({ runId, agentRunId } = {}) {
+    if (!runId || !agentRunId) return false
+    const assignment = repository.getAssignmentByRunId(runId)
+    if (!assignment) return false
+    const identity = createHash('sha256').update(JSON.stringify([
+      assignment.room_id, assignment.chat_id, assignment.provider, runId,
+    ])).digest('hex')
+    return agentRunId === `room-agent-${identity}`
+  }
+
   function createChat(input) {
     if (closed) throw new Error('ROOM_SERVICE_CLOSED')
     return roomDb.withTransaction(() => {
@@ -285,6 +317,8 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     sessionLiveness: sessions.liveness,
     sessionExited: sessions.exited,
     listStaleAssignments: sessions.listStale,
+    assignmentTrace,
+    authorizeTrace,
     enqueueEffect: outbox.enqueue,
     runEffectOnce: outbox.runOnce,
     runNextEffect,

@@ -16,6 +16,7 @@ function api(snapshot = data()) {
     bootstrap: vi.fn(async () => ({ roomId: 'room-1', chatId: 'chat-1' })),
     createChat: vi.fn(async () => ({ roomId: 'room-1', chatId: 'chat-2' })),
     artifactDiff: vi.fn(async () => ({ text: '+saved change', truncated: false })),
+    assignmentTrace: vi.fn(async () => ({ steps: [{ seq: 1, title: 'Read source', detail: 'Opened package.json' }] })),
     submitMessage: vi.fn(async () => ({ ok: true })), applyUserCommand: vi.fn(async () => ({ ok: true })) }
 }
 const cleanup = []
@@ -207,6 +208,20 @@ describe('v2 team workspace', () => {
     expect(bridge.listStaleAssignments).toHaveBeenCalledWith({ roomId: 'room-1', timeoutMs: 120000 })
     expect(wrapper.get('.room-warning').text()).toContain('no platform heartbeat')
     expect(wrapper.get('.room-assignment').text()).toContain('Possibly disconnected')
+  })
+
+  it('loads an assignment trace through its room and assignment IDs only', async () => {
+    const snapshot = data()
+    snapshot.tasks = [{ id: 'task', chat_id: 'chat-1', objective: 'Build API', status: 'active' }]
+    snapshot.assignments = [{ id: 'attempt', task_id: 'task', role_id: 'worker', status: 'running', run_id: 'run-private' }]
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    await wrapper.get('.room-trace summary').trigger('click')
+    await wrapper.get('.room-trace button').trigger('click')
+    await flushPromises()
+    expect(bridge.assignmentTrace).toHaveBeenCalledWith({ roomId: 'room-1', assignmentId: 'attempt', direction: 'backward', limit: 100 })
+    expect(wrapper.get('.room-trace-list').text()).toContain('Read source')
   })
 
   it('creates new projects from chosen directories and closes the inline form with Escape', async () => {

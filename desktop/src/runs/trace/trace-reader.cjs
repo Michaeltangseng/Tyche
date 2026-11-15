@@ -61,6 +61,7 @@ function trimUtf8(buffer) {
 function createTraceReader({
   tracesRoot,
   isKnownGroup = () => false,
+  isAuthorizedTrace = () => false,
   cursorKey = crypto.randomBytes(32),
 } = {}) {
   if (!tracesRoot) throw traceError('TRACE_PATH_INVALID')
@@ -76,7 +77,8 @@ function createTraceReader({
     } catch {
       throw traceError('TRACE_NOT_FOUND')
     }
-    if (!meta || meta.runId !== runId || !isKnownGroup(meta.groupId)) {
+    if (!meta || meta.runId !== runId || (!isKnownGroup(meta.groupId)
+        && !isAuthorizedTrace({ runId, agentRunId, meta }))) {
       throw traceError('TRACE_NOT_FOUND')
     }
     const encodedAgent = encodeId(agentRunId)

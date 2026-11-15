@@ -98,6 +98,18 @@
             <div v-for="assignment in taskAssignments(task.id)" :key="assignment.id" class="room-assignment">
               <p>{{ roleName(assignment.role_id) }} · {{ statusLabel(assignment.status) }}<span v-if="assignment.outcome === 'unknown'"> · {{ t('room.exitUnknown') }}</span><span v-if="staleAssignmentIds.has(assignment.id)"> · {{ t('room.stale') }}</span></p>
               <p v-if="assignment.ended_reason" class="room-muted">{{ t('room.attemptEnded') }}</p>
+              <details v-if="assignment.run_id" class="room-trace">
+                <summary>{{ t('room.trace') }}</summary>
+                <button class="secondary-button" type="button" :disabled="busy || traceBusy[assignment.id]" @click="loadTrace(assignment)">{{ t('room.loadTrace') }}</button>
+                <p v-if="traceErrors[assignment.id]" class="room-error">{{ t('room.error') }}</p>
+                <ol v-if="traceSteps[assignment.id]?.length" class="room-trace-list">
+                  <li v-for="(step, index) in traceSteps[assignment.id]" :key="`${assignment.id}:${index}:${step.seq || ''}`">
+                    <strong>{{ step.title || step.kind || t('room.trace') }}</strong>
+                    <span v-if="step.detail || step.message">{{ step.detail || step.message }}</span>
+                  </li>
+                </ol>
+                <p v-else-if="traceLoaded[assignment.id]" class="room-muted">{{ t('room.traceEmpty') }}</p>
+              </details>
               <div v-if="canRetry(assignment)" class="room-actions">
                 <button class="secondary-button" :disabled="busy" @click="command({ type: 'retry_task', taskId: task.id, assignmentId: assignment.id })">{{ t('room.retry') }}</button>
                 <select v-model="handoffRoles[assignment.id]" :aria-label="t('room.handoffTo')">
@@ -152,6 +164,10 @@ const permissionBusy = computed(() => snapshot.value?.assignments.some(item => i
 const staleAssignmentIds = computed(() => new Set(staleAssignments.value
   .filter(item => assignments.value.some(assignment => assignment.id === item.assignmentId))
   .map(item => item.assignmentId)))
+const traceSteps = ref({})
+const traceLoaded = ref({})
+const traceBusy = ref({})
+const traceErrors = ref({})
 const entries = computed(() => [
   ...messages.value.map(message => ({ key: message.id, author: message.author_type === 'user' ? t('room.you') : roleName(message.author_id), content: message.content, createdAt: message.created_at })),
   ...reports.value.map(report => ({ key: report.id, author: `${roleName(assignments.value.find(item => item.id === report.assignment_id)?.role_id)} · ${t('room.report')}`, content: report.summary, evidence: report.evidence_json, report: true, createdAt: report.created_at })),
@@ -163,6 +179,16 @@ function canRetry(item) { return ['failed', 'waiting', 'blocked', 'cancelled'].i
 function statusLabel(status) { const key = `room.status.${status}`; return t(key) === key ? t('room.status.waiting') : t(key) }
 function optionId(option) { return typeof option === 'string' ? option : option.id || option.optionId }
 function formatTime(value) { return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+async function loadTrace(assignment) {
+  traceBusy.value = { ...traceBusy.value, [assignment.id]: true }
+  traceErrors.value = { ...traceErrors.value, [assignment.id]: false }
+  try {
+    const page = await props.api.assignmentTrace({ roomId: roomId.value, assignmentId: assignment.id, direction: 'backward', limit: 100 })
+    traceSteps.value = { ...traceSteps.value, [assignment.id]: page?.steps || [] }
+    traceLoaded.value = { ...traceLoaded.value, [assignment.id]: true }
+  } catch { traceErrors.value = { ...traceErrors.value, [assignment.id]: true } }
+  finally { traceBusy.value = { ...traceBusy.value, [assignment.id]: false } }
+}
 async function saveRolePrompt(role) {
   const prompt = String(rolePrompts.value[role.id] || '')
   if (!prompt.trim()) return
@@ -189,7 +215,7 @@ async function answer(attention) {
   await command({ type: 'answer_attention', attentionId: attention.id,
     ...(attention.options_json?.length ? { optionId: answers.value[attention.id] } : { comment: answers.value[attention.id] }) })
 }
-watch([roomId, chatId], () => { handoffRoles.value = {}; answers.value = {}; rolePrompts.value = {}; diffArtifactId.value = '' })
+watch([roomId, chatId], () => { handoffRoles.value = {}; answers.value = {}; rolePrompts.value = {}; diffArtifactId.value = ''; traceSteps.value = {}; traceLoaded.value = {}; traceErrors.value = {} })
 watch(roles, items => {
   const next = { ...rolePrompts.value }
   for (const role of items) if (!(role.id in next)) next[role.id] = role.current_prompt || ''

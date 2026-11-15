@@ -69,6 +69,7 @@ test('internal execution and platform fact channels are not registered', () => {
   assert.deepEqual([...handlers.keys()].sort(), [
     'room:list', 'room:chat-create', 'room:artifact-diff',
     'room:bootstrap', 'room:snapshot', 'room:message-submit', 'room:user-command', 'room:assignments-stale',
+    'room:assignment-trace',
   ].sort())
   for (const channel of ['room:assignment-start', 'room:controller-action', 'room:report-import', 'room:session-liveness', 'room:effect-enqueue']) {
     assert.equal(handlers.has(channel), false)
