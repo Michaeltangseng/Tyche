@@ -1232,6 +1232,18 @@ if (!hasSingleInstanceLock) {
       roomEngineService = createRoomService({
         roomDb: roomEngineDb,
         repository: createRoomRepository(roomEngineDb),
+        invokeAgent: (...args) => startupWorkspace.invokeAgent(...args),
+        resolveGroup: ({ assignment }) => {
+          const requestedWorkspace = typeof assignment.workspace === 'string'
+            ? path.resolve(assignment.workspace)
+            : ''
+          return (startupWorkspace.state.groups || []).find(group => (
+            typeof group.workdir === 'string'
+            && path.resolve(group.workdir) === requestedWorkspace
+            && Array.isArray(group.agentKinds)
+            && group.agentKinds.includes(assignment.provider)
+          )) || null
+        },
       })
       const templatesStore = new TemplatesStore({
         storagePath: path.join(privateRoot, 'templates.json'),

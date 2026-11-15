@@ -15,7 +15,9 @@ function setup() {
   const roomId = repository.createRoom({ name: 'Demo', workspace: '/tmp/demo' })
   const chatId = repository.createChat({ roomId, title: 'Chat' })
   const roleId = repository.createAgentRole({ chatId, displayName: 'Backend', provider: 'codex', createdBy: 'user' })
-  return { roomDb, repository, roomId, chatId, roleId, service: createRoomService({ roomDb, repository }) }
+  const taskId = repository.createTask({ chatId, objective: 'Build', createdBy: 'user' })
+  const assignmentId = repository.createAssignment({ taskId, roleId })
+  return { roomDb, repository, roomId, chatId, roleId, taskId, assignmentId, service: createRoomService({ roomDb, repository }) }
 }
 
 test('bootstrap creates an independent v2 room and primary chat atomically', () => {
@@ -40,8 +42,9 @@ test('snapshot returns the v2 room ledger grouped by chat', () => {
   const snapshot = service.snapshot({ roomId })
   assert.equal(snapshot.room.id, roomId)
   assert.equal(snapshot.chats[0].id, chatId)
-  assert.deepEqual(snapshot.tasks[0].source_message_ids_json, [message.messageId])
-  assert.equal(snapshot.assignments[0].required, 0)
+  const draftTask = snapshot.tasks.find(task => task.objective === 'Draft')
+  assert.deepEqual(draftTask.source_message_ids_json, [message.messageId])
+  assert.equal(snapshot.assignments.at(-1).required, 0)
   roomDb.close()
 })
 
@@ -69,4 +72,20 @@ test('importReport composes report persistence and derived task state', () => {
   const result = service.importReport({ chatId, taskId, assignmentId, actorId: 'backend', content: 'done [[MELDWORK_REPORT:{"kind":"ready","summary":"done"}]]' })
   assert.equal(result.state.status, 'done')
   roomDb.close()
+})
+
+test('room service exposes assignment start only when the main process supplies a group bridge', async () => {
+  const state = setup()
+  const bridged = []
+  const service = createRoomService({
+    roomDb: state.roomDb,
+    repository: state.repository,
+    resolveGroup: () => ({ id: 'group-1', workdir: '/tmp/demo' }),
+    invokeAgent: async (...args) => { bridged.push(args); return { ok: true } },
+  })
+  const run = service.startAssignment({ assignmentId: state.assignmentId, prompt: 'Build' })
+  await run.promise
+  assert.equal(bridged[0][0].id, 'group-1')
+  assert.equal(bridged[0][5].chatId, state.chatId)
+  state.roomDb.close()
 })

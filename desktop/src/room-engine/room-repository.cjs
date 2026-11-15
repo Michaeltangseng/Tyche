@@ -159,10 +159,11 @@ function createRoomRepository(roomDb) {
     getEffect(effectId) { return db.prepare('SELECT * FROM effects WHERE id = ?').get(effectId) },
     getAssignmentContext(assignmentId) {
       return db.prepare(`SELECT a.*, t.chat_id, t.objective, t.context_revision, c.room_id,
-        r.display_name, r.provider, r.status AS role_status
+        room.workspace, r.display_name, r.provider, r.status AS role_status
         FROM assignments a
         JOIN tasks t ON t.id = a.task_id
         JOIN chats c ON c.id = t.chat_id
+        JOIN rooms room ON room.id = c.room_id
         JOIN agent_roles r ON r.id = a.role_id
         WHERE a.id = ?`).get(assignmentId)
     },

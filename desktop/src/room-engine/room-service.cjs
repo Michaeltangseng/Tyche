@@ -6,8 +6,9 @@ const { createReportStateService } = require('./report-state.cjs')
 const { createSessionSupervisor } = require('./session-supervisor.cjs')
 const { createUserCommandService } = require('./user-commands.cjs')
 const { createMentionFallback } = require('./mention-fallback.cjs')
+const { createAssignmentRunner } = require('./assignment-runner.cjs')
 
-function createRoomService({ roomDb, repository, now } = {}) {
+function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup } = {}) {
   if (!roomDb || !repository) throw new TypeError('ROOM_SERVICE_DEPENDENCIES_REQUIRED')
   const ingress = createMessageIngress(roomDb, repository)
   const actions = createRoomActionService({ roomDb, repository })
@@ -17,6 +18,14 @@ function createRoomService({ roomDb, repository, now } = {}) {
   const sessions = createSessionSupervisor({ roomDb, repository, now })
   const userCommands = createUserCommandService({ roomDb, repository })
   const fallback = createMentionFallback({ roomDb, repository })
+  const assignmentRunner = invokeAgent && resolveGroup
+    ? createAssignmentRunner({
+      repository,
+      supervisor: sessions,
+      invokeAgent,
+      resolveGroup,
+    })
+    : null
 
   function submitMessage(input, { deterministicFallback = true } = {}) {
     const result = ingress.submit(input)
@@ -77,6 +86,10 @@ function createRoomService({ roomDb, repository, now } = {}) {
   return {
     bootstrap,
     snapshot,
+    startAssignment: input => {
+      if (!assignmentRunner) throw new Error('ROOM_ASSIGNMENT_RUNNER_UNAVAILABLE')
+      return assignmentRunner.start(input)
+    },
     submitMessage,
     editMessage: ingress.edit,
     deleteMessage: ingress.remove,
