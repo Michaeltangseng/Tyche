@@ -237,6 +237,7 @@ Room Engine 的第一条主进程纵向切片已经接入 Electron 生命周期�
 - preload 已暴露消息提交、ControllerAction、UserCommand、Report、Session liveness、stale 查询和 effect 入队接口；
 - 增加 `room:bootstrap`，在一个事务中创建独立的 v2 Room、primary Chat 和审计事件，作为新 Chat UI 的初始化入口；
 - 增加 `room:snapshot` 读取面，按 Room 返回 Chat、消息、Task、Assignment 和 Attention，供新 UI 使用；
+- 增加独立 `assignment-runner` 适配器：把 queued Assignment 映射到现有 `invokeAgent` 回调，记录平台 session facts；无 Report 的进程退出进入 waiting，不直接完成 Task；
 - 退出流程先停止 Room IPC 接收，再关闭数据库，避免关闭期间产生新的写入；
 - Room Engine 专项测试当前为 38 项通过；尚未运行 Desktop 全量测试和打包检查。
 

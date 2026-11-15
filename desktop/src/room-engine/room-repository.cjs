@@ -157,6 +157,31 @@ function createRoomRepository(roomDb) {
     },
     getTask(taskId) { return db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) },
     getEffect(effectId) { return db.prepare('SELECT * FROM effects WHERE id = ?').get(effectId) },
+    getAssignmentContext(assignmentId) {
+      return db.prepare(`SELECT a.*, t.chat_id, t.objective, t.context_revision, c.room_id,
+        r.display_name, r.provider, r.status AS role_status
+        FROM assignments a
+        JOIN tasks t ON t.id = a.task_id
+        JOIN chats c ON c.id = t.chat_id
+        JOIN agent_roles r ON r.id = a.role_id
+        WHERE a.id = ?`).get(assignmentId)
+    },
+    markAssignmentStarted({ assignmentId, runId, nativeSessionId }) {
+      const timestamp = now()
+      const result = db.prepare(`UPDATE assignments
+        SET run_id = ?, native_session_id = ?, status = 'running', updated_at = ?
+        WHERE id = ? AND status = 'queued'`).run(runId, nativeSessionId, timestamp, assignmentId)
+      if (result.changes !== 1) throw new Error('ROOM_ASSIGNMENT_NOT_QUEUED')
+      return { assignmentId, runId, nativeSessionId, startedAt: timestamp }
+    },
+    markAssignmentExited({ assignmentId, status, endedReason = null, outcome = null }) {
+      const timestamp = now()
+      const result = db.prepare(`UPDATE assignments
+        SET status = ?, ended_reason = ?, outcome = ?, updated_at = ?
+        WHERE id = ? AND status = 'running'`).run(status, endedReason, outcome, timestamp, assignmentId)
+      if (result.changes !== 1) throw new Error('ROOM_ASSIGNMENT_NOT_RUNNING')
+      return { assignmentId, status, endedAt: timestamp }
+    },
     getRoomSnapshot(roomId) {
       const room = db.prepare('SELECT * FROM rooms WHERE id = ?').get(roomId)
       if (!room) throw new Error('ROOM_NOT_FOUND')

@@ -1,0 +1,57 @@
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const test = require('node:test')
+
+const { openRoomDatabase } = require('../../src/room-engine/room-db.cjs')
+const { createRoomRepository } = require('../../src/room-engine/room-repository.cjs')
+const { createSessionSupervisor } = require('../../src/room-engine/session-supervisor.cjs')
+const { createAssignmentRunner } = require('../../src/room-engine/assignment-runner.cjs')
+
+function setup() {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-runner-'))
+  const roomDb = openRoomDatabase({ directory })
+  const repository = createRoomRepository(roomDb)
+  const roomId = repository.createRoom({ name: 'Demo', workspace: '/tmp/demo' })
+  const chatId = repository.createChat({ roomId, title: 'Chat' })
+  const roleId = repository.createAgentRole({ chatId, displayName: 'Backend', provider: 'codex', createdBy: 'user' })
+  const taskId = repository.createTask({ chatId, objective: 'Build API', createdBy: 'user' })
+  const assignmentId = repository.createAssignment({ taskId, roleId })
+  const supervisor = createSessionSupervisor({ roomDb, repository })
+  return { roomDb, repository, roomId, chatId, taskId, assignmentId, supervisor }
+}
+
+test('assignment runner maps a queued assignment to invokeAgent and records exit without a report', async () => {
+  const state = setup()
+  let invocation
+  const runner = createAssignmentRunner({
+    repository: state.repository,
+    supervisor: state.supervisor,
+    resolveGroup: () => ({ id: 'legacy-group', workdir: '/tmp/demo' }),
+    invokeAgent: async (...args) => { invocation = args; return { output: 'done' } },
+  })
+  const started = runner.start({ assignmentId: state.assignmentId, prompt: 'Build the API' })
+  assert.equal(started.nativeSessionId, `room:${state.roomId}:${state.chatId}:${state.taskId}:${state.assignmentId}:1`)
+  await started.promise
+  assert.equal(invocation[0].id, 'legacy-group')
+  assert.equal(invocation[1], 'codex')
+  assert.equal(invocation[5].assignmentId, state.assignmentId)
+  assert.equal(state.repository.getAssignmentContext(state.assignmentId).status, 'waiting')
+  assert.equal(state.repository.listEvents(state.roomId).map(event => event.type).join(','), 'session_started,session_exited')
+  state.roomDb.close()
+})
+
+test('assignment runner marks invocation failures and does not accept a second start', async () => {
+  const state = setup()
+  const runner = createAssignmentRunner({
+    repository: state.repository,
+    supervisor: state.supervisor,
+    resolveGroup: () => ({ id: 'legacy-group', workdir: '/tmp/demo' }),
+    invokeAgent: async () => { throw new Error('provider failed') },
+  })
+  await assert.rejects(runner.start({ assignmentId: state.assignmentId, prompt: 'Build' }).promise, /provider failed/)
+  assert.equal(state.repository.getAssignmentContext(state.assignmentId).status, 'failed')
+  assert.throws(() => runner.start({ assignmentId: state.assignmentId, prompt: 'Retry' }), /ROOM_ASSIGNMENT_NOT_QUEUED/)
+  state.roomDb.close()
+})
