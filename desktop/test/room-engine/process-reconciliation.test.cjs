@@ -102,6 +102,24 @@ test('explicit retry reconciles ended execution and dispatches only one replacem
   assert.equal(s.roomDb.database.prepare("SELECT COUNT(*) AS count FROM effects WHERE status = 'pending'").get().count, 1)
 })
 
+test('recovered execution can be retried as a fresh assignment and finish the task', async t => {
+  const s = setup(t)
+  const service = createRoomService({ roomDb: s.roomDb, repository: s.repository,
+    locale: () => 'en', getInvocationRecords: () => s.processRecords,
+    resolveGroup: () => ({ id: 'host' }),
+    invokeAgent: async () => ({ message: { content: 'done [[MELDWORK_REPORT:{"kind":"ready","summary":"Recovered work completed"}]]' } }) })
+  t.after(async () => service.close())
+  const command = { type: 'retry_task', chatId: s.chatId, taskId: s.taskId, assignmentId: s.assignmentId, commandId: 'retry-and-finish' }
+  const result = service.applyUserCommand(command)
+  assert.notEqual(result.assignmentId, s.assignmentId)
+  await service.runNextEffect()
+  const replacement = s.repository.getAssignmentContext(result.assignmentId)
+  assert.equal(replacement.status, 'completed')
+  assert.equal(s.repository.getTask(s.taskId).status, 'done')
+  const reports = s.repository.getRoomSnapshot(s.roomId).reports.filter(report => report.task_id === s.taskId)
+  assert.equal(reports.at(-1).kind, 'ready')
+})
+
 test('retry cannot bypass residual processes and failed commands roll reconciliation back', t => {
   const s = setup(t)
   const command = { type: 'retry_task', chatId: s.chatId, taskId: s.taskId, assignmentId: s.assignmentId, commandId: 'retry' }

@@ -12,6 +12,8 @@ Assignment Runner 现已在每个运行中的 Assignment 上由平台定时写�
 
 Supervisor 的 stale 查询现在按事件序列同时读取 `session_liveness` 与 `session_exited`；退出事件晚于最后心跳时不会再把已结束 Assignment 误报为 stale。该边界已有 Electron Node 定向回归测试。
 
+恢复后的显式 `retry_task`/`handoff_task` 已完成一次替代 Assignment 的真实执行闭环：命令先完成残留进程对账，再创建带 `previousAssignmentId` 的新尝试和 pending effect；effect runner 启动新 Assignment，Worker 返回 `ready` Report 后，替代 Assignment 进入 `completed`、Task 推导为 `done`，历史尝试和 Report 保留。该路径已有 Electron Node 定向测试；测试使用替身 Agent，真实 CLI 异常恢复 smoke 仍待补齐。
+
 按用户反馈简化角色模型：删除角色归档动作及专门的停用检查，不增加角色生命周期状态机。“后续不再邀请某个角色”由用户指令、Prompt 和协作上下文管理，不影响已有任务或历史记录。保留 Prompt 更新的 Chat 归属校验及后续 Controller 唤醒。
 
 协作约定更新已接通：主控使用完整 instructions 文本和当前用户源消息 ID 提交 `update_context`。平台验证来源与当前 revision，同批先保存约定、再以新 revision 创建新任务；既有任务保留版本且不隐式停止。批次失败整批回滚，更新事件可唤醒后续评估并在重启后补调度，不新增状态机或配置 DSL。约定本身不能授予写权限。下一步扩展真实 CLI 长任务、会话续跑和异常恢复验收；Prompt/Skill 配置界面仍未完成。
