@@ -4,6 +4,8 @@
 
 新项目室需要保存 Chat、动态角色、Prompt revision、Task、Report、Attention、事件审计和 Controller 决策。SQLite 适合做本地单库账本，按 `room_id` 和 `chat_id` 隔离数据；不建议为每个 Chat 建一个数据库文件。
 
+权威数据库和 Trace 放在应用私有区 `userData/meldwork-private`，按 `room_id` / `chat_id` 隔离；项目主目录不默认放 `db.sqlite`、聊天记录或角色配置，避免污染 Git、意外同步敏感记录和改变项目复制语义。项目目录只保存用户明确产生的文档、代码和 Artifact。需要自包含导出时，使用显式导出目录，不自动修改用户 `.git` 配置。
+
 建议表：
 
 ```text
@@ -19,6 +21,7 @@ reports
 artifacts
 attentions
 controller_decisions
+effects / outbox
 events
 ```
 
@@ -27,8 +30,10 @@ events
 - 使用 WAL、外键、事务和 schema version；
 - 所有写入由 Room Engine 统一提交；
 - Controller action 先持久化，再执行外部副作用；
+- `effects / outbox` 记录待执行副作用、幂等键、重试次数、错误和完成时间；
 - 用幂等键避免重复创建 Task、Assignment 和消息；
 - 事件记录“谁在何时做了什么”，决策记录“主控使用了哪个 ChatContext revision”；
+- Report 是任务事实的唯一真源；Event 只引用 `reportId`、`actionId` 或平台事实，不重复维护另一套状态；
 - 消息和事件需要压缩/保留策略，避免无限增长。
 
 实现前需要确认 Electron 运行时是否支持可用的 `node:sqlite`。若支持，优先使用它以避免原生模块打包和 rebuild；否则评估 `better-sqlite3` 等方案的桌面打包成本。SQLite 迁移必须覆盖现有 `state.json` 数据，不应以破坏旧项目为代价。
@@ -44,6 +49,22 @@ Diff:     shadow Git commit 或版本引用
 ```
 
 完整 Trace 继续由 M7 的 JSONL 和现有脱敏机制管理；产物内容继续由工作目录和影子 Git 管理。这样数据库保持适合查询的账本，运行日志和大型文件不被复制进单一数据库。
+
+## invokeAgent、Session 与 Run Ledger 映射
+
+新模型不要求立即重写现有 `invokeAgent`。第一阶段采用兼容映射：
+
+| 现有概念 | 新概念 |
+| --- | --- |
+| 项目室主流程群聊/宿主群聊 | Chat 的内部宿主会话，用户不再看到“主流程”术语 |
+| group/message | Chat/Message，保留原始 message id 作为迁移引用 |
+| Agent 调用 | Assignment |
+| 原生会话键 | `roomId/chatId/taskId/assignmentId/roleId` 组成的稳定 Session key |
+| agentRunId / Run Ledger | Assignment.runId 和执行事件引用 |
+| 现有 workspace JSON | 迁移为 Message/Task/Report 投影；原始记录保留只读引用 |
+| V4 旧项目 | 继续使用旧引擎，或通过只读投影显示为新 Task/Report |
+
+宿主群聊可以作为内部实现保留，但新的 Room Engine 是 Chat、Task、Assignment、Report 和 Attention 的唯一业务写入者。Trace 仍由现有运行链写 JSONL，SQLite 只保存 `runId` 和路径引用。
 
 ## 旧群聊模式退役
 

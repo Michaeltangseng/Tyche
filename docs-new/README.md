@@ -35,7 +35,7 @@ Message
 执行层：Claude Code / Codex / Pi / 其他原生 Agent / sub-agent / skill / shell / trace
 ```
 
-运行时细节见 [04-heartbeat-and-workspace.md](04-heartbeat-and-workspace.md)：所有 Controller 和 Worker Session 使用同一套心跳与事件管线；Room 主目录保存项目事实，Assignment 工作空间隔离写入，产物通过平台发布回 Room。
+运行时细节见 [04-heartbeat-and-workspace.md](04-heartbeat-and-workspace.md)：所有 Controller 和 Worker Session 使用同一套心跳与事件管线；代码任务默认在 Room 主目录通过租约写入，隔离 Assignment workspace 用于探索和高风险任务，产物通过平台发布回 Room。
 
 实施前置规范和分阶段计划见 [05-implementation-plan-and-open-questions.md](05-implementation-plan-and-open-questions.md)。
 

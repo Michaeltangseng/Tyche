@@ -28,28 +28,37 @@ Room
   id, name, workspace, sharedMembers, artifactLedger
 
 Chat
-  id, roomId, title, status, createdAt, updatedAt
+  id, roomId, title, status, isPrimary, contextRevision, createdAt, updatedAt
 
 Message
   id, chatId, author, content, mentions, replyTo, taskId?, createdAt
 
 AgentRole
-  id, chatId, displayName, responsibilities, capabilities, provider, status
+  id, chatId, displayName, responsibilities, capabilities, provider, promptRevision, createdBy, creationReason, status
 
 Task
-  id, chatId, objective, status, inputs, assignments, artifactIds, latestReportId
+  id, chatId, objective, kind, status, createdBy, sourceMessageIds, parentTaskId, blockedByTaskIds, requiredArtifactIds, optional, waitingFor, contextRevision, inputs, assignments, artifactIds, latestReportId
 
 Assignment
-  id, taskId, roleId, nativeSessionId, writeScopes, status
+  id, taskId, roleId, nativeSessionId, runId, workspaceRef, writeScopes, status, endedReason, outcome
 
 Report
-  id, taskId, assignmentId, kind, summary, evidence, artifactIds, nextRequest
+  id, taskId, assignmentId, kind, summary, evidence, artifactIds, nextRequest, attentionId, createdAt
 
 Attention
-  id, chatId, taskId?, type, question, options, status, resolution
+  id, chatId, taskId?, type, question, options, status, resolution, requestedBy, answeredBy
 
 Artifact
-  id, roomId, sourceTaskId, path, kind, version, accepted
+  id, roomId, sourceTaskId, sourceAssignmentId, path, kind, version, status, supersedesArtifactId, accepted
+
+ChatContextRevision
+  id, chatId, revision, source, instructions, active, createdAt
+
+ControllerDecision
+  id, chatId, batchId, contextRevision, actionIds, results, model, latencyMs, cost, createdAt
+
+Event
+  id, chatId, type, reportId?, actionId?, payload, createdAt
 ```
 
 状态保持少量且可检查：
@@ -106,4 +115,10 @@ Agent2：@Agent3 请生成三种英雄区插图。
 ## Attention
 
 Attention 只表示真正需要用户行动的事实：决策、澄清、审批、阻塞或失败处理。进度和普通建议留在消息、Task 和 Report 中，避免把用户变成每轮调度器。
+
+## Task 完成条件
+
+一个 Task 可以有多个 Assignment。默认情况下，所有 required Assignment 都产生 `ready` Report 后，Task 才能进入 `done`；任一 required Assignment 进入 `blocked` 或 `failed` 时，Task 进入 `waiting` 并可创建 Attention。`optional` Assignment 不阻塞 Task 完成。
+
+第一版不支持跨 Chat 的 Task 依赖。跨 Chat 协作通过 Room Artifact 和消息/Controller 链接完成，避免把多个 Chat 的依赖图合并成新的全局流程状态机。
 

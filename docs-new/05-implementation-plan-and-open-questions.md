@@ -2,6 +2,8 @@
 
 这份文档把架构中尚未收敛的部分转成实施前需要确定的协议、边界和验收指标。它不重新引入固定 workflow；它规定的是平台如何记录事实、校验动作和恢复运行。
 
+P0 决策记录见 [06-architecture-decisions.md](06-architecture-decisions.md)。在进入协议冻结和代码实现前，应先完成其中的 ADR-001 至 ADR-006。
+
 ## 一、实施前必须冻结的三个协议
 
 ### 1. Message Envelope
@@ -195,12 +197,13 @@ ChatContext 可以管理“应该如何组队”，平台需要限制“最多�
 目标是验证概念，不改变 Agent 执行链：
 
 - 定义 Message、Action、Report schema；
+- 完成 workspace、权威状态位置、Actor × Action、Report 真源和 Session 映射 ADR；
 - 定义 Room/Chat 边界；
 - 从旧 checkpoint 状态投影 Task、Report、Attention；
 - UI 显示群聊、Task 卡和“需要你”；
 - 隐藏 checkpoint、Gate、Seat、Round 等内部词汇。
 
-验收：用户可以从群聊看到“谁在做什么、产物是什么、哪里需要我”，但旧执行链仍能继续工作。
+验收：用户可以从群聊看到“谁在做什么、产物是什么、哪里需要我”，但旧执行链仍能继续工作；两个 Agent 在 5 分钟内各返回一条结构化 Report；全程不出现 checkpoint/gate/seat/round。
 
 ### Phase 1：统一事件和结构化报告
 
@@ -210,7 +213,7 @@ ChatContext 可以管理“应该如何组队”，平台需要限制“最多�
 - 引入 idempotency、批处理和重启恢复；
 - 不要求 Controller 模型先可用。
 
-验收：长时间运行的 Agent 完成后，完成报告可以可靠回到 Thread；应用重启不会丢失消息或重复创建任务。
+验收：长时间运行的 Agent 完成后，完成报告可以可靠回到 Thread；应用重启不会丢失消息或重复创建任务；Controller 不可用时，用户显式 @mention 仍可通过受限 fallback 创建任务。
 
 ### Phase 2：SQLite Room Engine
 
@@ -219,7 +222,7 @@ ChatContext 可以管理“应该如何组队”，平台需要限制“最多�
 - 让 Room Engine 成为 Task、Assignment、Report、Attention 的唯一写入者；
 - Trace、Shadow Git 和工作目录继续使用现有基础设施。
 
-验收：Room/Chat/Task/Report/Artifact 可以查询、恢复和审计；旧项目仍可打开。
+验收：Room/Chat/Task/Report/Artifact 可以查询、恢复和审计；effects/outbox 可以在崩溃后恢复；旧项目仍可打开。
 
 ### Phase 3：Controller Session
 

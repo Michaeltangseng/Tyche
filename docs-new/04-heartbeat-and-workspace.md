@@ -129,17 +129,32 @@ Assignment workspace      某次 Agent 执行的隔离写入空间
 
 ```text
 <room-root>/
-  .meldwork/
+  docs/
+  src/
+  assets/
+
+应用私有区/
+  rooms/<room-id>/
     db.sqlite
     traces/
     chats/<chat-id>/context/
     assignments/<chat-id>/<assignment-id>/
-  docs/
-  src/
-  assets/
 ```
 
-`chats/<chat-id>/context/` 保存需要落盘的 ChatContext 快照或导出文件；权威记录仍在 SQLite。`assignments/<...>/` 是 Agent 的临时工作空间，可以是独立目录、影子 Git worktree 或平台支持的其他隔离形式。
+`chats/<chat-id>/context/` 保存需要落盘的 ChatContext 快照或导出文件；权威记录仍在应用私有区 SQLite。项目目录不默认放私有数据库、Trace 或聊天记录。`assignments/<...>/` 是 Agent 的临时工作空间，可以是独立目录、影子 Git worktree 或平台支持的其他隔离形式。
+
+### 默认工作目录决策
+
+代码任务默认继续在 Room 主目录工作，以保留完整依赖、忽略文件、构建缓存和 Agent 对项目的真实上下文。平台通过目录/文件写入租约、受管理进程和版本快照防止冲突。
+
+隔离 Assignment workspace 只用于：
+
+- 并行探索或实验性改动；
+- 高风险、需要先验证的改动；
+- 明确声明输入/输出 Artifact 契约的任务；
+- Room 主目录不能安全共享的任务。
+
+除非平台已经能够完整准备依赖、忽略文件、构建缓存和 Skill 所需的项目根路径，否则不把隔离 workspace 作为所有任务的默认模式。
 
 ## 工作空间访问规则
 
@@ -156,7 +171,7 @@ Agent 不应默认读取其他 Assignment 的未发布中间文件或完整 Trac
 
 ### 默认写入
 
-Agent 默认只写自己的 Assignment workspace。写入范围由平台根据 Task 和角色能力生成，不能由 Prompt 自行扩大。
+代码任务默认写入 Room 主目录，写入范围由平台根据 Task 和角色能力生成，并通过目录/文件租约防止冲突；不能由 Prompt 自行扩大。探索性、高风险或显式 Artifact 契约任务才使用 Assignment workspace。
 
 需要共享代码时，Agent 通过平台发布 Artifact 或请求受控应用：
 

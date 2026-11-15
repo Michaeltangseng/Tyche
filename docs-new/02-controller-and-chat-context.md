@@ -20,7 +20,7 @@ Controller 不可以：
 - 通过自由文本改变权限或伪造完成状态；
 - 绕过 Room Engine 的成员、能力、目录、进程和凭据校验。
 
-Controller 的输出是结构化动作，平台逐项校验后才执行：
+Controller 的输出是结构化 `ControllerAction`，平台逐项校验后才执行。它不能直接执行用户专属命令，也不能直接把 Task 设置为 `done` 或 `cancelled`：
 
 ```text
 create_task
@@ -34,6 +34,20 @@ stop_task
 retry_task
 note
 ```
+
+`update_task` 只能修改目标描述、依赖、优先级和输入等元数据；状态转移由 Report、平台运行事实或 `UserCommand` 触发。
+
+`UserCommand` 是另一类结构化动作，例如 `pause_chat`、`resume_chat`、`stop_task`、`retry_task`、`accept_artifact`、`reject_artifact`、`revoke_pending_action` 和 `restore_context_revision`。它们必须由平台确认的用户身份产生。
+
+权限边界：
+
+| Actor | 可以做什么 |
+| --- | --- |
+| Controller | 创建/派发/交接建议、请求 Attention、更新 ChatContext、创建/归档角色、记录 Note |
+| User | 暂停/继续 Chat、停止/重试/交接 Task、接受/拒绝 Artifact、撤销未执行派发、恢复 Context revision |
+| Platform | 校验权限、创建 Assignment、执行状态转移、启动/停止进程、处理租约、恢复和重试 |
+
+Controller 对停止、重试或交接可以提出建议，但不能绕过 UserCommand 或平台事实直接终止正在运行的进程。
 
 ## ChatContext 是可变工作协议
 
@@ -119,5 +133,5 @@ Worker 的正文保持自然语言，但任务状态使用结构化 Report。可
 [[MELDWORK_REPORT:{"kind":"ready","summary":"...","artifacts":["docs/design.md"]}]]
 ```
 
-缺少或解析失败时，Task 保持当前状态，由 Controller 或用户处理，不从“我完成了”之类的散文推断完成。
+缺少或解析失败时，Task 保持当前状态，由 Controller 或用户处理，不从“我完成了”之类的散文推断完成。Report 是领域真源；Event 只传递和审计 Report，不重复保存一份独立的任务状态。
 
