@@ -76,7 +76,7 @@ test('artifact decisions and chat pause/resume update platform-owned state', () 
 test('invalid attention option and unsupported lifecycle command are rejected', () => {
   const { roomDb, commands, chatId, attentionId } = setup()
   assert.throws(() => commands.apply({ type: 'answer_attention', chatId, attentionId, optionId: 'maybe' }), /OPTION_INVALID/)
-  assert.throws(() => commands.apply({ type: 'stop_task', chatId, taskId: 'task-1', reason: 'cancel' }), /UNSUPPORTED/)
+  assert.throws(() => commands.apply({ type: 'archive_chat', chatId }), /UNSUPPORTED/)
   roomDb.close()
 })
 

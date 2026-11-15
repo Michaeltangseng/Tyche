@@ -7,7 +7,7 @@ function createProcessReconciliation({ roomDb, repository, supervisor, getInvoca
   function reconcile({ assignmentId = null } = {}) {
     return roomDb.withTransaction(() => {
       const candidates = new Set(db.prepare("SELECT id FROM assignments WHERE outcome = 'unknown'").all().map(row => row.id))
-      const effects = db.prepare("SELECT * FROM effects WHERE status = 'unknown' AND kind = 'start_assignment'").all()
+      const effects = db.prepare("SELECT * FROM effects WHERE status = 'unknown' AND kind IN ('start_assignment', 'stop_assignment')").all()
       for (const effect of effects) {
         try {
           const id = JSON.parse(effect.payload_json)?.assignmentId
@@ -36,7 +36,8 @@ function createProcessReconciliation({ roomDb, repository, supervisor, getInvoca
             ended_reason = 'application_interrupted_process_ended', updated_at = ? WHERE id = ?`).run(timestamp, id)
         }
         for (const effect of linked) {
-          db.prepare(`UPDATE effects SET status = 'failed', last_error = 'APPLICATION_INTERRUPTED_PROCESS_ENDED', completed_at = ? WHERE id = ?`).run(timestamp, effect.id)
+          db.prepare(`UPDATE effects SET status = ?, last_error = ?, completed_at = ? WHERE id = ?`)
+            .run(effect.kind === 'stop_assignment' ? 'succeeded' : 'failed', effect.kind === 'stop_assignment' ? null : 'APPLICATION_INTERRUPTED_PROCESS_ENDED', timestamp, effect.id)
         }
         const event = supervisor.exited({ assignmentId: id, chatId: assignment.chat_id,
           runId: assignment.run_id, reason: 'recovered_process_ended' })
@@ -47,7 +48,7 @@ function createProcessReconciliation({ roomDb, repository, supervisor, getInvoca
         const question = zh
           ? `已确认原进程结束，请检查中断前的产物，再明确选择重试或交接。Assignment: ${id}`
           : `The original process has ended. Inspect its output, then explicitly retry or hand off. Assignment: ${id}`
-        for (const attentionId of [`recovery-assignment:${id}`, ...linked.map(effect => `recovery-effect:${effect.id}`)]) {
+        for (const attentionId of [`recovery-assignment:${id}`, `termination:${id}:${assignment.run_id}`, ...linked.map(effect => `recovery-effect:${effect.id}`)]) {
           db.prepare("UPDATE attentions SET question = ? WHERE id = ? AND status = 'open'").run(question, attentionId)
         }
         resolved.push(id)

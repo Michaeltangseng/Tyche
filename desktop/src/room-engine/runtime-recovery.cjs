@@ -60,6 +60,7 @@ function createRuntimeRecovery({ roomDb, repository, locale = () => 'en' } = {})
           payload: { assignmentId: assignment.id, runId: assignment.run_id, outcome: 'unknown' } }).eventId)
       }
       for (const taskId of affectedTasks) {
+        if (repository.getTask(taskId)?.status === 'cancelled') continue
         const all = repository.listAssignments(taskId)
         const replaced = new Set(all.map(assignment => assignment.previous_assignment_id).filter(Boolean))
         const required = all.filter(assignment => assignment.required && !replaced.has(assignment.id))

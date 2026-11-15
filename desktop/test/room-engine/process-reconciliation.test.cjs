@@ -43,6 +43,19 @@ test('matching ended process records release quarantine without automatically di
   assert.equal(snapshot.assignments.length, 1)
 })
 
+test('proven process exit resolves an unknown stop effect without reviving the stopped Task', t => {
+  const s = setup(t)
+  s.roomDb.database.prepare("UPDATE tasks SET status='cancelled' WHERE id=?").run(s.taskId)
+  const effectId = s.repository.createEffect({ chatId: s.chatId, kind: 'stop_assignment',
+    payload: { assignmentId: s.assignmentId, runId: 'original-run' }, idempotencyKey: 'stop-recovery' })
+  s.roomDb.database.prepare("UPDATE effects SET status='unknown' WHERE id=?").run(effectId)
+  s.service.reconcileProcesses()
+  assert.equal(s.repository.getEffect(effectId).status, 'succeeded')
+  assert.equal(s.repository.getTask(s.taskId).status, 'cancelled')
+  assert.equal(s.repository.getAssignmentContext(s.assignmentId).outcome, 'interrupted')
+  assert.equal(s.repository.listAssignments(s.taskId).length, 1)
+})
+
 test('missing, partial or mismatched process evidence cannot release quarantine', async t => {
   const base = { recordId: 'process-1', invocationId: 'original-run', status: 'ended', workdir: '/tmp/recovery', agentKind: 'codex' }
   for (const records of [[], ...['starting', 'running', 'ending'].map(status => [{ ...base, status }]),

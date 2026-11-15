@@ -20,6 +20,17 @@ function setup() {
   return { handlers, calls, service, ipcMain }
 }
 
+test('stop commands require a replay identity and cannot accept renderer process details', async () => {
+  const { handlers, calls, service, ipcMain } = setup()
+  registerRoomIpc({ ipcMain, service, requireRenderer: () => {} })
+  const command = { type: 'stop_task', chatId: 'chat', taskId: 'task', commandId: 'stop' }
+  await handlers.get(CHANNELS.userCommand)({}, command)
+  assert.deepEqual(calls[0], ['applyUserCommand', command, { actorId: 'user' }])
+  await assert.rejects(handlers.get(CHANNELS.userCommand)({}, { type: 'stop_task', chatId: 'chat', taskId: 'task' }), /COMMANDID_INVALID/)
+  await assert.rejects(handlers.get(CHANNELS.userCommand)({}, { ...command, pid: 123 }), /UNKNOWN_FIELD/)
+  assert.equal(calls.length, 1)
+})
+
 test('workspace permission uses the validated user command channel without caller-provided roots', async () => {
   const { handlers, calls, service, ipcMain } = setup()
   registerRoomIpc({ ipcMain, service, requireRenderer: () => {} })

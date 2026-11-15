@@ -109,6 +109,64 @@ async function setup(t, beforeReply = async () => {}) {
   return { directory, calls, workspace, roomDb, repository, roomId, chatId, runtime }
 }
 
+test('durable stop reaches the native CLI signal and releases the writer lease after exit', async t => {
+  let entered
+  const started = new Promise(resolve => { entered = resolve })
+  const s = await setup(t, async ({ runOptions }) => {
+    entered()
+    await new Promise(resolve => runOptions.signal.addEventListener('abort', resolve, { once: true }))
+  })
+  const roleId = s.repository.createAgentRole({ chatId: s.chatId, displayName: 'Writer', provider: 'codex', createdBy: 'user' })
+  const taskId = s.repository.createTask({ chatId: s.chatId, objective: 'Write', createdBy: 'user' })
+  const assignmentId = s.repository.createAssignment({ taskId, roleId, writeScopes: ['src/'] })
+  const service = createRoomService({ roomDb: s.roomDb, repository: s.repository,
+    invokeAgent: s.runtime.invokeAgent, resolveGroup: s.runtime.resolveTarget })
+  try {
+    service.applyUserCommand({ type: 'set_workspace_write', chatId: s.chatId, allowWrite: true, commandId: 'grant' })
+    const run = service.startAssignment({ assignmentId, prompt: 'Write' })
+    const cancelled = assert.rejects(run.promise, /CANCELLED/)
+    await started
+    service.applyUserCommand({ type: 'stop_task', chatId: s.chatId, taskId, commandId: 'stop' })
+    assert.equal((await service.runNextControlEffect()).effect.status, 'succeeded')
+    await cancelled
+    assert.equal(s.repository.getAssignmentContext(assignmentId).status, 'cancelled')
+    assert.equal(s.repository.getTask(taskId).status, 'cancelled')
+    assert.equal(s.repository.getAssignmentLatestReport(assignmentId), undefined)
+    assert.equal(s.workspace.agentInvocation.runScheduler.snapshot().claimGrants.length, 0)
+    assert.equal(service.applyUserCommand({ type: 'set_workspace_write', chatId: s.chatId, allowWrite: false, commandId: 'revoke' }).allowWrite, false)
+  } finally { await service.close() }
+})
+
+test('unsettled native termination retains the writer lease until the actual invocation settles', async t => {
+  let entered
+  let release
+  const started = new Promise(resolve => { entered = resolve })
+  const pending = new Promise(resolve => { release = resolve })
+  const s = await setup(t, async () => { entered(); await pending })
+  s.workspace.agentInvocation.runAbortGraceMs = 5
+  const roleId = s.repository.createAgentRole({ chatId: s.chatId, displayName: 'Writer', provider: 'codex', createdBy: 'user' })
+  const taskId = s.repository.createTask({ chatId: s.chatId, objective: 'Write', createdBy: 'user' })
+  const assignmentId = s.repository.createAssignment({ taskId, roleId, writeScopes: ['src/'] })
+  const service = createRoomService({ roomDb: s.roomDb, repository: s.repository,
+    invokeAgent: s.runtime.invokeAgent, resolveGroup: s.runtime.resolveTarget })
+  try {
+    service.applyUserCommand({ type: 'set_workspace_write', chatId: s.chatId, allowWrite: true, commandId: 'grant' })
+    const run = service.startAssignment({ assignmentId, prompt: 'Write' })
+    const failed = assert.rejects(run.promise, /TERMINATION_FAILED/)
+    await started
+    service.applyUserCommand({ type: 'stop_task', chatId: s.chatId, taskId, commandId: 'stop' })
+    assert.equal((await service.runNextControlEffect()).effect.status, 'unknown')
+    await failed
+    assert.equal(s.repository.getAssignmentContext(assignmentId).outcome, 'unknown')
+    assert.equal(s.workspace.agentInvocation.runScheduler.snapshot().claimGrants.length, 1)
+    assert.equal(s.repository.listEvents(s.roomId).some(event => event.type === 'session_exited'), false)
+    release()
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(s.workspace.agentInvocation.runScheduler.snapshot().claimGrants.length, 0)
+    assert.equal(s.repository.getAssignmentLatestReport(assignmentId), undefined)
+  } finally { release(); await service.close() }
+})
+
 test('worker reaches the native invocation pipeline without a legacy group or ContextPack', async t => {
   const s = await setup(t)
   const roleId = s.repository.createAgentRole({ chatId: s.chatId, displayName: 'Worker', provider: 'codex', createdBy: 'user' })

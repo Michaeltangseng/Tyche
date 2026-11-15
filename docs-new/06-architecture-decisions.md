@@ -52,6 +52,8 @@ Controller 始终只读；Worker 只有在用户明确授权 Room 真实根目�
 
 **决定：** 所有启动 Session、投递消息、发布 Artifact、发送通知和停止进程等外部副作用，必须先以 durable effect 写入 SQLite，再由 Supervisor 执行。
 
+已实现停止控制通道：stop_task 的状态、审计和 stop_assignment effect 原子提交，独立于串行启动队列消费，允许暂停 Chat 执行。Task cancelled 表示用户不再要求派发，不证明进程退出；运行 Assignment 只有确认退出后才 cancelled。终止失败保留 unknown 与写租约，不发 session_exited，需有真实进程证据后才允许重试/交接。用户命令不能绕过这一边界。
+
 ```text
 effects
   id, chatId, actionId, kind, status, payload,

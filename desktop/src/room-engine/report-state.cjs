@@ -24,6 +24,7 @@ function createReportStateService({ roomDb }) {
       const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId)
       if (!task) throw new Error('ROOM_TASK_NOT_FOUND')
       const assignments = db.prepare('SELECT * FROM assignments WHERE task_id = ? ORDER BY created_at, id').all(taskId)
+      if (task.status === 'cancelled') return { taskId, status: 'cancelled', assignmentStatuses: assignments.map(assignment => ({ assignmentId: assignment.id, status: assignment.status })) }
       const replaced = new Set(assignments.map(assignment => assignment.previous_assignment_id).filter(Boolean))
       const current = assignments.filter(assignment => !replaced.has(assignment.id))
       const reports = latestReports(taskId)

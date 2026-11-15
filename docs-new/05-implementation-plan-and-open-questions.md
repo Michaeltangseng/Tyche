@@ -131,11 +131,15 @@ set_workspace_write
 
 已实现 `set_workspace_write`：载荷仅接受 `{type, chatId, commandId, allowWrite: boolean}`，用户身份由 main 赋值，Renderer 不能指定授权目录。授权作用于该 Chat 所属 Room，绑定当前工作目录 realpath；新 Room 默认只读。运行中或 outcome=unknown 的 Assignment 存在时拒绝授权变更。该命令与审计原子提交，相同 commandId 重放返回原结果，变更载荷复用 ID 会拒绝。ControllerAction 不支持此动作。授权交互 UI 尚未接入。
 
-当前已实现的 `retry_task` / `handoff_task` 必须携带 `chatId`、`taskId`、`assignmentId` 和 `commandId`；handoff 另需 `roleId`，`reason` 可选。命令只接受同一 Chat 内已处于 failed/waiting/blocked、且已结束原生执行的 Assignment；有 runId 时必须存在匹配的 Supervisor `session_exited` 事实。恢复后 outcome=unknown 的执行仍需先完成残留进程对账，不能仅凭重试命令重跑。当前不支持停止运行中任务后直接交接。
+当前已实现的 `retry_task` / `handoff_task` 必须携带 `chatId`、`taskId`、`assignmentId` 和 `commandId`；handoff 另需 `roleId`，`reason` 可选。命令只接受同一 Chat 内已处于 failed/waiting/blocked/cancelled、且已结束原生执行的 Assignment；有 runId 时必须存在匹配的 Supervisor `session_exited` 事实。恢复后 outcome=unknown 的执行仍需先完成残留进程对账，不能仅凭重试命令重跑。
+
+`stop_task` 已实现，必须携带 `{type, chatId, taskId, commandId}`，可带 reason。命令原子写入 Task cancelled、queued Assignment/effect cancelled、每个运行中 Assignment 的 stop_assignment effect 与用户审计；相同 commandId 幂等，改载荷复用 ID 被拒绝。控制 effect 使用独立消费通道，暂停 Chat 也可停止，不等待串行 Worker 队列完成。用户停止不撤销已写文件。
+
+Assignment Runner 持有每次执行的 AbortController，将停止传给原生调用并等待结束；取消后迟到输出不导入 Report，不能恢复 cancelled Task，也不允许 Controller 再派发到该 Task。原执行确认退出后，用户可通过 retry/handoff 创建新尝试、显式重新激活 Task；当前需要“停止 → 确认退出 → 交接”两个命令，不自动串联运行中交接。终止失败时不写 session_exited，原执行转 unknown，并创建双语 Attention；租约保留至底层真正结束。重启仍按 unknown 隔离，不因停止请求已落盘就认定退出。进程记录全部证明 ended 后可对账，unknown stop effect 收口 succeeded，不自动重跑 Worker。
 
 已接入受管理进程对账：主进程启动恢复后、用户重试/交接前，会检查相同 runId 的进程注册记录。只有记录非空，且每条记录的 Provider、工作目录均匹配并已 ended，才记录 Supervisor `session_exited`、将未知 Assignment 转为 interrupted，并将关联 unknown effect 收口为 failed。对账不自动派发，已有最终 Report 不被覆盖。用户命令中的对账、新尝试和 effect 同一事务提交，失败一起回滚。
 
-这条路径仅覆盖实际使用受管理进程且保存了 runId 的调用。只读、远端或其他未登记路径，以及旧记录缺少 runId、ended 记录超过现有 24 小时保留窗口被清理等情况，继续保持 unknown，不靠超时、日志或用户点击“已知悉”推断进程结束。运行中停止、残留进程重新探测与无记录调用的恢复仍待实施。
+这条恢复路径仅覆盖实际使用受管理进程且保存了 runId 的调用。只读、远端或其他未登记路径，以及旧记录缺少 runId、ended 记录超过现有 24 小时保留窗口被清理等情况，继续保持 unknown，不靠超时、日志或用户点击“已知悉”推断进程结束。残留进程重新探测、无记录调用的恢复、停止与交接 UI 仍待实施。
 
 成功命令新建 attempt+1 的 queued Assignment，保留 previousAssignmentId、required 和写入范围；Room Service 将新 Assignment、命令事件和幂等派发 effect 一起提交。相同用户/Chat/commandId 的相同载荷重放返回原结果，不重复派发；改变载荷复用 commandId 或对同一旧 Assignment 再建分支都会拒绝。这里的 commandId 是已实现的重试/交接命令幂等契约，不代表上方所有规划命令已支持统一幂等 envelope。
 

@@ -33,7 +33,21 @@ function createUserCommandService({ roomDb, repository }) {
           return { ...recorded.result, duplicate: true, event: { eventId, sequence: existing.sequence, createdAt: existing.created_at } }
         }
       }
-      if (action.type === 'set_workspace_write') {
+      if (action.type === 'stop_task') {
+        const task = repository.getTask(action.taskId)
+        if (!task || task.chat_id !== action.chatId) throw new Error('ROOM_TASK_NOT_FOUND')
+        const assignments = repository.listAssignments(task.id)
+        const queued = assignments.filter(assignment => assignment.status === 'queued')
+        for (const assignment of queued) {
+          db.prepare("UPDATE assignments SET status='cancelled', outcome='cancelled', ended_reason='user_stopped', updated_at=? WHERE id=?").run(timestamp, assignment.id)
+          db.prepare(`UPDATE effects SET status='cancelled', completed_at=? WHERE kind='start_assignment'
+            AND status='pending' AND chat_id=? AND json_extract(payload_json, '$.assignmentId')=?`).run(timestamp, action.chatId, assignment.id)
+        }
+        db.prepare("UPDATE tasks SET status='cancelled', updated_at=? WHERE id=?").run(timestamp, task.id)
+        result = { taskId: task.id, status: 'cancelled',
+          stopAssignments: assignments.filter(assignment => assignment.status === 'running').map(assignment => ({ assignmentId: assignment.id, runId: assignment.run_id })),
+          cancelledAssignmentIds: queued.map(assignment => assignment.id) }
+      } else if (action.type === 'set_workspace_write') {
         const running = db.prepare(`SELECT a.id FROM assignments a JOIN tasks t ON t.id = a.task_id
           JOIN chats c ON c.id = t.chat_id WHERE c.room_id = ? AND (a.status = 'running' OR a.outcome = 'unknown') LIMIT 1`).get(chat.room_id)
         if (running) throw new Error('ROOM_WORKSPACE_PERMISSION_BUSY')
@@ -45,7 +59,7 @@ function createUserCommandService({ roomDb, repository }) {
       } else if (action.type === 'retry_task' || action.type === 'handoff_task') {
         const previous = repository.getAssignmentContext(action.assignmentId)
         if (!previous || previous.task_id !== action.taskId || previous.chat_id !== action.chatId) throw new Error('ROOM_ASSIGNMENT_NOT_FOUND')
-        if (!['failed', 'waiting', 'blocked'].includes(previous.status)) throw new Error('ROOM_ASSIGNMENT_NOT_RETRYABLE')
+        if (!['failed', 'waiting', 'blocked', 'cancelled'].includes(previous.status)) throw new Error('ROOM_ASSIGNMENT_NOT_RETRYABLE')
         if (previous.outcome === 'unknown') throw new Error('ROOM_ASSIGNMENT_RECOVERY_UNRESOLVED')
         if (db.prepare('SELECT id FROM assignments WHERE previous_assignment_id = ?').get(previous.id)) throw new Error('ROOM_ASSIGNMENT_ALREADY_REPLACED')
         if (previous.run_id) {

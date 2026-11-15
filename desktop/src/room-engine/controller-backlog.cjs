@@ -5,6 +5,7 @@ const TRIGGER_TYPES = new Set([
   'user_answer_attention', 'user_accept_artifact', 'user_reject_artifact',
   'user_resume_chat', 'user_retry_task', 'user_handoff_task',
   'user_set_workspace_write',
+  'user_stop_task',
 ])
 
 function createControllerBacklog({ roomDb }) {

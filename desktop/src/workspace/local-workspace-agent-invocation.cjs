@@ -1639,7 +1639,7 @@ class LocalWorkspaceAgentInvocation {
           const graceMs = process.platform === 'win32' ? Math.max(this.runAbortGraceMs, 2500) : this.runAbortGraceMs
           await settleWithin(Promise.allSettled(cleanupPromises), graceMs)
         }
-        if (terminationFailure || (process.platform === 'win32' && !runSettled)) {
+        if (terminationFailure || !runSettled) {
           let failure = terminationFailure
           if (!failure) {
             failure = Object.assign(new Error('LOCAL_AGENT_TERMINATION_FAILED'), {

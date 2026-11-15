@@ -21,7 +21,7 @@ function setup() {
 
 test('action protocols keep controller, user, and platform types separate', () => {
   const base = { chatId: 'chat-1' }
-  assert.equal(validateUserCommand({ ...base, type: 'stop_task', taskId: 'task-1' }).type, 'stop_task')
+  assert.equal(validateUserCommand({ ...base, type: 'stop_task', taskId: 'task-1', commandId: 'stop-1' }).type, 'stop_task')
   assert.equal(validatePlatformTransition({ ...base, type: 'session_liveness', assignmentId: 'a-1', observedAt: 'now', state: 'running' }).type, 'session_liveness')
   assert.throws(() => validateControllerAction({ ...base, type: 'stop_task', contextRevision: 1, taskId: 'task-1' }), /CONTROLLER_ACTION_TYPE_INVALID/)
   assert.throws(() => validateUserCommand({ ...base, type: 'stop_task', taskId: 'task-1', contextRevision: 1 }), /UNKNOWN_FIELD/)

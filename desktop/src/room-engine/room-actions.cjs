@@ -26,7 +26,7 @@ const FIELDS = Object.freeze({
   },
   user: {
     set_workspace_write: ['type', 'chatId', 'allowWrite', 'commandId'],
-    stop_task: ['type', 'chatId', 'taskId', 'reason'],
+    stop_task: ['type', 'chatId', 'taskId', 'commandId', 'reason'],
     retry_task: ['type', 'chatId', 'taskId', 'assignmentId', 'commandId', 'reason'],
     handoff_task: ['type', 'chatId', 'taskId', 'assignmentId', 'commandId', 'roleId', 'reason'],
     accept_artifact: ['type', 'chatId', 'artifactId'],
@@ -76,6 +76,10 @@ function normalize(action, kind, expectedChatId = null, expectedContextRevision 
     if (action.type === 'handoff_task') assertId(action.roleId, 'role_id')
     if (action.reason !== undefined) assertString(action.reason, 'ROOM_ACTION_REASON_INVALID')
   }
+  if (kind === 'user' && action.type === 'stop_task') {
+    for (const field of ['taskId', 'commandId']) assertId(action[field], field)
+    if (action.reason !== undefined) assertString(action.reason, 'ROOM_ACTION_REASON_INVALID')
+  }
   if (expectedChatId !== null && action.chatId !== expectedChatId) throw new Error('ROOM_ACTION_CHAT_MISMATCH')
   if (kind === 'controller') {
     if (!Number.isInteger(action.contextRevision) || action.contextRevision < 0) throw new TypeError('ROOM_ACTION_CONTEXT_REVISION_INVALID')
@@ -111,7 +115,10 @@ function createRoomActionService({ roomDb, repository }) {
     return roomDb.withTransaction(() => {
       let result
       if (validated.type === 'create_task') result = { taskId: repository.createTask({ ...validated, createdBy: actorId, contextRevision: validated.contextRevision }) }
-      else if (validated.type === 'assign') result = { assignmentId: repository.createAssignment(validated) }
+      else if (validated.type === 'assign') {
+        if (repository.getTask(validated.taskId)?.status === 'cancelled') throw new Error('ROOM_TASK_CANCELLED')
+        result = { assignmentId: repository.createAssignment(validated) }
+      }
       else if (validated.type === 'create_role') {
         const chat = roomDb.database.prepare('SELECT room_id FROM chats WHERE id = ?').get(validated.chatId)
         const room = roomDb.database.prepare('SELECT providers_json, allowed_capabilities_json FROM rooms WHERE id = ?').get(chat?.room_id)

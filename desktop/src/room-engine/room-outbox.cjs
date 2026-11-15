@@ -1,5 +1,5 @@
-const EFFECT_STATUSES = new Set(['pending', 'running', 'succeeded', 'failed', 'unknown'])
-const TERMINAL_STATUSES = new Set(['succeeded', 'failed'])
+const EFFECT_STATUSES = new Set(['pending', 'running', 'succeeded', 'failed', 'unknown', 'cancelled'])
+const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'cancelled'])
 
 function clone(row) {
   if (!row) return row
@@ -33,12 +33,13 @@ function createRoomOutbox({ roomDb, repository }) {
     })
   }
 
-  function claimPending({ limit = 10 } = {}) {
+  function claimPending({ limit = 10, kind = null, includePaused = false } = {}) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new TypeError('ROOM_OUTBOX_LIMIT_INVALID')
     return roomDb.withTransaction(() => {
       const rows = db.prepare(`SELECT e.* FROM effects e JOIN chats c ON c.id = e.chat_id
-        WHERE e.status = 'pending' AND c.status = 'active'
-        ORDER BY e.created_at, e.id LIMIT ?`).all(limit)
+        WHERE e.status = 'pending' AND (c.status = 'active' OR (? = 1 AND c.status = 'paused'))
+        AND (? IS NULL OR e.kind = ?)
+        ORDER BY e.created_at, e.id LIMIT ?`).all(includePaused ? 1 : 0, kind, kind, limit)
       const claimed = []
       const timestamp = new Date().toISOString()
       for (const row of rows) {
@@ -67,14 +68,15 @@ function createRoomOutbox({ roomDb, repository }) {
     })
   }
 
-  async function runOnce(executor) {
+  async function runOnce(executor, options = {}) {
     if (typeof executor !== 'function') throw new TypeError('ROOM_OUTBOX_EXECUTOR_REQUIRED')
-    const [effect] = claimPending({ limit: 1 })
+    const [effect] = claimPending({ ...options, limit: 1 })
     if (!effect) return null
     try {
       const result = await executor(effect)
       return { effect: transition(effect.id, 'succeeded'), result }
     } catch (error) {
+      if (error?.code === 'ROOM_ASSIGNMENT_CANCELLED') return { effect: transition(effect.id, 'cancelled') }
       const unknown = error?.unknown === true || error?.code === 'EFFECT_UNKNOWN'
       return { effect: transition(effect.id, unknown ? 'unknown' : 'failed', { error }), error }
     }

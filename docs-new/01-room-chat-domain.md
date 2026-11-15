@@ -70,6 +70,8 @@ Attention:  pending → answered / dismissed
 Report:     progress | ready | waiting | blocked | failed | handoff
 ```
 
+当前执行状态细分为 queued/running/completed/waiting/blocked/failed/cancelled；`cancelled` 表示排队派发已撤销或运行执行已确认退出。用户停止 Task 时，Task 立即记录 cancelled（不再派发），但运行中 Assignment 在确认退出前仍保持 running，不能把 Task cancelled 当作进程退出证据。终止无法确认时 Assignment 转 waiting/outcome=unknown，租约继续保留到实际退出，随后仅凭进程对账解除恢复隔离。
+
 `Attention.type` 只取 `decision | clarification | approval | blocked | failure`。`options` 是结构化选项数组，每项至少包含 `optionId`、`label` 和可选的 `effect`；澄清类 Attention 可以没有选项。用户回答通过独立的 `UserCommand(type=answer_attention)` 写入，平台校验 `attentionId`、`optionId` 或自由文本答案，并产生 `resolution` 与审计事件。Attention 本身不直接改变 Task，后续状态由平台根据回答产生的 PlatformTransition 推导。
 
 Task 不跟随某个 Agent Session 的状态。执行器失败、重试或交接只改变 Assignment；Task 保留其目标、历史报告和产物。

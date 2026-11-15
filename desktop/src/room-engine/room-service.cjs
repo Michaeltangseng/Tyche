@@ -43,6 +43,8 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
       invokeAgent,
       resolveGroup,
       importReport,
+      locale,
+      withTransaction: roomDb.withTransaction,
     })
     : null
   const controller = typeof decideController === 'function'
@@ -62,6 +64,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     })
     : null
   const effectPump = autoRunEffects ? createEffectPump({ runNext: runNextEffect, onError: onEffectError }) : null
+  const controlPump = autoRunEffects ? createEffectPump({ runNext: runNextControlEffect, onError: onEffectError }) : null
   let closed = false
   let executionStarted = false
 
@@ -202,14 +205,21 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
   }
 
   function applyUserCommand(input, options) {
+    if (closed) throw new Error('ROOM_SERVICE_CLOSED')
     const result = roomDb.withTransaction(() => {
       if (['retry_task', 'handoff_task'].includes(input.type)) reconciliation?.reconcile({ assignmentId: input.assignmentId })
       const applied = userCommands.apply(input, options)
       if (applied.assignmentId) enqueueAssignment(applied.assignmentId, input.chatId, applied.event.eventId)
+      for (const assignment of applied.stopAssignments || []) {
+        outbox.enqueue({ chatId: input.chatId, actionId: applied.event.eventId,
+          kind: 'stop_assignment', payload: assignment,
+          idempotencyKey: `stop-assignment:${assignment.assignmentId}:${assignment.runId}` })
+      }
       return applied
     })
     if (input.type === 'resume_chat') blockedControllerChats.delete(input.chatId)
     if (input.type === 'resume_chat' || result.assignmentId) effectPump?.request()
+    if (input.type === 'stop_task') controlPump?.request()
     if (!result.duplicate && input.type !== 'pause_chat') wakeController(input.chatId, result.event.eventId)
     if (input.type === 'resume_chat') recoverControllerInputs({ chatId: input.chatId })
     return result
@@ -227,13 +237,22 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
         code: 'ROOM_EFFECT_HANDLER_MISSING',
         effectKind: effect.kind,
       })
-    })
+    }, { kind: 'start_assignment' })
+  }
+
+  async function runNextControlEffect() {
+    executionStarted = true
+    return outbox.runOnce(async effect => {
+      if (!assignmentRunner) throw new Error('ROOM_ASSIGNMENT_RUNNER_UNAVAILABLE')
+      return assignmentRunner.stop(effect.payload)
+    }, { kind: 'stop_assignment', includePaused: true })
   }
 
   return {
     bootstrap,
     snapshot,
     startAssignment: input => {
+      if (closed) throw new Error('ROOM_SERVICE_CLOSED')
       if (!assignmentRunner) throw new Error('ROOM_ASSIGNMENT_RUNNER_UNAVAILABLE')
       executionStarted = true
       return assignmentRunner.start(input)
@@ -251,6 +270,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     enqueueEffect: outbox.enqueue,
     runEffectOnce: outbox.runOnce,
     runNextEffect,
+    runNextControlEffect,
     processControllerBatch: input => {
       if (!controller) throw new Error('ROOM_CONTROLLER_UNAVAILABLE')
       return processControllerBatch(input)
@@ -259,7 +279,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     startRuntime: () => {
       blockedControllerChats.clear()
       recoverControllerInputs()
-      return effectPump ? effectPump.request() : Promise.resolve()
+      return Promise.all([effectPump?.request(), controlPump?.request()])
     },
     recoverRuntime: () => {
       if (closed || executionStarted) throw new Error('ROOM_RECOVERY_REQUIRES_STARTUP')
@@ -268,7 +288,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     reconcileProcesses: input => reconciliation ? reconciliation.reconcile(input) : { resolvedAssignmentIds: [], unresolvedAssignmentIds: [] },
     close: async () => {
       closed = true
-      await Promise.all([controllerQueue?.close(), effectPump?.close()])
+      await Promise.all([controllerQueue?.close(), effectPump?.close(), controlPump?.close(), assignmentRunner?.close()])
     },
     retryUnknownEffect: outbox.retryUnknown,
     repository,

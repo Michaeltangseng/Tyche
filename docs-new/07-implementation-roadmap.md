@@ -49,7 +49,7 @@
 - `report-importer.cjs`：解析严格的 `[[MELDWORK_REPORT:{...}]]` 机器标记，写入 Report 真源和 `report_received` 审计事件；不从自由文本推断任务完成。
 - `session-supervisor.cjs`：由主进程记录 session liveness 和退出事实，并查询 stale Assignment；Worker 自报消息不构成 liveness 证明。
 - `report-state.cjs`：根据最新 Report 推导 Assignment/Task 状态；状态转移不接受 Controller 自由设置。
-- `user-commands.cjs`：执行用户回答 Attention、Artifact 接受/拒绝、Chat 暂停/恢复，以及已结束 Assignment 的幂等重试/交接；unknown 执行已接入受管理进程记录对账，停止运行中进程与无记录执行恢复仍待接入。
+- `user-commands.cjs`：执行用户回答 Attention、Artifact 接受/拒绝、Chat 暂停/恢复、Task 停止，以及已结束 Assignment 的幂等重试/交接；unknown 执行已接入受管理进程记录对账，无记录执行恢复与用户控制 UI 仍待接入。
 - `mention-fallback.cjs`：Controller 不可用时按显式 @mention 确定性创建 Task/Assignment；不从普通自由文本推断角色或授权。
 - `room-service.cjs`：Room Engine 的组合入口，后续 IPC、Controller Session 和 Agent 调用只依赖此门面。
 - `room-ipc.cjs`：将 Room Service 映射为窄 IPC channel；绑定 main/preload 时沿用现有 renderer 信任校验，不暴露数据库或进程能力。
@@ -168,7 +168,11 @@ Room Service 对明确可恢复错误启用有界重试：Controller 超时、�
 
 Report 入账和状态推导在同一事务内完成，成功后将 `report_received` 的 eventId 放入 Controller 队列；重复 Report 不重复唤醒。主控创建 Task/角色成功后，以其动作事件触发下一批，使用真实落库 ID 继续派发；用户回答 Attention、接受/拒绝 Artifact 和恢复 Chat 也产生主控输入。Controller 校验事件属于当前 Chat，并记录输入 ID；不会把事件伪造成用户消息。已用替身验证“消息 → 建任务 → 事件 → 派发 → Worker → Report → Attention → 用户回答 → 主控”，真实 CLI、进程心跳和重启恢复验收仍待完成。
 
-用户 `retry_task` / `handoff_task` 已实现针对具体 Assignment 的新尝试派发：命令要求 commandId 并以用户/Chat 为范围幂等；新 Assignment 通过 previousAssignmentId 关联原尝试，继承 required 和写入范围，attempt 加一。新 Assignment、命令审计、outbox effect 同一事务提交，重复命令不重复派发。报告状态和启动恢复只计算替代链上最新的 required Assignment，旧失败和迟到报告不阻塞新尝试完成；新 Worker Prompt 携带上一尝试的报告、证据和产物引用。当前仅允许 failed/waiting/blocked 且原进程已结束的尝试；未知执行仍被拒绝，必须先完成进程对账，不能用重试命令绕过恢复边界。运行中停止后交接尚未实现。
+用户 `retry_task` / `handoff_task` 已实现针对具体 Assignment 的新尝试派发：命令要求 commandId 并以用户/Chat 为范围幂等；新 Assignment 通过 previousAssignmentId 关联原尝试，继承 required 和写入范围，attempt 加一。新 Assignment、命令审计、outbox effect 同一事务提交，重复命令不重复派发。报告状态和启动恢复只计算替代链上最新的 required Assignment，旧失败和迟到报告不阻塞新尝试完成；新 Worker Prompt 携带上一尝试的报告、证据和产物引用。允许 failed/waiting/blocked/cancelled 且原进程已结束的尝试；未知执行仍被拒绝，必须先完成进程对账，不能用重试命令绕过恢复边界。
+
+`stop_task` 已接通独立控制 outbox：Task、queued Assignment/pending effect 取消与运行执行停止意图原子落盘，存储失败不发送取消。控制队列可在 Chat 暂停时工作，不被串行 Worker 消费堵住。Assignment Runner 使用独立 AbortController，停止完成后才写 cancelled 和 session_exited；取消后的迟到输出不导入 Report，报告推导/重启恢复不会复活 cancelled Task，Controller 不得直接重新派发该 Task。停止后用户可明确 retry/handoff 新尝试。终止失败转 unknown + Attention，不伪造退出；所有平台上未结束的底层调用都保留写租约至实际结束，进程对账可收口 unknown stop effect。一次操作自动完成停止并交接、残留进程主动探测及相关 UI 仍待实现。
+
+停止切片通过 Electron 内置 Node 的 99 项定向测试，涵盖停止幂等/跨 Chat 拒绝、落盘失败回滚、暂停 Chat 控制通道、确认退出后交接、重启 unknown 隔离、迟到结果拒绝、原生取消信号及未结束调用保留写租约，以及现有 Room/进程终止/共享调用回归。CLI 进程使用替身，未运行 GUI、真实外部 CLI、全量测试或打包检查。
 
 工作项：
 
