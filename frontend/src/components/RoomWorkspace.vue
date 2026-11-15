@@ -48,6 +48,14 @@
         <span>{{ t('room.controllerBlocked') }}</span>
         <button class="secondary-button" :disabled="busy" @click="command({ type: 'resume_chat' })">{{ t('room.controllerRetry') }}</button>
       </article>
+      <section v-if="skillCatalog.length" class="room-skill-settings" :aria-label="t('room.skills')">
+        <header><strong>{{ t('room.chatSkills') }}</strong><span class="room-muted">{{ t('room.skillsHint') }}</span></header>
+        <label v-for="skill in skillCatalog" :key="skillKey(skill)" class="room-skill-option">
+          <input type="checkbox" :checked="hasSkill(chat?.skill_bindings_json, skill)" :disabled="busy || chatSkillsBusy" @change="toggleChatSkill(skill, $event.target.checked)" />
+          {{ skill.name || skill.slug }} <small>{{ skill.targetKind }}</small>
+        </label>
+        <button class="secondary-button" :disabled="busy || chatSkillsBusy || !chatSkillsDirty" @click="saveChatSkills">{{ chatSkillsBusy ? t('room.skillsSaving') : t('room.saveSkills') }}</button>
+      </section>
       <div class="room-permissions">
         <label><input type="checkbox" :checked="Boolean(snapshot.room.write_authorized_root)" :disabled="busy || permissionBusy" @change="command({ type: 'set_workspace_write', allowWrite: $event.target.checked })" />{{ t('room.allowWrite') }}</label>
         <span class="room-muted">{{ t('room.writeHint') }}</span>
@@ -70,6 +78,21 @@
                   <textarea v-model="rolePrompts[role.id]" :aria-label="t('room.rolePrompt')" rows="3" maxlength="100000" />
                   <button class="secondary-button" :disabled="busy || rolePrompts[role.id] === (role.current_prompt || '')">{{ t('room.saveRolePrompt') }}</button>
                 </form>
+                <div v-if="skillCatalogFor(role).length" class="room-role-skills">
+                  <strong>{{ t('room.roleSkills') }}</strong>
+                  <select v-model="roleSkillModes[role.id]" :aria-label="t('room.roleSkillMode')" :disabled="busy || roleSkillsBusy[role.id]" @change="markRoleSkillsDirty(role.id)">
+                    <option value="inherit">{{ t('room.skillsInherit') }}</option>
+                    <option value="override">{{ t('room.skillsOverride') }}</option>
+                    <option value="none">{{ t('room.skillsNone') }}</option>
+                  </select>
+                  <div v-if="roleSkillModes[role.id] === 'override'" class="room-skill-options">
+                    <label v-for="skill in skillCatalogFor(role)" :key="skillKey(skill)" class="room-skill-option">
+                      <input type="checkbox" :checked="hasSkill(roleSkills[role.id], skill)" :disabled="busy || roleSkillsBusy[role.id]" @change="toggleRoleSkill(role, skill, $event.target.checked)" />
+                      {{ skill.name || skill.slug }} <small>{{ skill.targetKind }}</small>
+                    </label>
+                  </div>
+                  <button class="secondary-button" :disabled="busy || roleSkillsBusy[role.id] || !roleSkillsDirty[role.id]" @click="saveRoleSkills(role)">{{ roleSkillsBusy[role.id] ? t('room.skillsSaving') : t('room.saveSkills') }}</button>
+                </div>
               </details>
             </div>
             <p v-if="!entries.length" class="room-muted">{{ t('room.emptyChat') }}</p>
@@ -175,6 +198,14 @@ const draft = computed({ get: () => drafts.value[chatId.value] || '', set: value
 const answers = ref({})
 const handoffRoles = ref({})
 const rolePrompts = ref({})
+const skillCatalog = ref([])
+const chatSkills = ref([])
+const chatSkillsDirty = ref(false)
+const chatSkillsBusy = ref(false)
+const roleSkills = ref({})
+const roleSkillModes = ref({})
+const roleSkillsDirty = ref({})
+const roleSkillsBusy = ref({})
 const picking = ref(false)
 const pickerError = ref(false)
 const timeline = ref(null)
@@ -198,6 +229,49 @@ const entries = computed(() => [
 ].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))))
 
 function roleName(id) { return roles.value.find(item => item.id === id)?.display_name || t('room.agent') }
+function skillKey(skill) { return `${skill.targetKind}:${skill.namespace}:${skill.slug}` }
+function hasSkill(bindings, skill) { return (bindings || []).some(item => skillKey(item) === skillKey(skill)) }
+function skillCatalogFor(role) { return skillCatalog.value.filter(skill => !role?.provider || skill.targetKind === role.provider) }
+function toggleChatSkill(skill, checked) {
+  const next = chatSkills.value.filter(item => skillKey(item) !== skillKey(skill))
+  if (checked) next.push({ targetKind: skill.targetKind, namespace: skill.namespace, slug: skill.slug, name: skill.name })
+  chatSkills.value = next; chatSkillsDirty.value = true
+}
+function toggleRoleSkill(role, skill, checked) {
+  const current = roleSkills.value[role.id] || []
+  const next = current.filter(item => skillKey(item) !== skillKey(skill))
+  if (checked) next.push({ targetKind: skill.targetKind, namespace: skill.namespace, slug: skill.slug, name: skill.name })
+  roleSkills.value = { ...roleSkills.value, [role.id]: next }
+  roleSkillsDirty.value = { ...roleSkillsDirty.value, [role.id]: true }
+}
+function markRoleSkillsDirty(roleId) { roleSkillsDirty.value = { ...roleSkillsDirty.value, [roleId]: true } }
+async function saveChatSkills() {
+  if (typeof props.api.updateSkillBindings !== 'function') return
+  chatSkillsBusy.value = true
+  try { await props.api.updateSkillBindings({ chatId: chatId.value, selections: chatSkills.value }); chatSkillsDirty.value = false; await refresh({ afterCurrent: true }) }
+  finally { chatSkillsBusy.value = false }
+}
+async function saveRoleSkills(role) {
+  if (typeof props.api.updateSkillBindings !== 'function') return
+  roleSkillsBusy.value = { ...roleSkillsBusy.value, [role.id]: true }
+  try {
+    const mode = roleSkillModes.value[role.id]
+    const input = mode === 'inherit' ? { chatId: chatId.value, roleId: role.id, inheritChat: true } : { chatId: chatId.value, roleId: role.id, selections: mode === 'none' ? [] : (roleSkills.value[role.id] || []) }
+    await props.api.updateSkillBindings(input)
+    roleSkillsDirty.value = { ...roleSkillsDirty.value, [role.id]: false }
+    await refresh({ afterCurrent: true })
+  } finally { roleSkillsBusy.value = { ...roleSkillsBusy.value, [role.id]: false } }
+}
+async function loadSkillCatalog() {
+  if (typeof props.api.skills !== 'function') { skillCatalog.value = []; return }
+  const kinds = new Set([...(snapshot.value?.room?.providers_json || []), ...roles.value.map(role => role.provider)].filter(Boolean))
+  const results = await Promise.all([...kinds].map(kind => props.api.skills(kind).catch(() => ({ skills: [] }))))
+  skillCatalog.value = results.flatMap(result => result?.skills || [])
+  if (chat.value) chatSkills.value = chat.value.skill_bindings_json || []
+  const modes = {}; const values = {}
+  for (const role of roles.value) { modes[role.id] = role.skill_bindings_json === null ? 'inherit' : (role.skill_bindings_json?.length ? 'override' : 'none'); values[role.id] = role.skill_bindings_json || [] }
+  roleSkillModes.value = modes; roleSkills.value = values; roleSkillsDirty.value = {}
+}
 function taskAssignments(id) { return assignments.value.filter(item => item.task_id === id) }
 function canRetry(item) { return ['failed', 'waiting', 'blocked', 'cancelled'].includes(item.status) && item.outcome !== 'unknown' && !assignments.value.some(next => next.previous_assignment_id === item.id) }
 function statusLabel(status) { const key = `room.status.${status}`; return t(key) === key ? t('room.status.waiting') : t(key) }
@@ -265,12 +339,13 @@ async function answer(attention) {
   await command({ type: 'answer_attention', attentionId: attention.id,
     ...(attention.options_json?.length ? { optionId: answers.value[attention.id] } : { comment: answers.value[attention.id] }) })
 }
-watch([roomId, chatId], () => { handoffRoles.value = {}; answers.value = {}; rolePrompts.value = {}; diffArtifactId.value = ''; traceSteps.value = {}; traceLoaded.value = {}; traceErrors.value = {}; traceCursors.value = {}; traceHasMore.value = {}; traceBlobTexts.value = {}; traceBlobOffsets.value = {}; traceBlobBusy.value = {}; traceBlobEof.value = {} })
+watch([roomId, chatId], () => { handoffRoles.value = {}; answers.value = {}; rolePrompts.value = {}; chatSkillsDirty.value = false; diffArtifactId.value = ''; traceSteps.value = {}; traceLoaded.value = {}; traceErrors.value = {}; traceCursors.value = {}; traceHasMore.value = {}; traceBlobTexts.value = {}; traceBlobOffsets.value = {}; traceBlobBusy.value = {}; traceBlobEof.value = {}; void loadSkillCatalog() })
 watch(roles, items => {
   const next = { ...rolePrompts.value }
   for (const role of items) if (!(role.id in next)) next[role.id] = role.current_prompt || ''
   rolePrompts.value = next
 }, { immediate: true })
+watch([snapshot, roles], () => { void loadSkillCatalog() }, { immediate: true })
 watch(() => entries.value.length, async () => { await nextTick(); if (timeline.value) timeline.value.scrollTop = timeline.value.scrollHeight })
 onMounted(load)
 </script>

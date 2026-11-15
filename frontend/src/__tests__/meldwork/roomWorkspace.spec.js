@@ -21,6 +21,8 @@ function api(snapshot = data()) {
     assignmentTrace: vi.fn(async () => ({ steps: [{ seq: 1, title: 'Read source', detail: 'Opened package.json' }], cursor: 'cursor-1', hasMore: false })),
     assignmentTraceBlob: vi.fn(async () => ({ text: 'trace output', totalBytes: 12, eof: true })),
     submitMessage: vi.fn(async () => ({ ok: true })), applyUserCommand: vi.fn(async () => ({ ok: true })),
+    skills: vi.fn(async kind => ({ supported: true, skills: [{ targetKind: kind, namespace: 'local', slug: 'review', name: 'Review' }] })),
+    updateSkillBindings: vi.fn(async input => ({ ...input, skillBindings: input.selections || null })),
     onAssignmentEvent: vi.fn(callback => { assignmentEvent = callback; return () => { assignmentEvent = null } }),
     emitAssignmentEvent: payload => assignmentEvent?.(payload) }
 }
@@ -34,6 +36,24 @@ function mountRoom(bridge) {
 }
 
 describe('v2 team workspace', () => {
+  it('saves chat skill defaults and restores a role to inheritance', async () => {
+    const snapshot = data()
+    snapshot.room.providers_json = ['codex']
+    snapshot.chats[0].skill_bindings_json = []
+    snapshot.roles = [{ id: 'worker', chat_id: 'chat-1', display_name: 'Writer', provider: 'codex', status: 'active', skill_bindings_json: [{ targetKind: 'codex', namespace: 'local', slug: 'review', name: 'Review' }] }]
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    const chatSkill = wrapper.find('.room-skill-settings input[type=checkbox]')
+    await chatSkill.setValue(true)
+    await wrapper.get('.room-skill-settings button').trigger('click')
+    expect(bridge.updateSkillBindings).toHaveBeenCalledWith({ chatId: 'chat-1', selections: [{ targetKind: 'codex', namespace: 'local', slug: 'review', name: 'Review' }] })
+    const roleMode = wrapper.find('.room-role-skills select')
+    await roleMode.setValue('inherit')
+    await wrapper.get('.room-role-skills button').trigger('click')
+    expect(bridge.updateSkillBindings).toHaveBeenLastCalledWith({ chatId: 'chat-1', roleId: 'worker', inheritChat: true })
+  })
+
   it('renders and appends live output for a running assignment', async () => {
     const snapshot = data()
     snapshot.roles = [{ id: 'worker', chat_id: 'chat-1', display_name: 'Writer', status: 'active' }]

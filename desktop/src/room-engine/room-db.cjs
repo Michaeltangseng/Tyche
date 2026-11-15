@@ -13,7 +13,7 @@ const { DatabaseSync } = (() => {
 
 const { ensurePrivateDirectory } = require('../security/private-file.cjs')
 
-const ROOM_SCHEMA_VERSION = 4
+const ROOM_SCHEMA_VERSION = 5
 
 function json(value) {
   return value === undefined || value === null ? null : JSON.stringify(value)
@@ -99,6 +99,7 @@ function migrate(database) {
         engine_version TEXT NOT NULL,
         controller_session_id TEXT,
         context_revision INTEGER NOT NULL DEFAULT 0,
+        skill_bindings_json TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -126,6 +127,7 @@ function migrate(database) {
         capabilities_json TEXT NOT NULL DEFAULT '[]',
         provider TEXT NOT NULL,
         prompt_revision INTEGER NOT NULL DEFAULT 0,
+        skill_bindings_json TEXT,
         created_by TEXT NOT NULL,
         creation_reason TEXT,
         status TEXT NOT NULL,
@@ -163,6 +165,7 @@ function migrate(database) {
         attempt INTEGER NOT NULL DEFAULT 1,
         previous_assignment_id TEXT,
         role_prompt_revision INTEGER NOT NULL DEFAULT 0,
+        skill_hints_json TEXT NOT NULL DEFAULT '[]',
         status TEXT NOT NULL,
         ended_reason TEXT,
         outcome TEXT,
@@ -312,6 +315,19 @@ function migrate(database) {
       database.exec(`ALTER TABLE assignments ADD COLUMN role_prompt_revision INTEGER NOT NULL DEFAULT 0;
         UPDATE assignments SET role_prompt_revision = COALESCE((SELECT prompt_revision FROM agent_roles WHERE agent_roles.id = assignments.role_id), 0);
         PRAGMA user_version = 4; COMMIT;`)
+    } catch (error) {
+      database.exec('ROLLBACK')
+      throw error
+    }
+  }
+  if (current > 0 && current < 5) {
+    database.exec('BEGIN IMMEDIATE')
+    try {
+      const hasColumn = (table, column) => database.prepare(`PRAGMA table_info(${table})`).all().some(item => item.name === column)
+      if (!hasColumn('chats', 'skill_bindings_json')) database.exec('ALTER TABLE chats ADD COLUMN skill_bindings_json TEXT')
+      if (!hasColumn('agent_roles', 'skill_bindings_json')) database.exec('ALTER TABLE agent_roles ADD COLUMN skill_bindings_json TEXT')
+      if (!hasColumn('assignments', 'skill_hints_json')) database.exec("ALTER TABLE assignments ADD COLUMN skill_hints_json TEXT NOT NULL DEFAULT '[]'")
+      database.exec('PRAGMA user_version = 5; COMMIT;')
     } catch (error) {
       database.exec('ROLLBACK')
       throw error

@@ -146,6 +146,27 @@ test('queued assignment keeps the role prompt revision it was created with', asy
   state.roomDb.close()
 })
 
+test('assignment runner restores the frozen skill refs and passes verified runtime hints to the native invocation', async () => {
+  const state = setup()
+  const skill = { targetKind: 'codex', namespace: 'local', slug: 'review', name: 'Review',
+    snapshotId: `skill-snapshot-${'c'.repeat(64)}`, manifestHash: 'c'.repeat(64),
+    snapshotRef: { algorithm: 'sha256', hash: 'c'.repeat(64), size: 12, mediaType: 'application/json' } }
+  state.repository.setRoleSkillBindings({ roleId: state.roleId, skillBindings: [skill] })
+  const assignmentId = state.repository.createAssignment({ taskId: state.taskId, roleId: state.roleId })
+  let invocation
+  let restored
+  const runner = createAssignmentRunner({
+    repository: state.repository, supervisor: state.supervisor, resolveGroup: () => ({ id: 'host' }),
+    prepareSkillSelections: async (kind, selections) => { restored = { kind, selections }; return [{ ...selections[0], entryPath: '/private/materialized/review' }] },
+    invokeAgent: async (...args) => { invocation = args; return {} },
+  })
+  await runner.start({ assignmentId, prompt: 'Review' }).promise
+  assert.equal(restored.kind, 'codex')
+  assert.equal(restored.selections[0].snapshotRef.hash, 'c'.repeat(64))
+  assert.equal(invocation[5].skillHints[0].entryPath, '/private/materialized/review')
+  state.roomDb.close()
+})
+
 test('assignment runner emits platform liveness while a long invocation is active', async () => {
   const state = setup()
   let release

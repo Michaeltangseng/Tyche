@@ -9,7 +9,7 @@ function assertId(value, code) {
   if (typeof value !== 'string' || value.length === 0) throw new TypeError(code)
 }
 
-function createAssignmentRunner({ repository, supervisor, invokeAgent, resolveGroup, importReport, locale = () => 'en', withTransaction = operation => operation(), heartbeatMs = 30_000 } = {}) {
+function createAssignmentRunner({ repository, supervisor, invokeAgent, resolveGroup, importReport, prepareSkillSelections, locale = () => 'en', withTransaction = operation => operation(), heartbeatMs = 30_000 } = {}) {
   if (!repository || !supervisor || typeof invokeAgent !== 'function' || typeof resolveGroup !== 'function') {
     throw new TypeError('ROOM_ASSIGNMENT_RUNNER_DEPENDENCIES_REQUIRED')
   }
@@ -76,7 +76,10 @@ function createAssignmentRunner({ repository, supervisor, invokeAgent, resolveGr
 
     const execution = Promise.resolve().then(() => {
       if (abort.signal.aborted) throw cancelled()
-      return invokeAgent(
+      const rawSkills = JSON.parse(assignment.skill_hints_json || '[]')
+      return Promise.resolve(typeof prepareSkillSelections === 'function'
+        ? prepareSkillSelections(assignment.provider, rawSkills)
+        : rawSkills).then(skillHints => invokeAgent(
         group,
         assignment.provider,
         input.mode || 'plain',
@@ -92,10 +95,11 @@ function createAssignmentRunner({ repository, supervisor, invokeAgent, resolveGr
           sessionKey: nativeSessionId,
           traceRunId: runId,
           promptOverride,
+          skillHints,
           contextPackId,
           deferMessage: true,
         },
-      )
+      ))
     }).then(
       result => {
         if (abort.signal.aborted) throw cancelled()

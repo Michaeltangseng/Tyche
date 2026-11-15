@@ -21,7 +21,7 @@ const RETRYABLE_CONTROLLER_ERRORS = new Set([
   'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN',
 ])
 
-function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController, controllerBatchDelayMs = 40, heartbeatMs = 30_000, onControllerError = error => console.error('[room-controller]', error), autoRunEffects = false, onEffectError = error => console.error('[room-effects]', error), locale, getInvocationRecords, readArtifactDiff, traceReader } = {}) {
+function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController, prepareSkillSelections, prepareSkillBindings, controllerBatchDelayMs = 40, heartbeatMs = 30_000, onControllerError = error => console.error('[room-controller]', error), autoRunEffects = false, onEffectError = error => console.error('[room-effects]', error), locale, getInvocationRecords, readArtifactDiff, traceReader } = {}) {
   if (!roomDb || !repository) throw new TypeError('ROOM_SERVICE_DEPENDENCIES_REQUIRED')
   const ingress = createMessageIngress(roomDb, repository)
   const actions = createRoomActionService({ roomDb, repository })
@@ -44,6 +44,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
       invokeAgent,
       resolveGroup,
       importReport,
+      prepareSkillSelections,
       locale,
       heartbeatMs,
       withTransaction: roomDb.withTransaction,
@@ -295,6 +296,31 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     return result
   }
 
+  async function updateSkillBindings({ chatId, roleId = null, selections = [], inheritChat = false }) {
+    const chat = repository.getChat(chatId)
+    if (!chat) throw new Error('ROOM_CHAT_NOT_FOUND')
+    if (typeof inheritChat !== 'boolean' || (inheritChat && !roleId)) throw new TypeError('ROOM_SKILL_BINDINGS_INVALID')
+    const room = repository.getRoomSnapshot(chat.room_id).room
+    let provider = null
+    if (roleId) {
+      const role = roomDb.database.prepare('SELECT provider FROM agent_roles WHERE id = ? AND chat_id = ?').get(roleId, chatId)
+      if (!role) throw new Error('ROOM_ROLE_NOT_FOUND')
+      provider = role.provider
+    }
+    if (!inheritChat && typeof prepareSkillBindings !== 'function') throw new Error('ROOM_SKILL_BINDINGS_UNAVAILABLE')
+    const prepared = inheritChat ? null : await prepareSkillBindings({ selections, provider, allowedProviders: room.providers_json || [] })
+    const saved = roomDb.withTransaction(() => {
+      const skillBindings = roleId
+        ? repository.setRoleSkillBindings({ roleId, skillBindings: prepared })
+        : repository.setChatSkillBindings({ chatId, skillBindings: prepared })
+      const event = repository.appendEvent({ roomId: chat.room_id, chatId, actorId: 'user',
+        type: roleId ? 'user_role_skill_bindings_updated' : 'user_chat_skill_bindings_updated',
+        payload: { roleId, inheritChat, skillBindings: skillBindings?.map(({ targetKind, namespace, slug, name, snapshotId, manifestHash }) => ({ targetKind, namespace, slug, name, snapshotId, manifestHash })) ?? null } })
+      return { chatId, roleId, inheritChat, skillBindings: skillBindings?.map(({ targetKind, namespace, slug, name, snapshotId, manifestHash }) => ({ targetKind, namespace, slug, name, snapshotId, manifestHash })) ?? null, event }
+    })
+    return saved
+  }
+
   async function runNextEffect({ signal } = {}) {
     executionStarted = true
     return outbox.runOnce(async effect => {
@@ -340,6 +366,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     deleteMessage: ingress.remove,
     applyControllerAction,
     applyUserCommand,
+    updateSkillBindings,
     importReport,
     sessionStarted: sessions.started,
     sessionLiveness: sessions.liveness,

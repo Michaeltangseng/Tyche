@@ -13,6 +13,7 @@ const CHANNELS = Object.freeze({
   artifactDiff: 'room:artifact-diff',
   submitMessage: 'room:message-submit',
   userCommand: 'room:user-command',
+  updateSkillBindings: 'room:skill-bindings-update',
   listStale: 'room:assignments-stale',
   assignmentTrace: 'room:assignment-trace',
   assignmentTraceBlob: 'room:assignment-trace-blob',
@@ -101,6 +102,21 @@ function registerRoomIpc({ ipcMain, service, requireRenderer, isShuttingDown = (
       return service.artifactDiff(input)
     }],
     [CHANNELS.userCommand, input => service.applyUserCommand(commandInput(input), { actorId: LOCAL_USER.id })],
+    [CHANNELS.updateSkillBindings, input => {
+      assertInput(input, ['chatId', 'roleId', 'selections', 'inheritChat'])
+      text(input.chatId)
+      if (input.roleId != null) text(input.roleId)
+      if (input.inheritChat === true) {
+        if (!input.roleId) throw new TypeError('ROOM_IPC_SKILL_BINDINGS_INVALID')
+      } else {
+        if (!Array.isArray(input.selections) || input.selections.length > 4) throw new TypeError('ROOM_IPC_SKILL_SELECTIONS_INVALID')
+        for (const selection of input.selections) {
+          assertInput(selection, ['targetKind', 'namespace', 'slug', 'name'])
+          for (const field of ['targetKind', 'namespace', 'slug', 'name']) text(selection[field])
+        }
+      }
+      return service.updateSkillBindings({ ...input, roleId: input.roleId ?? null, selections: input.selections || [], inheritChat: input.inheritChat === true })
+    }],
     [CHANNELS.listStale, input => {
       assertInput(input, ['roomId', 'timeoutMs'])
       text(input.roomId)

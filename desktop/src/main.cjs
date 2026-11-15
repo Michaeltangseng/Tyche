@@ -1258,6 +1258,24 @@ if (!hasSingleInstanceLock) {
         traceReader: roomTraceReader,
         invokeAgent: roomNativeRuntime.invokeAgent,
         resolveGroup: roomNativeRuntime.resolveTarget,
+        prepareSkillSelections: (kind, selections) => skillSnapshotSelections.prepare(kind, selections),
+        prepareSkillBindings: async ({ selections, provider, allowedProviders }) => {
+          if (!Array.isArray(selections) || selections.length > 4) throw new Error('ROOM_SKILL_BINDINGS_INVALID')
+          const byKind = new Map()
+          for (const selection of selections) {
+            if (!selection || Object.keys(selection).sort().join(',') !== 'name,namespace,slug,targetKind'
+                || typeof selection.targetKind !== 'string') throw new Error('ROOM_SKILL_BINDINGS_INVALID')
+            const kind = selection.targetKind.trim().toLowerCase()
+            if ((provider && kind !== provider) || (!provider && allowedProviders.length && !allowedProviders.includes(kind))) {
+              throw new Error('ROOM_SKILL_PROVIDER_NOT_ALLOWED')
+            }
+            if (!byKind.has(kind)) byKind.set(kind, [])
+            byKind.get(kind).push({ ...selection, targetKind: kind })
+          }
+          const result = []
+          for (const [kind, items] of byKind) result.push(...await skillSnapshotSelections.prepare(kind, items))
+          return result
+        },
         autoRunEffects: true,
         locale: () => app.getLocale?.() || 'zh',
         getInvocationRecords: runId => startupWorkspace.processRegistry.getInvocationRecords(runId),

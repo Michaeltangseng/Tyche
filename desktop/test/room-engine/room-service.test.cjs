@@ -52,6 +52,43 @@ test('snapshot returns the v2 room ledger grouped by chat', () => {
   roomDb.close()
 })
 
+test('skill bindings are captured by main, frozen on assignment, and snapshots expose no private refs', async () => {
+  const state = setup()
+  const hash = 'a'.repeat(64)
+  const ref = { algorithm: 'sha256', hash: 'b'.repeat(64), size: 10, mediaType: 'application/json' }
+  const service = createRoomService({
+    roomDb: state.roomDb,
+    repository: state.repository,
+    prepareSkillBindings: async ({ selections, provider }) => {
+      assert.equal(provider, 'codex')
+      assert.equal(selections[0].slug, 'review')
+      const result = {
+        targetKind: 'codex', namespace: 'team', slug: 'review', name: 'Review',
+        snapshotId: `skill-snapshot-${hash}`, manifestHash: hash, snapshotRef: ref,
+      }
+      Object.defineProperty(result, 'entryPath', { value: '/private/skills/review/SKILL.md' })
+      return [result]
+    },
+  })
+  const saved = await service.updateSkillBindings({ chatId: state.chatId, roleId: state.roleId, selections: [
+    { targetKind: 'codex', namespace: 'team', slug: 'review', name: 'Review' },
+  ] })
+  assert.equal(saved.skillBindings[0].snapshotRef, undefined)
+  assert.equal(saved.skillBindings[0].entryPath, undefined)
+  const frozenTaskId = state.repository.createTask({ chatId: state.chatId, objective: 'Review', createdBy: 'user' })
+  const frozenAssignmentId = state.repository.createAssignment({ taskId: frozenTaskId, roleId: state.roleId })
+  const snapshot = service.snapshot({ roomId: state.roomId })
+  assert.equal(snapshot.roles[0].skill_bindings_json[0].snapshotRef, undefined)
+  const assignment = snapshot.assignments.find(item => item.id === frozenAssignmentId)
+  assert.equal(assignment.skill_hints_json[0].snapshotRef, undefined)
+  const persistedHints = JSON.parse(state.repository.getAssignmentContext(frozenAssignmentId).skill_hints_json)
+  assert.equal(persistedHints[0].snapshotRef.hash, ref.hash)
+  const inherited = await service.updateSkillBindings({ chatId: state.chatId, roleId: state.roleId, inheritChat: true })
+  assert.equal(inherited.skillBindings, null)
+  assert.equal(state.roomDb.database.prepare('SELECT skill_bindings_json FROM agent_roles WHERE id = ?').get(state.roleId).skill_bindings_json, null)
+  state.roomDb.close()
+})
+
 test('room UI snapshot returns only the latest message page and older pages stay scoped to the chat', () => {
   const { roomDb, service, repository, roomId, chatId } = setup()
   for (let index = 1; index <= 205; index++) repository.appendMessage({ chatId, authorType: 'user', authorId: 'user', content: `message-${index}` })
@@ -147,7 +184,7 @@ test('controller batch rolls back assignments, effects and audit when a later ac
     ] }),
   })
   const input = { chatId: state.chatId, batchId: 'atomic-batch', contextRevision: 0 }
-  await assert.rejects(service.processControllerBatch(input), /FOREIGN KEY/)
+  await assert.rejects(service.processControllerBatch(input), /ROOM_TASK_NOT_FOUND/)
   assert.equal(state.repository.listAssignments(state.taskId).length, 1)
   for (const table of ['effects', 'events', 'controller_decisions']) {
     assert.equal(state.roomDb.database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count, 0)

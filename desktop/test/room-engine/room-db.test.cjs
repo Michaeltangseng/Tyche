@@ -17,7 +17,7 @@ test('v2 migration preserves rooms and defaults existing workspaces to read-only
   first.database.exec('ALTER TABLE rooms DROP COLUMN write_authorized_root; ALTER TABLE assignments DROP COLUMN role_prompt_revision; PRAGMA user_version = 2;')
   first.close()
   const migrated = openRoomDatabase({ directory })
-  assert.equal(migrated.database.prepare('PRAGMA user_version').get().user_version, 4)
+  assert.equal(migrated.database.prepare('PRAGMA user_version').get().user_version, 5)
   assert.equal(migrated.database.prepare('SELECT write_authorized_root FROM rooms WHERE id=?').get(roomId).write_authorized_root, null)
   migrated.database.prepare('UPDATE rooms SET write_authorized_root=? WHERE id=?').run(directory, roomId)
   migrated.close()
@@ -42,7 +42,7 @@ test('room database creates private schema and persists the message/task/effect 
   assert.equal(repository.listMessages(chatId).length, 1)
   assert.equal(repository.getTask(taskId).status, 'open')
   assert.equal(repository.getEffect(effectId).status, 'pending')
-  assert.equal(roomDb.database.prepare('PRAGMA user_version').get().user_version, 4)
+  assert.equal(roomDb.database.prepare('PRAGMA user_version').get().user_version, 5)
   roomDb.close()
 })
 
@@ -139,5 +139,27 @@ test('repository records roles, assignments, reports, artifacts, and attentions'
   assert.equal(repository.getReport(reportId).kind, 'ready')
   assert.equal(repository.listAssignments(taskId).length, 1)
   assert.throws(() => repository.createReport({ taskId, assignmentId, kind: 'done', summary: 'invalid' }), /ROOM_REPORT_KIND_INVALID/)
+  roomDb.close()
+})
+
+test('Chat skills are defaults, Role skills replace them, and each Assignment freezes its snapshot refs', () => {
+  const roomDb = openRoomDatabase({ directory: tempDirectory() })
+  const repository = createRoomRepository(roomDb)
+  const ref = { algorithm: 'sha256', hash: 'a'.repeat(64), size: 10, mediaType: 'application/json' }
+  const chatSkill = { targetKind: 'codex', namespace: 'local', slug: 'chat', name: 'Chat skill', snapshotId: `skill-snapshot-${'a'.repeat(64)}`, manifestHash: 'a'.repeat(64), snapshotRef: ref }
+  const roleSkill = { ...chatSkill, slug: 'role', name: 'Role skill', snapshotId: `skill-snapshot-${'b'.repeat(64)}`, manifestHash: 'b'.repeat(64), snapshotRef: { ...ref, hash: 'b'.repeat(64) } }
+  const roomId = repository.createRoom({ name: 'Demo', workspace: '/tmp/demo' })
+  const chatId = repository.createChat({ roomId, title: 'Chat' })
+  const roleId = repository.createAgentRole({ chatId, displayName: 'Writer', provider: 'codex', createdBy: 'user' })
+  repository.setChatSkillBindings({ chatId, skillBindings: [chatSkill] })
+  const taskId = repository.createTask({ chatId, objective: 'first', createdBy: 'user' })
+  const inherited = repository.createAssignment({ taskId, roleId })
+  assert.deepEqual(JSON.parse(repository.getAssignmentContext(inherited).skill_hints_json).map(skill => skill.slug), ['chat'])
+  repository.setRoleSkillBindings({ roleId, skillBindings: [roleSkill] })
+  const secondTask = repository.createTask({ chatId, objective: 'second', createdBy: 'user' })
+  const overridden = repository.createAssignment({ taskId: secondTask, roleId })
+  assert.deepEqual(JSON.parse(repository.getAssignmentContext(overridden).skill_hints_json).map(skill => skill.slug), ['role'])
+  repository.setRoleSkillBindings({ roleId, skillBindings: [] })
+  assert.deepEqual(JSON.parse(repository.getAssignmentContext(overridden).skill_hints_json).map(skill => skill.slug), ['role'])
   roomDb.close()
 })

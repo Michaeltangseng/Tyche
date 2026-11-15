@@ -1,6 +1,7 @@
 const crypto = require('node:crypto')
 
 const { encode } = require('./room-db.cjs')
+const { normalizeSkillHint } = require('../workspace/local-workspace-message-records.cjs')
 
 function now() { return new Date().toISOString() }
 function id(prefix) { return `${prefix}-${crypto.randomUUID()}` }
@@ -15,6 +16,21 @@ function decodeRow(row, fields) {
   const result = { ...row }
   for (const field of fields) result[field] = decode(result[field], [])
   return result
+}
+
+function normalizeSkillBindings(value) {
+  if (!Array.isArray(value) || value.length > 4) throw new TypeError('ROOM_SKILL_BINDINGS_INVALID')
+  const normalized = value.map(normalizeSkillHint)
+  if (normalized.some(skill => !skill || !skill.snapshotRef)) throw new TypeError('ROOM_SKILL_BINDINGS_MUST_BE_SNAPSHOTS')
+  const keys = normalized.map(skill => `${skill.targetKind}:${skill.namespace}:${skill.slug}`)
+  if (new Set(keys).size !== keys.length) throw new TypeError('ROOM_SKILL_BINDINGS_DUPLICATE')
+  return normalized
+}
+
+function publicSkillBindings(value) {
+  return normalizeSkillBindings(value).map(({ targetKind, namespace, slug, name, snapshotId, manifestHash }) => ({
+    targetKind, namespace, slug, name, snapshotId, manifestHash,
+  }))
 }
 
 const REPORT_KINDS = new Set(['progress', 'ready', 'waiting', 'blocked', 'failed', 'handoff'])
@@ -33,12 +49,13 @@ function createRoomRepository(roomDb) {
         .run(roomId, name, workspace, encode(providers), encode(allowedCapabilities), null, timestamp, timestamp)
       return roomId
     },
-    createChat({ chatId = id('chat'), roomId, title, isPrimary = false, engineVersion = 'v2', contextRevision = 0 }) {
+    createChat({ chatId = id('chat'), roomId, title, isPrimary = false, engineVersion = 'v2', contextRevision = 0, skillBindings = null }) {
       const timestamp = now()
       db.prepare(`INSERT INTO chats
-        (id, room_id, title, status, is_primary, engine_version, context_revision, created_at, updated_at)
-        VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?)`)
-        .run(chatId, roomId, title, isPrimary ? 1 : 0, engineVersion, contextRevision, timestamp, timestamp)
+        (id, room_id, title, status, is_primary, engine_version, context_revision, skill_bindings_json, created_at, updated_at)
+        VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)`)
+        .run(chatId, roomId, title, isPrimary ? 1 : 0, engineVersion, contextRevision,
+          skillBindings === null ? null : encode(normalizeSkillBindings(skillBindings)), timestamp, timestamp)
       if (isPrimary) db.prepare('UPDATE rooms SET primary_chat_id = ?, updated_at = ? WHERE id = ?').run(chatId, timestamp, roomId)
       return chatId
     },
@@ -116,13 +133,14 @@ function createRoomRepository(roomDb) {
         .run(taskId, chatId, objective, kind, createdBy, encode(sourceMessageIds), parentTaskId, encode(blockedByTaskIds), encode(requiredArtifactIds), optional ? 1 : 0, contextRevision, encode(inputs), timestamp, timestamp)
       return taskId
     },
-    createAgentRole({ roleId = id('role'), chatId, displayName, responsibilities = '', capabilities = [], provider, promptRevision = 0, createdBy, creationReason = null, status = 'active' }) {
+    createAgentRole({ roleId = id('role'), chatId, displayName, responsibilities = '', capabilities = [], provider, promptRevision = 0, createdBy, creationReason = null, status = 'active', skillBindings = null }) {
       const timestamp = now()
       db.prepare(`INSERT INTO agent_roles
-        (id, chat_id, display_name, responsibilities, capabilities_json, provider, prompt_revision,
+        (id, chat_id, display_name, responsibilities, capabilities_json, provider, prompt_revision, skill_bindings_json,
          created_by, creation_reason, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
         roleId, chatId, displayName, responsibilities, encode(capabilities), provider, promptRevision,
+        skillBindings === null ? null : encode(normalizeSkillBindings(skillBindings)),
         createdBy, creationReason, status, timestamp, timestamp,
       )
       return roleId
@@ -151,18 +169,37 @@ function createRoomRepository(roomDb) {
         : db.prepare("SELECT * FROM agent_roles WHERE chat_id = ? AND status != 'archived' ORDER BY created_at, id").all(chatId)
       return rows.map(row => ({ ...row, capabilities: decode(row.capabilities_json) }))
     },
-    createAssignment({ assignmentId = id('assignment'), taskId, roleId, nativeSessionId = null, runId = null, workspaceRef = null, writeScopes = [], required = true, attempt = 1, previousAssignmentId = null, status = 'queued' }) {
-      const role = db.prepare('SELECT prompt_revision FROM agent_roles WHERE id = ?').get(roleId)
+    createAssignment({ assignmentId = id('assignment'), taskId, roleId, nativeSessionId = null, runId = null, workspaceRef = null, writeScopes = [], required = true, attempt = 1, previousAssignmentId = null, status = 'queued', skillHints = undefined }) {
+      const role = db.prepare('SELECT prompt_revision, skill_bindings_json FROM agent_roles WHERE id = ?').get(roleId)
       if (!role) throw new Error('ROOM_ROLE_NOT_FOUND')
+      const task = db.prepare('SELECT chat_id FROM tasks WHERE id = ?').get(taskId)
+      if (!task) throw new Error('ROOM_TASK_NOT_FOUND')
+      const chat = db.prepare('SELECT skill_bindings_json FROM chats WHERE id = ?').get(task.chat_id)
+      const source = skillHints === undefined
+        ? (role.skill_bindings_json !== null ? JSON.parse(role.skill_bindings_json) : (chat?.skill_bindings_json ? JSON.parse(chat.skill_bindings_json) : []))
+        : skillHints
+      const frozenSkills = normalizeSkillBindings(source)
       const timestamp = now()
       db.prepare(`INSERT INTO assignments
         (id, task_id, role_id, native_session_id, run_id, workspace_ref, write_scopes_json,
-         required, attempt, previous_assignment_id, role_prompt_revision, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+         required, attempt, previous_assignment_id, role_prompt_revision, skill_hints_json, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
         assignmentId, taskId, roleId, nativeSessionId, runId, workspaceRef, encode(writeScopes),
-        required ? 1 : 0, attempt, previousAssignmentId, role.prompt_revision, status, timestamp, timestamp,
+        required ? 1 : 0, attempt, previousAssignmentId, role.prompt_revision, encode(frozenSkills), status, timestamp, timestamp,
       )
       return assignmentId
+    },
+    setChatSkillBindings({ chatId, skillBindings }) {
+      const normalized = normalizeSkillBindings(skillBindings)
+      const result = db.prepare('UPDATE chats SET skill_bindings_json = ?, updated_at = ? WHERE id = ?').run(encode(normalized), now(), chatId)
+      if (result.changes !== 1) throw new Error('ROOM_CHAT_NOT_FOUND')
+      return normalized
+    },
+    setRoleSkillBindings({ roleId, skillBindings }) {
+      const normalized = skillBindings === null ? null : normalizeSkillBindings(skillBindings)
+      const result = db.prepare('UPDATE agent_roles SET skill_bindings_json = ?, updated_at = ? WHERE id = ?').run(normalized === null ? null : encode(normalized), now(), roleId)
+      if (result.changes !== 1) throw new Error('ROOM_ROLE_NOT_FOUND')
+      return normalized
     },
     createReport({ reportId = id('report'), taskId, assignmentId, kind, summary, evidence = [], artifactIds = [], nextRequest = null, attentionId = null }) {
       if (!REPORT_KINDS.has(kind)) throw new TypeError('ROOM_REPORT_KIND_INVALID')
@@ -276,7 +313,9 @@ function createRoomRepository(roomDb) {
         .map(row => {
           const context = db.prepare(`SELECT revision, instructions, changes_json, created_by, created_at
             FROM chat_context_revisions WHERE chat_id = ? AND revision = ?`).get(row.id, row.context_revision)
-          return { ...row, current_context: context ? {
+          const chat = decodeRow(row, ['skill_bindings_json'])
+          chat.skill_bindings_json = publicSkillBindings(chat.skill_bindings_json || [])
+          return { ...chat, current_context: context ? {
             revision: context.revision,
             instructions: context.instructions,
             changes: decode(context.changes_json),
@@ -309,13 +348,21 @@ function createRoomRepository(roomDb) {
         messages_have_older: messagePages ? Object.keys(messagePages).filter(chatId => messagePages[chatId].hasMore) : [],
         messages: messagePages ? messages : messages.map(row => decodeRow(row, ['mentions_json', 'attachment_ids_json'])),
         tasks: tasks.map(row => decodeRow(row, ['source_message_ids_json', 'blocked_by_task_ids_json', 'required_artifact_ids_json', 'inputs_json'])),
-        assignments: assignments.map(row => decodeRow(row, ['write_scopes_json'])),
+        assignments: assignments.map(row => {
+          const assignment = decodeRow(row, ['write_scopes_json', 'skill_hints_json'])
+          assignment.skill_hints_json = publicSkillBindings(assignment.skill_hints_json || [])
+          return assignment
+        }),
         attentions: attentions.map(row => decodeRow(row, ['options_json'])),
         roles: chatIds.length ? db.prepare(`SELECT r.*, p.prompt AS current_prompt
           FROM agent_roles r
           LEFT JOIN role_prompt_revisions p ON p.role_id = r.id AND p.revision = r.prompt_revision
           WHERE r.chat_id IN (${chatIds.map(() => '?').join(',')}) ORDER BY r.created_at, r.id`).all(...chatIds)
-          .map(row => decodeRow(row, ['capabilities_json'])) : [],
+          .map(row => {
+            const role = decodeRow(row, ['capabilities_json', 'skill_bindings_json'])
+            role.skill_bindings_json = role.skill_bindings_json === null ? null : publicSkillBindings(role.skill_bindings_json)
+            return role
+          }) : [],
         reports: taskIds.length ? db.prepare(`SELECT * FROM reports WHERE task_id IN (${taskIds.map(() => '?').join(',')}) ORDER BY created_at, rowid`).all(...taskIds)
           .map(row => decodeRow(row, ['evidence_json', 'artifact_ids_json', 'next_request_json'])) : [],
         artifacts: db.prepare('SELECT * FROM artifacts WHERE room_id=? ORDER BY created_at, id').all(roomId).map(plain),

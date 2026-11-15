@@ -164,6 +164,8 @@ if (isLocalDocument) Object.assign(desktopApi, {
     chatMessages: input => ipcRenderer.invoke('room:chat-messages', input),
     submitMessage: input => ipcRenderer.invoke('room:message-submit', input),
     applyUserCommand: input => ipcRenderer.invoke('room:user-command', input),
+    updateSkillBindings: input => ipcRenderer.invoke('room:skill-bindings-update', input),
+    skills: kind => ipcRenderer.invoke('local-agent-installer:skills', kind),
     listStaleAssignments: input => ipcRenderer.invoke('room:assignments-stale', input),
     assignmentTrace: input => ipcRenderer.invoke('room:assignment-trace', input),
     assignmentTraceBlob: input => ipcRenderer.invoke('room:assignment-trace-blob', input),

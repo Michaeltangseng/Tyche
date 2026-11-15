@@ -24,6 +24,19 @@ Assignment Runner 对所有明确标记为未知结果的原生调用统一进�
 
 协作约定更新已接通：主控使用完整 instructions 文本和当前用户源消息 ID 提交 `update_context`。平台验证来源与当前 revision，同批先保存约定、再以新 revision 创建新任务；既有任务保留版本且不隐式停止。批次失败整批回滚，更新事件可唤醒后续评估并在重启后补调度，不新增状态机或配置 DSL。约定本身不能授予写权限。下一步扩展 Prompt/Skill 配置界面与真实 CLI 长任务验收。
 
+### Skill 与 Chat/Role 的绑定执行契约
+
+Skill 绑定已经落到主进程执行链，当前语义保持最小：
+
+- Chat 的绑定是该 Chat 新建 Assignment 的默认 Skill 集合；没有绑定就是空集合。
+- Role 的绑定有三种状态：`null` 表示继承 Chat 默认集合；非空数组表示使用 Role 自己的集合；空数组表示明确不使用 Skill。Role 绑定不会和 Chat 集合合并；恢复继承通过明确的 `inheritChat` 更新操作完成，不能用空数组代替。
+- 用户更新绑定时，Renderer 只提交 `targetKind/namespace/slug/name` 等 Skill 标识。主进程根据当前 Provider 解析已安装 Skill，创建不可变 snapshot，复用现有信任审批和内容校验链；路径、凭据、信任决定和物化目录不由 Renderer 提交，也不作为 UI 数据返回。
+- 创建 Assignment 时把当时的 Skill snapshot 引用冻结到 `skill_hints_json`。之后修改 Chat 或 Role 绑定只影响新 Assignment，排队中的旧 Assignment 仍使用创建时的引用。
+- Assignment 启动时，Runner 通过主进程 `prepareSkillSelections` 重新读取并验证 snapshot、manifest hash、坐标和既有信任决定，再将仅供本次原生调用使用的 runtime hints 传给 Agent。snapshot 缺失、内容被改写、信任失效或 Provider 不匹配时，启动失败并保留平台错误事实，不回退到 live Skill。
+- Room 快照和 IPC 返回只暴露名称、坐标、snapshotId、manifestHash 等审计摘要；`snapshotRef`、entry path、物化目录和批准清单留在主进程/应用私有区。Assignment 的完整冻结引用只在主进程执行链读取。
+
+这项能力目前完成了数据库、服务、IPC/preload 和 Runner 契约，尚未加入 Skill 选择器 UI。UI 接入前先复用现有 Skill Catalog 的可用列表和信任审批，不在 Renderer 复制一套 Skill 发现或授权逻辑。默认仍使用 Room 主目录；Skill 绑定不改变 cwd、写入租约、Artifact 发布或按需隔离 workspace 的规则。
+
 本切片验证：七个 room-engine 定向文件共 71 项测试通过，覆盖来源身份、版本切换、同批回滚、重复批次、上下文更新唤醒与重启恢复；`git diff --check` 通过。扩展的真实 Claude Code CLI smoke 在 Electron main 约 81 秒、6 次调用通过：先完成文档与确认 Attention，再接收“以后英文报告、后续不再邀请文档作者、只更新约定”的用户消息，保存新 revision，不新增任务或停止既有工作；人工核对保存文本包含新要求且保留原有限制，数据库重开后来源与版本仍在。该验证不代表后续实际任务遵循率或完整多 Agent 验收。未运行全量测试、构建、打包或 Renderer 交互复验。
 
 当前 v2 群聊快照会返回所选 Chat 的 `current_context`（当前 revision、完整协作约定和来源信息），RoomWorkspace 在聊天栏下方展示它。这样用户提出的协作要求既保留在 SQLite 版本账本，也能在后续对话中直接核对；没有约定时不显示空卡片。主进程快照定向测试与 RoomWorkspace 单文件测试（14 项）通过。一次误用仓库默认 `npm test` 会展开旧版前端全量用例，已中断，未将其结果作为本切片验收。
@@ -405,3 +418,11 @@ ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/Electron.app/Contents/MacOS/
 真实验收需显式 `--run`，缺失时以退出码 2 结束，不启动模型。最多 8 次 CLI 调用，单次 Worker 调用期限 90 秒，等待目标闭环期限 180 秒；退出时通过服务关闭取消并等待运行收口。控制台只打印阶段、身份、数量与错误码，详细平台 Trace 在临时私有目录，CLI 自身会话按原生配置保存。`userData/smoke-result.json` 保存本地验收摘要。29 项定向回归、语法检查及 `git diff --check` 通过；未跑全量测试或打包。本机 Codex 命令因安装缺失原生二进制无法启动，本轮未改安装或用其他可执行文件冒充通过；Gemini 尚未验收。
 
 范围限制：本切片验证到“单 Worker 文档产出 → 等待用户确认”，不包含真实用户接受后实施、多 Agent 互评、成本/角色上限、长时心跳或崩溃后的残留进程对账，也不等同于完整产品验收。原记录中“原生 Session 续跑”已按当前架构决定取消：Assignment 使用独立调用，后续工作由新 Assignment 承接。后续真实多 Agent 评审、用户决定后的实施及异常恢复闭环已在本路线图前文记录。
+
+### Chat/Role Skill 绑定 UI 切片（2026-11-15）
+
+Room UI 现已接通 Skill 绑定执行契约：通过现有本地 Skill 目录 API 展示当前 Room Provider 可用的 Skill；用户可设置 Chat 默认绑定，Role 可选择继承 Chat、覆盖为选中集合，或明确不使用 Skill。保存请求只提交 `targetKind/namespace/slug/name` 等公开标识；主进程负责目录解析、快照、信任校验和 Assignment 冻结，Renderer 不接触快照引用或执行路径。Role 恢复继承使用 `inheritChat: true`，不会用空数组混淆“无 Skill”。
+
+补充了中英文文案和 RoomWorkspace 定向测试，覆盖 Chat 保存与 Role 恢复继承。`npx vitest run src/__tests__/meldwork/roomWorkspace.spec.js` 的 20 项测试通过，`npm run build:desktop`、`node --check desktop/src/preload.cjs` 与 `git diff --check` 通过。未运行全量前端测试；项目脚本传入 glob 参数会启动整套测试，且当前环境的 localStorage 初始化会导致既有测试失败。
+
+当前 UI 仍是轻量选择器：Skill 目录读取失败时隐藏选择区，信任审批由主进程现有逻辑触发；技能变更只影响之后创建的 Assignment，历史 Assignment 的冻结快照不变。后续可补独立的 Skill 信任状态提示、超出目录展示上限的搜索和 Electron 桌面手工交互验收。
