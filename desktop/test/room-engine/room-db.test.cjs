@@ -25,7 +25,7 @@ test('room database creates private schema and persists the message/task/effect 
   assert.equal(repository.listMessages(chatId).length, 1)
   assert.equal(repository.getTask(taskId).status, 'open')
   assert.equal(repository.getEffect(effectId).status, 'pending')
-  assert.equal(roomDb.database.prepare('PRAGMA user_version').get().user_version, 1)
+  assert.equal(roomDb.database.prepare('PRAGMA user_version').get().user_version, 2)
   roomDb.close()
 })
 

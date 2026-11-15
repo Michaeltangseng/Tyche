@@ -27,8 +27,10 @@ function createControllerSession({ roomDb, repository, applyAction, decide, now 
     if (chat.context_revision !== contextRevision) throw new Error('ROOM_CONTROLLER_CONTEXT_STALE')
     const messages = messageIds.map(messageId => repository.getMessage(messageId)).filter(Boolean)
     if (messages.length !== messageIds.length) throw new Error('ROOM_CONTROLLER_MESSAGE_NOT_FOUND')
+    const chatContext = repository.getChatContext(chatId, contextRevision)
+    const roles = repository.listAgentRoles(chatId)
     const startedAt = now()
-    const proposal = await decide({ chatId, batchId, contextRevision, messages })
+    const proposal = await decide({ chatId, batchId, contextRevision, messages, context: chatContext.context, roles })
     if (!proposal || !Array.isArray(proposal.actions)) throw new TypeError('ROOM_CONTROLLER_DECISION_INVALID')
     const results = []
     for (const action of proposal.actions) {

@@ -13,7 +13,7 @@ const { DatabaseSync } = (() => {
 
 const { ensurePrivateDirectory } = require('../security/private-file.cjs')
 
-const ROOM_SCHEMA_VERSION = 1
+const ROOM_SCHEMA_VERSION = 2
 
 function json(value) {
   return value === undefined || value === null ? null : JSON.stringify(value)
@@ -195,6 +195,25 @@ function migrate(database) {
         cost REAL,
         created_at TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS chat_context_revisions (
+        id TEXT PRIMARY KEY,
+        chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+        revision INTEGER NOT NULL,
+        instructions TEXT NOT NULL DEFAULT '',
+        changes_json TEXT NOT NULL DEFAULT '{}',
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(chat_id, revision)
+      );
+      CREATE TABLE IF NOT EXISTS role_prompt_revisions (
+        id TEXT PRIMARY KEY,
+        role_id TEXT NOT NULL REFERENCES agent_roles(id) ON DELETE CASCADE,
+        revision INTEGER NOT NULL,
+        prompt TEXT NOT NULL,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(role_id, revision)
+      );
       CREATE TABLE IF NOT EXISTS effects (
         id TEXT PRIMARY KEY,
         chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
@@ -226,6 +245,29 @@ function migrate(database) {
       CREATE INDEX IF NOT EXISTS events_chat_sequence ON events(chat_id, sequence);
       CREATE INDEX IF NOT EXISTS tasks_chat_status ON tasks(chat_id, status);
       CREATE INDEX IF NOT EXISTS effects_status ON effects(status, created_at);
+    `)
+    database.exec(`PRAGMA user_version = ${ROOM_SCHEMA_VERSION}`)
+  } else if (current === 1) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS chat_context_revisions (
+        id TEXT PRIMARY KEY,
+        chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+        revision INTEGER NOT NULL,
+        instructions TEXT NOT NULL DEFAULT '',
+        changes_json TEXT NOT NULL DEFAULT '{}',
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(chat_id, revision)
+      );
+      CREATE TABLE IF NOT EXISTS role_prompt_revisions (
+        id TEXT PRIMARY KEY,
+        role_id TEXT NOT NULL REFERENCES agent_roles(id) ON DELETE CASCADE,
+        revision INTEGER NOT NULL,
+        prompt TEXT NOT NULL,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(role_id, revision)
+      );
     `)
     database.exec(`PRAGMA user_version = ${ROOM_SCHEMA_VERSION}`)
   }

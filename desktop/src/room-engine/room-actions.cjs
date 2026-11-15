@@ -68,6 +68,7 @@ function normalize(action, kind, expectedChatId = null, expectedContextRevision 
   if (kind === 'controller') {
     if (!Number.isInteger(action.contextRevision) || action.contextRevision < 0) throw new TypeError('ROOM_ACTION_CONTEXT_REVISION_INVALID')
     if (expectedContextRevision !== null && action.contextRevision !== expectedContextRevision) throw new Error('ROOM_ACTION_CONTEXT_STALE')
+    if (action.type === 'update_context' && !isRecord(action.changes)) throw new TypeError('ROOM_ACTION_CONTEXT_CHANGES_INVALID')
   }
   return Object.freeze({ ...action })
 }
@@ -101,6 +102,7 @@ function createRoomActionService({ roomDb, repository }) {
       else if (validated.type === 'assign') result = { assignmentId: repository.createAssignment(validated) }
       else if (validated.type === 'create_role') result = { roleId: repository.createAgentRole({ ...validated, createdBy: actorId }) }
       else if (validated.type === 'request_attention') result = { attentionId: repository.createAttention({ ...validated, type: validated.attentionType, requestedBy: actorId }) }
+      else if (validated.type === 'update_context') result = { context: repository.createChatContextRevision({ chatId: validated.chatId, instructions: typeof validated.changes?.instructions === 'string' ? validated.changes.instructions : '', changes: validated.changes, createdBy: actorId }) }
       else result = {}
       return { ...result, event: recordEvent(validated, actorId) }
     })

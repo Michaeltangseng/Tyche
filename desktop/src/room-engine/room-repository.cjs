@@ -39,6 +39,25 @@ function createRoomRepository(roomDb) {
       if (isPrimary) db.prepare('UPDATE rooms SET primary_chat_id = ?, updated_at = ? WHERE id = ?').run(chatId, timestamp, roomId)
       return chatId
     },
+    getChatContext(chatId, revision = null) {
+      const chat = db.prepare('SELECT id, room_id, context_revision, status FROM chats WHERE id = ?').get(chatId)
+      if (!chat) throw new Error('ROOM_CHAT_NOT_FOUND')
+      const targetRevision = revision === null ? chat.context_revision : revision
+      const context = db.prepare(`SELECT * FROM chat_context_revisions WHERE chat_id = ? AND revision = ?`).get(chatId, targetRevision)
+      return { chat, revision: targetRevision, context: context ? { ...context, changes: decode(context.changes_json) } : null }
+    },
+    createChatContextRevision({ chatId, instructions = '', changes = {}, createdBy }) {
+      const chat = db.prepare('SELECT context_revision FROM chats WHERE id = ?').get(chatId)
+      if (!chat) throw new Error('ROOM_CHAT_NOT_FOUND')
+      const revision = chat.context_revision + 1
+      const timestamp = now()
+      const revisionId = id('context')
+      db.prepare(`INSERT INTO chat_context_revisions
+        (id, chat_id, revision, instructions, changes_json, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`).run(revisionId, chatId, revision, instructions, encode(changes), createdBy, timestamp)
+      db.prepare('UPDATE chats SET context_revision = ?, updated_at = ? WHERE id = ?').run(revision, timestamp, chatId)
+      return { revisionId, chatId, revision }
+    },
     appendMessage({ messageId = id('msg'), chatId, authorType, authorId, content, mentions = [], attachmentIds = [], replyTo = null, taskId = null }) {
       const sequence = db.prepare('SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM messages WHERE chat_id = ?').get(chatId).next
       const timestamp = now()
@@ -101,6 +120,30 @@ function createRoomRepository(roomDb) {
         createdBy, creationReason, status, timestamp, timestamp,
       )
       return roleId
+    },
+    createRolePromptRevision({ roleId, prompt, createdBy }) {
+      const role = db.prepare('SELECT prompt_revision FROM agent_roles WHERE id = ?').get(roleId)
+      if (!role) throw new Error('ROOM_ROLE_NOT_FOUND')
+      const revision = role.prompt_revision + 1
+      const revisionId = id('role-prompt')
+      const timestamp = now()
+      db.prepare(`INSERT INTO role_prompt_revisions (id, role_id, revision, prompt, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)`).run(revisionId, roleId, revision, prompt, createdBy, timestamp)
+      db.prepare('UPDATE agent_roles SET prompt_revision = ?, updated_at = ? WHERE id = ?').run(revision, timestamp, roleId)
+      return { revisionId, roleId, revision }
+    },
+    getRolePrompt(roleId, revision = null) {
+      const role = db.prepare('SELECT prompt_revision FROM agent_roles WHERE id = ?').get(roleId)
+      if (!role) throw new Error('ROOM_ROLE_NOT_FOUND')
+      const targetRevision = revision === null ? role.prompt_revision : revision
+      const row = db.prepare('SELECT * FROM role_prompt_revisions WHERE role_id = ? AND revision = ?').get(roleId, targetRevision)
+      return row ? { ...row } : null
+    },
+    listAgentRoles(chatId, { includeArchived = false } = {}) {
+      const rows = includeArchived
+        ? db.prepare('SELECT * FROM agent_roles WHERE chat_id = ? ORDER BY created_at, id').all(chatId)
+        : db.prepare("SELECT * FROM agent_roles WHERE chat_id = ? AND status != 'archived' ORDER BY created_at, id").all(chatId)
+      return rows.map(row => ({ ...row, capabilities: decode(row.capabilities_json) }))
     },
     createAssignment({ assignmentId = id('assignment'), taskId, roleId, nativeSessionId = null, runId = null, workspaceRef = null, writeScopes = [], required = true, attempt = 1, previousAssignmentId = null, status = 'queued' }) {
       const timestamp = now()

@@ -44,6 +44,22 @@ test('controller session processes a message batch once and records its decision
   state.roomDb.close()
 })
 
+test('context revisions are persisted and supplied to controller decisions', async () => {
+  const state = setup()
+  const context = state.repository.createChatContextRevision({ chatId: state.chatId, instructions: 'Prefer concise reports', changes: { reviewRequired: true }, createdBy: 'user-1' })
+  let received
+  const session = createControllerSession({
+    roomDb: state.roomDb,
+    repository: state.repository,
+    decide: async input => { received = input; return { actions: [] } },
+    applyAction: () => ({}),
+  })
+  await session.process({ chatId: state.chatId, batchId: 'batch-context', contextRevision: context.revision, messageIds: [] })
+  assert.equal(received.context.instructions, 'Prefer concise reports')
+  assert.deepEqual(received.context.changes, { reviewRequired: true })
+  state.roomDb.close()
+})
+
 test('controller session rejects a stale context before calling the controller', async () => {
   const state = setup()
   let called = false
