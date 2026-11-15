@@ -5,7 +5,7 @@ const CONTROLLER_TYPES = new Set([
 const USER_TYPES = new Set([
   'stop_task', 'retry_task', 'handoff_task', 'accept_artifact', 'reject_artifact',
   'answer_attention', 'pause_chat', 'resume_chat', 'archive_chat', 'restore_context',
-  'set_workspace_write',
+  'set_workspace_write', 'update_role_prompt',
 ])
 const PLATFORM_TYPES = new Set([
   'session_started', 'session_liveness', 'session_exited', 'report_received', 'effect_updated',
@@ -35,6 +35,7 @@ const FIELDS = Object.freeze({
     resume_chat: ['type', 'chatId'],
     archive_chat: ['type', 'chatId'],
     restore_context: ['type', 'chatId', 'contextRevision'],
+    update_role_prompt: ['type', 'chatId', 'roleId', 'prompt', 'commandId'],
   },
   platform: {
     session_started: ['type', 'chatId', 'assignmentId', 'runId'],
@@ -69,6 +70,11 @@ function normalize(action, kind, expectedChatId = null, expectedContextRevision 
   if (kind === 'user' && action.type === 'set_workspace_write') {
     if (typeof action.allowWrite !== 'boolean') throw new TypeError('ROOM_ACTION_ALLOW_WRITE_INVALID')
     assertId(action.commandId, 'command_id')
+  }
+  if (kind === 'user' && action.type === 'update_role_prompt') {
+    assertId(action.roleId, 'role_id')
+    assertId(action.commandId, 'command_id')
+    assertString(action.prompt, 'ROOM_ACTION_PROMPT_INVALID')
   }
   if (kind === 'user' && ['retry_task', 'handoff_task'].includes(action.type)) {
     for (const field of ['taskId', 'assignmentId', 'commandId']) assertId(action[field], field)

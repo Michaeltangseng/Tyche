@@ -56,9 +56,9 @@ function commandInput(input) {
   for (const field of ['chatId', 'taskId', 'assignmentId', 'commandId', 'roleId', 'attentionId', 'artifactId', 'optionId']) {
     if (command[field] !== undefined) text(command[field])
   }
-  for (const field of ['reason', 'comment']) if (command[field] !== undefined) text(command[field], 100_000)
+  for (const field of ['reason', 'comment', 'prompt']) if (command[field] !== undefined) text(command[field], 100_000)
   const required = {
-    stop_task: ['taskId'], answer_attention: ['attentionId'],
+    stop_task: ['taskId'], answer_attention: ['attentionId'], update_role_prompt: ['roleId', 'prompt', 'commandId'],
     accept_artifact: ['artifactId'], reject_artifact: ['artifactId'],
   }
   for (const field of required[command.type] || []) text(command[field])

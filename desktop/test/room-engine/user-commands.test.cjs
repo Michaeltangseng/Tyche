@@ -73,6 +73,19 @@ test('artifact decisions and chat pause/resume update platform-owned state', () 
   roomDb.close()
 })
 
+test('user can revise a role prompt with an idempotent command', () => {
+  const state = setup()
+  const roleId = state.repository.createAgentRole({ chatId: state.chatId, displayName: 'Writer', provider: 'codex', createdBy: 'user' })
+  const command = { type: 'update_role_prompt', chatId: state.chatId, roleId, prompt: 'Write concise English reports.', commandId: 'prompt-1' }
+  const first = state.commands.apply(command)
+  const second = state.commands.apply(command)
+  assert.equal(first.revision, 1)
+  assert.equal(second.duplicate, true)
+  assert.equal(state.repository.getRolePrompt(roleId).prompt, 'Write concise English reports.')
+  assert.throws(() => state.commands.apply({ ...command, prompt: 'different' }), /COMMAND_ID_REUSED/)
+  state.roomDb.close()
+})
+
 test('invalid attention option and unsupported lifecycle command are rejected', () => {
   const { roomDb, commands, chatId, attentionId } = setup()
   assert.throws(() => commands.apply({ type: 'answer_attention', chatId, attentionId, optionId: 'maybe' }), /OPTION_INVALID/)

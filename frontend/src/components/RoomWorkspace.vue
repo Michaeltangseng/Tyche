@@ -50,7 +50,18 @@
         <section class="room-conversation" :aria-label="t('room.chat')">
           <div ref="timeline" class="room-timeline">
             <p class="room-muted">{{ t('room.teamHint') }}</p>
-            <div class="room-team"><span v-for="role in roles" :key="role.id">{{ role.display_name }} · {{ role.provider }}</span></div>
+            <div class="room-team">
+              <details v-for="role in roles" :key="role.id" class="room-role">
+                <summary>{{ role.display_name }} · {{ role.provider }}</summary>
+                <p v-if="role.responsibilities" class="room-muted">{{ role.responsibilities }}</p>
+                <p v-if="role.current_prompt" class="room-role-prompt">{{ role.current_prompt }}</p>
+                <p v-else class="room-muted">{{ t('room.noRolePrompt') }}</p>
+                <form class="room-role-editor" @submit.prevent="saveRolePrompt(role)">
+                  <textarea v-model="rolePrompts[role.id]" :aria-label="t('room.rolePrompt')" rows="3" maxlength="100000" />
+                  <button class="secondary-button" :disabled="busy || rolePrompts[role.id] === (role.current_prompt || '')">{{ t('room.saveRolePrompt') }}</button>
+                </form>
+              </details>
+            </div>
             <p v-if="!entries.length" class="room-muted">{{ t('room.emptyChat') }}</p>
             <article v-for="entry in entries" :key="entry.key" class="room-message" :class="{ 'room-report': entry.report }">
               <header><strong>{{ entry.author }}</strong><time>{{ formatTime(entry.createdAt) }}</time></header>
@@ -132,6 +143,7 @@ const drafts = ref({})
 const draft = computed({ get: () => drafts.value[chatId.value] || '', set: value => { drafts.value[chatId.value] = value } })
 const answers = ref({})
 const handoffRoles = ref({})
+const rolePrompts = ref({})
 const picking = ref(false)
 const pickerError = ref(false)
 const timeline = ref(null)
@@ -147,6 +159,11 @@ function canRetry(item) { return ['failed', 'waiting', 'blocked', 'cancelled'].i
 function statusLabel(status) { const key = `room.status.${status}`; return t(key) === key ? t('room.status.waiting') : t(key) }
 function optionId(option) { return typeof option === 'string' ? option : option.id || option.optionId }
 function formatTime(value) { return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+async function saveRolePrompt(role) {
+  const prompt = String(rolePrompts.value[role.id] || '')
+  if (!prompt.trim()) return
+  if (await command({ type: 'update_role_prompt', roleId: role.id, prompt })) rolePrompts.value[role.id] = prompt
+}
 async function reload() { await load(); await refresh() }
 async function chooseDirectory() {
   picking.value = true
@@ -168,7 +185,12 @@ async function answer(attention) {
   await command({ type: 'answer_attention', attentionId: attention.id,
     ...(attention.options_json?.length ? { optionId: answers.value[attention.id] } : { comment: answers.value[attention.id] }) })
 }
-watch([roomId, chatId], () => { handoffRoles.value = {}; answers.value = {}; diffArtifactId.value = '' })
+watch([roomId, chatId], () => { handoffRoles.value = {}; answers.value = {}; rolePrompts.value = {}; diffArtifactId.value = '' })
+watch(roles, items => {
+  const next = { ...rolePrompts.value }
+  for (const role of items) if (!(role.id in next)) next[role.id] = role.current_prompt || ''
+  rolePrompts.value = next
+}, { immediate: true })
 watch(() => entries.value.length, async () => { await nextTick(); if (timeline.value) timeline.value.scrollTop = timeline.value.scrollHeight })
 onMounted(load)
 </script>
@@ -186,7 +208,7 @@ fieldset { border: 1px solid var(--border); border-radius: 8px; } .room-director
 .room-message, .room-card { border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 12px; overflow-wrap: anywhere; }
 .room-message header, .room-card header { display: flex; gap: 12px; justify-content: space-between; align-items: baseline; }
 .room-message p { white-space: pre-wrap; line-height: 1.6; } time, .room-muted { font-size: 12px; opacity: .65; }
-.room-team { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; } .room-team span { border: 1px solid var(--border); padding: 5px 8px; border-radius: 20px; font-size: 12px; }
+.room-team { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; } .room-role { border: 1px solid var(--border); border-radius: 10px; padding: 6px 9px; font-size: 12px; max-width: 100%; } .room-role summary { cursor: pointer; } .room-role-prompt { white-space: pre-wrap; line-height: 1.45; max-width: 42rem; } .room-role-editor { display: grid; gap: 6px; } .room-role-editor textarea { min-width: min(36rem, 75vw); max-width: 100%; resize: vertical; }
 .room-composer { display: flex; align-items: end; gap: 10px; padding-top: 12px; } .room-composer textarea { flex: 1; resize: vertical; min-width: 0; }
 .room-ledger { overflow: auto; min-height: 0; } .room-assignment { border-top: 1px solid var(--border); margin-top: 10px; font-size: 12px; }
 .room-card form { display: flex; gap: 8px; flex-wrap: wrap; } .room-card select { min-width: 0; } .room-empty { margin: auto; opacity: .65; }

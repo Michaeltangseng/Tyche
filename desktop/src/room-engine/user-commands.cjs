@@ -56,6 +56,10 @@ function createUserCommandService({ roomDb, repository }) {
         if (root && !fs.statSync(root).isDirectory()) throw new Error('ROOM_WORKSPACE_NOT_DIRECTORY')
         db.prepare('UPDATE rooms SET write_authorized_root = ?, updated_at = ? WHERE id = ?').run(root, timestamp, chat.room_id)
         result = { roomId: chat.room_id, allowWrite: action.allowWrite, writeAuthorizedRoot: root }
+      } else if (action.type === 'update_role_prompt') {
+        const role = db.prepare('SELECT id FROM agent_roles WHERE id = ? AND chat_id = ?').get(action.roleId, action.chatId)
+        if (!role) throw new Error('ROOM_ROLE_NOT_FOUND')
+        result = repository.createRolePromptRevision({ roleId: action.roleId, prompt: action.prompt, createdBy: actorId })
       } else if (action.type === 'retry_task' || action.type === 'handoff_task') {
         const previous = repository.getAssignmentContext(action.assignmentId)
         if (!previous || previous.task_id !== action.taskId || previous.chat_id !== action.chatId) throw new Error('ROOM_ASSIGNMENT_NOT_FOUND')

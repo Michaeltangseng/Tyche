@@ -270,7 +270,10 @@ function createRoomRepository(roomDb) {
         tasks: tasks.map(row => decodeRow(row, ['source_message_ids_json', 'blocked_by_task_ids_json', 'required_artifact_ids_json', 'inputs_json'])),
         assignments: assignments.map(row => decodeRow(row, ['write_scopes_json'])),
         attentions: attentions.map(row => decodeRow(row, ['options_json'])),
-        roles: chatIds.length ? db.prepare(`SELECT * FROM agent_roles WHERE chat_id IN (${chatIds.map(() => '?').join(',')}) ORDER BY created_at, id`).all(...chatIds)
+        roles: chatIds.length ? db.prepare(`SELECT r.*, p.prompt AS current_prompt
+          FROM agent_roles r
+          LEFT JOIN role_prompt_revisions p ON p.role_id = r.id AND p.revision = r.prompt_revision
+          WHERE r.chat_id IN (${chatIds.map(() => '?').join(',')}) ORDER BY r.created_at, r.id`).all(...chatIds)
           .map(row => decodeRow(row, ['capabilities_json'])) : [],
         reports: taskIds.length ? db.prepare(`SELECT * FROM reports WHERE task_id IN (${taskIds.map(() => '?').join(',')}) ORDER BY created_at, rowid`).all(...taskIds)
           .map(row => decodeRow(row, ['evidence_json', 'artifact_ids_json', 'next_request_json'])) : [],
