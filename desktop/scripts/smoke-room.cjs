@@ -22,8 +22,8 @@ const argument = name => { const index = process.argv.indexOf(name); return inde
 const provider = argument('--provider')
 const scenario = argument('--scenario') || 'document'
 if (!app) throw new Error('SMOKE_REQUIRES_ELECTRON_MAIN')
-if (!process.argv.includes('--run') || !['claude', 'codex', 'gemini'].includes(provider) || !['document', 'review'].includes(scenario)) {
-  console.error('Use: npm run smoke:room -- --run --provider claude|codex|gemini [--scenario document|review]')
+if (!process.argv.includes('--run') || !['claude', 'codex', 'gemini'].includes(provider) || !['document', 'review', 'recovery'].includes(scenario)) {
+  console.error('Use: npm run smoke:room -- --run --provider claude|codex|gemini [--scenario document|review|recovery]')
   app.exit(2)
 }
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-smoke-'))
@@ -34,6 +34,7 @@ app.setPath('userData', privateRoot)
 async function smoke() {
   const workdir = path.join(root, 'project')
   fs.mkdirSync(workdir)
+  const canonicalWorkdir = fs.realpathSync.native(workdir)
   console.log(JSON.stringify({ stage: 'start', provider, directory: root }))
   const shell = await resolveNativeShellEnvironment()
   const env = { ...process.env, ...shell.env }
@@ -50,12 +51,13 @@ async function smoke() {
     storagePath: path.join(privateRoot, 'workspace.json'),
     tracesRoot: path.join(privateRoot, 'traces'),
     processRegistry,
+    managedSupervisorPath: path.join(__dirname, '..', 'native', 'build', 'meldwork-supervisor'),
     detectAgents: async () => agents,
     credentialState: (kind, agent) => resolveNativeCredentialState(kind, { env, executable: agent.executable }),
     naturalAgentResponses: true,
     runAgentTimeoutMs: 90_000,
     runAgent: async (agent, prompt, directory, options) => {
-      if (calls.length >= (scenario === 'review' ? 20 : 8)) throw new Error('SMOKE_CALL_LIMIT')
+      if (calls.length >= (scenario === 'review' ? 20 : scenario === 'recovery' ? 4 : 8)) throw new Error('SMOKE_CALL_LIMIT')
       const role = prompt.startsWith('You are the Meldwork collaboration controller') ? 'controller' : 'worker'
       calls.push({ role })
       const call = calls.length
@@ -72,21 +74,33 @@ async function smoke() {
   const directory = path.join(privateRoot, 'artifacts')
   const native = createRoomNativeRuntime({ repository, workspace,
     artifactSnapshots: createArtifactSnapshots({ roomDb, repository, directory, privateRoot }) })
-  const service = createRoomService({ roomDb, repository, invokeAgent: native.invokeAgent, resolveGroup: native.resolveTarget,
+  let injectUnknown = scenario === 'recovery'
+  const invokeAgent = async (...args) => {
+    const result = await native.invokeAgent(...args)
+    if (injectUnknown) {
+      injectUnknown = false
+      throw Object.assign(new Error('SMOKE_UNKNOWN_EXECUTION'), { unknown: true })
+    }
+    return result
+  }
+  const service = createRoomService({ roomDb, repository, invokeAgent, resolveGroup: native.resolveTarget,
     decideController: createControllerAgent({ repository, invokeAgent: native.invokeAgent, resolveGroup: native.resolveTarget }),
-    autoRunEffects: true,
+    autoRunEffects: scenario !== 'recovery',
     onControllerError: error => { fatal ||= error; console.error(JSON.stringify({ stage: 'controller_error', code: error.code || error.message })) },
     onEffectError: error => { fatal ||= error; console.error(JSON.stringify({ stage: 'worker_error', code: error.code || error.message })) },
     getInvocationRecords: runId => processRegistry.getInvocationRecords(runId),
   })
   const read = createArtifactReader({ roomDb, directory })
-  const { roomId, chatId } = service.bootstrap({ name: 'Real CLI smoke', workspace: workdir, providers: [provider], allowedCapabilities: ['text'] })
+  const { roomId, chatId } = service.bootstrap({ name: 'Real CLI smoke', workspace: canonicalWorkdir, providers: [provider], allowedCapabilities: ['text'] })
   const startedAt = Date.now()
   let summary
   let failure = null
   try {
     service.applyUserCommand({ type: 'set_workspace_write', chatId, commandId: 'smoke-write-grant', allowWrite: true })
-    if (scenario === 'review') {
+    if (scenario === 'recovery') {
+      summary = await require('./smoke-room-recovery.cjs').runRecoverySmoke({ service, repository, roomId, chatId, workdir, processRegistry, provider })
+      summary = { ...summary, provider, calls: calls.length, elapsedMs: Date.now() - startedAt }
+    } else if (scenario === 'review') {
       summary = await require('./smoke-room-review.cjs').runReviewSmoke({ service, repository, roomDb, roomId, chatId, workdir, read,
         checkError: () => { if (fatal) throw fatal } })
       summary = { ...summary, provider, calls: calls.length, elapsedMs: Date.now() - startedAt }
@@ -145,13 +159,19 @@ async function smoke() {
   try {
     const persisted = createRoomRepository(reopened).getRoomSnapshot(roomId)
     const persistedContext = createRoomRepository(reopened).getChatContext(chatId)
-    if (persistedContext.revision !== summary.contextRevision
-        || (summary.contextSourceMessageId && !persistedContext.context?.changes.sourceMessageIds?.includes(summary.contextSourceMessageId))) throw new Error('SMOKE_REOPEN_CONTEXT_LOST')
-    if (!persisted.artifacts.some(item => item.id === summary.artifactId)
-        || !persisted.reports.some(item => item.artifact_ids_json.includes(summary.artifactId))
-        || !persisted.attentions.some(item => item.id === summary.attentionId)) throw new Error('SMOKE_REOPEN_STATE_LOST')
-    const diff = await createArtifactReader({ roomDb: reopened, directory })({ roomId, artifactId: summary.artifactId })
-    if (!diff.text.includes('@@')) throw new Error('SMOKE_REOPEN_DIFF_LOST')
+    if (scenario !== 'recovery' && (persistedContext.revision !== summary.contextRevision
+        || (summary.contextSourceMessageId && !persistedContext.context?.changes.sourceMessageIds?.includes(summary.contextSourceMessageId)))) throw new Error('SMOKE_REOPEN_CONTEXT_LOST')
+    if (scenario === 'recovery') {
+      if (persisted.tasks.length !== 1 || persisted.assignments.length !== 2 || persisted.tasks[0].status !== 'done'
+          || !persisted.assignments.some(item => item.id === summary.originalAssignmentId && item.outcome === 'interrupted')
+          || !persisted.assignments.some(item => item.id === summary.replacementAssignmentId && item.outcome === 'ready')) throw new Error('SMOKE_REOPEN_RECOVERY_LOST')
+    } else {
+      if (!persisted.artifacts.some(item => item.id === summary.artifactId)
+          || !persisted.reports.some(item => item.artifact_ids_json.includes(summary.artifactId))
+          || !persisted.attentions.some(item => item.id === summary.attentionId)) throw new Error('SMOKE_REOPEN_STATE_LOST')
+      const diff = await createArtifactReader({ roomDb: reopened, directory })({ roomId, artifactId: summary.artifactId })
+      if (!diff.text.includes('@@')) throw new Error('SMOKE_REOPEN_DIFF_LOST')
+    }
     if (scenario === 'review') {
       if (!persisted.artifacts.some(item => item.id === summary.implementationArtifactId)
           || !persisted.reports.some(item => item.id === summary.reviewReportId)

@@ -6,13 +6,13 @@
 
 `desktop/src/room-engine/` 已提供私有 SQLite 账本、统一消息入口、ControllerAction/UserCommand/PlatformTransition 校验、Report 导入和状态推导、outbox、Supervisor 事实记录，以及 main/preload 生命周期接线。Controller 的批次动作、派发 effect 和审计在同一事务内提交；Agent 消息不能直接授权派发。数据库目录使用 `0700`、文件使用 `0600`（Windows 除外）。启动恢复会将崩溃遗留 running effects 标为 unknown 并产生 Attention，不自动重放；未启动的 pending effects 仍可继续消费。详细能力和未完成项见 Phase 4 与下方当前实现进度。
 
-当前切片已接入独立的 v2 Renderer 页面，尚未接入旧 Chat 迁移。`controller-agent.cjs` 已在 main 中通过 `native-runtime.cjs` 连接原生 `invokeAgent`：按 Room Provider 配置顺序选择首个 Provider，验证 Chat/目录归属与已安装 Agent；创建本次调用的临时执行描述，不查找已有 group，也不创建隐藏群聊。Controller 强制只读、不写入旧消息/Session、严格解析 JSON；Worker 写入需要用户授权与根目录独占租约。Assignment Runner 已补齐原生接口要求的 promptOverride/contextPackId，并带入角色 Prompt、任务创建时的协作约定和 Report 输出要求。独立 Controller Session 已支持批次幂等、context revision 校验和结构化决策审计；动态角色创建与 Prompt 更新已受 Room Provider/能力白名单约束。Room schema 已升级到 v3，既有 Room 默认只读。已在 Electron main 使用真实 Claude Code CLI 跑通自动组队、单文档任务、结构化 Report、产物快照/diff 和确认 Attention，并验证账本重开；真实多 Agent 评审与平台心跳已有闭环验收，原生会话续跑和异常恢复的真实 CLI 验收仍待完成，未运行仓库全量测试。
+当前切片已接入独立的 v2 Renderer 页面，尚未接入旧 Chat 迁移。`controller-agent.cjs` 已在 main 中通过 `native-runtime.cjs` 连接原生 `invokeAgent`：按 Room Provider 配置顺序选择首个 Provider，验证 Chat/目录归属与已安装 Agent；创建本次调用的临时执行描述，不查找已有 group，也不创建隐藏群聊。Controller 强制只读、不写入旧消息/Session、严格解析 JSON；Worker 写入需要用户授权与根目录独占租约。Assignment Runner 已补齐原生接口要求的 promptOverride/contextPackId，并带入角色 Prompt、任务创建时的协作约定和 Report 输出要求。独立 Controller Session 已支持批次幂等、context revision 校验和结构化决策审计；动态角色创建与 Prompt 更新已受 Room Provider/能力白名单约束。Room schema 已升级到 v3，既有 Room 默认只读。已在 Electron main 使用真实 Claude Code CLI 跑通自动组队、单文档任务、结构化 Report、产物快照/diff 和确认 Attention，并验证账本重开；真实多 Agent 评审、平台心跳和异常恢复均已有闭环验收，原生会话续跑的真实 CLI 验收仍待完成，未运行仓库全量测试。
 
 Assignment Runner 现已在每个运行中的 Assignment 上由平台定时写入 `session_liveness`（默认 30 秒，随运行启动，完成/失败/取消后清理）；这是真实调用仍由平台持有的 liveness 事实，不依赖 Worker 自报消息。Electron Node 定向测试已覆盖长调用期间心跳产生及结束后停止写入。长任务的真实 CLI、原生会话续跑和异常恢复验收仍待完成。
 
 Supervisor 的 stale 查询现在按事件序列同时读取 `session_liveness` 与 `session_exited`；退出事件晚于最后心跳时不会再把已结束 Assignment 误报为 stale。该边界已有 Electron Node 定向回归测试。
 
-恢复后的显式 `retry_task`/`handoff_task` 已完成一次替代 Assignment 的真实执行闭环：命令先完成残留进程对账，再创建带 `previousAssignmentId` 的新尝试和 pending effect；effect runner 启动新 Assignment，Worker 返回 `ready` Report 后，替代 Assignment 进入 `completed`、Task 推导为 `done`，历史尝试和 Report 保留。该路径已有 Electron Node 定向测试；测试使用替身 Agent，真实 CLI 异常恢复 smoke 仍待补齐。
+恢复后的显式 `retry_task`/`handoff_task` 已完成一次替代 Assignment 的真实执行闭环：命令先完成残留进程对账，再创建带 `previousAssignmentId` 的新尝试和 pending effect；effect runner 启动新 Assignment，Worker 返回 `ready` Report 后，替代 Assignment 进入 `completed`、Task 推导为 `done`，历史尝试和 Report 保留。该路径已有 Electron Node 定向测试，并已在真实 Claude Code CLI 上复验 unknown 执行隔离、ProcessRegistry 进程对账、显式 retry、ready Report、Task done 和数据库重开（4 次 CLI 调用，约 62 秒，`reopenVerified: true`）。
 
 Assignment Runner 对所有明确标记为未知结果的原生调用统一进入 `waiting/outcome=unknown`，创建恢复 Attention，并保留写入租约；只有 Supervisor 观察到进程确实结束后才写入 `session_exited` 并允许用户 retry/handoff。此前只有终止确认失败走这条路径，现已补上普通未知调用的回归测试，避免未知结果被误记为 `failed` 而绕过进程对账。
 
@@ -26,7 +26,7 @@ Assignment Runner 对所有明确标记为未知结果的原生调用统一进�
 
 本轮完成真实的“多 Agent 评审 → 用户决定 → 继续实施”纵向复验：Electron main 中使用真实 Claude Code CLI，在临时 Room/Chat 内自动创建文档作者、只读评审者和实施者三个独立角色。文档任务与评审任务各完成一次 Assignment；评审完成后才创建 approval Attention，smoke 通过同一 UserCommand 入口接受文档并回答 `implement`，之后才创建并派发实施任务。实施者写入 `src/add.cjs` 与 `test/add.test.cjs`，平台在同一临时项目中用 Electron 内置 Node 执行 `node --test` 和额外契约断言；最终 3 个 Task、3 个 Assignment、3 个 Report、文档/实施 Artifact、Attention 和用户决定事件均通过数据库重开校验，实施派发事件序号晚于用户决定。最近一次复验 10 次真实 CLI 调用、约 129 秒，`reopenVerified: true`。
 
-真实 CLI smoke 现在也接入了受管理 `ProcessRegistry`，并将其记录提供给 v2 Room Service 的进程对账入口；普通文档场景复验 6 次 CLI 调用、约 47 秒，数据库重开和协作约定更新均通过。异常退出场景尚未在真实 Provider 上自动注入，下一步只补这一条纵向 smoke，不引入旧 Session 续跑机制。
+真实 CLI smoke 现在也接入了受管理 `ProcessRegistry`，并将其记录提供给 v2 Room Service 的进程对账入口；普通文档场景复验 6 次 CLI 调用、约 47 秒，数据库重开和协作约定更新均通过。异常恢复场景已在真实 Claude Code CLI 上自动注入一次 unknown，确认平台不伪造 `session_exited`，进程记录确认结束后才允许用户 retry，并完成替代 Assignment；恢复 smoke 4 次 CLI 调用、约 62 秒，数据库重开验证通过。不引入旧 Session 续跑机制。
 
 验收过程中发现原生 CLI 可能在机器 Report 标记后追加说明文字，导致原先要求标记位于回复末尾的解析器误判“无 Report”。`report-importer` 现从消息中读取最后一个 `[[MELDWORK_REPORT:{...}]]` 标记，仍对 JSON 字段、kind、摘要、Artifact 范围做严格校验；新增定向测试覆盖标记后有 prose tail 的情况。实施 Agent 的 `workspace-write` 会话在本机仍可能因 CLI Bash 审批策略返回 blocked，因此该 smoke 明确由 Agent 写入代码与测试，平台验收阶段执行测试命令；这保留了真实评审/用户决定/实施调度链路，同时不把交互式审批假设硬编码进产品。
 
