@@ -1,45 +1,66 @@
 <template>
-  <details class="trace-tool-activity" open>
-    <summary>
-      <BuildOutline aria-hidden="true" />
-      <span>{{ t('trace.steps.toolActivity') }}</span>
-      <small>{{ t('trace.steps.toolCount', { count: tools.length }) }}</small>
-      <span class="trace-tool-activity-status" :data-status="overallStatus">{{ statusLabel(overallStatus) }}</span>
+  <details
+    class="trace-activity-block trace-tool-block"
+    :data-kind="block.kind"
+    :open="block.status === 'running' || defaultOpen"
+  >
+    <summary class="trace-activity-header">
+      <component
+        :is="block.kind === 'command' ? TerminalOutline : BuildOutline"
+        class="trace-activity-icon"
+        aria-hidden="true"
+      />
+      <span class="trace-activity-title">{{ title }}</span>
       <span class="trace-activity-spacer" />
+      <TraceStatusIcon :status="block.status" :t="t" />
       <ChevronDownOutline class="trace-activity-chevron" aria-hidden="true" />
     </summary>
-    <ul class="trace-tool-activity-list">
-      <li v-for="tool in tools" :key="tool.key">
-        <details class="trace-tool-row" :data-status="tool.status || 'running'">
-          <summary>
-            <TerminalOutline aria-hidden="true" />
-            <span class="trace-tool-row-copy">
-              <strong>{{ tool.title }}</strong>
-              <small v-if="tool.summary">{{ tool.summary }}</small>
-            </span>
-            <span class="trace-tool-row-status" :data-status="tool.status">
-              {{ statusLabel(tool.status) }}
-            </span>
-            <ChevronDownOutline class="trace-activity-chevron" aria-hidden="true" />
+
+    <ul class="trace-step-rows">
+      <li v-for="item in block.items" :key="item.key">
+        <details class="trace-step-row" :data-status="item.status || 'completed'">
+          <summary class="trace-step-row-summary">
+            <template v-if="block.kind === 'command'">
+              <span class="trace-step-row-command">
+                {{ item.command || item.summary || item.title || t('trace.steps.tool') }}
+              </span>
+            </template>
+            <template v-else>
+              <span class="trace-step-row-title">{{ item.title || t('trace.steps.tool') }}</span>
+              <span v-if="item.summary" class="trace-step-row-note">{{ item.summary }}</span>
+            </template>
+            <span class="trace-activity-spacer" />
+            <TraceStatusIcon :status="item.status" :t="t" />
+            <ChevronDownOutline class="trace-step-row-chevron" aria-hidden="true" />
           </summary>
-          <div class="trace-tool-row-detail">
-            <pre v-if="tool.command" class="trace-tool-shell"><span aria-hidden="true">$ </span>{{ tool.command }}</pre>
-            <pre v-if="tool.output" class="trace-tool-row-output">{{ tool.output }}</pre>
+
+          <div class="trace-step-row-detail">
+            <pre v-if="item.command" class="trace-step-command"><span aria-hidden="true">$ </span>{{ item.command }}</pre>
+            <pre v-if="item.output" class="trace-step-output">{{ item.output }}</pre>
             <button
-              v-else-if="tool.outputBlob && !loadedBlobs[tool.key]"
-              class="trace-tool-load"
+              v-else-if="item.outputBlob && !loadedBlobs[item.key]"
+              class="trace-step-load"
               type="button"
-              :disabled="loadingBlobs[tool.key]"
-              @click="loadBlob(tool)"
+              :disabled="loadingBlobs[item.key]"
+              @click="loadBlob(item)"
             >
-              {{ loadingBlobs[tool.key] ? t('trace.steps.loadingOutput') : t('trace.steps.loadLargeOutput') }}
+              {{ loadingBlobs[item.key] ? t('trace.steps.loadingOutput') : t('trace.steps.loadLargeOutput') }}
             </button>
-            <pre v-else-if="loadedBlobs[tool.key]" class="trace-tool-row-output">{{ loadedBlobs[tool.key] }}</pre>
-            <details v-if="tool.inputText" class="trace-tool-input">
+            <pre v-else-if="loadedBlobs[item.key]" class="trace-step-output">{{ loadedBlobs[item.key] }}</pre>
+            <details v-if="item.inputText" class="trace-step-input">
               <summary>{{ t('trace.steps.input') }}</summary>
-              <pre>{{ tool.inputText }}</pre>
+              <pre>{{ item.inputText }}</pre>
             </details>
-            <p v-if="!tool.command && !tool.output && !tool.inputText && !tool.outputBlob" class="trace-tool-empty">
+            <p
+              v-if="item.exitCode !== null && item.exitCode !== undefined"
+              class="trace-step-exit"
+            >
+              {{ t('trace.activity.exitCode', { code: item.exitCode }) }}
+            </p>
+            <p
+              v-if="!item.command && !item.output && !item.inputText && !item.outputBlob"
+              class="trace-step-empty"
+            >
               {{ t('trace.steps.noOutput') }}
             </p>
           </div>
@@ -56,98 +77,35 @@ import {
   ChevronDownOutline,
   TerminalOutline,
 } from '@vicons/ionicons5'
+import TraceStatusIcon from './TraceStatusIcon.vue'
 
 const props = defineProps({
+  block: { type: Object, required: true },
   controller: { type: Object, required: true },
-  steps: { type: Array, required: true },
+  defaultOpen: { type: Boolean, default: false },
   t: { type: Function, required: true },
 })
 
 const loadedBlobs = reactive({})
 const loadingBlobs = reactive({})
 
-const tools = computed(() => {
-  const groups = new Map()
-  for (const step of props.steps) {
-    const key = step.toolCallId || `tool:${step.seq}`
-    let group = groups.get(key)
-    if (!group) {
-      group = { key, steps: [] }
-      groups.set(key, group)
-    }
-    group.steps.push(step)
-  }
-  return [...groups.values()].map(group => {
-    const inputStep = [...group.steps].reverse().find(step => step.input !== undefined)
-    const commandStep = group.steps.find(step => step.command)
-    const outputStep = [...group.steps].reverse().find(step => step.output)
-    const blobStep = [...group.steps].reverse().find(step => step.blobs?.output)
-    const last = group.steps.at(-1) || {}
-    const title = group.steps
-      .map(step => String(step.title || '').trim())
-      .find(title => title && !['tool', 'tool_result', 'event'].includes(title.toLowerCase()))
-      || commandSummary(group.steps)
-      || props.t('trace.steps.tool')
-    return {
-      key: group.key,
-      title,
-      summary: commandSummary(group.steps),
-      status: last.status || group.steps[0]?.status || '',
-      command: commandStep?.command || '',
-      inputText: inputText(inputStep?.input),
-      output: outputStep?.output || '',
-      outputBlob: blobStep?.blobs?.output || null,
-    }
-  })
-})
+const title = computed(() => (
+  props.block.kind === 'command'
+    ? props.t('trace.activity.commands', { count: props.block.count })
+    : props.t('trace.activity.tools', { count: props.block.count })
+))
 
-const overallStatus = computed(() => {
-  if (tools.value.some(tool => tool.status === 'running')) return 'running'
-  if (tools.value.some(tool => tool.status === 'failed')) return 'failed'
-  return 'completed'
-})
-
-function commandSummary(steps) {
-  for (const step of steps) {
-    if (step.command) return oneLine(step.command)
-    const input = step.input
-    if (!input) continue
-    if (typeof input === 'string') return oneLine(input)
-    const value = input.command || input.file_path || input.path || input.pattern
-      || input.query || input.description
-    if (typeof value === 'string' && value.trim()) return oneLine(value)
-    try { return oneLine(JSON.stringify(input)) } catch { return '' }
-  }
-  return ''
-}
-
-function inputText(input) {
-  if (input === undefined || input === null || input === '') return ''
-  if (typeof input === 'string') return input
-  try { return JSON.stringify(input, null, 2) } catch { return '' }
-}
-
-function oneLine(value) {
-  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 160)
-}
-
-function statusLabel(status) {
-  const key = `trace.steps.status.${status}`
-  const label = props.t(key)
-  return label === key ? status || '' : label
-}
-
-async function loadBlob(tool) {
-  if (!tool.outputBlob || loadingBlobs[tool.key]) return
-  loadingBlobs[tool.key] = true
+async function loadBlob(item) {
+  if (!item.outputBlob || loadingBlobs[item.key]) return
+  loadingBlobs[item.key] = true
   try {
-    const result = await props.controller.loadBlob?.(tool.outputBlob.blobId, {
+    const result = await props.controller.loadBlob?.(item.outputBlob.blobId, {
       offset: 0,
-      length: Math.min(Number(tool.outputBlob.bytes) || 256 * 1024, 256 * 1024),
+      length: Math.min(Number(item.outputBlob.bytes) || 256 * 1024, 256 * 1024),
     })
-    loadedBlobs[tool.key] = String(result?.text || '')
+    loadedBlobs[item.key] = String(result?.text || '')
   } finally {
-    loadingBlobs[tool.key] = false
+    loadingBlobs[item.key] = false
   }
 }
 </script>

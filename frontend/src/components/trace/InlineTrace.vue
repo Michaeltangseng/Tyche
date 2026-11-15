@@ -4,6 +4,7 @@
       class="agent-activity-summary"
       type="button"
       :aria-expanded="expanded ? 'true' : 'false'"
+      :title="summaryText"
       @click="toggle"
     >
       <ChevronForwardOutline class="agent-activity-chevron" :class="{ expanded }" aria-hidden="true" />
@@ -24,13 +25,20 @@
     </button>
 
     <div v-if="expanded" class="agent-activity-details">
-      <TraceStepList v-if="hasFullTrace" :controller="controller" :live="live" />
+      <TraceStepList
+        v-if="hasFullTrace"
+        :controller="controller"
+        :live="live"
+        :preview-file="previewFile"
+        :workdir="workdir"
+        @preview-file="previewPath"
+      />
       <p v-else-if="!loading" class="inline-trace-empty">
         {{ live ? t('trace.inline.waiting') : t('trace.steps.noFullTrace') }}
       </p>
     </div>
 
-    <div v-if="visibleFiles.length" class="agent-file-list">
+    <div v-if="!expanded && visibleFiles.length" class="agent-file-list">
       <article
         v-for="file in visibleFiles"
         :key="file.path"
@@ -83,7 +91,7 @@ import {
   WarningOutline,
 } from '@vicons/ionicons5'
 import { runStatusTone } from '../../conversationTimelineModel.js'
-import { summarizeTraceActivity } from '../../traceActivity.js'
+import { buildTraceActivities } from '../../tracePresentation.js'
 import { useTraceStream } from '../../composables/useTraceStream.js'
 import TraceStepList from './TraceStepList.vue'
 
@@ -130,23 +138,33 @@ const controller = {
   t: props.t,
 }
 
-const activity = computed(() => summarizeTraceActivity(steps.value || [], { workdir: props.workdir }))
-const visibleFiles = computed(() => activity.value.files.slice(0, MAX_FILES))
-const hiddenFileCount = computed(() => Math.max(0, activity.value.files.length - MAX_FILES))
+const activities = computed(() => buildTraceActivities(steps.value || [], {
+  workdir: props.workdir,
+}))
+const summary = computed(() => activities.value.summary)
+const visibleFiles = computed(() => summary.value.fileList.slice(0, MAX_FILES))
+const hiddenFileCount = computed(() => Math.max(0, summary.value.fileList.length - MAX_FILES))
 const summaryText = computed(() => {
   if (loading.value && !steps.value.length) return props.t('trace.inline.loading')
   if (!hasFullTrace.value) {
     return props.t(props.live ? 'trace.inline.waiting' : 'trace.inline.noSteps')
   }
   const parts = []
-  if (activity.value.thinkingCount) {
-    parts.push(props.t('trace.inline.thinking', { count: activity.value.thinkingCount }))
+  if (summary.value.thinking) {
+    parts.push(props.t('trace.activity.thinking', { count: summary.value.thinking }))
   }
-  if (activity.value.toolCount) {
-    parts.push(props.t('trace.inline.tools', { count: activity.value.toolCount }))
+  if (summary.value.commands) {
+    parts.push(props.t('trace.activity.commands', { count: summary.value.commands }))
   }
-  if (props.elapsedLabel) parts.push(props.elapsedLabel)
-  return parts.length ? parts.join(' · ') : props.t('trace.inline.title')
+  if (summary.value.files) {
+    parts.push(props.t('trace.activity.files', { count: summary.value.files }))
+  }
+  if (summary.value.tools) {
+    parts.push(props.t('trace.activity.tools', { count: summary.value.tools }))
+  }
+  const shown = parts.slice(0, 3)
+  if (props.elapsedLabel) shown.push(props.elapsedLabel)
+  return shown.length ? shown.join(' · ') : props.t('trace.inline.title')
 })
 const hasStatus = computed(() => Boolean(props.status) || props.live)
 const tone = computed(() => (
@@ -172,9 +190,13 @@ function toggle() {
   expanded.value = !expanded.value
 }
 
+function previewPath(path) {
+  if (!path) return
+  emit('preview-file', path)
+}
+
 function preview(file) {
-  if (!file?.relativePath) return
-  emit('preview-file', file.relativePath)
+  previewPath(file?.relativePath)
 }
 
 function fileExtension(path) {

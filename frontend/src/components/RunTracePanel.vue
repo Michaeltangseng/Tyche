@@ -141,6 +141,12 @@
       </p>
 
       <div v-if="selectedItem" class="trace-panel-scroll">
+        <section v-if="selectedItem.output" class="trace-answer-section">
+          <header class="trace-section-heading">
+            <strong>{{ t('trace.finalAnswer') }}</strong>
+          </header>
+          <MarkdownMessage :content="selectedItem.output" />
+        </section>
         <TraceStepList v-if="traceHasFull" :controller="traceStepController" />
         <p v-else-if="traceStatus" class="trace-step-no-full">
           {{ t('trace.steps.noFullTrace') }}
@@ -419,6 +425,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import HumanGateDecisionContext from './HumanGateDecisionContext.vue'
+import MarkdownMessage from './MarkdownMessage.vue'
 import {
   CheckmarkCircleOutline,
   ChevronDownOutline,

@@ -1257,8 +1257,7 @@
 }
 
 .agent-activity-details {
-  padding: 2px 4px 2px 10px;
-  border-left: 2px solid color-mix(in srgb, var(--border) 82%, transparent);
+  padding: 2px 4px 2px 2px;
 }
 
 .inline-trace-empty {

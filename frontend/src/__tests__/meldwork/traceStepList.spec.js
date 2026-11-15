@@ -30,12 +30,12 @@ function controller(overrides = {}) {
 }
 
 describe('TraceStepList', () => {
-  it('groups tool steps by toolCallId and renders thinking and messages', () => {
+  it('groups command calls and renders thinking blocks', () => {
     const wrapper = mount(TraceStepList, { props: { controller: controller() } })
-    expect(wrapper.findAll('.trace-tool-activity')).toHaveLength(1)
-    expect(wrapper.get('.trace-tool-activity').text()).toContain('Bash')
-    expect(wrapper.get('.trace-tool-activity').text()).toContain('ls -la')
-    expect(wrapper.text()).toContain('trace.steps.thinking')
+    expect(wrapper.findAll('.trace-tool-block')).toHaveLength(1)
+    expect(wrapper.get('.trace-tool-block').text()).toContain('trace.activity.commands:1')
+    expect(wrapper.get('.trace-tool-block').text()).toContain('ls -la')
+    expect(wrapper.text()).toContain('trace.activity.thinking:1')
     expect(wrapper.text()).toContain('I should inspect.')
   })
 
@@ -55,7 +55,7 @@ describe('TraceStepList', () => {
     }])
     const fixture = controller({ steps })
     const wrapper = mount(TraceStepList, { props: { controller: fixture } })
-    await wrapper.get('.trace-tool-load').trigger('click')
+    await wrapper.get('.trace-step-load').trigger('click')
     await wrapper.vm.$nextTick()
     expect(fixture.loadBlob).toHaveBeenCalledWith('blob-1', { offset: 0, length: 100 })
     expect(wrapper.text()).toContain('blob output')

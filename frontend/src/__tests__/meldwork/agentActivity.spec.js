@@ -70,8 +70,8 @@ describe('InlineTrace activity summary', () => {
     const { wrapper } = mountTrace()
 
     const summary = wrapper.get('.agent-activity-summary')
-    expect(summary.text()).toContain('trace.inline.thinking:1')
-    expect(summary.text()).toContain('trace.inline.tools:1')
+    expect(summary.text()).toContain('trace.activity.thinking:1')
+    expect(summary.text()).toContain('trace.activity.files:1')
     expect(summary.text()).toContain('elapsed')
     expect(summary.get('.agent-activity-status').attributes('data-status')).toBe('completed')
     expect(wrapper.find('.agent-activity-details').exists()).toBe(false)
@@ -90,7 +90,7 @@ describe('InlineTrace activity summary', () => {
     expect(wrapper.get('.agent-activity-summary').attributes('aria-expanded')).toBe('true')
     expect(streamState.current.setViewing).toHaveBeenCalledWith(true)
 
-    await wrapper.get('.agent-file-actions button').trigger('click')
+    await wrapper.get('.trace-file-preview').trigger('click')
     expect(previewFile).toHaveBeenCalledWith('docs/requirements.md')
   })
 

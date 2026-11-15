@@ -62,7 +62,7 @@ export function resolveToolInput(steps = []) {
   return null
 }
 
-function toolTitle(steps = []) {
+export function toolTitle(steps = []) {
   for (const step of steps) {
     const title = String(step?.title || '').trim()
     if (title && !['tool', 'tool_result', 'event', 'file_change'].includes(title.toLowerCase())) {
@@ -72,7 +72,7 @@ function toolTitle(steps = []) {
   return ''
 }
 
-function toolOutput(steps = []) {
+export function toolOutput(steps = []) {
   for (let index = steps.length - 1; index >= 0; index -= 1) {
     if (typeof steps[index]?.output === 'string' && steps[index].output) {
       return steps[index].output
@@ -81,7 +81,7 @@ function toolOutput(steps = []) {
   return ''
 }
 
-function toolStatus(steps = []) {
+export function toolStatus(steps = []) {
   const last = steps.at(-1)
   return String(last?.status || steps[0]?.status || 'completed')
 }

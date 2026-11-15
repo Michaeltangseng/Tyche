@@ -3,7 +3,6 @@
     <header class="trace-step-list-header">
       <div class="trace-step-list-title">
         <strong>{{ t('trace.steps.title') }}</strong>
-        <small v-if="items.length">{{ visibleItems.length }} / {{ items.length }}</small>
       </div>
       <button class="trace-step-view-toggle" type="button" @click="rawView = !rawView">
         {{ rawView ? t('trace.steps.structuredView') : t('trace.steps.rawView') }}
@@ -14,26 +13,6 @@
     </p>
     <TraceRawView v-if="rawView" :steps="rawSteps" />
     <template v-else>
-      <template v-for="item in visibleItems" :key="item.key">
-        <TraceToolActivity
-          v-if="item.kind === 'tool-block'"
-          :steps="item.steps"
-          :controller="controller"
-          :t="t"
-        />
-        <details v-else-if="item.kind === 'thinking'" class="trace-activity trace-activity-thinking">
-          <summary>
-            <SparklesOutline aria-hidden="true" />
-            <span>{{ t('trace.steps.thinking') }}</span>
-            <small v-if="item.count > 1">{{ t('trace.steps.chunks', { count: item.count }) }}</small>
-            <ChevronDownOutline class="trace-activity-chevron" aria-hidden="true" />
-          </summary>
-          <pre>{{ item.output }}</pre>
-        </details>
-      </template>
-      <p v-if="!items.length && !loading" class="trace-step-empty">
-        {{ t('trace.steps.empty') }}
-      </p>
       <button
         v-if="hasMore"
         class="trace-step-more"
@@ -43,14 +22,98 @@
       >
         {{ loading ? t('trace.steps.loading') : t('trace.steps.loadOlder') }}
       </button>
-      <button
-        v-else-if="visibleCount < items.length"
-        class="trace-step-more"
-        type="button"
-        @click="visibleCount += STEP_PAGE"
-      >
-        {{ t('trace.steps.showMore') }}
-      </button>
+      <template v-for="(block, blockIndex) in blocks" :key="block.key">
+        <TraceToolActivity
+          v-if="block.kind === 'command' || block.kind === 'tool'"
+          :block="block"
+          :controller="controller"
+          :default-open="blockIndex === blocks.length - 1"
+          :t="t"
+        />
+
+        <details
+          v-else-if="block.kind === 'thinking'"
+          class="trace-activity-block trace-thinking-block"
+        >
+          <summary class="trace-activity-header">
+            <SparklesOutline class="trace-activity-icon" aria-hidden="true" />
+            <span class="trace-activity-title">
+              {{ t('trace.activity.thinking', { count: block.count }) }}
+            </span>
+            <span class="trace-activity-spacer" />
+            <TraceStatusIcon :status="block.status" :t="t" />
+            <ChevronDownOutline class="trace-activity-chevron" aria-hidden="true" />
+          </summary>
+          <pre class="trace-thinking-text">{{ block.text }}</pre>
+        </details>
+
+        <details
+          v-else-if="block.kind === 'file'"
+          class="trace-activity-block trace-file-block"
+          open
+        >
+          <summary class="trace-activity-header">
+            <DocumentTextOutline class="trace-activity-icon" aria-hidden="true" />
+            <span class="trace-activity-title">
+              {{ t('trace.activity.files', { count: block.count }) }}
+            </span>
+            <span class="trace-activity-spacer" />
+            <TraceStatusIcon :status="block.status" :t="t" />
+            <ChevronDownOutline class="trace-activity-chevron" aria-hidden="true" />
+          </summary>
+          <ul class="trace-file-list">
+            <li
+              v-for="file in block.files"
+              :key="file.path"
+              class="trace-file-row"
+              :data-status="file.status"
+            >
+              <component :is="fileIcon(file.path)" class="trace-file-icon" aria-hidden="true" />
+              <span class="trace-file-copy">
+                <span class="trace-file-name">
+                  <strong>{{ file.name }}</strong>
+                  <span
+                    v-if="file.deleted"
+                    class="trace-file-badge removed"
+                  >{{ t('trace.files.deleted') }}</span>
+                  <span
+                    v-else-if="file.created"
+                    class="trace-file-badge"
+                  >{{ t('trace.files.created') }}</span>
+                </span>
+                <small>{{ file.path }}</small>
+              </span>
+              <span class="trace-file-stats" aria-hidden="true">
+                <span v-if="file.additions" class="added">+{{ file.additions }}</span>
+                <span v-if="file.deletions" class="removed">-{{ file.deletions }}</span>
+              </span>
+              <button
+                v-if="previewFile && file.relativePath"
+                class="trace-file-preview"
+                type="button"
+                @click.stop="emit('preview-file', file.relativePath)"
+              >
+                {{ t('trace.files.preview') }}
+              </button>
+            </li>
+          </ul>
+        </details>
+
+        <details v-else-if="block.kind === 'plan'" class="trace-activity-block trace-plan-block">
+          <summary class="trace-activity-header">
+            <ListOutline class="trace-activity-icon" aria-hidden="true" />
+            <span class="trace-activity-title">{{ t('trace.activity.plan') }}</span>
+            <span class="trace-activity-spacer" />
+            <TraceStatusIcon :status="block.status" :t="t" />
+            <ChevronDownOutline class="trace-activity-chevron" aria-hidden="true" />
+          </summary>
+          <pre class="trace-thinking-text">{{ block.text }}</pre>
+        </details>
+      </template>
+
+      <p v-if="!blocks.length && !loading" class="trace-step-empty">
+        {{ t('trace.steps.empty') }}
+      </p>
     </template>
   </section>
 </template>
@@ -59,19 +122,33 @@
 import { computed, ref } from 'vue'
 import {
   ChevronDownOutline,
+  CodeSlashOutline,
+  DocumentOutline,
+  DocumentTextOutline,
+  ImageOutline,
+  ListOutline,
   SparklesOutline,
 } from '@vicons/ionicons5'
+import { buildTraceActivities } from '../../tracePresentation.js'
 import TraceRawView from './TraceRawView.vue'
+import TraceStatusIcon from './TraceStatusIcon.vue'
 import TraceToolActivity from './TraceToolActivity.vue'
 
-const STEP_PAGE = 40
-const RAW_LIMIT = 200
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'])
+const CODE_EXTENSIONS = new Set([
+  'js', 'cjs', 'mjs', 'ts', 'tsx', 'jsx', 'vue', 'css', 'scss', 'less',
+  'html', 'json', 'yml', 'yaml', 'toml', 'sh', 'zsh', 'py', 'rb', 'go',
+  'rs', 'java', 'kt', 'swift', 'c', 'h', 'cc', 'cpp', 'hpp', 'sql',
+])
 
 const props = defineProps({
   controller: { type: Object, required: true },
   live: { type: Boolean, default: false },
+  previewFile: { type: Function, default: null },
+  workdir: { type: String, default: '' },
 })
 
+const emit = defineEmits(['preview-file'])
 const {
   steps,
   loading,
@@ -82,58 +159,23 @@ const {
 } = props.controller
 
 const rawView = ref(false)
-const visibleCount = ref(STEP_PAGE)
-
-const meaningfulSteps = computed(() => (steps.value || []).filter(step => (
-  !['raw', 'stderr', 'message'].includes(step.kind)
-)))
+const activities = computed(() => buildTraceActivities(steps.value || [], {
+  workdir: props.workdir,
+}))
+const blocks = computed(() => activities.value.blocks)
 const rawSteps = computed(() => (steps.value || [])
-  .filter(step => ['raw', 'stderr', 'message'].includes(step.kind))
-  .slice(-RAW_LIMIT))
+  .filter(step => ['message', 'raw', 'stderr'].includes(step.kind))
+  .slice(-200))
 
-const items = computed(() => {
-  const result = []
-  let thinking = null
-  let toolBlock = null
-  for (const step of meaningfulSteps.value) {
-    if (step.kind === 'thinking') {
-      toolBlock = null
-      if (!thinking) {
-        thinking = {
-          key: `thinking:${step.seq}`,
-          kind: 'thinking',
-          count: 0,
-          output: '',
-          seq: step.seq,
-        }
-        result.push(thinking)
-      }
-      thinking.count += 1
-      thinking.output += step.output || ''
-      continue
-    }
-    if (step.kind === 'tool') {
-      thinking = null
-      if (!toolBlock) {
-        toolBlock = {
-          key: `tools:${step.seq}`,
-          kind: 'tool-block',
-          steps: [],
-        }
-        result.push(toolBlock)
-      }
-      toolBlock.steps.push(step)
-      continue
-    }
-    thinking = null
-    toolBlock = null
-  }
-  return result
-})
+function fileExtension(path) {
+  return String(path || '').split('.').at(-1).toLowerCase()
+}
 
-const visibleItems = computed(() => (
-  props.live
-    ? items.value.slice(-visibleCount.value)
-    : items.value.slice(0, visibleCount.value)
-))
+function fileIcon(path) {
+  const extension = fileExtension(path)
+  if (IMAGE_EXTENSIONS.has(extension)) return ImageOutline
+  if (CODE_EXTENSIONS.has(extension)) return CodeSlashOutline
+  if (extension === 'md' || extension === 'txt') return DocumentTextOutline
+  return DocumentOutline
+}
 </script>
