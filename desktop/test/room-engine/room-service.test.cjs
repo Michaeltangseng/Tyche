@@ -44,7 +44,8 @@ test('snapshot returns the v2 room ledger grouped by chat', () => {
   assert.equal(snapshot.chats[0].id, chatId)
   const draftTask = snapshot.tasks.find(task => task.objective === 'Draft')
   assert.deepEqual(draftTask.source_message_ids_json, [message.messageId])
-  assert.equal(snapshot.assignments.at(-1).required, 0)
+  const draftAssignment = snapshot.assignments.find(assignment => assignment.task_id === draftTask.id)
+  assert.equal(draftAssignment.required, 0)
   roomDb.close()
 })
 
@@ -87,5 +88,27 @@ test('room service exposes assignment start only when the main process supplies 
   await run.promise
   assert.equal(bridged[0][0].id, 'group-1')
   assert.equal(bridged[0][5].chatId, state.chatId)
+  state.roomDb.close()
+})
+
+test('controller assignment is persisted as an outbox effect and can be executed', async () => {
+  const state = setup()
+  const taskId = state.repository.createTask({ chatId: state.chatId, objective: 'Ship API', createdBy: 'user-1' })
+  const service = createRoomService({
+    roomDb: state.roomDb,
+    repository: state.repository,
+    resolveGroup: () => ({ id: 'group-1', workdir: '/tmp/demo' }),
+    invokeAgent: async () => ({ message: { content: 'ready [[MELDWORK_REPORT:{"kind":"ready","summary":"shipped"}]]' } }),
+  })
+  const assigned = service.applyControllerAction({
+    type: 'assign', chatId: state.chatId, contextRevision: 0, taskId, roleId: state.roleId,
+    required: true, writeScopes: [],
+  })
+  assert.equal(assigned.assignmentId.length > 0, true)
+  const effects = state.roomDb.database.prepare('SELECT * FROM effects WHERE action_id = ?').all(assigned.event.eventId)
+  assert.equal(effects.length, 1)
+  const execution = await service.runNextEffect()
+  assert.equal(execution.effect.status, 'succeeded')
+  assert.equal(state.repository.getAssignmentContext(assigned.assignmentId).status, 'completed')
   state.roomDb.close()
 })

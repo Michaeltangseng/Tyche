@@ -1,12 +1,8 @@
 const crypto = require('node:crypto')
 
 const REPORT_EXIT_STATUS = Object.freeze({
-  progress: 'waiting',
-  ready: 'completed',
-  waiting: 'waiting',
-  blocked: 'blocked',
-  failed: 'failed',
-  handoff: 'waiting',
+  progress: 'waiting', ready: 'completed', waiting: 'waiting',
+  blocked: 'blocked', failed: 'failed', handoff: 'waiting',
 })
 
 function assertId(value, code) {
@@ -66,13 +62,14 @@ function createAssignmentRunner({ repository, supervisor, invokeAgent, resolveGr
             content,
           })
         }
-        const reportedStatus = report?.report ? REPORT_EXIT_STATUS[report.report.kind] : null
-        repository.markAssignmentExited({
-          assignmentId: assignment.id,
-          status: reportedStatus || 'waiting',
-          endedReason: report?.report ? null : 'process_exited_without_report',
-          outcome: report?.report ? report.report.kind : 'exited',
-        })
+        if (!report?.state) {
+          repository.markAssignmentExited({
+            assignmentId: assignment.id,
+            status: report?.report ? REPORT_EXIT_STATUS[report.report.kind] : 'waiting',
+            endedReason: report?.report ? null : 'process_exited_without_report',
+            outcome: report?.report ? report.report.kind : 'exited',
+          })
+        }
         supervisor.exited({ assignmentId: assignment.id, chatId: assignment.chat_id, runId, reason: 'completed' })
         return report?.report ? { ...result, roomReport: report.report } : result
       },

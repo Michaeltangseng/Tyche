@@ -84,6 +84,35 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup 
     return repository.getRoomSnapshot(input.roomId)
   }
 
+  function applyControllerAction(input, options) {
+    const result = actions.applyController(input, options)
+    if (result.assignmentId) {
+      const assignment = repository.getAssignmentContext(result.assignmentId)
+      outbox.enqueue({
+        chatId: input.chatId,
+        actionId: result.event?.eventId || null,
+        kind: 'start_assignment',
+        payload: { assignmentId: result.assignmentId, prompt: assignment?.objective || '' },
+        idempotencyKey: `start-assignment:${result.assignmentId}`,
+      })
+    }
+    return result
+  }
+
+  async function runNextEffect() {
+    return outbox.runOnce(async effect => {
+      if (effect.kind === 'start_assignment') {
+        if (!assignmentRunner) throw new Error('ROOM_ASSIGNMENT_RUNNER_UNAVAILABLE')
+        const run = assignmentRunner.start(effect.payload)
+        return run.promise
+      }
+      throw Object.assign(new Error('ROOM_EFFECT_HANDLER_MISSING'), {
+        code: 'ROOM_EFFECT_HANDLER_MISSING',
+        effectKind: effect.kind,
+      })
+    })
+  }
+
   return {
     bootstrap,
     snapshot,
@@ -94,7 +123,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup 
     submitMessage,
     editMessage: ingress.edit,
     deleteMessage: ingress.remove,
-    applyControllerAction: actions.applyController,
+    applyControllerAction,
     applyUserCommand: userCommands.apply,
     importReport,
     sessionStarted: sessions.started,
@@ -103,6 +132,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup 
     listStaleAssignments: sessions.listStale,
     enqueueEffect: outbox.enqueue,
     runEffectOnce: outbox.runOnce,
+    runNextEffect,
     retryUnknownEffect: outbox.retryUnknown,
     repository,
   }
