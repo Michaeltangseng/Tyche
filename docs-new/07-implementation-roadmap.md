@@ -45,7 +45,7 @@
 - `room-migrations.cjs`：schema migration、state.json 备份和失败回滚；
 - `room-repository.cjs`：领域对象的查询和写入；
 - `room-actions.cjs`：ControllerAction、UserCommand、PlatformTransition 的校验与落盘；
-- `room-outbox.cjs`：effect 入队、幂等、重试和 unknown 恢复；当前已实现基础状态机，真实 effect runner 仍在 Phase 3 接入。
+- `room-outbox.cjs`：effect 入队、幂等、重试和 unknown 恢复；已接入 `start_assignment` 的最小执行器，其他副作用仍在 Phase 3 扩展。
 - `report-importer.cjs`：解析严格的 `[[MELDWORK_REPORT:{...}]]` 机器标记，写入 Report 真源和 `report_received` 审计事件；不从自由文本推断任务完成。
 - `session-supervisor.cjs`：由主进程记录 session liveness 和退出事实，并查询 stale Assignment；Worker 自报消息不构成 liveness 证明。
 - `report-state.cjs`：根据最新 Report 推导 Assignment/Task 状态；状态转移不接受 Controller 自由设置。
