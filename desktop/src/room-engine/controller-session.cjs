@@ -9,14 +9,42 @@ function decode(value, fallback = []) {
   try { return value == null ? fallback : JSON.parse(value) } catch { return fallback }
 }
 
-function createControllerSession({ roomDb, repository, applyAction, decide, now = () => Date.now() } = {}) {
+function createControllerSession({ roomDb, repository, applyAction, decide, now = () => Date.now(), timeoutMs = 60_000 } = {}) {
   if (!roomDb || !repository || typeof applyAction !== 'function' || typeof decide !== 'function') {
     throw new TypeError('ROOM_CONTROLLER_SESSION_DEPENDENCIES_REQUIRED')
+  }
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2_147_483_647) {
+    throw new TypeError('ROOM_CONTROLLER_TIMEOUT_INVALID')
   }
 
   const activeChats = new Set()
 
-  async function processBatch({ chatId, batchId = `batch-${crypto.randomUUID()}`, contextRevision, messageIds = [], model = null } = {}) {
+  function evaluate(input, signal) {
+    const controller = new AbortController()
+    let timer
+    let onAbort
+    const evaluation = new Promise((resolve, reject) => {
+      const cancel = code => {
+        const error = Object.assign(new Error(code), { code })
+        reject(error)
+        controller.abort(error)
+      }
+      onAbort = () => cancel('ROOM_CONTROLLER_CANCELLED')
+      if (signal?.aborted) { onAbort(); return }
+      signal?.addEventListener('abort', onAbort, { once: true })
+      timer = setTimeout(() => cancel('ROOM_CONTROLLER_TIMEOUT'), timeoutMs)
+      try {
+        Promise.resolve(decide({ ...input, signal: controller.signal })).then(resolve, reject)
+      } catch (error) { reject(error) }
+    })
+    return evaluation.finally(() => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+    })
+  }
+
+  async function processBatch({ chatId, batchId = `batch-${crypto.randomUUID()}`, contextRevision, messageIds = [], model = null, signal } = {}) {
+    if (signal?.aborted) throw new Error('ROOM_CONTROLLER_CANCELLED')
     assertId(chatId, 'ROOM_CHAT_ID_INVALID')
     assertId(batchId, 'ROOM_CONTROLLER_BATCH_ID_INVALID')
     if (!Number.isInteger(contextRevision) || contextRevision < 0) throw new TypeError('ROOM_CONTROLLER_CONTEXT_REVISION_INVALID')
@@ -34,7 +62,8 @@ function createControllerSession({ roomDb, repository, applyAction, decide, now 
     const chatContext = repository.getChatContext(chatId, contextRevision)
     const roles = repository.listAgentRoles(chatId)
     const startedAt = now()
-    const proposal = await decide({ chatId, batchId, contextRevision, messages, context: chatContext.context, roles })
+    const proposal = await evaluate({ chatId, batchId, contextRevision, messages, context: chatContext.context, roles }, signal)
+    if (signal?.aborted) throw new Error('ROOM_CONTROLLER_CANCELLED')
     if (!proposal || !Array.isArray(proposal.actions)) throw new TypeError('ROOM_CONTROLLER_DECISION_INVALID')
     return roomDb.withTransaction(() => {
       const committed = repository.getControllerDecision({ chatId, batchId })

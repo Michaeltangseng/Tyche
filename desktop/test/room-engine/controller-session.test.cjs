@@ -133,3 +133,65 @@ test('editing input messages during evaluation invalidates the proposal', async 
   await assert.rejects(session.process({ chatId: state.chatId, contextRevision: 0, messageIds: [state.message.messageId] }), /MESSAGES_STALE/)
   state.roomDb.close()
 })
+
+test('timeout aborts the router, releases the chat and ignores late actions', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const state = setup()
+  let routerSignal
+  let finish
+  let calls = 0
+  const session = createControllerSession({
+    ...state, timeoutMs: 100,
+    applyAction: () => assert.fail('late action applied'),
+    decide: input => {
+      calls += 1
+      if (calls > 1) return { actions: [] }
+      routerSignal = input.signal
+      return new Promise(resolve => { finish = resolve })
+    },
+  })
+  const running = session.process({ chatId: state.chatId, batchId: 'timeout-batch', contextRevision: 0 })
+  const rejected = assert.rejects(running, /ROOM_CONTROLLER_TIMEOUT/)
+  t.mock.timers.tick(100)
+  await rejected
+  assert.equal(routerSignal.aborted, true)
+  assert.equal(state.repository.getControllerDecision({ chatId: state.chatId, batchId: 'timeout-batch' }), undefined)
+  await session.process({ chatId: state.chatId, batchId: 'retry-batch', contextRevision: 0 })
+  finish({ actions: [{ type: 'note', chatId: state.chatId, contextRevision: 0, content: 'too late' }] })
+  await Promise.resolve()
+  assert.equal(state.roomDb.database.prepare('SELECT COUNT(*) AS count FROM controller_decisions').get().count, 1)
+  state.roomDb.close()
+})
+
+test('caller cancellation prevents writes even if the router ignores abort', async () => {
+  const state = setup()
+  const abort = new AbortController()
+  let routerSignal
+  let fail
+  const session = createControllerSession({
+    ...state,
+    applyAction: () => assert.fail('cancelled action applied'),
+    decide: input => {
+      routerSignal = input.signal
+      return new Promise((_resolve, reject) => { fail = reject })
+    },
+  })
+  const running = session.process({ chatId: state.chatId, contextRevision: 0, signal: abort.signal })
+  abort.abort()
+  await assert.rejects(running, /ROOM_CONTROLLER_CANCELLED/)
+  assert.equal(routerSignal.aborted, true)
+  fail(new Error('late failure'))
+  await Promise.resolve()
+  assert.equal(state.roomDb.database.prepare('SELECT COUNT(*) AS count FROM controller_decisions').get().count, 0)
+  state.roomDb.close()
+})
+
+test('pre-cancelled batches never call the router', async () => {
+  const state = setup()
+  const session = createControllerSession({
+    ...state, applyAction: () => ({}), decide: () => assert.fail('cancelled router called'),
+  })
+  await assert.rejects(session.process({ chatId: state.chatId, contextRevision: 0, signal: AbortSignal.abort() }), /ROOM_CONTROLLER_CANCELLED/)
+  assert.throws(() => createControllerSession({ ...state, applyAction: () => ({}), decide: () => ({}), timeoutMs: 0 }), /TIMEOUT_INVALID/)
+  state.roomDb.close()
+})
