@@ -56,6 +56,10 @@ Controller action 首选通过受限工具调用（例如 ACP tool）提交；�
 
 ## ChatContext 是可变工作协议
 
+所有需求都先保存在 SQLite `messages`，不区分是否一次性。主控整理的当前约定另外保存在 `chat_context_revisions.instructions`，源消息 ID 保存在该版本的 `changes_json`，用于追溯。当前不自动向用户项目写入约定 Markdown 文件；用户要求生成需求/协作文档时，由正常任务产出文档 Artifact。
+
+是否创建任务或更新当前约定，是主控对已有记录的使用方式，不是是否记录需求的筛选条件。用户改变目标、追加要求或调整分工均经过同一消息入口；摘要不能取代原文，不能因为某项要求没有进入约定摘要，就把它视为未记录或无效。
+
 ChatContext 不是固定 workflow，而是 Controller 在每次决策时读取的当前上下文：
 
 ```text
