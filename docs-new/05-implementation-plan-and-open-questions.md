@@ -65,7 +65,6 @@ update_task
 request_attention
 update_context
 create_role
-archive_role
 propose_stop
 propose_retry
 note
@@ -224,7 +223,7 @@ ChatContext 可以管理“应该如何组队”，平台需要限制“最多�
 - 相同职责的动态角色优先复用；
 - Agent 提议新增角色不等于角色已经创建。
 
-动态角色创建记录：角色职责、生成原因、绑定 Provider、能力范围、创建消息、Prompt revision 和生命周期状态。
+动态角色创建记录：角色职责、生成原因、绑定 Provider、能力范围、创建消息和 Prompt revision。不增加归档生命周期；是否继续邀请由协作上下文管理。
 
 ## 六、Room 与 Chat 的可见性规则
 
@@ -301,7 +300,7 @@ ChatContext 可以管理“应该如何组队”，平台需要限制“最多�
 - 先做建议模式；
 - 再做受限自动模式；
 - 支持 Chat 级角色 Prompt revision；
-- 支持角色复用、归档、保存为模板；
+- 支持角色复用、按协作约定调整邀请对象、保存为模板；
 - 加入成本、并发和 Provider 限制。
 
 验收：用户提出一个新需求后，可以生成临时角色并完成一次多 Agent 协作；角色不会污染其他 Chat。

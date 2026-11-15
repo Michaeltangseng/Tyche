@@ -57,6 +57,8 @@ test('message queue invokes a read-only native controller and commits its action
   assert.ok(context.promptOverride.includes(submitted.message.messageId))
   assert.ok(context.promptOverride.includes('The discriminator key for each action object is "type"'))
   assert.ok(context.promptOverride.includes('"type":"create_task"'))
+  assert.ok(!context.promptOverride.includes('archive_role'))
+  assert.ok(context.promptOverride.includes('A request to stop inviting a role does not cancel its existing work'))
   const facts = JSON.parse(context.promptOverride.split('\n').at(-1))
   assert.deepEqual(facts.workspace, { writeAuthorized: false })
   assert.deepEqual(facts.artifacts, [])

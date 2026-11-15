@@ -20,7 +20,7 @@ function setup() {
   return { roomDb, repository, chatId, message, roleId }
 }
 
-test('retirement followed by assignment rolls back the entire controller batch', async () => {
+test('removed retirement action rejects the entire controller proposal', async () => {
   const state = setup()
   const taskId = state.repository.createTask({ chatId: state.chatId, objective: 'Draft', createdBy: 'controller' })
   const actions = createRoomActionService(state)
@@ -31,7 +31,7 @@ test('retirement followed by assignment rolls back the entire controller batch',
       { type: 'assign', chatId: state.chatId, contextRevision: 0, taskId, roleId: state.roleId },
     ] }),
   })
-  await assert.rejects(session.process({ chatId: state.chatId, batchId: 'invalid-retirement', contextRevision: 0 }), /ROLE_INACTIVE/)
+  await assert.rejects(session.process({ chatId: state.chatId, batchId: 'invalid-retirement', contextRevision: 0 }), /CONTROLLER_ACTION_TYPE_INVALID/)
   assert.equal(state.repository.listAgentRoles(state.chatId)[0].status, 'active')
   assert.deepEqual(state.repository.listAssignments(taskId), [])
   assert.equal(state.repository.getControllerDecision({ chatId: state.chatId, batchId: 'invalid-retirement' }), undefined)

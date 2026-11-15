@@ -148,20 +148,7 @@ function createRoomRepository(roomDb) {
         : db.prepare("SELECT * FROM agent_roles WHERE chat_id = ? AND status != 'archived' ORDER BY created_at, id").all(chatId)
       return rows.map(row => ({ ...row, capabilities: decode(row.capabilities_json) }))
     },
-    archiveAgentRole({ roleId, chatId }) {
-      const role = db.prepare('SELECT chat_id FROM agent_roles WHERE id = ?').get(roleId)
-      if (!role || role.chat_id !== chatId) throw new Error('ROOM_ROLE_NOT_FOUND')
-      const unfinished = db.prepare(`SELECT a.id FROM assignments a WHERE a.role_id = ?
-        AND (a.outcome = 'unknown' OR (a.status NOT IN ('completed', 'failed', 'cancelled')
-          AND NOT EXISTS (SELECT 1 FROM assignments replacement WHERE replacement.previous_assignment_id = a.id)))
-        LIMIT 1`).get(roleId)
-      if (unfinished) throw new Error('ROOM_ROLE_HAS_UNFINISHED_ASSIGNMENTS')
-      db.prepare("UPDATE agent_roles SET status = 'archived', updated_at = ? WHERE id = ?").run(now(), roleId)
-      return { roleId, status: 'archived' }
-    },
     createAssignment({ assignmentId = id('assignment'), taskId, roleId, nativeSessionId = null, runId = null, workspaceRef = null, writeScopes = [], required = true, attempt = 1, previousAssignmentId = null, status = 'queued' }) {
-      const role = db.prepare('SELECT status FROM agent_roles WHERE id = ?').get(roleId)
-      if (!role || role.status !== 'active') throw new Error('ROOM_ASSIGNMENT_ROLE_INACTIVE')
       const timestamp = now()
       db.prepare(`INSERT INTO assignments
         (id, task_id, role_id, native_session_id, run_id, workspace_ref, write_scopes_json,

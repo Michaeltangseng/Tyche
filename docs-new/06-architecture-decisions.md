@@ -23,7 +23,7 @@
 **决定：** 分离 `ControllerAction`、`UserCommand` 和 `PlatformTransition`。
 
 ```text
-ControllerAction：创建/派发/交接建议、请求 Attention、更新 Context、创建/归档角色、Note
+ControllerAction：创建/派发/交接建议、请求 Attention、更新 Context、创建角色及更新角色 Prompt、Note
 UserCommand：暂停/继续 Chat、停止/重试/交接 Task、接受/拒绝 Artifact、撤销未执行动作、恢复 Context
 PlatformTransition：根据 Report、进程事实、超时和用户命令实际改变状态
 ```

@@ -29,13 +29,12 @@ update_task
 request_attention
 update_context
 create_role
-archive_role
 propose_stop
 propose_retry
 note
 ```
 
-已实现的角色停用契约：`archive_role(roleId)` 将当前 Chat 的角色标记为 `archived`，保留历史 Assignment、Report 和 Prompt revision，后续不再向它派发任务或更新 Prompt。存在未被后续 attempt 替代的 queued/running/waiting/blocked Assignment，或任何执行结果为 unknown 的 Assignment 时，拒绝停用；Controller 应等待完成，或请求用户决定停止/交接，不隐式取消任务。角色 Prompt 更新同样校验当前 Chat 归属。动作、角色状态和批次决策在同一事务内提交，批次后续动作失败会整体回滚。
+不提供角色归档动作。用户要求“后续不再邀请某个角色”属于协作约定，由主控按用户指令和上下文处理；不隐式停止已有任务，不禁止修改该角色 Prompt，也不删除历史 Assignment、Report 或 Prompt revision。角色 Prompt 更新仍校验当前 Chat 归属。协作约定持久更新的用户来源与批次版本校验见实施路线图中的待办。
 
 `update_task` 只能修改目标描述、依赖、优先级和输入等元数据；状态转移由 Report、平台运行事实或 `UserCommand` 触发。
 
@@ -45,7 +44,7 @@ note
 
 | Actor | 可以做什么 |
 | --- | --- |
-| Controller | 创建/派发/交接建议、请求 Attention、更新 ChatContext、创建/归档角色、记录 Note |
+| Controller | 创建/派发/交接建议、请求 Attention、更新 ChatContext、创建角色及更新角色 Prompt、记录 Note |
 | User | 暂停/继续 Chat、停止/重试/交接 Task、接受/拒绝 Artifact、撤销未执行派发、恢复 Context revision |
 | Platform | 校验权限、创建 Assignment、执行状态转移、启动/停止进程、处理租约、恢复和重试 |
 
@@ -108,11 +107,11 @@ Prompt 管“应该怎么协作”，平台管“最多允许做到什么”。�
 
 建议默认使用受限自动模式。
 
-主控 Prompt 可以管理角色数量、复用、归档和协作分工，例如：
+主控 Prompt 可以管理角色数量、复用、邀请对象和协作分工，例如：
 
 ```text
 优先复用现有角色；只有职责明显不同才创建新角色。
-临时角色默认只服务当前 Task；连续两个 Task 未使用时可以归档。
+临时角色默认只服务当前 Task；用户要求后续不再邀请时，不再给它派发新任务。
 新增角色必须说明职责、输入和预期产物。
 Agent 可以建议新增角色，但不能自行授予权限。
 ```

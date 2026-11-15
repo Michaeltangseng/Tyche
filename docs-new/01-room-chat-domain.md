@@ -99,13 +99,9 @@ Task 不跟随某个 Agent Session 的状态。执行器失败、重试或交接
 
 ## 动态角色
 
-动态角色是 Chat 级定义，不是新的权限主体：
+动态角色是 Chat 级协作配置，不是新的权限主体，不设置 proposed/idle/archived 生命周期。角色可以复用；是否继续邀请某个角色，由用户指令、Prompt 和当前协作上下文决定。用户要求“以后不再邀请该角色”不改变已有任务或历史记录；停止、重试和交接仍使用任务控制。
 
-```text
-proposed → active → idle → archived
-```
-
-角色可以复用或归档。执行时才为 Assignment 创建原生 Session。角色只能从 Room 已安装的 Provider、能力和安全范围中选择；“管理员”“系统 Agent”等名称不能自动产生额外权限。
+执行时才为 Assignment 创建原生 Session。角色只能从 Room 已安装的 Provider、能力和安全范围中选择；“管理员”“系统 Agent”等名称不能自动产生额外权限。
 
 一个 Chat 可以在运行中新增角色：
 
