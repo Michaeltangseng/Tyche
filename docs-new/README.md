@@ -39,6 +39,18 @@ Message
 
 实施前置规范和分阶段计划见 [05-implementation-plan-and-open-questions.md](05-implementation-plan-and-open-questions.md)。
 
+关键取舍见 [06-architecture-decisions.md](06-architecture-decisions.md)。`docs/product-target.md` 和 `docs/functional-architecture.md` 保留为 v1/legacy 参考；新项目室的 v2 语义以本目录为准。
+
+## Glossary
+
+- **Room**：项目和工作空间，拥有主目录、共享 Artifact、Provider 能力和权限边界。
+- **Chat**：一次独立的团队工作记录，UI 中显示为项目室群聊。
+- **Thread**：Chat 内的消息流。
+- **Task**：一个需要完成的目标。
+- **Assignment**：把 Task 交给某个角色的一次执行尝试。
+- **Report**：Worker 对 Assignment 的结构化事实报告。
+- **Attention**：需要用户处理的结构化事项。
+
 ## 与当前实现的关系
 
 保留 `invokeAgent`、原生 Session、Trace、工作目录、受管理进程、影子 Git、写入租约、Outbox、幂等和重启恢复。现有 checkpoint、Gate、Seat、轮次和主笔/评审循环降为旧项目兼容或内部投影，不再作为新项目室的用户模型。

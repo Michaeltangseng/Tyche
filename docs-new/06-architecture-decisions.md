@@ -28,7 +28,7 @@ UserCommand：暂停/继续 Chat、停止/重试/交接 Task、接受/拒绝 Art
 PlatformTransition：根据 Report、进程事实、超时和用户命令实际改变状态
 ```
 
-Controller 不得通过 `update_task` 直接设置 `done` 或 `cancelled`；该动作只能更新目标、依赖、优先级和输入等元数据。
+Controller 不得通过 `update_task` 直接设置 `done` 或 `cancelled`；该动作只能更新目标、依赖、优先级和输入等元数据。Controller 的 `assign/reassign` 只针对未启动 Assignment；运行中的交接必须来自已结束事实或用户 `handoff_task` 命令。
 
 **原因：** 用户拥有最高业务授权，但用户命令和主控建议不应混成同一权限通道；状态事实必须由平台掌握。
 
@@ -36,7 +36,7 @@ Controller 不得通过 `update_task` 直接设置 `done` 或 `cancelled`；该�
 
 **决定：** Report 是任务结果和状态事实的领域真源；Event 是传输与审计记录，只引用 `reportId`、`actionId` 或平台事实，不重复维护一套独立 Report 状态。
 
-`session_heartbeat` 只表示 Supervisor 观察到的 liveness，不是 Report。Task 状态由 Report、Assignment 事实和用户命令按明确映射推导。
+`session_liveness` 只表示 Supervisor 观察到的 liveness，不是 Report。Task 状态由 Report、Assignment 事实和用户命令按明确映射推导；Worker 自报心跳不能单独证明进程存活。
 
 **原因：** 避免 `task_ready` 事件和 `Report(kind=ready)` 两份数据最终不一致。
 
@@ -64,4 +64,18 @@ effects
 **决定：** 首版不支持跨 Chat 的 Task 依赖，不把完整 Trace 写入 SQLite，不把所有任务强制放入隔离 workspace，不保留用户可见的并发/顺序/自动讨论模式选择器。
 
 跨 Chat 协作先通过 Room Artifact、消息和 Controller 链接完成；后续只有在真实使用场景证明需要时，再扩展跨 Chat 依赖。
+
+## ADR-008：消息与旧数据真源
+
+**决定：** 新 Chat 的 Message 只写 SQLite。旧 V4 Chat 标记 `engineVersion=legacy`，继续由旧引擎读取原始消息；迁移工具可以把可识别消息导入 SQLite，并保留原始 message id、文件路径和只读备份引用。
+
+**原因：** 双读 JSON 和 SQLite 会产生排序、编辑和删除不一致。兼容旧项目不等于让新 Chat 永久维护两套消息真源。
+
+## ADR-009：代码 Artifact 的发布形式
+
+**决定：** Room 主目录中的代码任务以 shadow Git commit、diff 或受控版本引用作为 Artifact；隔离 workspace 任务以 patch、commit 或显式文件清单发布。Artifact 的唯一状态字段为 `draft | published | accepted | rejected | superseded`，不再并存 `accepted` 布尔字段。
+
+## ADR-010：心跳真源
+
+**决定：** `session_liveness` 由 main process 的 Supervisor/watchdog 和进程观察产生。Worker 自报心跳只能进入上下文或 progress，不得单独证明 Session 存活。Report 是业务事实，Event 只引用 Report 或平台事实。
 

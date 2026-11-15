@@ -25,13 +25,13 @@
 
 ```text
 Room
-  id, name, workspace, sharedMembers, artifactLedger
+  id, name, workspace, providers, allowedCapabilities, primaryChatId, sharedMembers, artifactLedger
 
 Chat
-  id, roomId, title, status, isPrimary, contextRevision, createdAt, updatedAt
+  id, roomId, title, status, isPrimary, engineVersion, controllerSessionId, contextRevision, createdAt, updatedAt
 
 Message
-  id, chatId, author, content, mentions, replyTo, taskId?, createdAt
+  id, chatId, sequence, author, content, mentions, attachmentIds, replyTo, taskId?, createdAt, editedAt?, deletedAt?
 
 AgentRole
   id, chatId, displayName, responsibilities, capabilities, provider, promptRevision, createdBy, creationReason, status
@@ -40,7 +40,7 @@ Task
   id, chatId, objective, kind, status, createdBy, sourceMessageIds, parentTaskId, blockedByTaskIds, requiredArtifactIds, optional, waitingFor, contextRevision, inputs, assignments, artifactIds, latestReportId
 
 Assignment
-  id, taskId, roleId, nativeSessionId, runId, workspaceRef, writeScopes, status, endedReason, outcome
+  id, taskId, roleId, nativeSessionId, runId, workspaceRef, writeScopes, required, attempt, previousAssignmentId?, status, endedReason, outcome
 
 Report
   id, taskId, assignmentId, kind, summary, evidence, artifactIds, nextRequest, attentionId, createdAt
@@ -49,7 +49,7 @@ Attention
   id, chatId, taskId?, type, question, options, status, resolution, requestedBy, answeredBy
 
 Artifact
-  id, roomId, sourceTaskId, sourceAssignmentId, path, kind, version, status, supersedesArtifactId, accepted
+  id, roomId, sourceTaskId, sourceAssignmentId, path, kind, version, status, supersedesArtifactId
 
 ChatContextRevision
   id, chatId, revision, source, instructions, active, createdAt
@@ -58,7 +58,7 @@ ControllerDecision
   id, chatId, batchId, contextRevision, actionIds, results, model, latencyMs, cost, createdAt
 
 Event
-  id, chatId, type, reportId?, actionId?, payload, createdAt
+  id, roomId, chatId, sequence, actorId, type, reportId?, actionId?, payload, createdAt
 ```
 
 状态保持少量且可检查：
@@ -69,6 +69,8 @@ Assignment: queued → running → ended
 Attention:  pending → answered / dismissed
 Report:     progress | ready | waiting | blocked | failed | handoff
 ```
+
+`Attention.type` 只取 `decision | clarification | approval | blocked | failure`。`options` 是结构化选项数组，每项至少包含 `optionId`、`label` 和可选的 `effect`；澄清类 Attention 可以没有选项。用户回答通过独立的 `UserCommand(type=answer_attention)` 写入，平台校验 `attentionId`、`optionId` 或自由文本答案，并产生 `resolution` 与审计事件。Attention 本身不直接改变 Task，后续状态由平台根据回答产生的 PlatformTransition 推导。
 
 Task 不跟随某个 Agent Session 的状态。执行器失败、重试或交接只改变 Assignment；Task 保留其目标、历史报告和产物。
 
@@ -118,7 +120,11 @@ Attention 只表示真正需要用户行动的事实：决策、澄清、审批�
 
 ## Task 完成条件
 
-一个 Task 可以有多个 Assignment。默认情况下，所有 required Assignment 都产生 `ready` Report 后，Task 才能进入 `done`；任一 required Assignment 进入 `blocked` 或 `failed` 时，Task 进入 `waiting` 并可创建 Attention。`optional` Assignment 不阻塞 Task 完成。
+一个 Task 可以有多个 Assignment。每个 Assignment 明确记录 `required`。默认情况下，所有 required Assignment 都产生 `ready` Report 后，Task 才能进入 `done`；任一 required Assignment 进入 `blocked` 或 `failed` 时，Task 进入 `waiting` 并可创建 Attention。optional Assignment 不阻塞 Task 完成。
 
 第一版不支持跨 Chat 的 Task 依赖。跨 Chat 协作通过 Room Artifact 和消息/Controller 链接完成，避免把多个 Chat 的依赖图合并成新的全局流程状态机。
+
+## 共享 Room 主目录的可见性
+
+代码任务默认共享 Room 主目录。此模式下，Agent 可能看到其他 Assignment 尚未提交的文件变化；平台不能提供按 Assignment 的读取隔离。Prompt 可以要求 Agent 只读取任务输入和已发布 Artifact，但这只是协作约定。需要真实读写隔离时，必须使用 Assignment workspace。完整 Trace 默认仍按角色和 Task 限制读取。
 

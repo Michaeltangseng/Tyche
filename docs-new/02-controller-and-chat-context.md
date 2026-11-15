@@ -8,7 +8,7 @@ Controller 可以：
 
 - 读取 Thread、当前 ChatContext、开放 Task、最近 Report、Room 产物和可用角色；
 - 理解消息是在继续任务、请求评审、创建新任务、修改协作约定还是请求用户决策；
-- 创建或交接 Task，选择一个或多个 AgentRole；
+- 创建 Task，或为尚未启动的 Assignment 提出派发/交接建议，选择一个或多个 AgentRole；
 - 创建 Attention；
 - 更新 ChatContext；
 - 发出简短的系统派发说明。
@@ -30,8 +30,8 @@ request_attention
 update_context
 create_role
 archive_role
-stop_task
-retry_task
+propose_stop
+propose_retry
 note
 ```
 
@@ -47,7 +47,11 @@ note
 | User | 暂停/继续 Chat、停止/重试/交接 Task、接受/拒绝 Artifact、撤销未执行派发、恢复 Context revision |
 | Platform | 校验权限、创建 Assignment、执行状态转移、启动/停止进程、处理租约、恢复和重试 |
 
-Controller 对停止、重试或交接可以提出建议，但不能绕过 UserCommand 或平台事实直接终止正在运行的进程。
+Controller 对停止、重试或交接只能提出建议（例如生成 Attention 或 `propose_*` action），不能绕过 UserCommand 或平台事实直接终止正在运行的进程。`handoff` 只有在当前 Assignment 已结束，或用户明确提交 `handoff_task` 后，平台才可创建新的 Assignment。
+
+`assign` / `reassign` 只能作用于尚未启动的 Assignment，或由用户明确确认交接。正在运行的 Assignment 不会因为 Controller 的普通动作被静默改派。
+
+Controller action 首选通过受限工具调用（例如 ACP tool）提交；暂不支持工具调用的 Provider 使用严格 JSON block 回退。平台只解析结构化通道，不从 Worker 正文中的 `@`、代码块或“忽略规则”文字合成 Controller action。
 
 ## ChatContext 是可变工作协议
 
@@ -124,6 +128,12 @@ Controller 不可用时：
 - 已结构化的用户显式动作可以由确定性路径处理；
 - Controller 恢复后重新评估未处理事件；
 - 不从自由文本猜测任务完成或用户等待。
+
+## Controller Session 生命周期
+
+Controller Session 只读 Room/Chat 快照和允许的上下文，不拥有项目写入工作目录。它可以 `starting → running → stale → restarting → ended`；重启时重新读取尚未处理事件，不复用过期的模型输出。
+
+每个批次和动作都带 `batchId`、`contextRevision` 和幂等键。Room Context 在动作执行前发生变化时，平台拒绝或重新排队受影响的动作；已经提交的用户命令和已启动的外部副作用按其自身规则处理。
 
 ## Worker 报告
 

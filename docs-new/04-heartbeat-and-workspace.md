@@ -15,7 +15,7 @@ Controller Session 和 Worker Session 使用同一个平台心跳机制。心跳
 
 ```text
 Native Agent Session
-        │ heartbeat / report / session event
+        │ liveness / report / session event
         ▼
 Session Supervisor（main）
         │ durable event
@@ -29,7 +29,7 @@ Controller Session
 Room Engine
 ```
 
-心跳 envelope 至少包含：
+Supervisor liveness envelope 至少包含：
 
 ```json
 {
@@ -37,31 +37,28 @@ Room Engine
   "taskId": "task-7",
   "assignmentId": "assignment-9",
   "sessionId": "session-22",
-  "source": "worker",
-  "kind": "heartbeat",
+  "source": "supervisor",
+  "kind": "session_liveness",
+  "observedBy": "watchdog",
   "sessionState": "running",
   "observedAt": "...",
   "sequence": 42
 }
 ```
 
-`kind: heartbeat` 只更新 Session 的 liveness 和最后观察时间。其他事件使用同一条管线但具有不同类型：
+`kind: session_liveness` 只更新 Session 的 liveness 和最后观察时间。Worker 自报的心跳不能证明进程仍然存活；进程状态、Supervisor watchdog 和退出观察才是 liveness 真源。业务报告使用 Report，不使用重复的 task 状态事件：
 
 ```text
 session_started
-session_heartbeat
 session_paused
 session_exited
-task_progress
-task_report
-task_ready
-task_waiting
-task_blocked
-task_failed
-task_handoff
+session_liveness
+report_received
 attention_requested
 artifact_published
 ```
+
+`report_received` 的 payload 只引用 `reportId` 和 `report.kind`；不持久化 `task_ready`、`task_failed` 等与 Report 重复的事件类型。UI 中的任务标签由 Report、Assignment 事实和 PlatformTransition 派生。
 
 例如 Backend Agent 执行一小时后完成：
 
@@ -86,7 +83,7 @@ Agent 可以在报告正文中写“@主控 Agent”，但平台应同时保存�
 - Attention 或 Session 异常需要处理；
 - 之前的 Controller action 执行完成。
 
-单纯的 `session_heartbeat` 默认只更新运行状态，不触发主控模型。长时间运行的 Agent 可以每隔一段时间发送 progress Report；Controller 是否采取行动由 ChatContext 决定。
+单纯的 `session_liveness` 默认只更新运行状态，不触发主控模型。长时间运行的 Agent 可以每隔一段时间发送 progress Report；Controller 是否采取行动由 ChatContext 决定。
 
 ## 通讯方向和权限
 
@@ -167,7 +164,7 @@ Agent 可以读取：
 - 自己 Assignment 的输入和工作目录；
 - Prompt 明确授权的共享文档。
 
-Agent 不应默认读取其他 Assignment 的未发布中间文件或完整 Trace。
+在共享 Room 主目录模式下，Agent 可能实际看到其他 Assignment 的未发布文件变化；平台不提供按 Assignment 的读隔离。Prompt 约定可以要求只使用任务输入和已发布 Artifact，但这不是安全边界；需要强隔离时必须使用 Assignment workspace。共享目录下的并行读取污染属于已知风险。
 
 ### 默认写入
 

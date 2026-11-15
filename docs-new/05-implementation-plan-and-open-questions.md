@@ -2,9 +2,9 @@
 
 这份文档把架构中尚未收敛的部分转成实施前需要确定的协议、边界和验收指标。它不重新引入固定 workflow；它规定的是平台如何记录事实、校验动作和恢复运行。
 
-P0 决策记录见 [06-architecture-decisions.md](06-architecture-decisions.md)。在进入协议冻结和代码实现前，应先完成其中的 ADR-001 至 ADR-006。
+P0 决策记录见 [06-architecture-decisions.md](06-architecture-decisions.md)。在进入协议冻结和代码实现前，应先完成其中的 ADR-001 至 ADR-010。
 
-## 一、实施前必须冻结的三个协议
+## 一、实施前必须冻结的核心协议
 
 ### 1. Message Envelope
 
@@ -12,12 +12,16 @@ P0 决策记录见 [06-architecture-decisions.md](06-architecture-decisions.md)�
 {
   "messageId": "msg-123",
   "chatId": "chat-001",
+  "sequence": 42,
   "author": { "type": "user", "id": "user-1" },
   "content": "@agent2 请评审架构文档",
   "mentions": ["role-agent2"],
+  "attachmentIds": [],
   "replyTo": "msg-120",
   "taskId": "task-7",
-  "createdAt": "..."
+  "createdAt": "...",
+  "editedAt": null,
+  "deletedAt": null
 }
 ```
 
@@ -41,6 +45,10 @@ Controller 只能产生有限的结构化动作：
   "objective": "评审架构文档",
   "assignees": ["role-pi"],
   "inputs": ["artifact-12"],
+  "blockedByTaskIds": [],
+  "requiredArtifactIds": ["artifact-12"],
+  "optional": false,
+  "parentTaskId": null,
   "sourceMessageIds": ["msg-123"],
   "contextRevision": 4,
   "idempotencyKey": "chat-001:review:artifact-12:v1"
@@ -58,8 +66,8 @@ request_attention
 update_context
 create_role
 archive_role
-stop_task
-retry_task
+propose_stop
+propose_retry
 note
 ```
 
@@ -87,6 +95,42 @@ Worker 的自然语言正文和机器可读报告分离：
 ```
 
 `kind` 至少包括 `progress`、`ready`、`waiting`、`blocked`、`failed`、`handoff`。缺失或解析失败时，平台不猜测完成状态，Task 保持原状态并把消息交给 Controller 或用户处理。
+
+### 4. UserCommand
+
+用户命令必须由平台确认的用户身份产生，不能由 Controller 或 Worker 文本伪造：
+
+```json
+{
+  "commandId": "cmd-9",
+  "type": "answer_attention",
+  "chatId": "chat-001",
+  "attentionId": "attention-3",
+  "answer": { "optionId": "方案B" },
+  "idempotencyKey": "attention-3:answer:v1",
+  "createdAt": "..."
+}
+```
+
+初始命令集合：
+
+```text
+pause_chat
+resume_chat
+stop_task
+retry_task
+handoff_task
+accept_artifact
+reject_artifact
+answer_attention
+revoke_pending_action
+restore_context_revision
+archive_chat
+```
+
+### 5. PlatformTransition
+
+PlatformTransition 是平台根据 Report、Supervisor liveness、进程事实、超时和 UserCommand 产生的内部事实，不是 Controller 可直接调用的工具。例如 `assignment_started`、`assignment_exited`、`task_done`、`task_waiting` 和 `task_cancelled`。它们必须带 source、sourceId 和时间，不能由自由文本合成。
 
 ## 二、Task 依赖与状态边界
 
@@ -171,7 +215,7 @@ ChatContext 可以管理“应该如何组队”，平台需要限制“最多�
 
 - Task、Assignment、Report、Attention 属于 Chat；
 - Artifact 属于 Room，但可以有 Chat 级可见性；
-- 未发布的 Assignment 中间文件不跨 Assignment 可见；
+- 在隔离 Assignment workspace 中，未发布的中间文件不跨 Assignment 可见；共享 Room 主目录模式下，平台无法提供读隔离，未发布变化可能被其他 Agent 看到；
 - 已接受 Artifact 可以被同一 Room 的其他 Chat 引用；
 - Chat 归档不删除 Room Artifact；
 - Agent 默认只能读取自己 Task 的 Trace，其他 Trace 需要显式授权。
@@ -244,15 +288,15 @@ ChatContext 可以管理“应该如何组队”，平台需要限制“最多�
 
 验收：用户提出一个新需求后，可以生成临时角色并完成一次多 Agent 协作；角色不会污染其他 Chat。
 
-### Phase 5：工作空间隔离和旧模式退役
+### Phase 5：可选工作空间隔离和旧模式退役
 
-- 为 Assignment 分配隔离工作空间或受控 worktree；
+- 实现可选的 Assignment 隔离工作空间或受控 worktree 模式；
 - 通过 Artifact 发布和版本引用交接；
 - 新 Chat 移除并发/顺序/自动讨论模式选择器；
 - 旧 Chat 保持兼容；
 - 最后删除旧 UI 和旧入口。
 
-验收：两个 Agent 并行工作不会默认覆盖对方未发布文件；用户只使用消息、Task、Report、Attention 和 Artifact 完成协作。
+验收：代码任务使用 Room 主目录租约时，冲突写入被平台拒绝或串行化；需要强隔离的任务使用可选 Assignment workspace；用户只使用消息、Task、Report、Attention 和 Artifact 完成协作。
 
 ## 九、验证指标
 

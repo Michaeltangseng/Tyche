@@ -30,11 +30,13 @@ events
 - 使用 WAL、外键、事务和 schema version；
 - 所有写入由 Room Engine 统一提交；
 - Controller action 先持久化，再执行外部副作用；
-- `effects / outbox` 记录待执行副作用、幂等键、重试次数、错误和完成时间；
+- `effects / outbox` 记录待执行副作用、幂等键、重试次数、错误和完成时间；至少包含 `id、chatId、actionId、kind、status、payload、idempotencyKey、attempts、lastError、createdAt、startedAt、completedAt`；
 - 用幂等键避免重复创建 Task、Assignment 和消息；
 - 事件记录“谁在何时做了什么”，决策记录“主控使用了哪个 ChatContext revision”；
 - Report 是任务事实的唯一真源；Event 只引用 `reportId`、`actionId` 或平台事实，不重复维护另一套状态；
 - 消息和事件需要压缩/保留策略，避免无限增长。
+
+副作用状态至少区分 `pending | running | succeeded | failed | unknown | cancelled`。应用在 `running` 时崩溃或外部调用结果不可确认，恢复器不得盲目重试：幂等且可安全重试的 effect 可以重新入队；非幂等或已可能产生外部结果的 effect 进入 `unknown`，创建 Attention 等待用户或平台探测确认。`controller_decisions` 记录批次的输入消息/事件、`batchId`、`contextRevision`、动作结果、模型、延迟和成本。
 
 实现前需要确认 Electron 运行时是否支持可用的 `node:sqlite`。若支持，优先使用它以避免原生模块打包和 rebuild；否则评估 `better-sqlite3` 等方案的桌面打包成本。SQLite 迁移必须覆盖现有 `state.json` 数据，不应以破坏旧项目为代价。
 
@@ -44,11 +46,24 @@ SQLite 保存引用和索引：
 
 ```text
 Trace:    runId / agentRunId / jsonlPath
-Artifact: roomId / taskId / path / commit / accepted
+Artifact: roomId / taskId / path / commit / status
 Diff:     shadow Git commit 或版本引用
 ```
 
 完整 Trace 继续由 M7 的 JSONL 和现有脱敏机制管理；产物内容继续由工作目录和影子 Git 管理。这样数据库保持适合查询的账本，运行日志和大型文件不被复制进单一数据库。
+
+## Message 真源与旧数据迁移
+
+新 Chat 的 Message 以 SQLite 为唯一真源；UI 不双读新 SQLite 和旧 workspace JSON。迁移旧项目时：
+
+1. 备份原 `state.json`、workspace JSON 和旧消息文件；
+2. 为旧项目创建 `Chat(engineVersion=legacy)`；
+3. 将可识别的旧消息导入 SQLite，保留原始 message id、原始文件路径和迁移批次；
+4. 未能安全解析的旧记录只保留只读原始引用，不猜测为新 Message/Report；
+5. 旧 Chat 继续由旧 engine 运行，新 Chat 只写 SQLite；
+6. 迁移失败时回滚本次数据库事务，保留备份，不删除旧数据。
+
+这样不会出现新消息写 SQLite、旧消息又从 JSON 投影导致的双真源。旧记录的原始文件只用于审计和兼容查看。
 
 ## invokeAgent、Session 与 Run Ledger 映射
 
