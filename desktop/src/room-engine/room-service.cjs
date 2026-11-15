@@ -11,8 +11,9 @@ const { createControllerSession } = require('./controller-session.cjs')
 const { createControllerQueue } = require('./controller-queue.cjs')
 const { createEffectPump } = require('./effect-pump.cjs')
 const { createRuntimeRecovery } = require('./runtime-recovery.cjs')
+const { createProcessReconciliation } = require('./process-reconciliation.cjs')
 
-function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController, controllerBatchDelayMs = 40, onControllerError = error => console.error('[room-controller]', error), autoRunEffects = false, onEffectError = error => console.error('[room-effects]', error), locale } = {}) {
+function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController, controllerBatchDelayMs = 40, onControllerError = error => console.error('[room-controller]', error), autoRunEffects = false, onEffectError = error => console.error('[room-effects]', error), locale, getInvocationRecords } = {}) {
   if (!roomDb || !repository) throw new TypeError('ROOM_SERVICE_DEPENDENCIES_REQUIRED')
   const ingress = createMessageIngress(roomDb, repository)
   const actions = createRoomActionService({ roomDb, repository })
@@ -20,6 +21,9 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
   const reports = createReportImporter({ roomDb, repository })
   const reportState = createReportStateService({ roomDb })
   const sessions = createSessionSupervisor({ roomDb, repository, now })
+  const reconciliation = typeof getInvocationRecords === 'function'
+    ? createProcessReconciliation({ roomDb, repository, supervisor: sessions, getInvocationRecords, locale })
+    : null
   const userCommands = createUserCommandService({ roomDb, repository })
   const fallback = createMentionFallback({ roomDb, repository })
   const recovery = createRuntimeRecovery({ roomDb, repository, locale })
@@ -150,6 +154,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
 
   function applyUserCommand(input, options) {
     const result = roomDb.withTransaction(() => {
+      if (['retry_task', 'handoff_task'].includes(input.type)) reconciliation?.reconcile({ assignmentId: input.assignmentId })
       const applied = userCommands.apply(input, options)
       if (applied.assignmentId) enqueueAssignment(applied.assignmentId, input.chatId, applied.event.eventId)
       return applied
@@ -205,6 +210,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
       if (closed || executionStarted) throw new Error('ROOM_RECOVERY_REQUIRES_STARTUP')
       return recovery.recover()
     },
+    reconcileProcesses: input => reconciliation ? reconciliation.reconcile(input) : { resolvedAssignmentIds: [], unresolvedAssignmentIds: [] },
     close: async () => {
       closed = true
       await Promise.all([controllerQueue?.close(), effectPump?.close()])

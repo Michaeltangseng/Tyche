@@ -227,6 +227,14 @@ class ProcessRegistry {
     ))
   }
 
+  getInvocationRecords(invocationId) {
+    if (typeof invocationId !== 'string' || !invocationId) throw registryError('PROCESS_REGISTRY_INVOCATION_ID_REQUIRED')
+    return this.records.filter(record => record.invocationId === invocationId).map(record => ({
+      recordId: record.recordId, invocationId: record.invocationId,
+      workdir: record.workdir, agentKind: record.agentKind, status: record.status,
+    }))
+  }
+
   ended(record) {
     return { recordId: record.recordId, outcome: 'ended' }
   }

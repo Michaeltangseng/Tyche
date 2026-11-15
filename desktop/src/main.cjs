@@ -1251,6 +1251,7 @@ if (!hasSingleInstanceLock) {
         resolveGroup: resolveRoomGroup,
         autoRunEffects: true,
         locale: () => app.getLocale?.() || 'zh',
+        getInvocationRecords: runId => startupWorkspace.processRegistry.getInvocationRecords(runId),
         decideController: createControllerAgent({ repository: roomRepository, invokeAgent: invokeRoomAgent, resolveGroup: resolveRoomGroup }),
       })
       const templatesStore = new TemplatesStore({
@@ -1377,6 +1378,7 @@ if (!hasSingleInstanceLock) {
     } finally {
       scheduler.exitRecoveryMode()
       roomEngineService?.recoverRuntime()
+      roomEngineService?.reconcileProcesses()
       roomEngineService?.startRuntime()
     }
     if (attachmentStore && attachmentReferences) {

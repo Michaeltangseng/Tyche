@@ -1169,7 +1169,7 @@ class LocalWorkspaceAgentInvocation {
               spawnFn: createManagedSpawn({
                 registry: this.processRegistry,
                 invocation: {
-                  invocationId: activeRun?.runId || null,
+                  invocationId: activeRun?.runId || (projectRoom ? context.traceRunId || null : null),
                   groupId: group.id,
                   projectId: group.projectId || null,
                   workdir: group.workdir,

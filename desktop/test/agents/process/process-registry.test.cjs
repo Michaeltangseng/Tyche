@@ -286,6 +286,16 @@ test('recover ends an ending record whose group is empty and never signals', asy
   assert.deepEqual(signals, [])
 })
 
+test('invocation lookup returns only copied process identity facts', t => {
+  const registry = makeRegistry(t, { records: [defaultRecord(), defaultRecord({ recordId: 'other', invocationId: 'other' })] })
+  const records = registry.getInvocationRecords('invocation-1')
+  assert.deepEqual(records, [{ recordId: 'record-1', invocationId: 'invocation-1', workdir: '/tmp/work', agentKind: 'claude', status: 'running' }])
+  records[0].status = 'ended'
+  assert.equal(registry.getInvocationRecords('invocation-1')[0].status, 'running')
+  assert.deepEqual(registry.getInvocationRecords('missing'), [])
+  assert.throws(() => registry.getInvocationRecords(''), /INVOCATION_ID_REQUIRED/)
+})
+
 test('concurrent writes are serialized in arrival order', async (t) => {
   const registry = makeRegistry(t)
   await Promise.all([

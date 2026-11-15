@@ -49,7 +49,7 @@
 - `report-importer.cjs`：解析严格的 `[[MELDWORK_REPORT:{...}]]` 机器标记，写入 Report 真源和 `report_received` 审计事件；不从自由文本推断任务完成。
 - `session-supervisor.cjs`：由主进程记录 session liveness 和退出事实，并查询 stale Assignment；Worker 自报消息不构成 liveness 证明。
 - `report-state.cjs`：根据最新 Report 推导 Assignment/Task 状态；状态转移不接受 Controller 自由设置。
-- `user-commands.cjs`：执行用户回答 Attention、Artifact 接受/拒绝、Chat 暂停/恢复，以及已结束 Assignment 的幂等重试/交接；停止运行中进程和 unknown 执行的对账恢复仍待接入。
+- `user-commands.cjs`：执行用户回答 Attention、Artifact 接受/拒绝、Chat 暂停/恢复，以及已结束 Assignment 的幂等重试/交接；unknown 执行已接入受管理进程记录对账，停止运行中进程与无记录执行恢复仍待接入。
 - `mention-fallback.cjs`：Controller 不可用时按显式 @mention 确定性创建 Task/Assignment；不从普通自由文本推断角色或授权。
 - `room-service.cjs`：Room Engine 的组合入口，后续 IPC、Controller Session 和 Agent 调用只依赖此门面。
 - `room-ipc.cjs`：将 Room Service 映射为窄 IPC channel；绑定 main/preload 时沿用现有 renderer 信任校验，不暴露数据库或进程能力。
@@ -152,7 +152,9 @@ Controller Session 默认在 60 秒后超时，构造时可通过 `timeoutMs` �
 
 `effect-pump.cjs` 已在 main 开启，平台进程恢复结束后扫描 pending effects；新派发和 fallback Assignment 都写入幂等 effect 并唤醒消费。首版串行消费 Assignment，暂停 Chat 不领取 pending effect，恢复 Chat 后自动继续；不自动重试 failed/unknown，也不接管崩溃遗留的 running effects。服务关闭时向 Worker 传递取消信号并等待消费结束。
 
-`runtime-recovery.cjs` 在首次消费 effect 之前运行：遗留 running effect 转 unknown，并创建恢复 Attention；没有最终 Report 的 running Assignment 转 waiting/outcome=unknown，required Assignment 会使 Task waiting。已提交最终 Report 的 Assignment 按 Report 恢复，ready 仍可使满足完成条件的 Task done；可选 Assignment 中断不会阻塞已完成的 required 工作。Attention 使用确定性 ID，重启不会重复创建；恢复动作、审计和 Attention 同一事务提交，写入失败则不继续启动消费。这里不生成 session_exited，不声称残留进程已终止，也不会因用户点击“已知悉”自动重试。恢复接口仅允许新执行开始前调用。仍待实现：残留进程与 Run Ledger 的精确对账、用户确认后的重试/交接，以及未处理消息/事件的重启补调度。
+`runtime-recovery.cjs` 在首次消费 effect 之前运行：遗留 running effect 转 unknown，并创建恢复 Attention；没有最终 Report 的 running Assignment 转 waiting/outcome=unknown，required Assignment 会使 Task waiting。已提交最终 Report 的 Assignment 按 Report 恢复，ready 仍可使满足完成条件的 Task done；可选 Assignment 中断不会阻塞已完成的 required 工作。Attention 使用确定性 ID，重启不会重复创建；恢复动作、审计和 Attention 同一事务提交，写入失败则不继续启动消费。这里不生成 session_exited，不声称残留进程已终止，也不会因用户点击“已知悉”自动重试。恢复接口仅允许新执行开始前调用。后续进程证据对账由独立模块负责；未处理消息/事件的重启补调度仍待实现。
+
+`process-reconciliation.cjs` 已接入主进程启动和显式重试/交接：原生调用将 v2 runId 写入受管理进程的 invocationId；仅在同一 runId 的记录非空、Provider/工作目录匹配且全部 ended 时，补记 session_exited 和对账审计，unknown Assignment 改为 interrupted，关联 unknown effect 收口 failed，恢复 Attention 更新说明。最终 Report 与已完成 Task 不变，不自动重放 effect；重复对账不重复写入事实。命令触发的对账与新尝试/outbox 原子提交。缺记录、身份冲突、任一进程未 ended 时继续隔离。当前只覆盖受管理进程路径；只读、远端、旧无 runId 记录以及超过 ended 记录 24 小时保留窗口的调用，仍需后续恢复方案。对账读取注册表现有事实，不主动重新探测残留进程。
 
 Report 入账和状态推导在同一事务内完成，成功后将 `report_received` 的 eventId 放入 Controller 队列；重复 Report 不重复唤醒。主控创建 Task/角色成功后，以其动作事件触发下一批，使用真实落库 ID 继续派发；用户回答 Attention、接受/拒绝 Artifact 和恢复 Chat 也产生主控输入。Controller 校验事件属于当前 Chat，并记录输入 ID；不会把事件伪造成用户消息。已用替身验证“消息 → 建任务 → 事件 → 派发 → Worker → Report → Attention → 用户回答 → 主控”，真实 CLI、进程心跳和重启恢复验收仍待完成。
 
@@ -253,6 +255,6 @@ Room Engine 的第一条主进程纵向切片已经接入 Electron 生命周期�
 - 增加 `room:snapshot` 读取面，按 Room 返回 Chat、消息、Task、Assignment 和 Attention，供新 UI 使用；
 - 增加独立 `assignment-runner` 适配器：把 queued Assignment 映射到现有 `invokeAgent` 回调，记录平台 session facts；无 Report 的进程退出进入 waiting，不直接完成 Task；
 - 退出流程先停止 Room IPC 接收，再关闭数据库，避免关闭期间产生新的写入；
-- 本轮用户命令/Room Service/Report 状态/恢复/动作专项测试 32 项、Assignment Runner 专项测试 5 项在 Electron runtime 中通过，覆盖重试去重、交接链、旧尝试报告隔离、进程退出限制、outbox 失败回滚和交接 Prompt。尚未运行 Desktop 全量测试、真实 CLI 端到端验收和打包检查。
+- 最近一轮进程对账/启动恢复/用户命令/Room Service/进程注册表专项测试 52 项，在 Node 与 Electron 内置运行时均通过，覆盖身份匹配、残留与缺记录隔离、最终 Report 保留、重复重试和审计/outbox 失败原子回滚。尚未运行 Desktop 全量测试、真实 Electron GUI/CLI 端到端验收和打包检查。
 
 这一步不改变旧 project-room/checkpoint UI，也不把新 ledger 强行映射进旧状态机。Assignment 已能通过 Room workspace 和 Provider 解析到现有 Agent group，使用稳定的 Room session key 启动调用，并在退出时记录 Supervisor session facts；无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实，不会滞留 running。主进程已接通 effect 自动消费和 Report/Event 唤醒。下一步应完成真实 CLI 端到端验收、真实进程心跳和重启恢复，再接入 v2 群聊 UI，并移除对旧 group 的宿主依赖。
