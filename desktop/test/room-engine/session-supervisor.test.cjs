@@ -42,6 +42,14 @@ test('stale query uses observed liveness and ignores non-running sessions', () =
   roomDb.close()
 })
 
+test('stale query ignores an assignment that exited after its last heartbeat', () => {
+  const { roomDb, supervisor, roomId, chatId, assignmentId } = setup()
+  supervisor.liveness({ chatId, assignmentId, state: 'running', observedAt: '2026-11-14T23:00:00.000Z' })
+  supervisor.exited({ chatId, assignmentId, runId: 'run-1', exitCode: 0, reason: 'complete', observedAt: '2026-11-15T00:59:00.000Z' })
+  assert.equal(supervisor.listStale({ roomId, timeoutMs: 30 * 60 * 1000 }).length, 0)
+  roomDb.close()
+})
+
 test('supervisor rejects worker-like state and unknown assignments', () => {
   const { roomDb, supervisor, chatId } = setup()
   assert.throws(() => supervisor.liveness({ chatId, assignmentId: 'missing', state: 'running' }), /NOT_FOUND/)

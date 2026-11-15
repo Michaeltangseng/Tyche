@@ -10,6 +10,8 @@
 
 Assignment Runner 现已在每个运行中的 Assignment 上由平台定时写入 `session_liveness`（默认 30 秒，随运行启动，完成/失败/取消后清理）；这是真实调用仍由平台持有的 liveness 事实，不依赖 Worker 自报消息。Electron Node 定向测试已覆盖长调用期间心跳产生及结束后停止写入。长任务的真实 CLI、原生会话续跑和异常恢复验收仍待完成。
 
+Supervisor 的 stale 查询现在按事件序列同时读取 `session_liveness` 与 `session_exited`；退出事件晚于最后心跳时不会再把已结束 Assignment 误报为 stale。该边界已有 Electron Node 定向回归测试。
+
 按用户反馈简化角色模型：删除角色归档动作及专门的停用检查，不增加角色生命周期状态机。“后续不再邀请某个角色”由用户指令、Prompt 和协作上下文管理，不影响已有任务或历史记录。保留 Prompt 更新的 Chat 归属校验及后续 Controller 唤醒。
 
 协作约定更新已接通：主控使用完整 instructions 文本和当前用户源消息 ID 提交 `update_context`。平台验证来源与当前 revision，同批先保存约定、再以新 revision 创建新任务；既有任务保留版本且不隐式停止。批次失败整批回滚，更新事件可唤醒后续评估并在重启后补调度，不新增状态机或配置 DSL。约定本身不能授予写权限。下一步扩展真实多 Agent 评审及用户决定后的实施闭环；Prompt/Skill 配置界面、长任务心跳与会话续跑仍未完成。
