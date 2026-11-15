@@ -41,6 +41,14 @@ function createMessageIngress(roomDb, repository) {
     const text = validateContent(content)
     const mentions = mentionsFrom(text)
     return roomDb.withTransaction(() => {
+      if (replyTo !== null) {
+        const parent = repository.getMessage(replyTo)
+        if (!parent || parent.chat_id !== chatId || parent.deleted_at) throw new Error('ROOM_MESSAGE_REPLY_SCOPE_INVALID')
+      }
+      if (taskId !== null) {
+        const task = repository.getTask(taskId)
+        if (!task || task.chat_id !== chatId) throw new Error('ROOM_MESSAGE_TASK_SCOPE_INVALID')
+      }
       const message = repository.appendMessage({
         messageId, chatId, authorType: identity.type, authorId: identity.id,
         content: text, mentions, attachmentIds, replyTo, taskId,

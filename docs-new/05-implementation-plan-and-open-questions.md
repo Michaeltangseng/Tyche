@@ -238,6 +238,7 @@ ChatContext 可以管理“应该如何组队”，平台需要限制“最多�
 
 - Agent 执行只在 Electron main process；
 - Renderer 只能使用窄的 preload API；
+- 当前 v2 只开放 bootstrap/snapshot/用户消息/UserCommand/stale 查询；author、createdBy 与 UserCommand actor 由 main 固定为本地用户。Renderer 传入身份或内部执行字段会拒绝，不能直接导入 Report、写心跳、提交主控动作、派发 effect 或启动 Assignment；上述内部通道已删除。replyTo/taskId 也须通过同 Chat 归属校验。
 - Prompt 和消息不能修改 secrets、执行路径、工作目录和进程权限；
 - 动态角色不能创建新的凭据或 Provider；
 - 目录租约、受管理进程、脱敏、Outbox 和恢复逻辑保留；

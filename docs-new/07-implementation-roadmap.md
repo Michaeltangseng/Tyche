@@ -54,6 +54,8 @@
 - `room-service.cjs`：Room Engine 的组合入口，后续 IPC、Controller Session 和 Agent 调用只依赖此门面。
 - `room-ipc.cjs`：将 Room Service 映射为窄 IPC channel；绑定 main/preload 时沿用现有 renderer 信任校验，不暴露数据库或进程能力。
 
+当前 v2 IPC/preload 仅保留 bootstrap、snapshot、submitMessage、applyUserCommand、listStaleAssignments 五个入口。直接启动 Assignment、ControllerAction、Report 导入、Session liveness 写入和 effect 入队已从 Renderer 接口与 main channel 注册中删除，不保留旧调用兼容层；这些能力仅由主进程执行链使用。注册时必须提供 Renderer 信任校验，所有调用先完成信任与退出状态检查，再校验 DTO 字段和有界标量值。消息作者固定由 main 赋为本地 user，bootstrap 创建者和 UserCommand 审计 actor 同样由 main 赋值，Renderer 不得传入 author/actorId/createdBy 或自行指定生成对象 ID。Message 的 replyTo/taskId 必须引用同一 Chat 的有效对象。正文里的 action/Report 标记只属于消息内容，不进入平台事实写入通道。新 UI 尚未接入，消息编辑/删除与实时订阅接口也未开放。
+
 复用 `desktop/src/project-room/project-state-schema.cjs`、`project-state-migrations.cjs`、`project-store.cjs` 的迁移经验，但不把新的 Task 状态继续塞进 checkpoint engine。复用 `desktop/src/security/private-file.cjs` 保证数据库目录权限，数据库放在应用私有区，不放入 Room 主目录。
 
 ### 运行与通讯层（Desktop main）
@@ -258,11 +260,12 @@ Room Engine 的第一条主进程纵向切片已经接入 Electron 生命周期�
 
 - SQLite ledger 初始化在应用私有目录 `userData/meldwork-private/room-engine`，不写入用户项目目录；
 - `room-service` 通过 `room-ipc` 注册到受信任的主进程 IPC 边界；Renderer 只能通过窄的 preload API 调用；
-- preload 已暴露消息提交、ControllerAction、UserCommand、Report、Session liveness、stale 查询和 effect 入队接口；
+- preload 仅暴露 bootstrap、snapshot、用户消息提交、UserCommand 和 stale 只读查询；ControllerAction、Report、Session 事实、effect 和直接执行均保留在 main；
 - 增加 `room:bootstrap`，在一个事务中创建独立的 v2 Room、primary Chat 和审计事件，作为新 Chat UI 的初始化入口；
 - 增加 `room:snapshot` 读取面，按 Room 返回 Chat、消息、Task、Assignment 和 Attention，供新 UI 使用；
 - 增加独立 `assignment-runner` 适配器：把 queued Assignment 映射到现有 `invokeAgent` 回调，记录平台 session facts；无 Report 的进程退出进入 waiting，不直接完成 Task；
 - 退出流程先停止 Room IPC 接收，再关闭数据库，避免关闭期间产生新的写入；
 - 进程对账一轮 52 项专项测试已在 Node 与 Electron 内置运行时通过；最新补调度/队列/决策/Room Service 50 项专项测试在 Electron 内置运行时通过，覆盖数据库重开、600 条积压分批自动补入、150 条实时消息溢出后继续消费、全局/单 Chat 容量、运行/退避占用、终止失败停止补入与显式恢复。尚未运行 Desktop 全量测试、真实 Electron GUI/CLI 端到端验收和打包检查。
+- IPC 边界收口专项覆盖通道移除、信任校验、作者/actor 伪造拒绝、参数白名单/长度限制、跨 Chat 引用拒绝，以及真实 SQLite 下 Report 标记不改变 Task 状态；preload 测试验证只保留用户操作和读取入口。真实桌面交互和 CLI 端到端仍待验收。
 
 这一步不改变旧 project-room/checkpoint UI，也不把新 ledger 强行映射进旧状态机。Assignment 已能通过 Room workspace 和 Provider 解析到现有 Agent group，使用稳定的 Room session key 启动调用，并在退出时记录 Supervisor session facts；无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实，不会滞留 running。主进程已接通 effect 自动消费和 Report/Event 唤醒。下一步应完成真实 CLI 端到端验收、真实进程心跳和重启恢复，再接入 v2 群聊 UI，并移除对旧 group 的宿主依赖。

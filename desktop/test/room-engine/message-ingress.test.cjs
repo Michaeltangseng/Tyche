@@ -54,3 +54,25 @@ test('invalid message input is rejected before persistence', () => {
   assert.equal(repository.listMessages(chatId).length, 0)
   roomDb.close()
 })
+
+test('message task and reply references must belong to the same chat', () => {
+  const { roomDb, repository, roomId, chatId, ingress } = setup()
+  const otherChatId = repository.createChat({ roomId, title: 'Other' })
+  const author = { type: 'user', id: 'user' }
+  const otherMessage = ingress.submit({ chatId: otherChatId, author, content: 'Other chat' })
+  const otherTaskId = repository.createTask({ chatId: otherChatId, objective: 'Other task', createdBy: 'user' })
+  for (const replyTo of [otherMessage.message.messageId, 'missing']) {
+    assert.throws(() => ingress.submit({ chatId, author, content: 'Reply', replyTo }), /REPLY_SCOPE_INVALID/)
+  }
+  for (const taskId of [otherTaskId, 'missing']) {
+    assert.throws(() => ingress.submit({ chatId, author, content: 'Task message', taskId }), /TASK_SCOPE_INVALID/)
+  }
+  assert.equal(repository.listMessages(chatId).length, 0)
+  const parent = ingress.submit({ chatId, author, content: 'Parent' })
+  const taskId = repository.createTask({ chatId, objective: 'Own task', createdBy: 'user' })
+  ingress.submit({ chatId, author, content: 'Valid', replyTo: parent.message.messageId, taskId })
+  assert.equal(repository.listMessages(chatId).length, 2)
+  ingress.remove({ messageId: parent.message.messageId, author })
+  assert.throws(() => ingress.submit({ chatId, author, content: 'Deleted parent', replyTo: parent.message.messageId }), /REPLY_SCOPE_INVALID/)
+  roomDb.close()
+})

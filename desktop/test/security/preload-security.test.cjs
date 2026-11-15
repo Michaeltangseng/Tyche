@@ -84,9 +84,7 @@ test('local preload exposes the local-only Meldwork API', async () => {
   assert.equal('cancelConfigure' in api.localWorkspace, false)
   assert.equal(Object.isFrozen(api.room), true)
   assert.deepEqual(Object.keys(api.room).sort(), [
-    'applyControllerAction', 'applyUserCommand', 'bootstrap', 'enqueueEffect', 'importReport',
-    'listStaleAssignments', 'sessionLiveness', 'submitMessage',
-    'snapshot', 'startAssignment',
+    'applyUserCommand', 'bootstrap', 'listStaleAssignments', 'submitMessage', 'snapshot',
   ].sort())
   assert.equal('localAgentProvider' in api, false)
   await api.localWorkspace.deleteMessage('group-1', 'message-1')
@@ -193,6 +191,18 @@ test('local preload exposes the local-only Meldwork API', async () => {
       channel: 'local-agent-connector:delete',
       args: ['custom-0123456789abcdef'],
     },
+  ])
+})
+
+test('room preload forwards only user requests and read queries', async () => {
+  const { api, invocations } = loadPreload('file:')
+  await api.room.bootstrap({ name: 'Room', workspace: '/tmp/work' })
+  await api.room.snapshot({ roomId: 'room' })
+  await api.room.submitMessage({ chatId: 'chat', content: 'hello' })
+  await api.room.applyUserCommand({ type: 'pause_chat', chatId: 'chat' })
+  await api.room.listStaleAssignments({ roomId: 'room', timeoutMs: 1000 })
+  assert.deepEqual(invocations.map(item => item.channel), [
+    'room:bootstrap', 'room:snapshot', 'room:message-submit', 'room:user-command', 'room:assignments-stale',
   ])
 })
 
@@ -577,6 +587,7 @@ test('remote preload does not expose local credentials, workspace, or installer 
   assert.equal('localAttachments' in api, false)
   assert.equal('localAgentProvider' in api, false)
   assert.equal('localKnowledgeBase' in api, false)
+  assert.equal('room' in api, false)
 })
 
 test('native Agent configuration preload exposes only scoped directory operations', async () => {
