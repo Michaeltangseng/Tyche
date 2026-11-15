@@ -19,7 +19,7 @@ function json(value) {
   return value === undefined || value === null ? null : JSON.stringify(value)
 }
 
-function openRoomDatabase({ directory, filename = 'db.sqlite' }) {
+function openRoomDatabase({ directory, filename = 'db.sqlite', onCommit = () => {} }) {
   if (typeof directory !== 'string' || !path.isAbsolute(directory)) {
     throw new TypeError('ROOM_DATABASE_DIRECTORY_MUST_BE_ABSOLUTE')
   }
@@ -33,9 +33,15 @@ function openRoomDatabase({ directory, filename = 'db.sqlite' }) {
   database.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;')
   migrate(database)
   let transactionDepth = 0
+  const commitListeners = new Set()
   return {
     database,
     databasePath,
+    onCommit(listener) {
+      if (typeof listener !== 'function') throw new TypeError('ROOM_COMMIT_LISTENER_INVALID')
+      commitListeners.add(listener)
+      return () => commitListeners.delete(listener)
+    },
     close: () => database.close(),
     withTransaction(callback) {
       const savepoint = `room_tx_${transactionDepth}`
@@ -46,6 +52,12 @@ function openRoomDatabase({ directory, filename = 'db.sqlite' }) {
         const result = callback(database)
         if (result && typeof result.then === 'function') throw new TypeError('ROOM_TRANSACTION_MUST_BE_SYNCHRONOUS')
         database.exec(nested ? `RELEASE SAVEPOINT ${savepoint}` : 'COMMIT')
+        if (!nested) {
+          try { onCommit() } catch { /* notifications must never change a committed result */ }
+          for (const listener of commitListeners) {
+            try { listener() } catch { /* notifications must never change a committed result */ }
+          }
+        }
         return result
       } catch (error) {
         try {

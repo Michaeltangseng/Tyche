@@ -1234,6 +1234,11 @@ if (!hasSingleInstanceLock) {
       const privateRoot = path.join(app.getPath('userData'), 'meldwork-private')
       roomEngineDb = openRoomDatabase({
         directory: path.join(privateRoot, 'room-engine'),
+        onCommit: () => {
+          if (mainWindow && !mainWindow.isDestroyed() && isTrustedLocalWebContents(mainWindow.webContents)) {
+            mainWindow.webContents.send('room:changed', {})
+          }
+        },
       })
       const roomRepository = createRoomRepository(roomEngineDb)
       const roomNativeRuntime = createRoomNativeRuntime({ repository: roomRepository, workspace: startupWorkspace,

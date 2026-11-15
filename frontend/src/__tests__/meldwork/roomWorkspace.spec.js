@@ -50,6 +50,23 @@ describe('v2 team workspace', () => {
     expect(wrapper.find('.room-load-older').exists()).toBe(false)
   })
 
+  it('refreshes the active room after a ledger change notification', async () => {
+    const snapshot = data()
+    const bridge = api(snapshot)
+    let changed
+    bridge.onChanged = vi.fn(callback => { changed = callback; return () => { changed = null } })
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    const updated = data()
+    updated.messages = [{ id: 'new', chat_id: 'chat-1', sequence: 1, author_type: 'agent', content: 'New report', created_at: '2026-11-15T00:00:00Z' }]
+    bridge.snapshot.mockResolvedValueOnce(updated)
+    changed({})
+    await new Promise(resolve => setTimeout(resolve, 100))
+    await flushPromises()
+    expect(bridge.snapshot).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('New report')
+  })
+
   it('keeps the reader at the same message position when prepending history', async () => {
     const snapshot = data()
     snapshot.messages = [{ id: 'latest', chat_id: 'chat-1', sequence: 101, author_type: 'user', content: 'Latest', created_at: '2026-11-15T00:01:00Z' }]

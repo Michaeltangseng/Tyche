@@ -6,6 +6,8 @@
 
 Room 群聊已加入按 Chat 的消息分页：快照只返回每个 Chat 最近 100 条消息，并通过受限的 `chatMessages` IPC 按 sequence 向前读取历史页；Renderer 合并历史页与轮询得到的新消息，切换 Room 时清空分页缓存。分页接口验证 Room/Chat 归属、游标和页大小，不把路径或数据库句柄暴露给 Renderer。Electron 启动验收同时修复了 Room Service 初始化引用局部 `traceReader` 的作用域错误，现有 Trace Reader 通过主进程生命周期变量接入。
 
+Room 实时更新已增加轻量数据库提交通知：只有最外层事务成功提交后，主进程才向受信任 Renderer 发送无正文的 `room:changed` 信号；Preload 提供可取消订阅，RoomWorkspace 收到后刷新当前快照，并保留 1.5 秒轮询用于断线或漏通知恢复。通知不携带 Room 路径、消息内容或数据库事实。该切片以数据库事务为统一变化边界，后续若出现事务外直接写库，必须改为通过 Room DB 事务提交。
+
 `desktop/src/room-engine/` 已提供私有 SQLite 账本、统一消息入口、ControllerAction/UserCommand/PlatformTransition 校验、Report 导入和状态推导、outbox、Supervisor 事实记录，以及 main/preload 生命周期接线。Controller 的批次动作、派发 effect 和审计在同一事务内提交；Agent 消息不能直接授权派发。数据库目录使用 `0700`、文件使用 `0600`（Windows 除外）。启动恢复会将崩溃遗留 running effects 标为 unknown 并产生 Attention，不自动重放；未启动的 pending effects 仍可继续消费。详细能力和未完成项见 Phase 4 与下方当前实现进度。
 
 当前切片已接入独立的 v2 Renderer 页面，尚未接入旧 Chat 迁移。`controller-agent.cjs` 已在 main 中通过 `native-runtime.cjs` 连接原生 `invokeAgent`：按 Room Provider 配置顺序选择首个 Provider，验证 Chat/目录归属与已安装 Agent；创建本次调用的临时执行描述，不查找已有 group，也不创建隐藏群聊。Controller 强制只读、不写入旧消息/Session、严格解析 JSON；Worker 写入需要用户授权与根目录独占租约。Assignment Runner 已补齐原生接口要求的 promptOverride/contextPackId，并带入角色 Prompt、任务创建时的协作约定和 Report 输出要求。角色 Prompt revision 在创建 Assignment 时固定，排队期间的 Prompt 修改只影响之后创建的 Assignment。独立 Controller Session 已支持批次幂等、context revision 校验和结构化决策审计；动态角色创建与 Prompt 更新已受 Room Provider/能力白名单约束。Room schema 已升级到 v4，既有 Room 默认只读。已在 Electron main 使用真实 Claude Code CLI 跑通自动组队、单文档任务、结构化 Report、产物快照/diff 和确认 Attention，并验证账本重开；真实多 Agent 评审、平台心跳和异常恢复均已有闭环验收，未运行仓库全量测试。

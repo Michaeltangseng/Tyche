@@ -14,7 +14,9 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
   let generation = 0
   let disposed = false
   let timer = null
+  let changedTimer = null
   let refreshing = null
+  let unsubscribeChanges = null
   const chat = computed(() => snapshot.value?.chats.find(item => item.id === chatId.value) || null)
   const tasks = computed(() => (snapshot.value?.tasks || []).filter(item => item.chat_id === chatId.value))
   const assignments = computed(() => (snapshot.value?.assignments || []).filter(item => tasks.value.some(task => task.id === item.task_id)))
@@ -30,6 +32,14 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
   function schedule() {
     clearTimeout(timer)
     if (!disposed && roomId.value) timer = setTimeout(() => { void refresh() }, pollMs)
+  }
+
+  if (typeof api.onChanged === 'function') {
+    unsubscribeChanges = api.onChanged(() => {
+      if (disposed || !roomId.value) return
+      clearTimeout(changedTimer)
+      changedTimer = setTimeout(() => { void refresh({ afterCurrent: true }) }, 80)
+    })
   }
 
   async function refresh({ afterCurrent = false } = {}) {
@@ -161,7 +171,13 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
     })
   }
 
-  onScopeDispose(() => { disposed = true; generation++; clearTimeout(timer) })
+  onScopeDispose(() => {
+    disposed = true
+    generation++
+    clearTimeout(timer)
+    clearTimeout(changedTimer)
+    unsubscribeChanges?.()
+  })
   return { rooms, snapshot, roomId, chatId, chat, tasks, assignments, roles, messages, reports, attentions, staleAssignments,
     hasOlderMessages, loadingOlderMessages, busy, error, load, refresh, openRoom, createRoom, createChat, send, loadOlderMessages, command }
 }

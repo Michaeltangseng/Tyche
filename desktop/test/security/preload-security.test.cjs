@@ -84,7 +84,7 @@ test('local preload exposes the local-only Meldwork API', async () => {
   assert.equal('cancelConfigure' in api.localWorkspace, false)
   assert.equal(Object.isFrozen(api.room), true)
   assert.deepEqual(Object.keys(api.room).sort(), [
-    'applyUserCommand', 'bootstrap', 'listStaleAssignments', 'submitMessage', 'snapshot', 'listRooms', 'createChat', 'chatMessages', 'artifactDiff', 'assignmentTrace', 'assignmentTraceBlob',
+    'applyUserCommand', 'bootstrap', 'listStaleAssignments', 'submitMessage', 'snapshot', 'listRooms', 'createChat', 'chatMessages', 'artifactDiff', 'assignmentTrace', 'assignmentTraceBlob', 'onChanged',
   ].sort())
   assert.equal('localAgentProvider' in api, false)
   await api.localWorkspace.deleteMessage('group-1', 'message-1')
@@ -209,6 +209,18 @@ test('room preload forwards only user requests and read queries', async () => {
     'room:list', 'room:chat-create',
     'room:bootstrap', 'room:snapshot', 'room:chat-messages', 'room:artifact-diff', 'room:message-submit', 'room:user-command', 'room:assignments-stale',
   ])
+})
+
+test('room preload exposes a cancellable change subscription without renderer filters', () => {
+  const { api, listeners } = loadPreload('file:')
+  const received = []
+  const unsubscribe = api.room.onChanged(payload => received.push(payload))
+  const listener = listeners.get('room:changed')
+  assert.equal(typeof listener, 'function')
+  listener({}, { revision: 1 })
+  assert.deepEqual(received, [{ revision: 1 }])
+  unsubscribe()
+  assert.equal(listeners.has('room:changed'), false)
 })
 
 test('local preload exposes the complete narrow Knowledge Connector lifecycle', async () => {

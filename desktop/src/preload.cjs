@@ -167,6 +167,11 @@ if (isLocalDocument) Object.assign(desktopApi, {
     listStaleAssignments: input => ipcRenderer.invoke('room:assignments-stale', input),
     assignmentTrace: input => ipcRenderer.invoke('room:assignment-trace', input),
     assignmentTraceBlob: input => ipcRenderer.invoke('room:assignment-trace-blob', input),
+    onChanged: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('room:changed', listener)
+      return () => ipcRenderer.removeListener('room:changed', listener)
+    },
   }),
   workdir: Object.freeze({
     list: input => ipcRenderer.invoke('workdir:list', input),

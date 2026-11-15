@@ -59,6 +59,20 @@ test('room database transaction rolls back all writes on failure', () => {
   roomDb.close()
 })
 
+test('room database notifies only after an outer transaction commits', () => {
+  const events = []
+  const roomDb = openRoomDatabase({ directory: tempDirectory(), onCommit: () => events.push('commit') })
+  const dispose = roomDb.onCommit(() => events.push('listener'))
+  roomDb.withTransaction(() => roomDb.withTransaction(() => {}))
+  assert.deepEqual(events, ['commit', 'listener'])
+  assert.throws(() => roomDb.withTransaction(() => { throw new Error('rollback') }), /rollback/)
+  assert.deepEqual(events, ['commit', 'listener'])
+  dispose()
+  roomDb.withTransaction(() => {})
+  assert.deepEqual(events, ['commit', 'listener', 'commit'])
+  roomDb.close()
+})
+
 test('room database is private and survives close/reopen', () => {
   const directory = tempDirectory()
   const first = openRoomDatabase({ directory })
