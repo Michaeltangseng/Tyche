@@ -22,7 +22,7 @@ Supervisor 的 stale 查询现在按事件序列同时读取 `session_liveness` 
 
 简化后的验证：上述七个 room-engine 定向测试文件共 47 项通过；`git diff --check` 通过。Electron main 的真实 Claude Code CLI smoke 约 33 秒、4 次调用通过，覆盖文档、Report、产物 diff、Attention 与数据库重开。本轮未跑全量测试、构建、打包或 Renderer 交互复验。
 
-本轮完成真实的“多 Agent 评审 → 用户决定 → 继续实施”纵向验收：Electron main 中使用真实 Claude Code CLI，在临时 Room/Chat 内自动创建文档作者、只读评审者和实施者三个独立角色。文档任务与评审任务各完成一次 Assignment；评审完成后才创建 approval Attention，smoke 通过同一 UserCommand 入口接受文档并回答 `implement`，之后才创建并派发实施任务。实施者写入 `src/add.cjs` 与 `test/add.test.cjs`，平台在同一临时项目中用 Electron 内置 Node 执行 `node --test` 和额外契约断言；最终 3 个 Task、3 个 Assignment、3 个 Report、文档/实施 Artifact、Attention 和用户决定事件均通过数据库重开校验，实施派发事件序号晚于用户决定。共 11 次真实 CLI 调用，约 165 秒，`reopenVerified: true`。
+本轮完成真实的“多 Agent 评审 → 用户决定 → 继续实施”纵向复验：Electron main 中使用真实 Claude Code CLI，在临时 Room/Chat 内自动创建文档作者、只读评审者和实施者三个独立角色。文档任务与评审任务各完成一次 Assignment；评审完成后才创建 approval Attention，smoke 通过同一 UserCommand 入口接受文档并回答 `implement`，之后才创建并派发实施任务。实施者写入 `src/add.cjs` 与 `test/add.test.cjs`，平台在同一临时项目中用 Electron 内置 Node 执行 `node --test` 和额外契约断言；最终 3 个 Task、3 个 Assignment、3 个 Report、文档/实施 Artifact、Attention 和用户决定事件均通过数据库重开校验，实施派发事件序号晚于用户决定。最近一次复验 10 次真实 CLI 调用、约 129 秒，`reopenVerified: true`。
 
 验收过程中发现原生 CLI 可能在机器 Report 标记后追加说明文字，导致原先要求标记位于回复末尾的解析器误判“无 Report”。`report-importer` 现从消息中读取最后一个 `[[MELDWORK_REPORT:{...}]]` 标记，仍对 JSON 字段、kind、摘要、Artifact 范围做严格校验；新增定向测试覆盖标记后有 prose tail 的情况。实施 Agent 的 `workspace-write` 会话在本机仍可能因 CLI Bash 审批策略返回 blocked，因此该 smoke 明确由 Agent 写入代码与测试，平台验收阶段执行测试命令；这保留了真实评审/用户决定/实施调度链路，同时不把交互式审批假设硬编码进产品。
 
