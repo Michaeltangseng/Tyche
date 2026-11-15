@@ -108,6 +108,7 @@
                     <span v-if="step.detail || step.message">{{ step.detail || step.message }}</span>
                   </li>
                 </ol>
+                <button v-if="traceHasMore[assignment.id]" class="secondary-button" type="button" :disabled="busy || traceBusy[assignment.id]" @click="loadTrace(assignment, true)">{{ t('room.moreTrace') }}</button>
                 <p v-else-if="traceLoaded[assignment.id]" class="room-muted">{{ t('room.traceEmpty') }}</p>
               </details>
               <div v-if="canRetry(assignment)" class="room-actions">
@@ -168,6 +169,8 @@ const traceSteps = ref({})
 const traceLoaded = ref({})
 const traceBusy = ref({})
 const traceErrors = ref({})
+const traceCursors = ref({})
+const traceHasMore = ref({})
 const entries = computed(() => [
   ...messages.value.map(message => ({ key: message.id, author: message.author_type === 'user' ? t('room.you') : roleName(message.author_id), content: message.content, createdAt: message.created_at })),
   ...reports.value.map(report => ({ key: report.id, author: `${roleName(assignments.value.find(item => item.id === report.assignment_id)?.role_id)} · ${t('room.report')}`, content: report.summary, evidence: report.evidence_json, report: true, createdAt: report.created_at })),
@@ -179,12 +182,15 @@ function canRetry(item) { return ['failed', 'waiting', 'blocked', 'cancelled'].i
 function statusLabel(status) { const key = `room.status.${status}`; return t(key) === key ? t('room.status.waiting') : t(key) }
 function optionId(option) { return typeof option === 'string' ? option : option.id || option.optionId }
 function formatTime(value) { return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
-async function loadTrace(assignment) {
+async function loadTrace(assignment, older = false) {
   traceBusy.value = { ...traceBusy.value, [assignment.id]: true }
   traceErrors.value = { ...traceErrors.value, [assignment.id]: false }
   try {
-    const page = await props.api.assignmentTrace({ roomId: roomId.value, assignmentId: assignment.id, direction: 'backward', limit: 100 })
-    traceSteps.value = { ...traceSteps.value, [assignment.id]: page?.steps || [] }
+    const page = await props.api.assignmentTrace({ roomId: roomId.value, assignmentId: assignment.id, direction: 'backward', limit: 100, ...(older && traceCursors.value[assignment.id] ? { cursor: traceCursors.value[assignment.id] } : {}) })
+    const previous = older ? (traceSteps.value[assignment.id] || []) : []
+    traceSteps.value = { ...traceSteps.value, [assignment.id]: [...(page?.steps || []), ...previous] }
+    traceCursors.value = { ...traceCursors.value, [assignment.id]: page?.cursor || '' }
+    traceHasMore.value = { ...traceHasMore.value, [assignment.id]: Boolean(page?.hasMore) }
     traceLoaded.value = { ...traceLoaded.value, [assignment.id]: true }
   } catch { traceErrors.value = { ...traceErrors.value, [assignment.id]: true } }
   finally { traceBusy.value = { ...traceBusy.value, [assignment.id]: false } }
@@ -215,7 +221,7 @@ async function answer(attention) {
   await command({ type: 'answer_attention', attentionId: attention.id,
     ...(attention.options_json?.length ? { optionId: answers.value[attention.id] } : { comment: answers.value[attention.id] }) })
 }
-watch([roomId, chatId], () => { handoffRoles.value = {}; answers.value = {}; rolePrompts.value = {}; diffArtifactId.value = ''; traceSteps.value = {}; traceLoaded.value = {}; traceErrors.value = {} })
+watch([roomId, chatId], () => { handoffRoles.value = {}; answers.value = {}; rolePrompts.value = {}; diffArtifactId.value = ''; traceSteps.value = {}; traceLoaded.value = {}; traceErrors.value = {}; traceCursors.value = {}; traceHasMore.value = {} })
 watch(roles, items => {
   const next = { ...rolePrompts.value }
   for (const role of items) if (!(role.id in next)) next[role.id] = role.current_prompt || ''

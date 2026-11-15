@@ -16,7 +16,7 @@ function api(snapshot = data()) {
     bootstrap: vi.fn(async () => ({ roomId: 'room-1', chatId: 'chat-1' })),
     createChat: vi.fn(async () => ({ roomId: 'room-1', chatId: 'chat-2' })),
     artifactDiff: vi.fn(async () => ({ text: '+saved change', truncated: false })),
-    assignmentTrace: vi.fn(async () => ({ steps: [{ seq: 1, title: 'Read source', detail: 'Opened package.json' }] })),
+    assignmentTrace: vi.fn(async () => ({ steps: [{ seq: 1, title: 'Read source', detail: 'Opened package.json' }], cursor: 'cursor-1', hasMore: false })),
     submitMessage: vi.fn(async () => ({ ok: true })), applyUserCommand: vi.fn(async () => ({ ok: true })) }
 }
 const cleanup = []
@@ -222,6 +222,25 @@ describe('v2 team workspace', () => {
     await flushPromises()
     expect(bridge.assignmentTrace).toHaveBeenCalledWith({ roomId: 'room-1', assignmentId: 'attempt', direction: 'backward', limit: 100 })
     expect(wrapper.get('.room-trace-list').text()).toContain('Read source')
+  })
+
+  it('loads older trace pages with the opaque cursor and prepends them', async () => {
+    const snapshot = data()
+    snapshot.tasks = [{ id: 'task', chat_id: 'chat-1', objective: 'Build API', status: 'active' }]
+    snapshot.assignments = [{ id: 'attempt', task_id: 'task', role_id: 'worker', status: 'running', run_id: 'run-private' }]
+    const bridge = api(snapshot)
+    bridge.assignmentTrace
+      .mockResolvedValueOnce({ steps: [{ seq: 3, title: 'Write' }], cursor: 'cursor-1', hasMore: true })
+      .mockResolvedValueOnce({ steps: [{ seq: 2, title: 'Plan' }], cursor: '', hasMore: false })
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    await wrapper.get('.room-trace summary').trigger('click')
+    await wrapper.get('.room-trace button').trigger('click')
+    await flushPromises()
+    await wrapper.get('.room-trace button:last-of-type').trigger('click')
+    await flushPromises()
+    expect(bridge.assignmentTrace).toHaveBeenNthCalledWith(2, { roomId: 'room-1', assignmentId: 'attempt', direction: 'backward', limit: 100, cursor: 'cursor-1' })
+    expect(wrapper.get('.room-trace-list').text()).toMatch(/Plan[\s\S]*Write/)
   })
 
   it('creates new projects from chosen directories and closes the inline form with Escape', async () => {

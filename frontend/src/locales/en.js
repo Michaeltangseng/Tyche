@@ -44,6 +44,7 @@ export default {
     "room.trace": "Trace",
     "room.loadTrace": "Load trace",
     "room.traceEmpty": "No trace steps yet.",
+    "room.moreTrace": "Load earlier steps",
     "room.artifacts": "Artifacts",
     "room.diff": "View changes",
     "room.closeDiff": "Close changes",
