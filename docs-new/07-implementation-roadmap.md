@@ -4,7 +4,7 @@
 
 ## 当前实现状态（2026-11-15）
 
-首个可回滚切片已落地：`desktop/src/room-engine/` 提供基于 Electron Node 运行时 `node:sqlite` 的私有账本骨架，覆盖 Room、Chat、Message、Task、Assignment、Report、Artifact、Attention、ControllerDecision、Effect 和 Event 表；Repository 已支持创建 Room/Chat、追加消息、角色、Assignment、Report、Artifact、Attention、任务和 outbox effect，`message-ingress.cjs` 已提供统一消息校验、@提及提取、编辑/删除和事件写入。事务失败会回滚，数据库关闭后可重开恢复。数据库目录使用 `0700`、数据库文件使用 `0600`（Windows 除外）。
+首个可回滚切片已落地：`desktop/src/room-engine/` 提供基于 Electron Node 运行时 `node:sqlite` 的私有账本骨架，覆盖 Room、Chat、Message、Task、Assignment、Report、Artifact、Attention、ControllerDecision、Effect 和 Event 表；Repository 已支持创建 Room/Chat、追加消息、角色、Assignment、Report、Artifact、Attention、任务和 outbox effect，`message-ingress.cjs` 已提供统一消息校验、@提及提取、编辑/删除和事件写入，`room-actions.cjs` 已分离并校验 ControllerAction、UserCommand、PlatformTransition，Controller 可将创建任务、派发、角色和 Attention 建议落到账本。事务失败会回滚，数据库关闭后可重开恢复。数据库目录使用 `0700`、数据库文件使用 `0600`（Windows 除外）。
 
 当前切片仍未接入 Renderer、Controller Session、真实 `invokeAgent` 映射或旧 Chat 迁移；这些保持在后续 Phase 1–4，避免改变现有 checkpoint 执行链。专项账本测试和 Electron 39 runtime spike 已通过；仓库全量测试受既有 workspace 长测及环境权限失败影响。
 
