@@ -42,6 +42,9 @@ function createRoomRepository(roomDb) {
       if (isPrimary) db.prepare('UPDATE rooms SET primary_chat_id = ?, updated_at = ? WHERE id = ?').run(chatId, timestamp, roomId)
       return chatId
     },
+    getChat(chatId) {
+      return db.prepare('SELECT * FROM chats WHERE id = ?').get(chatId)
+    },
     getChatContext(chatId, revision = null) {
       const chat = db.prepare('SELECT id, room_id, context_revision, status FROM chats WHERE id = ?').get(chatId)
       if (!chat) throw new Error('ROOM_CHAT_NOT_FOUND')
@@ -218,6 +221,16 @@ function createRoomRepository(roomDb) {
     listMessages(chatId) {
       return db.prepare('SELECT * FROM messages WHERE chat_id = ? ORDER BY sequence').all(chatId)
     },
+    listMessagesPage(chatId, { beforeSequence = null, limit = 100 } = {}) {
+      const bounded = Math.max(1, Math.min(200, Number(limit) || 100))
+      const rows = beforeSequence === null
+        ? db.prepare('SELECT * FROM messages WHERE chat_id = ? ORDER BY sequence DESC LIMIT ?').all(chatId, bounded + 1)
+        : db.prepare('SELECT * FROM messages WHERE chat_id = ? AND sequence < ? ORDER BY sequence DESC LIMIT ?').all(chatId, beforeSequence, bounded + 1)
+      const hasMore = rows.length > bounded
+      const page = rows.slice(0, bounded).reverse()
+      return { messages: page.map(row => decodeRow(row, ['mentions_json', 'attachment_ids_json'])), hasMore,
+        nextBeforeSequence: page.length ? page[0].sequence : null }
+    },
     getTask(taskId) { return db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) },
     getEffect(effectId) { return db.prepare('SELECT * FROM effects WHERE id = ?').get(effectId) },
     getAssignmentContext(assignmentId) {
@@ -256,7 +269,7 @@ function createRoomRepository(roomDb) {
       if (result.changes !== 1) throw new Error('ROOM_ASSIGNMENT_NOT_RUNNING')
       return { assignmentId, status, endedAt: timestamp }
     },
-    getRoomSnapshot(roomId) {
+    getRoomSnapshot(roomId, { messageLimit = null } = {}) {
       const room = db.prepare('SELECT * FROM rooms WHERE id = ?').get(roomId)
       if (!room) throw new Error('ROOM_NOT_FOUND')
       const chats = db.prepare('SELECT * FROM chats WHERE room_id = ? ORDER BY created_at, id').all(roomId)
@@ -272,9 +285,14 @@ function createRoomRepository(roomDb) {
           } : null }
         })
       const chatIds = chats.map(chat => chat.id)
-      const messages = chatIds.length
-        ? db.prepare(`SELECT * FROM messages WHERE chat_id IN (${chatIds.map(() => '?').join(',')}) ORDER BY chat_id, sequence`).all(...chatIds)
-        : []
+      const messagePages = messageLimit === null
+        ? null
+        : Object.fromEntries(chatIds.map(chatId => [chatId, this.listMessagesPage(chatId, { limit: messageLimit || 100 })]))
+      const messages = messagePages
+        ? Object.values(messagePages).flatMap(page => page.messages)
+        : chatIds.length
+          ? db.prepare(`SELECT * FROM messages WHERE chat_id IN (${chatIds.map(() => '?').join(',')}) ORDER BY chat_id, sequence`).all(...chatIds)
+          : []
       const tasks = chatIds.length
         ? db.prepare(`SELECT * FROM tasks WHERE chat_id IN (${chatIds.map(() => '?').join(',')}) ORDER BY created_at, id`).all(...chatIds)
         : []
@@ -288,7 +306,8 @@ function createRoomRepository(roomDb) {
       return {
         room: decodeRow(room, ['providers_json', 'allowed_capabilities_json']),
         chats,
-        messages: messages.map(row => decodeRow(row, ['mentions_json', 'attachment_ids_json'])),
+        messages_have_older: messagePages ? Object.keys(messagePages).filter(chatId => messagePages[chatId].hasMore) : [],
+        messages: messagePages ? messages : messages.map(row => decodeRow(row, ['mentions_json', 'attachment_ids_json'])),
         tasks: tasks.map(row => decodeRow(row, ['source_message_ids_json', 'blocked_by_task_ids_json', 'required_artifact_ids_json', 'inputs_json'])),
         assignments: assignments.map(row => decodeRow(row, ['write_scopes_json'])),
         attentions: attentions.map(row => decodeRow(row, ['options_json'])),

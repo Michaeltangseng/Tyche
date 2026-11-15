@@ -8,6 +8,9 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
   const busy = ref(false)
   const error = ref(false)
   const staleAssignments = ref([])
+  const olderMessages = ref({})
+  const olderMessagesAvailable = ref({})
+  const loadingOlderMessages = ref(false)
   let generation = 0
   let disposed = false
   let timer = null
@@ -16,7 +19,11 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
   const tasks = computed(() => (snapshot.value?.tasks || []).filter(item => item.chat_id === chatId.value))
   const assignments = computed(() => (snapshot.value?.assignments || []).filter(item => tasks.value.some(task => task.id === item.task_id)))
   const roles = computed(() => (snapshot.value?.roles || []).filter(item => item.chat_id === chatId.value))
-  const messages = computed(() => (snapshot.value?.messages || []).filter(item => item.chat_id === chatId.value && !item.deleted_at))
+  const messages = computed(() => {
+    const combined = [...(olderMessages.value[chatId.value] || []), ...(snapshot.value?.messages || []).filter(item => item.chat_id === chatId.value)]
+    return [...new Map(combined.filter(item => !item.deleted_at).map(item => [item.id, item])).values()].sort((a, b) => a.sequence - b.sequence)
+  })
+  const hasOlderMessages = computed(() => olderMessagesAvailable.value[chatId.value] ?? Boolean(snapshot.value?.messages_have_older?.includes(chatId.value)))
   const reports = computed(() => (snapshot.value?.reports || []).filter(item => tasks.value.some(task => task.id === item.task_id)))
   const attentions = computed(() => (snapshot.value?.attentions || []).filter(item => item.chat_id === chatId.value && item.status === 'open'))
 
@@ -70,6 +77,8 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
     roomId.value = id
     snapshot.value = null
     staleAssignments.value = []
+    olderMessages.value = {}
+    olderMessagesAvailable.value = {}
     chatId.value = ''
     error.value = false
     return refresh()
@@ -123,6 +132,23 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
     })
   }
 
+  async function loadOlderMessages() {
+    if (loadingOlderMessages.value || !hasOlderMessages.value || !messages.value.length || typeof api.chatMessages !== 'function') return null
+    const targetRoom = roomId.value
+    const targetChat = chatId.value
+    const beforeSequence = Math.min(...messages.value.map(item => item.sequence))
+    loadingOlderMessages.value = true
+    try {
+      const page = await api.chatMessages({ roomId: targetRoom, chatId: targetChat, beforeSequence, limit: 100 })
+      if (disposed || roomId.value !== targetRoom || chatId.value !== targetChat) return null
+      const merged = [...(olderMessages.value[targetChat] || []), ...(page.messages || [])]
+      olderMessages.value = { ...olderMessages.value, [targetChat]: [...new Map(merged.map(item => [item.id, item])).values()] }
+      olderMessagesAvailable.value = { ...olderMessagesAvailable.value, [targetChat]: Boolean(page.hasMore) }
+      return page
+    } catch { if (!disposed) error.value = true; return null }
+    finally { loadingOlderMessages.value = false }
+  }
+
   async function command(input) {
     const targetChat = chatId.value
     return mutate(async () => {
@@ -137,5 +163,5 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
 
   onScopeDispose(() => { disposed = true; generation++; clearTimeout(timer) })
   return { rooms, snapshot, roomId, chatId, chat, tasks, assignments, roles, messages, reports, attentions, staleAssignments,
-    busy, error, load, refresh, openRoom, createRoom, createChat, send, command }
+    hasOlderMessages, loadingOlderMessages, busy, error, load, refresh, openRoom, createRoom, createChat, send, loadOlderMessages, command }
 }

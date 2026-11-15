@@ -27,6 +27,8 @@ export default {
     "room.saveRolePrompt": "保存角色提示词",
     "room.roleCreationReason": "新增原因",
     "room.emptyChat": "描述目标和约束，让团队开始工作。",
+    "room.loadOlder": "加载更早消息",
+    "room.loadingOlder": "正在加载更早消息…",
     "room.messageHint": "输入需求、补充约定，或 @成员；协作方式随时可改。",
     "room.message": "消息",
     "room.send": "发送",

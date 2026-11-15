@@ -58,6 +58,7 @@
         <section class="room-conversation" :aria-label="t('room.chat')">
           <div ref="timeline" class="room-timeline">
             <p class="room-muted">{{ t('room.teamHint') }}</p>
+            <button v-if="hasOlderMessages" class="secondary-button room-load-older" type="button" :disabled="busy || loadingOlderMessages" @click="loadOlderMessages">{{ loadingOlderMessages ? t('room.loadingOlder') : t('room.loadOlder') }}</button>
             <div class="room-team">
               <details v-for="role in roles" :key="role.id" class="room-role">
                 <summary>{{ role.display_name }} · {{ role.provider }}</summary>
@@ -161,7 +162,7 @@ import RoomArtifactDiff from './RoomArtifactDiff.vue'
 
 const props = defineProps({ api: { type: Object, required: true }, pickDirectory: { type: Function, required: true }, agents: { type: Array, default: () => [] } })
 const { rooms, snapshot, roomId, chatId, chat, tasks, assignments, roles, messages, reports, attentions, staleAssignments,
-  busy, error, load, refresh, openRoom, createRoom, createChat, send, command } = useRoomWorkspace({ api: props.api })
+  hasOlderMessages, loadingOlderMessages, busy, error, load, refresh, openRoom, createRoom, createChat, send, loadOlderMessages, command } = useRoomWorkspace({ api: props.api })
 const creating = ref(false)
 const name = ref('')
 const directory = ref('')

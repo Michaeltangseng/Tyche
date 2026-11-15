@@ -52,6 +52,26 @@ test('snapshot returns the v2 room ledger grouped by chat', () => {
   roomDb.close()
 })
 
+test('room UI snapshot returns only the latest message page and older pages stay scoped to the chat', () => {
+  const { roomDb, service, repository, roomId, chatId } = setup()
+  for (let index = 1; index <= 205; index++) repository.appendMessage({ chatId, authorType: 'user', authorId: 'user', content: `message-${index}` })
+  const snapshot = service.snapshot({ roomId })
+  assert.equal(snapshot.messages.length, 100)
+  assert.equal(snapshot.messages[0].sequence, 106)
+  assert.equal(snapshot.messages[99].sequence, 205)
+  assert.deepEqual(snapshot.messages_have_older, [chatId])
+  const page = service.listChatMessages({ roomId, chatId, beforeSequence: 106, limit: 100 })
+  assert.equal(page.messages.length, 100)
+  assert.equal(page.messages[0].sequence, 6)
+  assert.equal(page.messages[99].sequence, 105)
+  assert.equal(page.hasMore, true)
+  const finalPage = service.listChatMessages({ roomId, chatId, beforeSequence: 6, limit: 100 })
+  assert.deepEqual(finalPage.messages.map(message => message.sequence), [1, 2, 3, 4, 5])
+  assert.equal(finalPage.hasMore, false)
+  assert.throws(() => service.listChatMessages({ roomId: 'another-room', chatId }), /ROOM_CHAT_NOT_FOUND/)
+  roomDb.close()
+})
+
 test('room service composes message ingress and explicit user mention fallback', () => {
   const { roomDb, service, chatId, roleId } = setup()
   const result = service.submitMessage({ chatId, author: { type: 'user', id: 'user-1' }, content: '@Backend build API' })

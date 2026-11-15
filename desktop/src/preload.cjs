@@ -161,6 +161,7 @@ if (isLocalDocument) Object.assign(desktopApi, {
     artifactDiff: input => ipcRenderer.invoke('room:artifact-diff', input),
     bootstrap: input => ipcRenderer.invoke('room:bootstrap', input),
     snapshot: input => ipcRenderer.invoke('room:snapshot', input),
+    chatMessages: input => ipcRenderer.invoke('room:chat-messages', input),
     submitMessage: input => ipcRenderer.invoke('room:message-submit', input),
     applyUserCommand: input => ipcRenderer.invoke('room:user-command', input),
     listStaleAssignments: input => ipcRenderer.invoke('room:assignments-stale', input),

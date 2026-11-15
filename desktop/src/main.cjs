@@ -123,6 +123,7 @@ const LOCAL_AGENT_KINDS = new Set([
 ])
 const QUIT_CLEANUP_TIMEOUT_MS = 2500
 let mainWindow = null
+let roomTraceReader = null
 const traceAppendedNotifier = createTraceAppendedNotifier({
   send: payload => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1092,13 +1093,13 @@ function registerIpc() {
     skillCatalog,
   })
   const tracesRoot = path.join(app.getPath('userData'), 'meldwork-private', 'traces')
-  const traceReader = createTraceReader({
+  roomTraceReader = createTraceReader({
     tracesRoot,
     isKnownGroup: groupId => Boolean(workspace?.getGroup?.(groupId)),
     isAuthorizedTrace: input => Boolean(roomEngineService?.authorizeTrace?.(input)),
   })
   const traceStore = createTraceStore({ tracesRoot })
-  registerTraceIpc({ registerTrustedHandle, reader: traceReader, store: traceStore })
+  registerTraceIpc({ registerTrustedHandle, reader: roomTraceReader, store: traceStore })
   registerWorkdirIpc({
     registerTrustedHandle,
     getProjectService: () => projectService,
@@ -1242,7 +1243,7 @@ if (!hasSingleInstanceLock) {
         roomDb: roomEngineDb,
         repository: roomRepository,
         readArtifactDiff: createArtifactReader({ roomDb: roomEngineDb, directory: path.join(privateRoot, 'room-engine', 'artifacts') }),
-        traceReader,
+        traceReader: roomTraceReader,
         invokeAgent: roomNativeRuntime.invokeAgent,
         resolveGroup: roomNativeRuntime.resolveTarget,
         autoRunEffects: true,

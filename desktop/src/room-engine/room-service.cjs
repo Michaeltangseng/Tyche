@@ -192,11 +192,20 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
 
   function snapshot(input = {}) {
     if (typeof input.roomId !== 'string' || input.roomId.length === 0) throw new TypeError('ROOM_ID_INVALID')
-    const result = repository.getRoomSnapshot(input.roomId)
+    const result = repository.getRoomSnapshot(input.roomId, { messageLimit: 100 })
     return { ...result, chats: result.chats.map(chat => ({
       ...chat,
       controller_blocked: blockedControllerChats.has(chat.id),
     })) }
+  }
+
+  function listChatMessages({ roomId, chatId, beforeSequence = null, limit = 100 } = {}) {
+    if (typeof roomId !== 'string' || !roomId || typeof chatId !== 'string' || !chatId) throw new TypeError('ROOM_MESSAGE_PAGE_INPUT_INVALID')
+    const chat = repository.getChat(chatId)
+    if (!chat || chat.room_id !== roomId) throw new Error('ROOM_CHAT_NOT_FOUND')
+    if (beforeSequence !== null && (!Number.isSafeInteger(beforeSequence) || beforeSequence < 1)) throw new TypeError('ROOM_MESSAGE_CURSOR_INVALID')
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) throw new TypeError('ROOM_MESSAGE_LIMIT_INVALID')
+    return repository.listMessagesPage(chatId, { beforeSequence, limit })
   }
 
   function assignmentTrace({ roomId, assignmentId, cursor, direction = 'forward', limit = 50 } = {}) {
@@ -314,6 +323,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     listRooms: () => repository.listRooms(),
     createChat,
     snapshot,
+    listChatMessages,
     artifactDiff: input => {
       if (closed) throw new Error('ROOM_SERVICE_CLOSED')
       if (typeof readArtifactDiff !== 'function') throw new Error('ROOM_ARTIFACT_DIFF_UNAVAILABLE')

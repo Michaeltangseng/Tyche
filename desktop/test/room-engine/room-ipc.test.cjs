@@ -68,12 +68,23 @@ test('internal execution and platform fact channels are not registered', () => {
   registerRoomIpc({ ipcMain, service, requireRenderer: () => {} })
   assert.deepEqual([...handlers.keys()].sort(), [
     'room:list', 'room:chat-create', 'room:artifact-diff',
-    'room:bootstrap', 'room:snapshot', 'room:message-submit', 'room:user-command', 'room:assignments-stale',
+    'room:bootstrap', 'room:snapshot', 'room:chat-messages', 'room:message-submit', 'room:user-command', 'room:assignments-stale',
     'room:assignment-trace', 'room:assignment-trace-blob',
   ].sort())
   for (const channel of ['room:assignment-start', 'room:controller-action', 'room:report-import', 'room:session-liveness', 'room:effect-enqueue']) {
     assert.equal(handlers.has(channel), false)
   }
+})
+
+test('chat message paging IPC validates bounded cursors and forwards only allowed fields', async () => {
+  const { handlers, calls, service, ipcMain } = setup()
+  registerRoomIpc({ ipcMain, service, requireRenderer: () => {} })
+  const input = { roomId: 'room', chatId: 'chat', beforeSequence: 42, limit: 50 }
+  await handlers.get(CHANNELS.chatMessages)({}, input)
+  assert.deepEqual(calls[0], ['listChatMessages', input, undefined])
+  await assert.rejects(handlers.get(CHANNELS.chatMessages)({}, { ...input, beforeSequence: 0 }), /CURSOR_INVALID/)
+  await assert.rejects(handlers.get(CHANNELS.chatMessages)({}, { ...input, limit: 201 }), /LIMIT_INVALID/)
+  await assert.rejects(handlers.get(CHANNELS.chatMessages)({}, { ...input, filePath: '/tmp/messages' }), /UNKNOWN_FIELD/)
 })
 
 test('assignment trace Blob IPC accepts bounded ledger identifiers and forwards pagination', async () => {

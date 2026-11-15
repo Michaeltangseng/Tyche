@@ -9,6 +9,7 @@ const CHANNELS = Object.freeze({
   createChat: 'room:chat-create',
   bootstrap: 'room:bootstrap',
   snapshot: 'room:snapshot',
+  chatMessages: 'room:chat-messages',
   artifactDiff: 'room:artifact-diff',
   submitMessage: 'room:message-submit',
   userCommand: 'room:user-command',
@@ -83,6 +84,14 @@ function registerRoomIpc({ ipcMain, service, requireRenderer, isShuttingDown = (
       assertInput(input, ['roomId'])
       text(input.roomId)
       return service.snapshot(input)
+    }],
+    [CHANNELS.chatMessages, input => {
+      assertInput(input, ['roomId', 'chatId', 'beforeSequence', 'limit'])
+      text(input.roomId)
+      text(input.chatId)
+      if (input.beforeSequence !== undefined && (!Number.isSafeInteger(input.beforeSequence) || input.beforeSequence < 1)) throw new TypeError('ROOM_MESSAGE_CURSOR_INVALID')
+      if (input.limit !== undefined && (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 200)) throw new TypeError('ROOM_MESSAGE_LIMIT_INVALID')
+      return service.listChatMessages({ ...input, beforeSequence: input.beforeSequence ?? null, limit: input.limit ?? 100 })
     }],
     [CHANNELS.submitMessage, input => service.submitMessage(messageInput(input))],
     [CHANNELS.artifactDiff, input => {

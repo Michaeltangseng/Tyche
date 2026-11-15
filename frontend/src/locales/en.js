@@ -27,6 +27,8 @@ export default {
     "room.saveRolePrompt": "Save role prompt",
     "room.roleCreationReason": "Added for",
     "room.emptyChat": "Describe your goal and constraints to get the team started.",
+    "room.loadOlder": "Load earlier messages",
+    "room.loadingOlder": "Loading earlier messages…",
     "room.messageHint": "Describe a goal, change how the team works, or @mention a member.",
     "room.message": "Message",
     "room.send": "Send",
