@@ -93,6 +93,33 @@ test('committed action events are recovered even when their originating decision
   assert.deepEqual(calls[0].events.map(event => event.id), [eventId])
 })
 
+test('context-only changes wake subsequent routing and their events survive a restart', async t => {
+  const s = setup(t)
+  const calls = []
+  const messageId = s.message(s.chatId, 'From now on write concise reports')
+  const service = s.service({ decideController: async input => {
+    calls.push(input)
+    return { actions: input.messages.length ? [{ type: 'update_context', chatId: s.chatId,
+      contextRevision: input.contextRevision, instructions: 'Write concise reports.', sourceMessageIds: [messageId] }] : [] }
+  } })
+  await service.startRuntime()
+  await service.flushController(s.chatId)
+  await service.flushController(s.chatId)
+  assert.equal(calls.length, 2)
+  assert.equal(calls[1].contextRevision, 1)
+  assert.equal(calls[1].context.instructions, 'Write concise reports.')
+  assert.equal(calls[1].events[0].type, 'action_update_context')
+  await service.close()
+  const recoveryEvent = s.event('action_update_context')
+  s.reopen()
+  const recovered = []
+  const restarted = s.service({ decideController: async input => { recovered.push(input); return { actions: [] } } })
+  await restarted.startRuntime()
+  await restarted.flushController(s.chatId)
+  assert.deepEqual(recovered[0].events.map(event => event.id), [recoveryEvent])
+  assert.equal(recovered[0].context.instructions, 'Write concise reports.')
+})
+
 test('paused chats wait for resume; archived and legacy chats are excluded', async t => {
   const s = setup(t)
   const messageId = s.message()

@@ -8,7 +8,11 @@
 
 当前切片已接入独立的 v2 Renderer 页面，尚未接入旧 Chat 迁移。`controller-agent.cjs` 已在 main 中通过 `native-runtime.cjs` 连接原生 `invokeAgent`：按 Room Provider 配置顺序选择首个 Provider，验证 Chat/目录归属与已安装 Agent；创建本次调用的临时执行描述，不查找已有 group，也不创建隐藏群聊。Controller 强制只读、不写入旧消息/Session、严格解析 JSON；Worker 写入需要用户授权与根目录独占租约。Assignment Runner 已补齐原生接口要求的 promptOverride/contextPackId，并带入角色 Prompt、任务创建时的协作约定和 Report 输出要求。独立 Controller Session 已支持批次幂等、context revision 校验和结构化决策审计；动态角色创建与 Prompt 更新已受 Room Provider/能力白名单约束。Room schema 已升级到 v3，既有 Room 默认只读。已在 Electron main 使用真实 Claude Code CLI 跑通自动组队、单文档任务、结构化 Report、产物快照/diff 和确认 Attention，并验证账本重开；真实多 Agent 评审、长任务心跳、原生会话续跑和异常恢复验收仍待完成，未运行仓库全量测试。
 
-按用户反馈简化角色模型：删除角色归档动作及专门的停用检查，不增加角色生命周期状态机。“后续不再邀请某个角色”由用户指令、Prompt 和协作上下文管理，不影响已有任务或历史记录。保留 Prompt 更新的 Chat 归属校验及后续 Controller 唤醒。协作约定 `update_context` 的用户来源证据、同批次 revision 切换仍待单独落实。
+按用户反馈简化角色模型：删除角色归档动作及专门的停用检查，不增加角色生命周期状态机。“后续不再邀请某个角色”由用户指令、Prompt 和协作上下文管理，不影响已有任务或历史记录。保留 Prompt 更新的 Chat 归属校验及后续 Controller 唤醒。
+
+协作约定更新已接通：主控使用完整 instructions 文本和当前用户源消息 ID 提交 `update_context`。平台验证来源与当前 revision，同批先保存约定、再以新 revision 创建新任务；既有任务保留版本且不隐式停止。批次失败整批回滚，更新事件可唤醒后续评估并在重启后补调度，不新增状态机或配置 DSL。约定本身不能授予写权限。下一步扩展真实多 Agent 评审及用户决定后的实施闭环；Prompt/Skill 配置界面、长任务心跳与会话续跑仍未完成。
+
+本切片验证：七个 room-engine 定向文件共 71 项测试通过，覆盖来源身份、版本切换、同批回滚、重复批次、上下文更新唤醒与重启恢复；`git diff --check` 通过。扩展的真实 Claude Code CLI smoke 在 Electron main 约 81 秒、6 次调用通过：先完成文档与确认 Attention，再接收“以后英文报告、后续不再邀请文档作者、只更新约定”的用户消息，保存新 revision，不新增任务或停止既有工作；人工核对保存文本包含新要求且保留原有限制，数据库重开后来源与版本仍在。该验证不代表后续实际任务遵循率或完整多 Agent 验收。未运行全量测试、构建、打包或 Renderer 交互复验。
 
 简化后的验证：上述七个 room-engine 定向测试文件共 47 项通过；`git diff --check` 通过。Electron main 的真实 Claude Code CLI smoke 约 33 秒、4 次调用通过，覆盖文档、Report、产物 diff、Attention 与数据库重开。本轮未跑全量测试、构建、打包或 Renderer 交互复验。
 

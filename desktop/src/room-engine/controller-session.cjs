@@ -80,9 +80,14 @@ function createControllerSession({ roomDb, repository, applyAction, decide, now 
         throw new Error('ROOM_CONTROLLER_MESSAGES_STALE')
       }
       const actions = proposal.actions.map(action => validateControllerAction(action, { chatId, contextRevision }))
+      const contextUpdates = actions.filter(action => action.type === 'update_context')
+      if (contextUpdates.length > 1) throw new Error('ROOM_CONTROLLER_MULTIPLE_CONTEXT_UPDATES')
+      const orderedActions = [...contextUpdates, ...actions.filter(action => action.type !== 'update_context')]
+      const userMessageIds = messages.filter(message => message.author_type === 'user').map(message => message.id)
       const results = []
-      for (const action of actions) {
-        results.push(applyAction(action, { actorId: 'controller', contextRevision }))
+      for (const action of orderedActions) {
+        const effectiveRevision = repository.getChatContext(chatId).revision
+        results.push(applyAction({ ...action, contextRevision: effectiveRevision }, { actorId: 'controller', contextRevision: effectiveRevision, userMessageIds }))
       }
       const actionIds = results.map(result => result?.event?.eventId).filter(Boolean)
       const decisionId = repository.createControllerDecision({

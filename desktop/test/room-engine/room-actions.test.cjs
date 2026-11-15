@@ -34,6 +34,20 @@ test('controller action rejects stale context and unknown fields', () => {
   assert.throws(() => validateControllerAction({ ...action, debug: true }), /ROOM_ACTION_UNKNOWN_FIELD/)
 })
 
+test('context action requires explicit instructions and sources and rejects stale direct writes', () => {
+  const { roomDb, repository, chatId } = setup()
+  const service = createRoomActionService({ roomDb, repository })
+  const base = { type: 'update_context', chatId, contextRevision: 0, instructions: 'New preferences', sourceMessageIds: ['message'] }
+  for (const invalid of [{ instructions: '' }, { instructions: '  ' }, { sourceMessageIds: [] }, { instructions: undefined }]) {
+    assert.throws(() => validateControllerAction({ ...base, ...invalid }), /CONTEXT_/)
+  }
+  assert.throws(() => service.applyController(base), /USER_SOURCE_REQUIRED/)
+  repository.createChatContextRevision({ chatId, instructions: 'Existing', createdBy: 'user' })
+  assert.throws(() => service.applyController(base), /CONTEXT_STALE/)
+  assert.equal(repository.getChatContext(chatId).context.instructions, 'Existing')
+  roomDb.close()
+})
+
 test('controller create_task, assign, role, and attention actions become ledger facts', () => {
   const { roomDb, repository, roomId, chatId } = setup()
   const service = createRoomActionService({ roomDb, repository })

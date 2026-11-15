@@ -20,6 +20,75 @@ function setup() {
   return { roomDb, repository, chatId, message, roleId }
 }
 
+test('user context changes apply before new tasks and preserve existing task context', async () => {
+  const state = setup()
+  const oldTask = state.repository.createTask({ chatId: state.chatId, objective: 'Existing work', createdBy: 'user' })
+  const assignmentId = state.repository.createAssignment({ taskId: oldTask, roleId: state.roleId, status: 'running' })
+  const actions = createRoomActionService(state)
+  const session = createControllerSession({ ...state, applyAction: actions.applyController,
+    decide: async () => ({ actions: [
+      { type: 'create_task', chatId: state.chatId, contextRevision: 0, objective: 'New work' },
+      { type: 'update_context', chatId: state.chatId, contextRevision: 0, instructions: 'Skip discussion and implement directly.', sourceMessageIds: [state.message.messageId] },
+    ] }) })
+  const input = { chatId: state.chatId, batchId: 'change-workflow', contextRevision: 0, messageIds: [state.message.messageId] }
+  const result = await session.process(input)
+  assert.equal(result.decision.contextRevision, 0)
+  assert.equal(result.decision.results[0].context.revision, 1)
+  const taskId = result.decision.results[1].taskId
+  assert.equal(state.repository.getTask(taskId).context_revision, 1)
+  assert.equal(state.repository.getTask(oldTask).context_revision, 0)
+  assert.equal(state.repository.getAssignmentContext(assignmentId).status, 'running')
+  assert.equal(state.repository.getChatContext(state.chatId).context.instructions, 'Skip discussion and implement directly.')
+  assert.deepEqual(state.repository.getChatContext(state.chatId).context.changes.sourceMessageIds, [state.message.messageId])
+  assert.equal((await session.process(input)).duplicate, true)
+  assert.equal(state.repository.getChatContext(state.chatId).revision, 1)
+  state.roomDb.close()
+})
+
+test('context changes require current batch user sources, not agent, historical or foreign messages', async () => {
+  for (const kind of ['agent', 'historical', 'foreign', 'deleted']) {
+    const state = setup()
+    const otherChat = state.repository.createChat({ roomId: state.repository.getChatContext(state.chatId).chat.room_id, title: 'Other' })
+    const source = state.repository.appendMessage({ chatId: kind === 'foreign' ? otherChat : state.chatId,
+      authorType: kind === 'agent' ? 'agent' : 'user', authorId: 'source', content: 'Change the workflow' })
+    if (kind === 'deleted') state.repository.deleteMessage({ messageId: source.messageId })
+    const actions = createRoomActionService(state)
+    const session = createControllerSession({ ...state, applyAction: actions.applyController,
+      decide: async () => ({ actions: [{ type: 'update_context', chatId: state.chatId, contextRevision: 0,
+        instructions: 'Untrusted change', sourceMessageIds: [source.messageId] }] }) })
+    await assert.rejects(session.process({ chatId: state.chatId, contextRevision: 0,
+      messageIds: kind === 'agent' ? [source.messageId] : [state.message.messageId] }), /USER_SOURCE_REQUIRED/)
+    assert.equal(state.repository.getChatContext(state.chatId).revision, 0)
+    state.roomDb.close()
+  }
+})
+
+test('failure after context update rolls back revision, tasks and decision', async () => {
+  const state = setup()
+  const actions = createRoomActionService(state)
+  const session = createControllerSession({ ...state, applyAction: actions.applyController,
+    decide: async () => ({ actions: [
+      { type: 'update_context', chatId: state.chatId, contextRevision: 0, instructions: 'New workflow', sourceMessageIds: [state.message.messageId] },
+      { type: 'assign', chatId: state.chatId, contextRevision: 0, taskId: 'missing', roleId: state.roleId },
+    ] }) })
+  await assert.rejects(session.process({ chatId: state.chatId, batchId: 'rollback-context', contextRevision: 0, messageIds: [state.message.messageId] }))
+  assert.equal(state.repository.getChatContext(state.chatId).revision, 0)
+  assert.equal(state.repository.getControllerDecision({ chatId: state.chatId, batchId: 'rollback-context' }), undefined)
+  state.roomDb.close()
+})
+
+test('multiple context replacements in one batch are rejected before any action applies', async () => {
+  const state = setup()
+  const actions = createRoomActionService(state)
+  const action = { type: 'update_context', chatId: state.chatId, contextRevision: 0,
+    instructions: 'New preferences', sourceMessageIds: [state.message.messageId] }
+  const session = createControllerSession({ ...state, applyAction: actions.applyController,
+    decide: async () => ({ actions: [action, { ...action, instructions: 'Conflicting preferences' }] }) })
+  await assert.rejects(session.process({ chatId: state.chatId, contextRevision: 0, messageIds: [state.message.messageId] }), /MULTIPLE_CONTEXT_UPDATES/)
+  assert.equal(state.repository.getChatContext(state.chatId).revision, 0)
+  state.roomDb.close()
+})
+
 test('removed retirement action rejects the entire controller proposal', async () => {
   const state = setup()
   const taskId = state.repository.createTask({ chatId: state.chatId, objective: 'Draft', createdBy: 'controller' })

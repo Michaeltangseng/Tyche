@@ -110,7 +110,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     const result = await controller.process(pending)
     if (!result.duplicate) {
       for (const action of result.decision.results) {
-        if (action.taskId || action.roleId) wakeController(input.chatId, action.event.eventId)
+        if (action.taskId || action.roleId || action.context) wakeController(input.chatId, action.event.eventId)
       }
     }
     return result

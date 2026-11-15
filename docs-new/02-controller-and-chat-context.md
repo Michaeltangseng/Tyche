@@ -34,7 +34,7 @@ propose_retry
 note
 ```
 
-不提供角色归档动作。用户要求“后续不再邀请某个角色”属于协作约定，由主控按用户指令和上下文处理；不隐式停止已有任务，不禁止修改该角色 Prompt，也不删除历史 Assignment、Report 或 Prompt revision。角色 Prompt 更新仍校验当前 Chat 归属。协作约定持久更新的用户来源与批次版本校验见实施路线图中的待办。
+不提供角色归档动作。用户要求“后续不再邀请某个角色”属于协作约定，由主控按用户指令和上下文处理；不隐式停止已有任务，不禁止修改该角色 Prompt，也不删除历史 Assignment、Report 或 Prompt revision。角色 Prompt 更新仍校验当前 Chat 归属。协作约定持久更新的用户来源与批次版本校验见下方实现契约。
 
 `update_task` 只能修改目标描述、依赖、优先级和输入等元数据；状态转移由 Report、平台运行事实或 `UserCommand` 触发。
 
@@ -83,6 +83,20 @@ Controller Prompt
 这不是切换预设模式，而是更新当前 ChatContext。更新默认只影响未来路由；已经运行的 Task 不会被擅自重启或交接，除非用户明确要求。
 
 每次 ChatContext 更新都产生 revision。Task 记录创建时使用的 revision，以便审计主控当时为何做出某个决定。
+
+实现契约：`update_context` 仅接收完整的 `instructions` 文本和 `sourceMessageIds`，不引入工作流配置语言。主控整理用户新要求与仍适用的旧约定；平台要求引用当前批次中、当前 Chat 内未删除的用户消息，Agent 建议、历史源消息或 Artifact 不能单独授权持久修改。这个校验确认来源身份，语义理解仍由主控负责。约定不能增加文件权限或触发任务取消。
+
+一个批次最多一次约定更新。模型提交的 `contextRevision` 始终指向本次评估的输入版本；平台先应用约定更新，再以更新后的有效 revision 执行其余已校验动作。新建 Task 引用新 revision；已有 Task/Assignment 不改版本、不重启。决策记录输入 revision，各动作事件记录应用时的有效 revision；约定、任务、effects 和决策一起提交，任一动作失败全部回滚。更新事件会唤醒后续评估，重启后同样从账本补入；没有当前用户源消息的事件批次不能再次改写约定。
+
+```json
+{
+  "type": "update_context",
+  "chatId": "chat-001",
+  "contextRevision": 2,
+  "instructions": "报告保持简短；后续直接实施，不再邀请产品分析师。其他现有约束继续适用。",
+  "sourceMessageIds": ["msg-current-user-request"]
+}
+```
 
 优先级为：
 

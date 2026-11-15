@@ -16,7 +16,7 @@ const FIELDS = Object.freeze({
     create_task: ['type', 'chatId', 'contextRevision', 'objective', 'kind', 'sourceMessageIds', 'blockedByTaskIds', 'requiredArtifactIds', 'optional', 'parentTaskId', 'inputs'],
     assign: ['type', 'chatId', 'contextRevision', 'taskId', 'roleId', 'required', 'writeScopes'],
     request_attention: ['type', 'chatId', 'contextRevision', 'taskId', 'attentionType', 'question', 'options'],
-    update_context: ['type', 'chatId', 'contextRevision', 'changes'],
+    update_context: ['type', 'chatId', 'contextRevision', 'instructions', 'sourceMessageIds'],
     create_role: ['type', 'chatId', 'contextRevision', 'displayName', 'responsibilities', 'capabilities', 'provider', 'creationReason'],
     update_role_prompt: ['type', 'chatId', 'contextRevision', 'roleId', 'prompt'],
     note: ['type', 'chatId', 'contextRevision', 'content'],
@@ -83,7 +83,14 @@ function normalize(action, kind, expectedChatId = null, expectedContextRevision 
   if (kind === 'controller') {
     if (!Number.isInteger(action.contextRevision) || action.contextRevision < 0) throw new TypeError('ROOM_ACTION_CONTEXT_REVISION_INVALID')
     if (expectedContextRevision !== null && action.contextRevision !== expectedContextRevision) throw new Error('ROOM_ACTION_CONTEXT_STALE')
-    if (action.type === 'update_context' && !isRecord(action.changes)) throw new TypeError('ROOM_ACTION_CONTEXT_CHANGES_INVALID')
+    if (action.type === 'update_context') {
+      assertString(action.instructions, 'ROOM_ACTION_CONTEXT_INSTRUCTIONS_INVALID')
+      if (!action.instructions.trim()) throw new TypeError('ROOM_ACTION_CONTEXT_INSTRUCTIONS_INVALID')
+      if (!Array.isArray(action.sourceMessageIds) || !action.sourceMessageIds.length || action.sourceMessageIds.length > 32) {
+        throw new TypeError('ROOM_ACTION_CONTEXT_SOURCES_INVALID')
+      }
+      for (const id of action.sourceMessageIds) assertId(id, 'source_message_id')
+    }
     if (action.type === 'update_role_prompt') assertId(action.roleId, 'role_id')
     if (action.type === 'update_role_prompt') assertString(action.prompt, 'ROOM_ACTION_PROMPT_INVALID')
   }
@@ -111,9 +118,10 @@ function createRoomActionService({ roomDb, repository }) {
     return repository.appendEvent({ roomId: chat.room_id, chatId: action.chatId, actorId, type, payload: action })
   }
 
-  function applyController(action, { actorId = 'controller', contextRevision = null } = {}) {
+  function applyController(action, { actorId = 'controller', contextRevision = null, userMessageIds = [] } = {}) {
     const validated = validateControllerAction(action, { contextRevision })
     return roomDb.withTransaction(() => {
+      if (repository.getChatContext(validated.chatId).revision !== validated.contextRevision) throw new Error('ROOM_ACTION_CONTEXT_STALE')
       let result
       if (validated.type === 'create_task') result = { taskId: repository.createTask({ ...validated, createdBy: actorId, contextRevision: validated.contextRevision }) }
       else if (validated.type === 'assign') {
@@ -132,7 +140,15 @@ function createRoomActionService({ roomDb, repository }) {
         result = { roleId: repository.createAgentRole({ ...validated, createdBy: actorId }) }
       }
       else if (validated.type === 'request_attention') result = { attentionId: repository.createAttention({ ...validated, type: validated.attentionType, requestedBy: actorId }) }
-      else if (validated.type === 'update_context') result = { context: repository.createChatContextRevision({ chatId: validated.chatId, instructions: typeof validated.changes?.instructions === 'string' ? validated.changes.instructions : '', changes: validated.changes, createdBy: actorId }) }
+      else if (validated.type === 'update_context') {
+        for (const id of validated.sourceMessageIds) {
+          const message = repository.getMessage(id)
+          if (!userMessageIds.includes(id) || !message || message.chat_id !== validated.chatId
+              || message.author_type !== 'user' || message.deleted_at) throw new Error('ROOM_CONTEXT_USER_SOURCE_REQUIRED')
+        }
+        result = { context: repository.createChatContextRevision({ chatId: validated.chatId,
+          instructions: validated.instructions, changes: { sourceMessageIds: [...new Set(validated.sourceMessageIds)] }, createdBy: actorId }) }
+      }
       else if (validated.type === 'update_role_prompt') {
         const role = roomDb.database.prepare('SELECT id FROM agent_roles WHERE id = ? AND chat_id = ?').get(validated.roleId, validated.chatId)
         if (!role) throw new Error('ROOM_ROLE_NOT_FOUND')

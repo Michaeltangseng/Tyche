@@ -103,6 +103,21 @@ async function smoke() {
       await new Promise(resolve => setTimeout(resolve, 250))
     }
     if (!summary) throw new Error('SMOKE_TIMEOUT')
+    const previousRevision = repository.getChatContext(chatId).revision
+    const change = service.submitMessage({ chatId, author: { type: 'user', id: 'user' }, content:
+      '更新后续协作约定：以后所有报告用英文，后续不要再邀请文档作者。保留现有文档和待确认事项。这条消息只要求保存新的协作约定，不创建任务、不执行任务、不停止已有任务。' })
+    console.log(JSON.stringify({ stage: 'context_change' }))
+    await service.flushController(chatId)
+    await service.flushController(chatId) // consume the persisted context-update event too
+    if (fatal) throw fatal
+    const context = repository.getChatContext(chatId)
+    const updated = service.snapshot({ roomId })
+    if (context.revision <= previousRevision || !context.context?.instructions.trim()
+        || !context.context.changes.sourceMessageIds?.includes(change.message.messageId)) throw new Error('SMOKE_CONTEXT_CHANGE_MISSING')
+    if (updated.tasks.length !== summary.tasks || updated.assignments.length !== 1
+        || updated.tasks.some(task => task.status !== 'done')) throw new Error('SMOKE_CONTEXT_CHANGE_CREATED_WORK')
+    summary = { ...summary, calls: calls.length, elapsedMs: Date.now() - startedAt,
+      contextRevision: context.revision, contextSourceMessageId: change.message.messageId, contextChangeVerified: true }
   } catch (error) {
     failure = error
     throw error
@@ -118,6 +133,9 @@ async function smoke() {
   const reopened = openRoomDatabase({ directory: path.join(privateRoot, 'room-engine') })
   try {
     const persisted = createRoomRepository(reopened).getRoomSnapshot(roomId)
+    const persistedContext = createRoomRepository(reopened).getChatContext(chatId)
+    if (persistedContext.revision !== summary.contextRevision
+        || !persistedContext.context?.changes.sourceMessageIds?.includes(summary.contextSourceMessageId)) throw new Error('SMOKE_REOPEN_CONTEXT_LOST')
     if (!persisted.artifacts.some(item => item.id === summary.artifactId)
         || !persisted.reports.some(item => item.artifact_ids_json.includes(summary.artifactId))
         || !persisted.attentions.some(item => item.id === summary.attentionId)) throw new Error('SMOKE_REOPEN_STATE_LOST')

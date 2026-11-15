@@ -2,6 +2,7 @@
 // receipt; the queue is only a transient batching mechanism, never a second ledger.
 const TRIGGER_TYPES = new Set([
   'report_received', 'action_create_task', 'action_create_role',
+  'action_update_context', 'action_update_role_prompt',
   'user_answer_attention', 'user_accept_artifact', 'user_reject_artifact',
   'user_resume_chat', 'user_retry_task', 'user_handoff_task',
   'user_set_workspace_write',

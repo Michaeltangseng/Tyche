@@ -70,7 +70,9 @@ propose_retry
 note
 ```
 
-Room Engine 对每个动作逐项校验：成员、权限、能力、Task 去重、写入范围、资源上限、Attention 字段、Context revision 和幂等键。批量动作允许部分成功，但每项必须有独立结果，不能因为一项失败而丢失其他合法动作。
+`update_context` 使用 `{type, chatId, contextRevision, instructions, sourceMessageIds}`：`instructions` 为完整约定文本，必须非空；源消息必须来自当前批次的用户消息。每批最多一次更新，平台先更新约定、再为同批新任务引用新版本；已有任务保留原版本。详细事务与审计约定见 [Controller 与 ChatContext](02-controller-and-chat-context.md)。
+
+Room Engine 对每个动作逐项校验：成员、权限、能力、Task 去重、写入范围、资源上限、Attention 字段、Context revision 和幂等键。批次动作、上下文 revision、effects 和决策审计作为同一事务提交；任一动作失败整批回滚，不产生部分派发。
 
 ### 3. Report
 
