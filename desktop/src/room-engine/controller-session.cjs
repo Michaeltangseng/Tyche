@@ -36,29 +36,33 @@ function createControllerSession({ roomDb, repository, applyAction, decide, now 
     const startedAt = now()
     const proposal = await decide({ chatId, batchId, contextRevision, messages, context: chatContext.context, roles })
     if (!proposal || !Array.isArray(proposal.actions)) throw new TypeError('ROOM_CONTROLLER_DECISION_INVALID')
-    const currentChat = repository.getChatContext(chatId).chat
-    if (currentChat.context_revision !== contextRevision) throw new Error('ROOM_CONTROLLER_CONTEXT_STALE')
-    if (messages.some(message => JSON.stringify(repository.getMessage(message.id)) !== JSON.stringify(message))) {
-      throw new Error('ROOM_CONTROLLER_MESSAGES_STALE')
-    }
-    const actions = proposal.actions.map(action => validateControllerAction(action, { chatId, contextRevision }))
-    const results = []
-    for (const action of actions) {
-      results.push(applyAction(action, { actorId: 'controller', contextRevision }))
-    }
-    const actionIds = results.map(result => result?.event?.eventId).filter(Boolean)
-    const decisionId = repository.createControllerDecision({
-      chatId,
-      batchId,
-      contextRevision,
-      inputIds: messageIds,
-      actionIds,
-      results,
-      model: proposal.model || model,
-      latencyMs: Math.max(0, now() - startedAt),
-      cost: proposal.cost ?? null,
+    return roomDb.withTransaction(() => {
+      const committed = repository.getControllerDecision({ chatId, batchId })
+      if (committed) return { decision: { ...committed, inputIds: decode(committed.input_ids_json), actionIds: decode(committed.action_ids_json), results: decode(committed.results_json) }, duplicate: true }
+      const currentChat = repository.getChatContext(chatId).chat
+      if (currentChat.context_revision !== contextRevision) throw new Error('ROOM_CONTROLLER_CONTEXT_STALE')
+      if (messages.some(message => JSON.stringify(repository.getMessage(message.id)) !== JSON.stringify(message))) {
+        throw new Error('ROOM_CONTROLLER_MESSAGES_STALE')
+      }
+      const actions = proposal.actions.map(action => validateControllerAction(action, { chatId, contextRevision }))
+      const results = []
+      for (const action of actions) {
+        results.push(applyAction(action, { actorId: 'controller', contextRevision }))
+      }
+      const actionIds = results.map(result => result?.event?.eventId).filter(Boolean)
+      const decisionId = repository.createControllerDecision({
+        chatId,
+        batchId,
+        contextRevision,
+        inputIds: messageIds,
+        actionIds,
+        results,
+        model: proposal.model || model,
+        latencyMs: Math.max(0, now() - startedAt),
+        cost: proposal.cost ?? null,
+      })
+      return { decision: { id: decisionId, chatId, batchId, contextRevision, inputIds: messageIds, actionIds, results }, duplicate: false }
     })
-    return { decision: { id: decisionId, chatId, batchId, contextRevision, inputIds: messageIds, actionIds, results }, duplicate: false }
   }
 
   async function process(input = {}) {

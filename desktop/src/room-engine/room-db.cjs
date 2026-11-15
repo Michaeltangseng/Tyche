@@ -32,19 +32,31 @@ function openRoomDatabase({ directory, filename = 'db.sqlite' }) {
   if (process.platform !== 'win32') fs.chmodSync(databasePath, 0o600)
   database.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;')
   migrate(database)
+  let transactionDepth = 0
   return {
     database,
     databasePath,
     close: () => database.close(),
     withTransaction(callback) {
-      database.exec('BEGIN IMMEDIATE')
+      const savepoint = `room_tx_${transactionDepth}`
+      const nested = transactionDepth > 0
+      database.exec(nested ? `SAVEPOINT ${savepoint}` : 'BEGIN IMMEDIATE')
+      transactionDepth += 1
       try {
         const result = callback(database)
-        database.exec('COMMIT')
+        if (result && typeof result.then === 'function') throw new TypeError('ROOM_TRANSACTION_MUST_BE_SYNCHRONOUS')
+        database.exec(nested ? `RELEASE SAVEPOINT ${savepoint}` : 'COMMIT')
         return result
       } catch (error) {
-        try { database.exec('ROLLBACK') } catch { /* preserve original error */ }
+        try {
+          if (nested) {
+            database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`)
+            database.exec(`RELEASE SAVEPOINT ${savepoint}`)
+          } else database.exec('ROLLBACK')
+        } catch { /* preserve original error */ }
         throw error
+      } finally {
+        transactionDepth -= 1
       }
     },
   }

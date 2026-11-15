@@ -29,7 +29,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     })
     : null
   const controller = typeof decideController === 'function'
-    ? createControllerSession({ roomDb, repository, applyAction: actions.applyController, decide: decideController, now: () => Date.now() })
+    ? createControllerSession({ roomDb, repository, applyAction: applyControllerAction, decide: decideController, now: () => Date.now() })
     : null
 
   function submitMessage(input, { deterministicFallback = true } = {}) {
@@ -89,18 +89,20 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
   }
 
   function applyControllerAction(input, options) {
-    const result = actions.applyController(input, options)
-    if (result.assignmentId) {
-      const assignment = repository.getAssignmentContext(result.assignmentId)
-      outbox.enqueue({
-        chatId: input.chatId,
-        actionId: result.event?.eventId || null,
-        kind: 'start_assignment',
-        payload: { assignmentId: result.assignmentId, prompt: assignment?.objective || '' },
-        idempotencyKey: `start-assignment:${result.assignmentId}`,
-      })
-    }
-    return result
+    return roomDb.withTransaction(() => {
+      const result = actions.applyController(input, options)
+      if (result.assignmentId) {
+        const assignment = repository.getAssignmentContext(result.assignmentId)
+        outbox.enqueue({
+          chatId: input.chatId,
+          actionId: result.event?.eventId || null,
+          kind: 'start_assignment',
+          payload: { assignmentId: result.assignmentId, prompt: assignment?.objective || '' },
+          idempotencyKey: `start-assignment:${result.assignmentId}`,
+        })
+      }
+      return result
+    })
   }
 
   async function runNextEffect() {

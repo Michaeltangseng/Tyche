@@ -112,3 +112,47 @@ test('controller assignment is persisted as an outbox effect and can be executed
   assert.equal(state.repository.getAssignmentContext(assigned.assignmentId).status, 'completed')
   state.roomDb.close()
 })
+
+test('controller batch rolls back assignments, effects and audit when a later action fails', async () => {
+  const state = setup()
+  let fail = true
+  const service = createRoomService({
+    roomDb: state.roomDb, repository: state.repository,
+    decideController: async () => ({ actions: [
+      { type: 'assign', chatId: state.chatId, contextRevision: 0, taskId: state.taskId, roleId: state.roleId },
+      ...(fail ? [{ type: 'assign', chatId: state.chatId, contextRevision: 0, taskId: 'missing-task', roleId: state.roleId }] : []),
+    ] }),
+  })
+  const input = { chatId: state.chatId, batchId: 'atomic-batch', contextRevision: 0 }
+  await assert.rejects(service.processControllerBatch(input), /FOREIGN KEY/)
+  assert.equal(state.repository.listAssignments(state.taskId).length, 1)
+  for (const table of ['effects', 'events', 'controller_decisions']) {
+    assert.equal(state.roomDb.database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count, 0)
+  }
+  fail = false
+  const result = await service.processControllerBatch(input)
+  assert.equal(result.duplicate, false)
+  assert.equal(state.repository.listAssignments(state.taskId).length, 2)
+  assert.equal(state.roomDb.database.prepare('SELECT COUNT(*) AS count FROM effects').get().count, 1)
+  const duplicate = await service.processControllerBatch(input)
+  assert.equal(duplicate.duplicate, true)
+  assert.equal(state.repository.listAssignments(state.taskId).length, 2)
+  state.roomDb.close()
+})
+
+test('failed decision audit persistence rolls back all batch actions and effects', async () => {
+  const state = setup()
+  state.roomDb.database.exec(`CREATE TRIGGER reject_decision BEFORE INSERT ON controller_decisions
+    BEGIN SELECT RAISE(ABORT, 'decision storage failed'); END;`)
+  const service = createRoomService({
+    roomDb: state.roomDb, repository: state.repository,
+    decideController: async () => ({ actions: [
+      { type: 'assign', chatId: state.chatId, contextRevision: 0, taskId: state.taskId, roleId: state.roleId },
+    ] }),
+  })
+  await assert.rejects(service.processControllerBatch({ chatId: state.chatId, batchId: 'audit-failure', contextRevision: 0 }), /decision storage failed/)
+  assert.equal(state.repository.listAssignments(state.taskId).length, 1)
+  assert.equal(state.roomDb.database.prepare('SELECT COUNT(*) AS count FROM effects').get().count, 0)
+  assert.equal(state.repository.listEvents(state.roomId).length, 0)
+  state.roomDb.close()
+})

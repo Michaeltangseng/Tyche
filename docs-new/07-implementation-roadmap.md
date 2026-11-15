@@ -144,7 +144,7 @@ Controller Prompt、角色 Prompt 和 ChatContext revision 通过 `chat-context.
 
 ### Phase 4：Controller Session
 
-当前批处理入口已实现 Chat 级单批次运行保护、决策前后 context revision 校验、输入消息编辑/删除检测，以及 Message/ControllerAction 的 Chat 归属校验。模型输出的所有动作会先完成协议校验，再开始应用；模型失败会释放运行槽。这里仍未实现自动合批队列、超时取消、整批动作的事务原子性或跨进程去重，不能据此视为 Phase 4 已完成。
+当前批处理入口已实现 Chat 级单批次运行保护、决策前后 context revision 校验、输入消息编辑/删除检测，以及 Message/ControllerAction 的 Chat 归属校验。模型输出的所有动作会先完成协议校验，再开始应用；模型失败会释放运行槽。动作、派发 effect 和决策审计在同一同步事务中提交，后续动作或审计写入失败会整批回滚；嵌套服务事务通过 SQLite savepoint 组合。Controller 批次统一经过 Room Service 的派发入口，避免只创建 Assignment 而漏建 effect。模型调用发生在事务外，事务内不启动 Agent。这里仍未实现自动合批队列或超时取消，也不保证跨进程只调用一次模型，不能据此视为 Phase 4 已完成。
 
 工作项：
 

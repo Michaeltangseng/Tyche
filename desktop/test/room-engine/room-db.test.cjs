@@ -63,6 +63,27 @@ test('room database is private and survives close/reopen', () => {
   reopened.close()
 })
 
+test('nested transactions isolate failures and remain part of the outer transaction', () => {
+  const roomDb = openRoomDatabase({ directory: tempDirectory() })
+  const repository = createRoomRepository(roomDb)
+  const roomId = repository.createRoom({ name: 'Nested', workspace: '/tmp/demo' })
+  assert.throws(() => roomDb.withTransaction(() => {
+    roomDb.withTransaction(() => repository.createChat({ roomId, title: 'Inner committed' }))
+    throw new Error('outer failed')
+  }), /outer failed/)
+  assert.equal(roomDb.database.prepare('SELECT COUNT(*) AS count FROM chats').get().count, 0)
+  roomDb.withTransaction(() => {
+    assert.throws(() => roomDb.withTransaction(() => {
+      repository.createChat({ roomId, title: 'Inner failed' })
+      throw new Error('inner failed')
+    }), /inner failed/)
+    repository.createChat({ roomId, title: 'Outer survived' })
+  })
+  assert.deepEqual(roomDb.database.prepare('SELECT title FROM chats').all().map(row => row.title), ['Outer survived'])
+  assert.throws(() => roomDb.withTransaction(() => Promise.resolve()), /MUST_BE_SYNCHRONOUS/)
+  roomDb.close()
+})
+
 test('room database rejects a path-like filename', () => {
   const directory = tempDirectory()
   assert.throws(() => openRoomDatabase({ directory, filename: '../db.sqlite' }), /ROOM_DATABASE_FILENAME_MUST_BE_BASENAME/)
