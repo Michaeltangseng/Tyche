@@ -93,6 +93,7 @@ function createAssignmentRunner({ repository, supervisor, invokeAgent, resolveGr
             assignmentId: assignment.id,
             actorId: assignment.role_id,
             content,
+            platformArtifactIds: result.roomArtifactIds || [],
           })
         }
         if (!report?.state) {

@@ -38,7 +38,7 @@ function createReportImporter({ roomDb, repository }) {
     throw new TypeError('ROOM_REPORT_IMPORTER_DEPENDENCIES_REQUIRED')
   }
 
-  function importFromMessage({ chatId, taskId, assignmentId, actorId, content }) {
+  function importFromMessage({ chatId, taskId, assignmentId, actorId, content, platformArtifactIds = [] }) {
     const report = parseReportMarker(content)
     if (!report) return { imported: false, report: null, event: null }
     if (typeof actorId !== 'string' || actorId.length === 0) throw new TypeError('ROOM_REPORT_ACTOR_INVALID')
@@ -59,6 +59,15 @@ function createReportImporter({ roomDb, repository }) {
           return { imported: false, duplicate: true, report: existing, event: null }
         }
       }
+      for (const artifactId of report.artifactIds) {
+        const artifact = roomDb.database.prepare('SELECT room_id FROM artifacts WHERE id = ?').get(artifactId)
+        if (artifact?.room_id !== assignment.room_id) throw new Error('ROOM_REPORT_ARTIFACT_SCOPE_INVALID')
+      }
+      for (const artifactId of platformArtifactIds) {
+        const artifact = roomDb.database.prepare('SELECT room_id, source_assignment_id FROM artifacts WHERE id = ?').get(artifactId)
+        if (artifact?.room_id !== assignment.room_id || artifact.source_assignment_id !== assignmentId) throw new Error('ROOM_REPORT_ARTIFACT_SCOPE_INVALID')
+      }
+      report.artifactIds = [...new Set([...report.artifactIds, ...platformArtifactIds])]
       const reportId = repository.createReport({ ...report, reportId: report.reportId, taskId, assignmentId })
       const event = repository.appendEvent({
         roomId: assignment.room_id,

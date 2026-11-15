@@ -285,4 +285,32 @@ v2 已解除对持久化旧 group 的宿主依赖。`native-runtime.cjs` 仅复�
 
 该切片在 Electron 内置 Node 运行时通过 95 项 Room/IPC/调度器定向测试，以及 14 项共享 project-room/影子 Git 调用回归；CLI 使用替身，未运行 Electron GUI、真实 CLI、打包或全量测试。
 
-每次原生调用仍创建新 Session；原生 sessionRef 的 v2 持久化/续跑、完整 Run Ledger/心跳接线仍待完成。无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实。v2 群聊 UI 首版和授权/停止/重试/交接入口已接通；下一步完成真实 CLI 端到端验收、自动 Artifact 快照、运行阻塞提示与 Trace/diff 入口。
+每次原生调用仍创建新 Session；原生 sessionRef 的 v2 持久化/续跑、完整 Run Ledger/心跳接线仍待完成。无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实。v2 群聊 UI 首版和授权/停止/重试/交接入口已接通；下一步完成真实 CLI 端到端验收、运行阻塞提示与 Trace/diff 入口。
+
+### 自动产物版本切片（2026-11-15）
+
+`artifact-snapshots.cjs` 已接入 main 和 v2 原生执行：仅对获得写授权且带 writeScopes 的 Worker，在持有 Room 根目录独占租约期间保存执行前基线和正常返回后的影子 Git 快照。完成快照与产物落库后才释放租约；Controller 和只读 Worker 不触发快照，不新增隐藏 group 或旧 checkpoint 依赖。
+
+- 快照前先事务写入 running `artifact_snapshot` effect；Git 操作在数据库事务外进行。版本回执、Artifact 与 effect succeeded 在同一事务提交。崩溃遗留 running effect 沿用启动恢复逻辑转 unknown + Attention，不自动重拍工作目录冒充原版本。
+- 每个变化路径生成一个 published Artifact，记录 Room/Task/Assignment、路径和不可变 commit；删除记录 kind=deletion，事件保存基线 commit 和变化清单。没有变化不生成 Artifact。重放已成功的同一快照返回原回执和 ID。
+- 平台生成的 Artifact ID 自动合并进对应 Report；Worker 报告只能引用同一 Room 已存在的 Artifact，不能凭路径或伪造 ID 创建版本。平台附加的 ID 还必须属于当前 Assignment。
+- 影子 Git 位于应用私有目录。排除整个应用 userData；路径按 realpath 处理，避免 macOS `/var` 别名使排除失效。不修改用户 Git index/config/分支。此处复用的是 ShadowRepo 文件版本底层，不是旧流程引擎。
+- 快照/落库失败不导入完成 Report，未确认的副作用转 unknown 并创建中英文 failure Attention。取消后不发布迟到产物；大小/LFS 占位符不能被当成完整文件版本发布。
+
+本切片通过 Electron 内置 Node 的 60 项定向测试，涵盖真实 Git 快照、原生调用链、Report 归属、租约内完成、取消、原子回滚、停止控制和共享调用回归；外部 Agent CLI 仍为替身。未运行全量测试或打包检查。
+
+复现命令（在 `desktop/` 执行）：
+
+```sh
+ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron --test --test-reporter=spec \
+  test/room-engine/artifact-snapshots.test.cjs test/room-engine/native-runtime.test.cjs \
+  test/room-engine/report-importer.test.cjs test/room-engine/assignment-runner.test.cjs \
+  test/room-engine/stop-task.test.cjs test/room-engine/room-service.test.cjs \
+  test/project-room/project-room-invocation.test.cjs test/project-room/shadow-git-invocation.test.cjs
+```
+
+另通过 `node --check desktop/src/main.cjs`、`node --check desktop/src/room-engine/artifact-snapshots.cjs`（仓库根目录）和 `git diff --check`。
+
+另在独立临时 userData 中启动了真实 Electron 桌面应用，使用本切片生成的版本与 Report 打开 v2 项目室，通过 Renderer DOM 检查确认 `docs/requirements.md` 产物卡和报告正文均已显示。验收进程已退出，原有用户窗口和草稿未被操作；这项检查不等同于真实外部 CLI 端到端验收。
+
+边界：共享工作目录中的外部编辑器/未受平台管理的进程仍可能改变文件，因此版本记录表示执行区间内观察到的变化，不证明每一行都由该 Agent 编写。writeScopes 仍不是文件级沙箱，产物捕获记录整个工作目录的实际差异。异常退出/终止后的部分产物自动归档、快照 unknown 的专用恢复操作、已接受版本漂移提示与 Trace/diff UI 尚待实现；Artifact 接受当前只更新账本状态，不恢复工作目录。

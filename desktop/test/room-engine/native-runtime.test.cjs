@@ -10,6 +10,7 @@ const { createRoomService } = require('../../src/room-engine/room-service.cjs')
 const { createControllerAgent } = require('../../src/room-engine/controller-agent.cjs')
 const { createRoomNativeRuntime } = require('../../src/room-engine/native-runtime.cjs')
 const { createUserCommandService } = require('../../src/room-engine/user-commands.cjs')
+const { createArtifactSnapshots } = require('../../src/room-engine/artifact-snapshots.cjs')
 
 test('worker writes require a persisted grant and scopes; controller remains read-only', async t => {
   const s = await setup(t)
@@ -87,10 +88,12 @@ test('Room writers serialize in the native pipeline and a queued cancellation ne
   } finally { releaseFirst(); await service.close() }
 })
 
-async function setup(t, beforeReply = async () => {}) {
+async function setup(t, beforeReply = async () => {}, snapshots = false) {
   const { directory, options } = fixture()
   const calls = []
-  options.tracesRoot = path.join(directory, 'traces')
+  const privateRoot = path.join(directory, 'room-private')
+  options.storagePath = path.join(privateRoot, 'workspace.json')
+  options.tracesRoot = path.join(privateRoot, 'traces')
   options.runAgent = async (agent, prompt, workdir, runOptions) => {
     calls.push({ agent, prompt, workdir, runOptions })
     await beforeReply({ agent, prompt, workdir, runOptions })
@@ -100,14 +103,72 @@ async function setup(t, beforeReply = async () => {}) {
   }
   const workspace = new LocalWorkspace(options)
   await workspace.refreshAgents()
-  const roomDb = openRoomDatabase({ directory: path.join(directory, 'room-db') })
+  const roomDb = openRoomDatabase({ directory: path.join(privateRoot, 'room-db') })
   const repository = createRoomRepository(roomDb)
   const roomId = repository.createRoom({ name: 'Independent', workspace: directory, providers: ['codex'] })
   const chatId = repository.createChat({ roomId, title: 'Team' })
-  const runtime = createRoomNativeRuntime({ repository, workspace })
+  const runtime = createRoomNativeRuntime({ repository, workspace,
+    artifactSnapshots: snapshots && typeof snapshots === 'object' ? snapshots : snapshots ? createArtifactSnapshots({ roomDb, repository,
+      directory: path.join(privateRoot, 'artifacts'), privateRoot }) : undefined })
   t.after(() => { roomDb.close(); fs.rmSync(directory, { recursive: true, force: true }) })
   return { directory, calls, workspace, roomDb, repository, roomId, chatId, runtime }
 }
+
+test('native writer captures versions under its lease and associates platform artifacts with its Report', async t => {
+  const s = await setup(t, async ({ workdir }) => {
+    assert.equal(s.workspace.agentInvocation.runScheduler.snapshot().claimGrants.length, 1)
+    fs.mkdirSync(path.join(workdir, 'docs'), { recursive: true })
+    fs.writeFileSync(path.join(workdir, 'docs', 'requirements.md'), 'Snake MVP requirements')
+  }, true)
+  const roleId = s.repository.createAgentRole({ chatId: s.chatId, displayName: 'Writer', provider: 'codex', createdBy: 'user' })
+  const taskId = s.repository.createTask({ chatId: s.chatId, objective: 'Write requirements', createdBy: 'user' })
+  const assignmentId = s.repository.createAssignment({ taskId, roleId, writeScopes: ['docs/'] })
+  const service = createRoomService({ roomDb: s.roomDb, repository: s.repository,
+    invokeAgent: s.runtime.invokeAgent, resolveGroup: s.runtime.resolveTarget })
+  try {
+    service.applyUserCommand({ type: 'set_workspace_write', chatId: s.chatId, allowWrite: true, commandId: 'grant' })
+    const result = await service.startAssignment({ assignmentId, prompt: 'Write' }).promise
+    assert.equal(s.repository.getTask(taskId).status, 'done')
+    const artifacts = s.repository.getRoomSnapshot(s.roomId).artifacts
+    assert.equal(artifacts.length, 1, JSON.stringify(artifacts.map(item => item.path)))
+    assert.equal(artifacts[0].path, 'docs/requirements.md')
+    assert.equal(artifacts[0].source_assignment_id, assignmentId)
+    assert.deepEqual(JSON.parse(result.roomReport.artifact_ids_json), [artifacts[0].id])
+    assert.equal(s.workspace.agentInvocation.runScheduler.snapshot().claimGrants.length, 0)
+  } finally { await service.close() }
+})
+
+test('a second native writer waits until the first output capture completes', async t => {
+  let captured
+  let finish
+  const entered = new Promise(resolve => { captured = resolve })
+  const hold = new Promise(resolve => { finish = resolve })
+  let count = 0
+  const s = await setup(t, async () => {}, {
+    before: async () => ({ commit: 'baseline' }),
+    after: async () => { if (++count === 1) { captured(); await hold }; return [] },
+  })
+  const roleId = s.repository.createAgentRole({ chatId: s.chatId, displayName: 'Writer', provider: 'codex', createdBy: 'user' })
+  const service = createRoomService({ roomDb: s.roomDb, repository: s.repository,
+    invokeAgent: s.runtime.invokeAgent, resolveGroup: s.runtime.resolveTarget })
+  const start = () => {
+    const taskId = s.repository.createTask({ chatId: s.chatId, objective: 'Write', createdBy: 'user' })
+    const assignmentId = s.repository.createAssignment({ taskId, roleId, writeScopes: ['docs/'] })
+    return service.startAssignment({ assignmentId, prompt: 'Write' }).promise
+  }
+  try {
+    service.applyUserCommand({ type: 'set_workspace_write', chatId: s.chatId, allowWrite: true, commandId: 'grant' })
+    const first = start()
+    await entered
+    const second = start()
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(s.calls.length, 1)
+    assert.equal(s.workspace.agentInvocation.runScheduler.snapshot().claimGrants.length, 1)
+    finish()
+    await Promise.all([first, second])
+    assert.equal(s.calls.length, 2)
+  } finally { finish(); await service.close() }
+})
 
 test('durable stop reaches the native CLI signal and releases the writer lease after exit', async t => {
   let entered

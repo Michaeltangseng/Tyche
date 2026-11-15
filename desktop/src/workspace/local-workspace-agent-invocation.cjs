@@ -391,6 +391,11 @@ class LocalWorkspaceAgentInvocation {
             context,
             { agentController, registration, lease },
           )
+          // v2 captures output versions while this invocation still owns its
+          // directory lease, before another writer can change those files.
+          if (context.sessionPolicy === 'room' && typeof context.onInvocationCompleted === 'function') {
+            await context.onInvocationCompleted(result)
+          }
           if (projectChatWrite) {
             await projectRoomService.endProjectChatWrite(group.id, chatWriteId)
               .catch(() => {})
@@ -960,7 +965,7 @@ class LocalWorkspaceAgentInvocation {
         throw new Error('LOCAL_RUN_PERSIST_FAILED')
       }
       if (typeof context.onLeaseAcquired === 'function') {
-        context.onLeaseAcquired({
+        await context.onLeaseAcquired({
           operationId,
           agentRunId: harnessRun?.agentRunId || '',
           permissionMode: allowWrite ? 'workspace-write' : (readExec ? 'read-exec' : 'read-only'),

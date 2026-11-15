@@ -57,3 +57,22 @@ test('invalid report markers are rejected before persistence', () => {
   assert.throws(() => parseReportMarker('[[MELDWORK_REPORT:{"kind":"unknown","summary":"ok"}]]'), /KIND_INVALID/)
   assert.throws(() => parseReportMarker('[[MELDWORK_REPORT:{bad}]]'), /JSON_INVALID/)
 })
+
+test('reports reject invented or foreign artifact IDs and link only this attempt platform outputs', t => {
+  const s = setup()
+  t.after(() => s.roomDb.close())
+  const input = { chatId: s.chatId, taskId: s.taskId, assignmentId: s.assignmentId, actorId: 'agent',
+    content: '[[MELDWORK_REPORT:{"kind":"ready","summary":"done","artifacts":["missing"]}]]' }
+  assert.throws(() => s.importer.importFromMessage(input), /ARTIFACT_SCOPE_INVALID/)
+  const roomId = s.repository.getAssignmentContext(s.assignmentId).room_id
+  const artifactId = s.repository.createArtifact({ roomId, sourceTaskId: s.taskId, sourceAssignmentId: s.assignmentId, path: 'docs/spec.md', kind: 'file', version: 'commit' })
+  const unbound = s.repository.createArtifact({ roomId, path: 'other.md', kind: 'file', version: 'other' })
+  input.content = '[[MELDWORK_REPORT:{"kind":"ready","summary":"done"}]]'
+  assert.throws(() => s.importer.importFromMessage({ ...input, platformArtifactIds: [unbound] }), /ARTIFACT_SCOPE_INVALID/)
+  const otherRoom = s.repository.createRoom({ name: 'Foreign', workspace: '/tmp/foreign' })
+  const foreign = s.repository.createArtifact({ roomId: otherRoom, path: 'foreign.md', kind: 'file', version: 'foreign' })
+  assert.throws(() => s.importer.importFromMessage({ ...input,
+    content: `[[MELDWORK_REPORT:${JSON.stringify({ kind: 'ready', summary: 'done', artifacts: [foreign] })}]]` }), /ARTIFACT_SCOPE_INVALID/)
+  const result = s.importer.importFromMessage({ ...input, platformArtifactIds: [artifactId] })
+  assert.deepEqual(JSON.parse(result.report.artifact_ids_json), [artifactId])
+})

@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const { normalizeRelativePath } = require('../runs/path-claims.cjs')
 
 // Native execution reuses the CLI transport, not a persisted legacy chat.
-function createRoomNativeRuntime({ repository, workspace } = {}) {
+function createRoomNativeRuntime({ repository, workspace, artifactSnapshots } = {}) {
   if (!repository || !workspace || typeof workspace.invokeAgent !== 'function') throw new TypeError('ROOM_NATIVE_RUNTIME_DEPENDENCIES_REQUIRED')
 
   function resolveTarget({ assignment, chatId, roomId } = {}) {
@@ -49,15 +49,33 @@ function createRoomNativeRuntime({ repository, workspace } = {}) {
     // in workspace groups, messages, activeRuns or legacy session storage.
     const surface = Object.freeze({ id: `room-native-${identity}`, conversationType: 'direct',
       workdir: writeRoot || current.workdir, agentKinds: [provider], allowWrite: Boolean(writeRoot) })
-    return workspace.invokeAgent(surface, provider, mode, signal, threadRootId, {
+    let baseline = null
+    let artifactIds = []
+    const snapshotInput = { assignmentId: context.assignmentId, runId: context.traceRunId, workdir: writeRoot, signal }
+    const assertActive = () => {
+      if (signal?.aborted || repository.getTask(context.taskId)?.status === 'cancelled') throw new Error('ROOM_NATIVE_CANCELLED')
+    }
+    const result = await workspace.invokeAgent(surface, provider, mode, signal, threadRootId, {
       ...context, sessionPolicy: 'room', saveSession: false, deferMessage: true,
       permissionMode: writeRoot ? 'workspace-write' : 'read-only', operationId: `agent-operation-${identity}`,
       traceAgentRunId: `room-agent-${identity}`,
-      onLeaseAcquired: () => {
+      onLeaseAcquired: async () => {
         if (writeRoot && (repository.getRoomSnapshot(target.roomId).room.write_authorized_root !== writeRoot
             || fs.realpathSync.native(current.workdir) !== writeRoot)) throw new Error('ROOM_NATIVE_WRITE_AUTHORIZATION_CHANGED')
+        if (writeRoot && artifactSnapshots) {
+          assertActive()
+          baseline = await artifactSnapshots.before(snapshotInput)
+          assertActive()
+        }
+      },
+      onInvocationCompleted: async () => {
+        if (writeRoot && artifactSnapshots) {
+          assertActive()
+          artifactIds = await artifactSnapshots.after({ ...snapshotInput, baseline, signal })
+        }
       },
     })
+    return artifactIds.length ? { ...result, roomArtifactIds: artifactIds } : result
   }
 
   return { resolveTarget, invokeAgent }
