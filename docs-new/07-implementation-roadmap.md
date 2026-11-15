@@ -6,9 +6,9 @@
 
 `desktop/src/room-engine/` 已提供私有 SQLite 账本、统一消息入口、ControllerAction/UserCommand/PlatformTransition 校验、Report 导入和状态推导、outbox、Supervisor 事实记录，以及 main/preload 生命周期接线。Controller 的批次动作、派发 effect 和审计在同一事务内提交；Agent 消息不能直接授权派发。数据库目录使用 `0700`、文件使用 `0600`（Windows 除外）。启动恢复会将崩溃遗留 running effects 标为 unknown 并产生 Attention，不自动重放；未启动的 pending effects 仍可继续消费。详细能力和未完成项见 Phase 4 与下方当前实现进度。
 
-当前切片已接入独立的 v2 Renderer 页面，尚未接入旧 Chat 迁移。`controller-agent.cjs` 已在 main 中通过 `native-runtime.cjs` 连接原生 `invokeAgent`：按 Room Provider 配置顺序选择首个 Provider，验证 Chat/目录归属与已安装 Agent；创建本次调用的临时执行描述，不查找已有 group，也不创建隐藏群聊。Controller 强制只读、不写入旧消息/Session、严格解析 JSON；Worker 写入需要用户授权与根目录独占租约。Assignment Runner 已补齐原生接口要求的 promptOverride/contextPackId，并带入角色 Prompt、任务创建时的协作约定和 Report 输出要求。独立 Controller Session 已支持批次幂等、context revision 校验和结构化决策审计；动态角色创建与 Prompt 更新已受 Room Provider/能力白名单约束。Room schema 已升级到 v3，既有 Room 默认只读。已在 Electron main 使用真实 Claude Code CLI 跑通自动组队、单文档任务、结构化 Report、产物快照/diff 和确认 Attention，并验证账本重开；真实多 Agent 评审、平台心跳和异常恢复均已有闭环验收，原生会话续跑的真实 CLI 验收仍待完成，未运行仓库全量测试。
+当前切片已接入独立的 v2 Renderer 页面，尚未接入旧 Chat 迁移。`controller-agent.cjs` 已在 main 中通过 `native-runtime.cjs` 连接原生 `invokeAgent`：按 Room Provider 配置顺序选择首个 Provider，验证 Chat/目录归属与已安装 Agent；创建本次调用的临时执行描述，不查找已有 group，也不创建隐藏群聊。Controller 强制只读、不写入旧消息/Session、严格解析 JSON；Worker 写入需要用户授权与根目录独占租约。Assignment Runner 已补齐原生接口要求的 promptOverride/contextPackId，并带入角色 Prompt、任务创建时的协作约定和 Report 输出要求。独立 Controller Session 已支持批次幂等、context revision 校验和结构化决策审计；动态角色创建与 Prompt 更新已受 Room Provider/能力白名单约束。Room schema 已升级到 v3，既有 Room 默认只读。已在 Electron main 使用真实 Claude Code CLI 跑通自动组队、单文档任务、结构化 Report、产物快照/diff 和确认 Attention，并验证账本重开；真实多 Agent 评审、平台心跳和异常恢复均已有闭环验收，未运行仓库全量测试。
 
-Assignment Runner 现已在每个运行中的 Assignment 上由平台定时写入 `session_liveness`（默认 30 秒，随运行启动，完成/失败/取消后清理）；这是真实调用仍由平台持有的 liveness 事实，不依赖 Worker 自报消息。Electron Node 定向测试已覆盖长调用期间心跳产生及结束后停止写入；真实 recovery smoke 又验证了 17 条 liveness 事件，并确认替代 Assignment 退出后没有继续写入。原生会话续跑的真实 CLI 验收仍待完成。
+Assignment Runner 现已在每个运行中的 Assignment 上由平台定时写入 `session_liveness`（默认 30 秒，随运行启动，完成/失败/取消后清理）；这是真实调用仍由平台持有的 liveness 事实，不依赖 Worker 自报消息。Electron Node 定向测试已覆盖长调用期间心跳产生及结束后停止写入；真实 recovery smoke 又验证了 17 条 liveness 事件，并确认替代 Assignment 退出后没有继续写入。Room Assignment 采用一次性有界原生调用；重试或交接通过新 Assignment 传递结构化报告、证据和 Artifact 引用，不恢复旧群聊 Session。
 
 Supervisor 的 stale 查询现在按事件序列同时读取 `session_liveness` 与 `session_exited`；退出事件晚于最后心跳时不会再把已结束 Assignment 误报为 stale。该边界已有 Electron Node 定向回归测试。
 
@@ -18,7 +18,7 @@ Assignment Runner 对所有明确标记为未知结果的原生调用统一进�
 
 按用户反馈简化角色模型：删除角色归档动作及专门的停用检查，不增加角色生命周期状态机。“后续不再邀请某个角色”由用户指令、Prompt 和协作上下文管理，不影响已有任务或历史记录。保留 Prompt 更新的 Chat 归属校验及后续 Controller 唤醒。
 
-协作约定更新已接通：主控使用完整 instructions 文本和当前用户源消息 ID 提交 `update_context`。平台验证来源与当前 revision，同批先保存约定、再以新 revision 创建新任务；既有任务保留版本且不隐式停止。批次失败整批回滚，更新事件可唤醒后续评估并在重启后补调度，不新增状态机或配置 DSL。约定本身不能授予写权限。下一步扩展真实 CLI 长任务、会话续跑和异常恢复验收；Prompt/Skill 配置界面仍未完成。
+协作约定更新已接通：主控使用完整 instructions 文本和当前用户源消息 ID 提交 `update_context`。平台验证来源与当前 revision，同批先保存约定、再以新 revision 创建新任务；既有任务保留版本且不隐式停止。批次失败整批回滚，更新事件可唤醒后续评估并在重启后补调度，不新增状态机或配置 DSL。约定本身不能授予写权限。下一步扩展 Prompt/Skill 配置界面与真实 CLI 长任务验收。
 
 本切片验证：七个 room-engine 定向文件共 71 项测试通过，覆盖来源身份、版本切换、同批回滚、重复批次、上下文更新唤醒与重启恢复；`git diff --check` 通过。扩展的真实 Claude Code CLI smoke 在 Electron main 约 81 秒、6 次调用通过：先完成文档与确认 Attention，再接收“以后英文报告、后续不再邀请文档作者、只更新约定”的用户消息，保存新 revision，不新增任务或停止既有工作；人工核对保存文本包含新要求且保留原有限制，数据库重开后来源与版本仍在。该验证不代表后续实际任务遵循率或完整多 Agent 验收。未运行全量测试、构建、打包或 Renderer 交互复验。
 
@@ -311,7 +311,7 @@ v2 已解除对持久化旧 group 的宿主依赖。`native-runtime.cjs` 仅复�
 
 该切片在 Electron 内置 Node 运行时通过 95 项 Room/IPC/调度器定向测试，以及 14 项共享 project-room/影子 Git 调用回归；CLI 使用替身，未运行 Electron GUI、真实 CLI、打包或全量测试。
 
-每次原生调用仍创建新 Session；原生 sessionRef 的 v2 持久化/续跑、完整 Run Ledger/心跳接线仍待完成。无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实。v2 群聊 UI 首版和授权/停止/重试/交接及产物 diff 入口已接通；下一步完成真实 CLI 端到端验收、运行阻塞提示与 Trace 入口。
+每次 Room Assignment 原生调用都创建独立的临时 Session key，并由 `native-runtime.cjs` 强制 `saveSession: false`；v2 不实现旧群聊 Session 的持久化续跑。需要继续工作时，平台创建新的 Assignment，并把上一尝试的 Report、证据和 Artifact 引用作为结构化输入。无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实。v2 群聊 UI 首版和授权/停止/重试/交接及产物 diff 入口已接通；下一步完成运行阻塞提示与 Trace 入口。
 
 ### 自动产物版本切片（2026-11-15）
 
@@ -384,4 +384,4 @@ ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/Electron.app/Contents/MacOS/
 
 真实验收需显式 `--run`，缺失时以退出码 2 结束，不启动模型。最多 8 次 CLI 调用，单次 Worker 调用期限 90 秒，等待目标闭环期限 180 秒；退出时通过服务关闭取消并等待运行收口。控制台只打印阶段、身份、数量与错误码，详细平台 Trace 在临时私有目录，CLI 自身会话按原生配置保存。`userData/smoke-result.json` 保存本地验收摘要。29 项定向回归、语法检查及 `git diff --check` 通过；未跑全量测试或打包。本机 Codex 命令因安装缺失原生二进制无法启动，本轮未改安装或用其他可执行文件冒充通过；Gemini 尚未验收。
 
-范围限制：本切片验证到“单 Worker 文档产出 → 等待用户确认”，不包含真实用户接受后实施、多 Agent 互评、成本/角色上限、长时心跳、原生 Session 续跑、崩溃后的残留进程对账，也不等同于完整产品验收。下一步优先补齐主控上下文更新，再扩展真实评审与用户决策后的闭环。
+范围限制：本切片验证到“单 Worker 文档产出 → 等待用户确认”，不包含真实用户接受后实施、多 Agent 互评、成本/角色上限、长时心跳或崩溃后的残留进程对账，也不等同于完整产品验收。原记录中“原生 Session 续跑”已按当前架构决定取消：Assignment 使用独立调用，后续工作由新 Assignment 承接。后续真实多 Agent 评审、用户决定后的实施及异常恢复闭环已在本路线图前文记录。

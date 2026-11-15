@@ -316,3 +316,28 @@ test('parallel assignments have independent operation and trace identities witho
     assert.equal(s.workspace.agentInvocation.activeAgentSnapshots.size, 0)
   } finally { await service.close() }
 })
+
+test('Room assignments use one bounded native invocation and never persist legacy session state', async t => {
+  const s = await setup(t)
+  const nativeCalls = []
+  const invokeNative = s.workspace.invokeAgent.bind(s.workspace)
+  s.workspace.invokeAgent = (...args) => {
+    nativeCalls.push(args)
+    return invokeNative(...args)
+  }
+  const roleId = s.repository.createAgentRole({ chatId: s.chatId, displayName: 'Worker', provider: 'codex', createdBy: 'user' })
+  const taskId = s.repository.createTask({ chatId: s.chatId, objective: 'Bounded work', createdBy: 'user' })
+  const assignmentId = s.repository.createAssignment({ taskId, roleId })
+  const service = createRoomService({ roomDb: s.roomDb, repository: s.repository,
+    invokeAgent: s.runtime.invokeAgent, resolveGroup: s.runtime.resolveTarget })
+  try {
+    const result = await service.startAssignment({ assignmentId, prompt: 'Complete once' }).promise
+    assert.equal(s.calls.length, 1)
+    assert.equal(nativeCalls[0][5].sessionPolicy, 'room')
+    assert.equal(nativeCalls[0][5].saveSession, false)
+    assert.match(nativeCalls[0][5].sessionKey, new RegExp(`:${assignmentId}:1$`))
+    assert.match(result.pendingMessage.metadata.trace.agentRunId, /^room-agent-/)
+    assert.deepEqual(s.workspace.state.sessions, {})
+    assert.equal(s.workspace.state.groups.length, 0)
+  } finally { await service.close() }
+})
