@@ -105,7 +105,7 @@ import { useTraceStream } from '../../composables/useTraceStream.js'
 import TraceStepList from './TraceStepList.vue'
 
 const MAX_FILES = 6
-const INLINE_TRACE_PAGE = 300
+const INLINE_TRACE_PAGE = 200
 const CODE_EXTENSIONS = new Set([
   'js', 'cjs', 'mjs', 'ts', 'tsx', 'jsx', 'vue', 'css', 'scss', 'less',
   'html', 'json', 'yml', 'yaml', 'toml', 'sh', 'zsh', 'py', 'rb', 'go',

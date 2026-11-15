@@ -2,10 +2,13 @@ import { ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const streamState = vi.hoisted(() => ({ current: null }))
+const streamState = vi.hoisted(() => ({ current: null, options: null }))
 
 vi.mock('../../composables/useTraceStream.js', () => ({
-  useTraceStream: () => streamState.current,
+  useTraceStream: (options) => {
+    streamState.options = options
+    return streamState.current
+  },
 }))
 
 import InlineTrace from '../../components/trace/InlineTrace.vue'
@@ -75,6 +78,7 @@ describe('InlineTrace activity summary', () => {
     expect(summary.text()).toContain('elapsed')
     expect(summary.get('.agent-activity-status').attributes('data-status')).toBe('completed')
     expect(wrapper.find('.agent-activity-details').exists()).toBe(false)
+    expect(streamState.options.pageSize).toBe(200)
 
     const file = wrapper.get('.agent-file-card')
     expect(file.text()).toContain('requirements.md')
