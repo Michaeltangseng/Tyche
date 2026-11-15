@@ -216,7 +216,7 @@ Report 入账和状态推导在同一事务内完成，成功后将 `report_rece
 
 快照补充 roles/reports/artifacts；当前使用 1.5 秒串行轮询，卸载时释放计时器，切换 Room 后丢弃迟到结果。操作完成后等待旧轮询结束并重新读取，避免新 Chat 被旧快照覆盖。草稿按 Chat 隔离，发送失败保留。产物 diff 入口已接通（见下方只读切片）；分页、实时流式消息、Prompt/Skill 编辑、运行阻塞专项提示和完整 Trace 入口仍缺，不能视为 Phase 5 完成。
 
-角色 Prompt 的最小用户闭环已接通：Room 快照返回当前 Chat 角色的最新 Prompt，成员卡可展开查看；用户可通过统一、幂等的 `update_role_prompt` UserCommand 更新角色 Prompt revision。更新只影响后续 Assignment，保留历史 revision，不增加角色归档或停用状态机。Prompt 仍受 Chat/Role 归属校验，不能授予新的 Provider、能力或目录权限。
+动态角色已有真实 CLI 闭环：Controller 可按当前需求创建 Chat 级角色，平台检查 Room Provider/能力范围，后续决策可为该角色创建任务并派发。成员卡显示主控创建角色的理由、职责及 Prompt。Room 快照返回当前 Chat 角色的最新 Prompt；用户可通过统一、幂等的 `update_role_prompt` UserCommand 更新角色 Prompt revision。更新只影响后续 Assignment，保留历史 revision，不增加角色归档或停用状态机。Prompt 仍受 Chat/Role 归属校验，不能授予新的 Provider、能力或目录权限。
 
 Assignment Trace 的只读入口已接通：执行记录卡片可按需加载该次 Assignment 的 Trace 步骤，并通过不透明 cursor 向前分页读取更早步骤。步骤中的大字段可通过 Room 专用 Blob IPC 按 256 KiB 分页读取，读完后隐藏继续加载按钮。Room 专用 IPC 不接受 runId、agentRunId 或文件路径；主进程由 Room DB 验证 Assignment 并推导 trace 身份，Trace reader 通过 Room 授权回调确认后读取应用私有区 JSONL。当前仍是嵌入任务卡的摘要/输出查看，完整 Trace 面板尚未接入。
 

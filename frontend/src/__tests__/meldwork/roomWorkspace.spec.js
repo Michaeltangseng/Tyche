@@ -154,7 +154,7 @@ describe('v2 team workspace', () => {
 
   it('renders Reports as escaped text, isolates chat roles and exposes validated task controls', async () => {
     const snapshot = data()
-    snapshot.roles = [{ id: 'worker', chat_id: 'chat-1', display_name: 'Builder', provider: 'codex', status: 'active', current_prompt: 'Build reliable APIs.' }, { id: 'foreign', chat_id: 'chat-2', display_name: 'Other team', status: 'active' }]
+    snapshot.roles = [{ id: 'worker', chat_id: 'chat-1', display_name: 'Builder', provider: 'codex', status: 'active', responsibilities: 'Implement backend changes.', creation_reason: 'The request includes backend implementation.', current_prompt: 'Build reliable APIs.' }, { id: 'foreign', chat_id: 'chat-2', display_name: 'Other team', status: 'active' }]
     snapshot.tasks = [{ id: 'task', chat_id: 'chat-1', objective: 'Build API', status: 'active' }]
     snapshot.assignments = [{ id: 'attempt', task_id: 'task', role_id: 'worker', status: 'failed', outcome: 'failed' }]
     snapshot.reports = [{ id: 'report', task_id: 'task', assignment_id: 'attempt', summary: '<script>unsafe()</script>', evidence_json: ['tested'], created_at: '2026-11-15T00:00:00Z' }]
@@ -165,6 +165,7 @@ describe('v2 team workspace', () => {
     expect(wrapper.get('.room-report').text()).toContain('<script>unsafe()</script>')
     expect(wrapper.get('.room-team').text()).not.toContain('Other team')
     expect(wrapper.get('.room-team').text()).toContain('Build reliable APIs.')
+    expect(wrapper.get('.room-team').text()).toContain('The request includes backend implementation.')
     const roleEditor = wrapper.get('.room-role-editor textarea')
     await roleEditor.setValue('Prefer small, tested changes.')
     await wrapper.get('.room-role-editor').trigger('submit')

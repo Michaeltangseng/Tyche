@@ -22,6 +22,7 @@ export default {
     "room.noRolePrompt": "当前没有单独的角色提示词；主控会根据聊天约定分派任务。",
     "room.rolePrompt": "角色提示词",
     "room.saveRolePrompt": "保存角色提示词",
+    "room.roleCreationReason": "新增原因",
     "room.emptyChat": "描述目标和约束，让团队开始工作。",
     "room.messageHint": "输入需求、补充约定，或 @成员；协作方式随时可改。",
     "room.message": "消息",

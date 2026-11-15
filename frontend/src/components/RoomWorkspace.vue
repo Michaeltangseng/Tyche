@@ -54,6 +54,7 @@
               <details v-for="role in roles" :key="role.id" class="room-role">
                 <summary>{{ role.display_name }} · {{ role.provider }}</summary>
                 <p v-if="role.responsibilities" class="room-muted">{{ role.responsibilities }}</p>
+                <p v-if="role.creation_reason" class="room-role-reason"><strong>{{ t('room.roleCreationReason') }}:</strong> {{ role.creation_reason }}</p>
                 <p v-if="role.current_prompt" class="room-role-prompt">{{ role.current_prompt }}</p>
                 <p v-else class="room-muted">{{ t('room.noRolePrompt') }}</p>
                 <form class="room-role-editor" @submit.prevent="saveRolePrompt(role)">
