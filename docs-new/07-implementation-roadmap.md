@@ -4,7 +4,7 @@
 
 ## 当前实现状态（2026-11-15）
 
-首个可回滚切片已落地：`desktop/src/room-engine/` 提供基于 Electron Node 运行时 `node:sqlite` 的私有账本骨架，覆盖 Room、Chat、Message、Task、Assignment、Report、Artifact、Attention、ControllerDecision、Effect 和 Event 表；Repository 已支持创建 Room/Chat、追加消息、角色、Assignment、Report、Artifact、Attention、任务和 outbox effect，`message-ingress.cjs` 已提供统一消息校验、@提及提取、编辑/删除和事件写入，`room-actions.cjs` 已分离并校验 ControllerAction、UserCommand、PlatformTransition，Controller 可将创建任务、派发、角色和 Attention 建议落到账本。`room-outbox.cjs` 已提供外部副作用的幂等入队、`pending → running → succeeded/failed/unknown` 状态机、批量 claim、失败记录和 unknown 恢复重试；副作用执行前先持久化 effect，应用重启后可继续扫描未完成项。事务失败会回滚，数据库关闭后可重开恢复。数据库目录使用 `0700`、数据库文件使用 `0600`（Windows 除外）。
+首个可回滚切片已落地：`desktop/src/room-engine/` 提供基于 Electron Node 运行时 `node:sqlite` 的私有账本骨架，覆盖 Room、Chat、Message、Task、Assignment、Report、Artifact、Attention、ControllerDecision、Effect 和 Event 表；Repository 已支持创建 Room/Chat、追加消息、角色、Assignment、Report、Artifact、Attention、任务和 outbox effect，`message-ingress.cjs` 已提供统一消息校验、@提及提取、编辑/删除和事件写入，`room-actions.cjs` 已分离并校验 ControllerAction、UserCommand、PlatformTransition，Controller 可将创建任务、派发、角色和 Attention 建议落到账本。`room-outbox.cjs` 已提供外部副作用的幂等入队、`pending → running → succeeded/failed/unknown` 状态机、批量 claim、失败记录和 unknown 恢复重试；`report-importer.cjs` 已严格解析 Worker 机器标记，校验 Chat/Task/Assignment 归属，以 reportId 幂等写入 Report 和 `report_received` 事件。副作用执行前先持久化 effect，应用重启后可继续扫描未完成项。事务失败会回滚，数据库关闭后可重开恢复。数据库目录使用 `0700`、数据库文件使用 `0600`（Windows 除外）。
 
 当前切片仍未接入 Renderer、Controller Session、真实 `invokeAgent` 映射或旧 Chat 迁移；这些保持在后续 Phase 1–4，避免改变现有 checkpoint 执行链。专项账本测试和 Electron 39 runtime spike 已通过；仓库全量测试受既有 workspace 长测及环境权限失败影响。
 
@@ -46,6 +46,7 @@
 - `room-repository.cjs`：领域对象的查询和写入；
 - `room-actions.cjs`：ControllerAction、UserCommand、PlatformTransition 的校验与落盘；
 - `room-outbox.cjs`：effect 入队、幂等、重试和 unknown 恢复；当前已实现基础状态机，真实 effect runner 仍在 Phase 3 接入。
+- `report-importer.cjs`：解析严格的 `[[MELDWORK_REPORT:{...}]]` 机器标记，写入 Report 真源和 `report_received` 审计事件；不从自由文本推断任务完成。
 
 复用 `desktop/src/project-room/project-state-schema.cjs`、`project-state-migrations.cjs`、`project-store.cjs` 的迁移经验，但不把新的 Task 状态继续塞进 checkpoint engine。复用 `desktop/src/security/private-file.cjs` 保证数据库目录权限，数据库放在应用私有区，不放入 Room 主目录。
 
