@@ -27,6 +27,7 @@
     <div v-if="expanded" class="agent-activity-details">
       <TraceStepList
         v-if="hasFullTrace"
+        :compact="compact"
         :controller="controller"
         :live="live"
         :preview-file="previewFile"
@@ -36,6 +37,14 @@
       <p v-else-if="!loading" class="inline-trace-empty">
         {{ live ? t('trace.inline.waiting') : t('trace.steps.noFullTrace') }}
       </p>
+      <button
+        v-if="hasFullTrace && openTrace"
+        class="agent-activity-full-trace"
+        type="button"
+        @click="openFullTrace"
+      >
+        {{ t('trace.inline.openFullTrace') }}
+      </button>
     </div>
 
     <div v-if="!expanded && visibleFiles.length" class="agent-file-list">
@@ -96,6 +105,7 @@ import { useTraceStream } from '../../composables/useTraceStream.js'
 import TraceStepList from './TraceStepList.vue'
 
 const MAX_FILES = 6
+const INLINE_TRACE_PAGE = 300
 const CODE_EXTENSIONS = new Set([
   'js', 'cjs', 'mjs', 'ts', 'tsx', 'jsx', 'vue', 'css', 'scss', 'less',
   'html', 'json', 'yml', 'yaml', 'toml', 'sh', 'zsh', 'py', 'rb', 'go',
@@ -106,9 +116,11 @@ const DOCUMENT_EXTENSIONS = new Set(['md', 'markdown', 'txt', 'log', 'pdf', 'doc
 
 const props = defineProps({
   agentRunId: { type: String, required: true },
+  compact: { type: Boolean, default: true },
   defaultOpen: { type: Boolean, default: false },
   elapsedLabel: { type: String, default: '' },
   live: { type: Boolean, default: false },
+  openTrace: { type: Function, default: null },
   previewFile: { type: Function, default: null },
   runId: { type: String, required: true },
   status: { type: String, default: '' },
@@ -123,6 +135,7 @@ const expanded = ref(props.defaultOpen)
 const stream = useTraceStream({
   runId: computed(() => props.runId),
   agentRunId: computed(() => props.agentRunId),
+  pageSize: INLINE_TRACE_PAGE,
 })
 const steps = stream.steps
 const loading = stream.loading
@@ -150,14 +163,14 @@ const summaryText = computed(() => {
     return props.t(props.live ? 'trace.inline.waiting' : 'trace.inline.noSteps')
   }
   const parts = []
-  if (summary.value.thinking) {
-    parts.push(props.t('trace.activity.thinking', { count: summary.value.thinking }))
-  }
   if (summary.value.commands) {
     parts.push(props.t('trace.activity.commands', { count: summary.value.commands }))
   }
   if (summary.value.files) {
     parts.push(props.t('trace.activity.files', { count: summary.value.files }))
+  }
+  if (summary.value.thinking) {
+    parts.push(props.t('trace.activity.thinkingShort'))
   }
   if (summary.value.tools) {
     parts.push(props.t('trace.activity.tools', { count: summary.value.tools }))
@@ -193,6 +206,10 @@ function toggle() {
 function previewPath(path) {
   if (!path) return
   emit('preview-file', path)
+}
+
+function openFullTrace(event) {
+  props.openTrace?.(event?.currentTarget || null)
 }
 
 function preview(file) {

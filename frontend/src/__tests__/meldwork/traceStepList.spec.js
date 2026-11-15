@@ -39,6 +39,18 @@ describe('TraceStepList', () => {
     expect(wrapper.text()).toContain('I should inspect.')
   })
 
+  it('keeps the compact inline view free of developer tools and opens commands', () => {
+    const wrapper = mount(TraceStepList, {
+      props: { compact: true, controller: controller({ hasMore: ref(true) }) },
+    })
+
+    expect(wrapper.find('.trace-step-list-header').exists()).toBe(false)
+    expect(wrapper.find('.trace-step-view-toggle').exists()).toBe(false)
+    expect(wrapper.find('.trace-step-more').exists()).toBe(false)
+    expect(wrapper.get('.trace-tool-block').element.open).toBe(true)
+    expect(wrapper.get('.trace-step-row-command').text()).toContain('$ ls -la')
+  })
+
   it('switches between structured and raw views', async () => {
     const wrapper = mount(TraceStepList, { props: { controller: controller() } })
     await wrapper.get('.trace-step-view-toggle').trigger('click')

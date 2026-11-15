@@ -234,6 +234,7 @@ export function buildTraceActivities(steps = [], { workdir = '' } = {}) {
   const toolGroups = groupToolStepsById(values)
   const emittedTools = new Set()
   let current = null
+  let thinking = null
   let index = 0
   while (index < values.length) {
     const step = values[index]
@@ -241,7 +242,16 @@ export function buildTraceActivities(steps = [], { workdir = '' } = {}) {
       current = null
       const group = []
       while (index < values.length && values[index]?.kind === 'thinking') group.push(values[index++])
-      blocks.push(thinkingBlock(group))
+      if (!thinking) {
+        thinking = thinkingBlock(group)
+        blocks.push(thinking)
+        continue
+      }
+      const text = group.map(item => String(item?.output || '')).join('')
+      thinking.text += text ? `${thinking.text ? '\n\n' : ''}${text}` : ''
+      thinking.count += group.length
+      thinking.steps.push(...group)
+      thinking.status = lastStatus(group)
       continue
     }
     if (step?.kind === 'plan') {

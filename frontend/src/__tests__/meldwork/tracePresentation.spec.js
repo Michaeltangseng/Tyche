@@ -86,6 +86,25 @@ describe('tracePresentation', () => {
     expect(blocks[1].items[0].command).toBe('pwd')
   })
 
+  it('merges all thinking fragments into one logical block', () => {
+    const { blocks, summary } = buildTraceActivities([
+      { seq: 1, kind: 'thinking', output: 'first' },
+      {
+        seq: 2, kind: 'tool', toolCallId: 'tool-1', title: 'Bash',
+        status: 'completed', command: 'ls',
+      },
+      { seq: 3, kind: 'thinking', output: 'second' },
+      { seq: 4, kind: 'thinking', output: 'third' },
+    ])
+
+    expect(blocks.map(block => block.kind)).toEqual(['thinking', 'command'])
+    expect(blocks[0].count).toBe(3)
+    expect(blocks[0].text).toContain('first')
+    expect(blocks[0].text).toContain('second')
+    expect(blocks[0].text).toContain('third')
+    expect(summary.thinking).toBe(3)
+  })
+
   it('uses the final status of each tool call and drops empty steps', () => {
     const { blocks, summary } = buildTraceActivities([
       {

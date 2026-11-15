@@ -1,6 +1,6 @@
 <template>
-  <section class="trace-step-list">
-    <header class="trace-step-list-header">
+  <section class="trace-step-list" :class="{ compact }">
+    <header v-if="!compact" class="trace-step-list-header">
       <div class="trace-step-list-title">
         <strong>{{ t('trace.steps.title') }}</strong>
       </div>
@@ -11,10 +11,10 @@
     <p v-if="incomplete" class="trace-step-incomplete" role="status">
       {{ t('trace.steps.incomplete') }}
     </p>
-    <TraceRawView v-if="rawView" :steps="rawSteps" />
+    <TraceRawView v-if="!compact && rawView" :steps="rawSteps" />
     <template v-else>
       <button
-        v-if="hasMore"
+        v-if="!compact && hasMore"
         class="trace-step-more"
         type="button"
         :disabled="loading"
@@ -27,7 +27,7 @@
           v-if="block.kind === 'command' || block.kind === 'tool'"
           :block="block"
           :controller="controller"
-          :default-open="blockIndex === blocks.length - 1"
+          :default-open="(compact && block.kind === 'command') || blockIndex === blocks.length - 1"
           :t="t"
         />
 
@@ -142,6 +142,7 @@ const CODE_EXTENSIONS = new Set([
 ])
 
 const props = defineProps({
+  compact: { type: Boolean, default: false },
   controller: { type: Object, required: true },
   live: { type: Boolean, default: false },
   previewFile: { type: Function, default: null },

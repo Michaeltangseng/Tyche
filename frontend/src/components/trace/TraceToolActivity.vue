@@ -22,7 +22,7 @@
           <summary class="trace-step-row-summary">
             <template v-if="block.kind === 'command'">
               <span class="trace-step-row-command">
-                {{ item.command || item.summary || item.title || t('trace.steps.tool') }}
+                <span v-if="item.command" class="trace-command-prompt" aria-hidden="true">$ </span>{{ item.command || item.summary || item.title || t('trace.steps.tool') }}
               </span>
             </template>
             <template v-else>
@@ -30,7 +30,6 @@
               <span v-if="item.summary" class="trace-step-row-note">{{ item.summary }}</span>
             </template>
             <span class="trace-activity-spacer" />
-            <TraceStatusIcon :status="item.status" :t="t" />
             <ChevronDownOutline class="trace-step-row-chevron" aria-hidden="true" />
           </summary>
 

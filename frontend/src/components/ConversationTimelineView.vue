@@ -333,18 +333,6 @@
                 </div>
               </div>
               <template v-if="message.role === 'agent'">
-                <InlineTrace
-                  v-if="messageHasFullTrace(message)"
-                  :agent-run-id="message.trace.agentRunId"
-                  :elapsed-label="messageElapsedLabel(message)"
-                  :preview-file="canPreviewTraceFiles ? previewTraceFile : null"
-                  :run-id="message.trace.runId"
-                  :status="messageTraceStatus(message)"
-                  :status-label="messageTraceStatus(message) ? runStatusLabel(messageTraceStatus(message)) : ''"
-                  :t="t"
-                  :workdir="activeGroup.workdir || ''"
-                  @preview-file="previewTraceFile"
-                />
                 <template v-if="isAgentReplyExpanded(message)">
                   <div
                     class="message-copy-surface message-trace-surface"
@@ -423,6 +411,20 @@
                     <p v-else class="trace-inline-empty">{{ t('trace.noEvents') }}</p>
                   </details>
                 </template>
+                <InlineTrace
+                  v-if="messageHasFullTrace(message)"
+                  :agent-run-id="message.trace.agentRunId"
+                  :compact="true"
+                  :elapsed-label="messageElapsedLabel(message)"
+                  :preview-file="canPreviewTraceFiles ? previewTraceFile : null"
+                  :run-id="message.trace.runId"
+                  :status="messageTraceStatus(message)"
+                  :status-label="messageTraceStatus(message) ? runStatusLabel(messageTraceStatus(message)) : ''"
+                  :t="t"
+                  :open-trace="opener => openMessageTrace(message, opener)"
+                  :workdir="activeGroup.workdir || ''"
+                  @preview-file="previewTraceFile"
+                />
               </template>
               <template v-else>
                 <div class="user-message-flow">
@@ -1073,6 +1075,10 @@ function messageHasFullTrace(message) {
 function previewTraceFile(path) {
   if (!path) return
   props.controller.openWorkdirFile?.(path)
+}
+
+function openMessageTrace(message, opener) {
+  props.controller.openTraceForMessage?.(message, opener)
 }
 
 function timelineTimestamp(value) {

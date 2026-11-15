@@ -530,6 +530,10 @@
   font-size: var(--text-xs);
 }
 
+.trace-step-list.compact {
+  gap: 4px;
+}
+
 .trace-step-list-header {
   min-height: 26px;
   margin-bottom: 0;
@@ -695,6 +699,10 @@
   white-space: nowrap;
 }
 
+.trace-command-prompt {
+  color: var(--faint);
+}
+
 .trace-step-row-title {
   flex: 0 0 auto;
   color: var(--text-soft);
@@ -715,9 +723,8 @@
 .trace-step-row-detail {
   display: grid;
   gap: 6px;
-  margin: 0 4px 8px 12px;
-  padding-left: 10px;
-  border-left: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
+  margin: 0 4px 8px 14px;
+  padding-left: 8px;
 }
 
 .trace-step-command,
