@@ -13,7 +13,7 @@ const { DatabaseSync } = (() => {
 
 const { ensurePrivateDirectory } = require('../security/private-file.cjs')
 
-const ROOM_SCHEMA_VERSION = 2
+const ROOM_SCHEMA_VERSION = 3
 
 function json(value) {
   return value === undefined || value === null ? null : JSON.stringify(value)
@@ -71,6 +71,7 @@ function migrate(database) {
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         workspace TEXT NOT NULL,
+        write_authorized_root TEXT,
         primary_chat_id TEXT,
         providers_json TEXT NOT NULL DEFAULT '[]',
         allowed_capabilities_json TEXT NOT NULL DEFAULT '[]',
@@ -281,7 +282,16 @@ function migrate(database) {
         UNIQUE(role_id, revision)
       );
     `)
-    database.exec(`PRAGMA user_version = ${ROOM_SCHEMA_VERSION}`)
+    database.exec('PRAGMA user_version = 2')
+  }
+  if (current > 0 && current < 3) {
+    database.exec('BEGIN IMMEDIATE')
+    try {
+      database.exec('ALTER TABLE rooms ADD COLUMN write_authorized_root TEXT; PRAGMA user_version = 3; COMMIT;')
+    } catch (error) {
+      database.exec('ROLLBACK')
+      throw error
+    }
   }
 }
 

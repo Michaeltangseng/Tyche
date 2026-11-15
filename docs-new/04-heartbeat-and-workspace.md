@@ -168,7 +168,9 @@ Agent 可以读取：
 
 ### 默认写入
 
-代码任务默认写入 Room 主目录，写入范围由平台根据 Task 和角色能力生成，并通过目录/文件租约防止冲突；不能由 Prompt 自行扩大。探索性、高风险或显式 Artifact 契约任务才使用 Assignment workspace。
+代码任务默认以 Room 主目录为工作目录；实际写入必须先由用户通过 `set_workspace_write` 授权。当前实现按真实 Room 根目录申请独占租约，重叠目录的写任务串行执行；Controller 始终只读。Assignment 的 `writeScopes` 表达写入意图，不构成按文件的 CLI 沙箱限制，非空范围仍需整个 Room 的用户授权。无范围的任务保持只读。探索性、高风险或显式 Artifact 契约任务才使用可选 Assignment workspace。
+
+授权绑定目录的 realpath，领取租约后、启动原生调用前再次校验；目录指向或授权变化会拒绝执行。运行中或恢复状态 unknown 的 Assignment 存在时，拒绝修改同一 Room 的授权；应先停止并确认进程退出。授权 UI、自动 Artifact 快照仍待接通。只读任务不申请写租约，也不获得一致性快照，因此可能看到写任务的中间变化。
 
 需要共享代码时，Agent 通过平台发布 Artifact 或请求受控应用：
 
@@ -184,8 +186,8 @@ Assignment workspace
 
 如果任务本身就是修改项目代码，可以创建带写入租约的 Assignment：
 
-- 由平台分配明确的目录或文件范围；
-- 同一范围不能被冲突的 Assignment 同时写入；
+- 由平台记录明确的写入意图，首版以整个真实 Room 根目录作为授权和互斥单位；
+- 重叠根目录不能被冲突的写入 Assignment 同时占用；
 - 写入前后保留版本或 diff；
 - 结果仍须通过 Artifact/Report 回到 Thread；
 - 评审 Agent 读取发布版本，而不是未提交的任意中间状态。

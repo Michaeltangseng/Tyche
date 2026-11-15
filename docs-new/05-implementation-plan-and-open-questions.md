@@ -126,7 +126,10 @@ answer_attention
 revoke_pending_action
 restore_context_revision
 archive_chat
+set_workspace_write
 ```
+
+已实现 `set_workspace_write`：载荷仅接受 `{type, chatId, commandId, allowWrite: boolean}`，用户身份由 main 赋值，Renderer 不能指定授权目录。授权作用于该 Chat 所属 Room，绑定当前工作目录 realpath；新 Room 默认只读。运行中或 outcome=unknown 的 Assignment 存在时拒绝授权变更。该命令与审计原子提交，相同 commandId 重放返回原结果，变更载荷复用 ID 会拒绝。ControllerAction 不支持此动作。授权交互 UI 尚未接入。
 
 当前已实现的 `retry_task` / `handoff_task` 必须携带 `chatId`、`taskId`、`assignmentId` 和 `commandId`；handoff 另需 `roleId`，`reason` 可选。命令只接受同一 Chat 内已处于 failed/waiting/blocked、且已结束原生执行的 Assignment；有 runId 时必须存在匹配的 Supervisor `session_exited` 事实。恢复后 outcome=unknown 的执行仍需先完成残留进程对账，不能仅凭重试命令重跑。当前不支持停止运行中任务后直接交接。
 

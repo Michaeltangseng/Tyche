@@ -9,13 +9,91 @@ const { createRoomRepository } = require('../../src/room-engine/room-repository.
 const { createRoomService } = require('../../src/room-engine/room-service.cjs')
 const { createControllerAgent } = require('../../src/room-engine/controller-agent.cjs')
 const { createRoomNativeRuntime } = require('../../src/room-engine/native-runtime.cjs')
+const { createUserCommandService } = require('../../src/room-engine/user-commands.cjs')
 
-async function setup(t) {
+test('worker writes require a persisted grant and scopes; controller remains read-only', async t => {
+  const s = await setup(t)
+  const roleId = s.repository.createAgentRole({ chatId: s.chatId, displayName: 'Writer', provider: 'codex', createdBy: 'user' })
+  const commands = createUserCommandService({ roomDb: s.roomDb, repository: s.repository })
+  const service = createRoomService({ roomDb: s.roomDb, repository: s.repository,
+    invokeAgent: s.runtime.invokeAgent, resolveGroup: s.runtime.resolveTarget })
+  t.after(() => service.close())
+  const create = scopes => {
+    const taskId = s.repository.createTask({ chatId: s.chatId, objective: 'Write', createdBy: 'user' })
+    return s.repository.createAssignment({ taskId, roleId, writeScopes: scopes })
+  }
+  await assert.rejects(service.startAssignment({ assignmentId: create(['src/']), prompt: 'Write' }).promise, /WRITE_NOT_AUTHORIZED/)
+  assert.equal(s.calls.length, 0)
+  commands.apply({ type: 'set_workspace_write', chatId: s.chatId, allowWrite: true, commandId: 'grant' })
+  await service.startAssignment({ assignmentId: create(['src/']), prompt: 'Write' }).promise
+  assert.equal(s.calls[0].runOptions.sandbox, 'workspace-write')
+  assert.equal(s.calls[0].workdir, fs.realpathSync.native(s.directory))
+  await service.startAssignment({ assignmentId: create([]), prompt: 'Read' }).promise
+  assert.equal(s.calls[1].runOptions.sandbox, 'read-only')
+  const target = s.runtime.resolveTarget({ roomId: s.roomId, chatId: s.chatId, assignment: { workspace: s.directory, provider: 'codex' } })
+  await s.runtime.invokeAgent(target, 'codex', 'plain', null, s.chatId, { roomId: s.roomId, chatId: s.chatId, traceRunId: 'controller-read', sessionKey: 'controller-read', promptOverride: 'Read', contextPackId: `context-pack-${'a'.repeat(64)}` })
+  assert.equal(s.calls[2].runOptions.sandbox, 'read-only')
+})
+
+test('native write authorization is rechecked after waiting for the directory lease', async t => {
+  const s = await setup(t)
+  const roleId = s.repository.createAgentRole({ chatId: s.chatId, displayName: 'Writer', provider: 'codex', createdBy: 'user' })
+  const taskId = s.repository.createTask({ chatId: s.chatId, objective: 'Write', createdBy: 'user' })
+  const assignmentId = s.repository.createAssignment({ taskId, roleId, status: 'running', runId: 'run-write', writeScopes: ['src/'] })
+  s.roomDb.database.prepare('UPDATE rooms SET write_authorized_root=? WHERE id=?').run(fs.realpathSync.native(s.directory), s.roomId)
+  const target = s.runtime.resolveTarget({ roomId: s.roomId, chatId: s.chatId, assignment: { workspace: s.directory, provider: 'codex' } })
+  const context = { roomId: s.roomId, chatId: s.chatId, taskId, assignmentId, traceRunId: 'run-write', sessionKey: 'worker-write', promptOverride: 'Write', contextPackId: `context-pack-${'b'.repeat(64)}` }
+  await assert.rejects(s.runtime.invokeAgent(target, 'codex', 'plain', null, taskId, { ...context, traceRunId: 'foreign' }), /ASSIGNMENT_SCOPE_INVALID/)
+  const scheduler = s.workspace.agentInvocation.runScheduler
+  const blocker = await scheduler.acquire({ taskId: 'blocker', workspaceKey: 'blocker', permissionMode: 'workspace-write', workdirRoot: s.directory, exclusiveRoot: true })
+  const pending = s.runtime.invokeAgent(target, 'codex', 'plain', null, taskId, context)
+  const rejected = assert.rejects(pending, /WRITE_AUTHORIZATION_CHANGED/)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(s.calls.length, 0)
+  s.roomDb.database.prepare('UPDATE rooms SET write_authorized_root=NULL WHERE id=?').run(s.roomId)
+  blocker.release()
+  await rejected
+  assert.equal(s.calls.length, 0)
+})
+
+test('Room writers serialize in the native pipeline and a queued cancellation never starts CLI', async t => {
+  let releaseFirst
+  let enteredFirst
+  const entered = new Promise(resolve => { enteredFirst = resolve })
+  const hold = new Promise(resolve => { releaseFirst = resolve })
+  const s = await setup(t, async () => { enteredFirst(); await hold })
+  const roleId = s.repository.createAgentRole({ chatId: s.chatId, displayName: 'Writer', provider: 'codex', createdBy: 'user' })
+  createUserCommandService({ roomDb: s.roomDb, repository: s.repository }).apply({ type: 'set_workspace_write', chatId: s.chatId, allowWrite: true, commandId: 'grant' })
+  const service = createRoomService({ roomDb: s.roomDb, repository: s.repository,
+    invokeAgent: s.runtime.invokeAgent, resolveGroup: s.runtime.resolveTarget })
+  const create = () => {
+    const taskId = s.repository.createTask({ chatId: s.chatId, objective: 'Write', createdBy: 'user' })
+    return s.repository.createAssignment({ taskId, roleId, writeScopes: ['src/'] })
+  }
+  try {
+    const first = service.startAssignment({ assignmentId: create(), prompt: 'First' }).promise
+    await entered
+    const abort = new AbortController()
+    const second = service.startAssignment({ assignmentId: create(), prompt: 'Second', signal: abort.signal }).promise
+    const rejected = assert.rejects(second)
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(s.calls.length, 1)
+    assert.equal(s.workspace.agentInvocation.runScheduler.snapshot().claimGrants[0].claims[0].mode, 'exclusive')
+    abort.abort()
+    await rejected
+    assert.equal(s.calls.length, 1)
+    releaseFirst()
+    await first
+  } finally { releaseFirst(); await service.close() }
+})
+
+async function setup(t, beforeReply = async () => {}) {
   const { directory, options } = fixture()
   const calls = []
   options.tracesRoot = path.join(directory, 'traces')
   options.runAgent = async (agent, prompt, workdir, runOptions) => {
     calls.push({ agent, prompt, workdir, runOptions })
+    await beforeReply({ agent, prompt, workdir, runOptions })
     return { text: prompt.startsWith('You are the Meldwork collaboration controller')
       ? '{"actions":[]}' : 'Done [[MELDWORK_REPORT:{"kind":"ready","summary":"completed"}]]',
     sessionRef: 'native-session', outcome: 'completed' }
@@ -95,7 +173,7 @@ test('native invocation rejects scope mismatch, write escalation and cancellatio
   const target = s.runtime.resolveTarget({ roomId: s.roomId, chatId: s.chatId, assignment: { workspace: s.directory, provider: 'codex' } })
   const context = { roomId: s.roomId, chatId: s.chatId, traceRunId: 'run-test' }
   await assert.rejects(s.runtime.invokeAgent(target, 'codex', 'plain', null, 'task', { ...context, chatId: 'foreign' }), /TARGET_SCOPE_INVALID/)
-  await assert.rejects(s.runtime.invokeAgent(target, 'codex', 'plain', null, 'task', { ...context, permissionMode: 'workspace-write' }), /WRITE_NOT_SUPPORTED/)
+  await assert.rejects(s.runtime.invokeAgent(target, 'codex', 'plain', null, 'task', { ...context, permissionMode: 'workspace-write' }), /WRITE_NOT_AUTHORIZED/)
   await assert.rejects(s.runtime.invokeAgent(target, 'codex', 'plain', AbortSignal.abort(), 'task', context), /CANCELLED/)
   s.workspace.detectedAgents = []
   await assert.rejects(s.runtime.invokeAgent(target, 'codex', 'plain', null, 'task', context), /TARGET_UNAVAILABLE/)

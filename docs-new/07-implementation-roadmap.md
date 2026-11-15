@@ -6,7 +6,7 @@
 
 `desktop/src/room-engine/` 已提供私有 SQLite 账本、统一消息入口、ControllerAction/UserCommand/PlatformTransition 校验、Report 导入和状态推导、outbox、Supervisor 事实记录，以及 main/preload 生命周期接线。Controller 的批次动作、派发 effect 和审计在同一事务内提交；Agent 消息不能直接授权派发。数据库目录使用 `0700`、文件使用 `0600`（Windows 除外）。启动恢复会将崩溃遗留 running effects 标为 unknown 并产生 Attention，不自动重放；未启动的 pending effects 仍可继续消费。详细能力和未完成项见 Phase 4 与下方当前实现进度。
 
-当前切片仍未接入 Renderer 或旧 Chat 迁移。`controller-agent.cjs` 已在 main 中通过 `native-runtime.cjs` 连接原生 `invokeAgent`：按 Room Provider 配置顺序选择首个 Provider，验证 Chat/目录归属与已安装 Agent；创建本次调用的临时执行描述，不查找已有 group，也不创建隐藏群聊。调用强制只读、不写入旧消息/Session、严格解析 JSON。Assignment Runner 已补齐原生接口要求的 promptOverride/contextPackId，并带入角色 Prompt、任务创建时的协作约定和 Report 输出要求。独立 Controller Session 已支持批次幂等、context revision 校验和结构化决策审计；动态角色创建与 Prompt 更新已受 Room Provider/能力白名单约束。Room schema 已升级到 v2。测试已穿过真实 LocalWorkspace 调用路径，但 CLI 进程仍使用替身；尚未实际运行真实 CLI 完成端到端验收，也未运行仓库全量测试。
+当前切片仍未接入 Renderer 或旧 Chat 迁移。`controller-agent.cjs` 已在 main 中通过 `native-runtime.cjs` 连接原生 `invokeAgent`：按 Room Provider 配置顺序选择首个 Provider，验证 Chat/目录归属与已安装 Agent；创建本次调用的临时执行描述，不查找已有 group，也不创建隐藏群聊。Controller 强制只读、不写入旧消息/Session、严格解析 JSON；Worker 写入需要用户授权与根目录独占租约。Assignment Runner 已补齐原生接口要求的 promptOverride/contextPackId，并带入角色 Prompt、任务创建时的协作约定和 Report 输出要求。独立 Controller Session 已支持批次幂等、context revision 校验和结构化决策审计；动态角色创建与 Prompt 更新已受 Room Provider/能力白名单约束。Room schema 已升级到 v3，既有 Room 默认只读。测试已穿过真实 LocalWorkspace 调用路径，但 CLI 进程仍使用替身；尚未实际运行真实 CLI 完成端到端验收，也未运行仓库全量测试。
 
 ## 实施原则
 
@@ -269,4 +269,10 @@ Room Engine 的第一条主进程纵向切片已经接入 Electron 生命周期�
 - IPC 边界收口专项覆盖通道移除、信任校验、作者/actor 伪造拒绝、参数白名单/长度限制、跨 Chat 引用拒绝，以及真实 SQLite 下 Report 标记不改变 Task 状态；preload 测试验证只保留用户操作和读取入口。真实桌面交互和 CLI 端到端仍待验收。
 - 独立原生调用一轮 35 项专项测试在 Electron 内置运行时通过，覆盖无 group 的 Controller/Worker、禁止旧 ContextPack/上下文读取、Trace、并发 operation 隔离、执行目标归属/权限/取消校验，以及共享 project-room 调用代码回归。测试仅替换 CLI 进程，尚未实际调用外部 CLI。
 
-v2 已解除对持久化旧 group 的宿主依赖。`native-runtime.cjs` 仅复用原生执行底层：按 Room/Chat/runId 生成临时执行 ID 与独立 operationId，补齐 traceAgentRunId；不读取旧上下文、不生成旧群聊消息、不在旧 Session 表保存原生会话，调用结束清理临时 Agent snapshot。目录/Provider/Chat 不匹配或 Agent 不可用时拒绝，写权限请求也会拒绝。本轮保持只读，每次原生新 Session；原生 sessionRef 的 v2 持久化/续跑、写入授权与 Room 租约、完整 Run Ledger/心跳接线仍待完成。无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实。下一步完成真实 CLI 端到端验收、运行控制收口与 v2 群聊 UI。
+v2 已解除对持久化旧 group 的宿主依赖。`native-runtime.cjs` 仅复用原生执行底层：按 Room/Chat/runId 生成临时执行 ID 与独立 operationId，补齐 traceAgentRunId；不读取旧上下文、不生成旧群聊消息、不在旧 Session 表保存原生会话，调用结束清理临时 Agent snapshot。目录/Provider/Chat 不匹配或 Agent 不可用时拒绝。
+
+已接通 `set_workspace_write` 用户命令与 Room 根目录独占租约：授权绑定真实目录，非空 writeScopes 的 Worker 才能申请写入；Controller 与无 writeScopes 的 Worker 保持只读。运行中/unknown 执行阻止 Room 授权变更；等待租约后再校验授权，排队取消不启动 CLI。独占声明跨租约挂起恢复保留，并传入受管理进程登记。writeScopes 不提供文件级沙箱，首版互斥单位是整个 Room 根目录；授权 UI 和自动 Artifact 快照仍待接通。
+
+该切片在 Electron 内置 Node 运行时通过 95 项 Room/IPC/调度器定向测试，以及 14 项共享 project-room/影子 Git 调用回归；CLI 使用替身，未运行 Electron GUI、真实 CLI、打包或全量测试。
+
+每次原生调用仍创建新 Session；原生 sessionRef 的 v2 持久化/续跑、完整 Run Ledger/心跳接线仍待完成。无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实。下一步完成真实 CLI 端到端验收、运行控制收口与 v2 群聊 UI。

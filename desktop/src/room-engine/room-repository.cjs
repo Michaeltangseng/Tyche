@@ -25,9 +25,9 @@ function createRoomRepository(roomDb) {
     createRoom({ roomId = id('room'), name, workspace, providers = [], allowedCapabilities = [] }) {
       const timestamp = now()
       db.prepare(`INSERT INTO rooms
-        (id, name, workspace, providers_json, allowed_capabilities_json, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`)
-        .run(roomId, name, workspace, encode(providers), encode(allowedCapabilities), timestamp, timestamp)
+        (id, name, workspace, providers_json, allowed_capabilities_json, write_authorized_root, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(roomId, name, workspace, encode(providers), encode(allowedCapabilities), null, timestamp, timestamp)
       return roomId
     },
     createChat({ chatId = id('chat'), roomId, title, isPrimary = false, engineVersion = 'v2', contextRevision = 0 }) {

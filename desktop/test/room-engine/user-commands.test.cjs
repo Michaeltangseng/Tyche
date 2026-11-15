@@ -7,6 +7,40 @@ const test = require('node:test')
 const { openRoomDatabase } = require('../../src/room-engine/room-db.cjs')
 const { createRoomRepository } = require('../../src/room-engine/room-repository.cjs')
 const { createUserCommandService } = require('../../src/room-engine/user-commands.cjs')
+const { validateUserCommand, validateControllerAction } = require('../../src/room-engine/room-actions.cjs')
+
+test('workspace grant is canonical, replay-safe, Room-wide and transactional', t => {
+  const s = setup()
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-write-grant-'))
+  t.after(() => { s.roomDb.close(); fs.rmSync(root, { recursive: true, force: true }) })
+  const roomId = s.repository.getChatContext(s.chatId).chat.room_id
+  s.roomDb.database.prepare('UPDATE rooms SET workspace=? WHERE id=?').run(root, roomId)
+  const command = { type: 'set_workspace_write', chatId: s.chatId, allowWrite: true, commandId: 'grant' }
+  const authorizedRoot = () => s.repository.getRoomSnapshot(roomId).room.write_authorized_root
+  assert.equal(authorizedRoot(), null)
+  assert.equal(s.commands.apply(command).writeAuthorizedRoot, fs.realpathSync.native(root))
+  assert.equal(s.commands.apply(command).duplicate, true)
+  assert.throws(() => s.commands.apply({ ...command, allowWrite: false }), /COMMAND_ID_REUSED/)
+  assert.throws(() => validateUserCommand({ ...command, allowWrite: 'true' }), /ALLOW_WRITE_INVALID/)
+  assert.throws(() => validateUserCommand({ ...command, writeAuthorizedRoot: root }), /UNKNOWN_FIELD/)
+  assert.throws(() => validateControllerAction(command), /TYPE_INVALID/)
+  const otherChat = s.repository.createChat({ roomId, title: 'Other team' })
+  const roleId = s.repository.createAgentRole({ chatId: otherChat, displayName: 'Writer', provider: 'codex', createdBy: 'user' })
+  const taskId = s.repository.createTask({ chatId: otherChat, objective: 'Write', createdBy: 'user' })
+  const assignmentId = s.repository.createAssignment({ taskId, roleId, status: 'running' })
+  const revoke = { ...command, allowWrite: false, commandId: 'revoke' }
+  assert.throws(() => s.commands.apply(revoke), /PERMISSION_BUSY/)
+  s.roomDb.database.prepare("UPDATE assignments SET status='waiting', outcome='unknown' WHERE id=?").run(assignmentId)
+  assert.throws(() => s.commands.apply(revoke), /PERMISSION_BUSY/)
+  s.roomDb.database.prepare("UPDATE assignments SET status='ready', outcome='ready' WHERE id=?").run(assignmentId)
+  const original = s.repository.appendEvent
+  s.repository.appendEvent = () => { throw new Error('audit failed') }
+  assert.throws(() => s.commands.apply(revoke), /audit failed/)
+  assert.equal(authorizedRoot(), fs.realpathSync.native(root))
+  s.repository.appendEvent = original
+  s.commands.apply(revoke)
+  assert.equal(authorizedRoot(), null)
+})
 
 function setup() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-user-command-'))

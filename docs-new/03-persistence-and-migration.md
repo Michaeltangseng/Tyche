@@ -27,6 +27,8 @@ events
 
 关键约束：
 
+当前 schema version 为 3：`rooms.write_authorized_root` 保存用户明确授权的真实工作目录，默认 NULL（只读）；v2 数据库升级时既有 Room 不自动获得写权限。授权变更与用户命令审计在同一事务中提交，命令通过 commandId 幂等；数据库继续留在应用私有区。
+
 - 使用 WAL、外键、事务和 schema version；
 - 所有写入由 Room Engine 统一提交；
 - Controller action 先持久化，再执行外部副作用；

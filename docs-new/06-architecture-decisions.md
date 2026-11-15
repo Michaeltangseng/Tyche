@@ -44,7 +44,7 @@ Controller 不得通过 `update_task` 直接设置 `done` 或 `cancelled`；该�
 
 **决定（2026-11-15 修订）：** 复用 `invokeAgent` 的原生传输、凭据检查和 Trace 能力，但 v2 不依赖已保存 group，也不创建隐藏宿主群聊。`native-runtime.cjs` 根据 Room/Chat、工作目录和已安装 Provider 创建仅存活于本次调用的执行描述。每个 Assignment 对应一次原生调用，Session key 包含 `roomId/chatId/taskId/assignmentId/attempt`，角色由 Assignment 关联；Trace 使用 v2 runId 和独立 agentRunId，operationId 按本次调用生成。v2 Prompt 不读取旧 ContextPack、聊天记录或 project-room 上下文，也不把消息和 Session 写回旧 workspace JSON。
 
-当前运行路径强制只读，每次使用原生新 Session，尚未把原生 sessionRef 持久化到 v2 账本用于续跑；写入授权、Room 写入租约、完整 Run Ledger 对应及原生 Session 恢复另行接通。以上边界不能由角色 Prompt 改写。
+Controller 始终只读；Worker 只有在用户明确授权 Room 真实根目录、且持久化 Assignment 的 writeScopes 非空时才申请写入。当前以整个根目录独占租约串行化冲突写任务，不声称 writeScopes 是文件级 CLI 隔离；租约领取后再次校验授权。租约声明传入受管理进程记录，并在挂起/重新领取时保留独占模式。每次仍使用原生新 Session，尚未把原生 sessionRef 持久化到 v2 账本用于续跑；完整 Run Ledger 对应及原生 Session 恢复另行接通。以上边界不能由角色 Prompt 改写。
 
 旧 V4 项目继续使用旧引擎；需要展示时通过只读投影映射为 Chat/Task/Report。旧消息和 workspace JSON 保留原始引用，迁移不删除原始记录。
 

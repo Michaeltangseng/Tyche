@@ -200,6 +200,7 @@ class RunScheduler {
       taskId: entry.taskId,
       workspaceKey: entry.workspaceKey,
       permissionMode: entry.permissionMode,
+      claims: Object.freeze((entry.claims || []).map(claim => Object.freeze({ ...claim }))),
       queuedAt: entry.queuedAt,
       acquiredAt: this.now(),
       release: () => {
@@ -222,6 +223,7 @@ class RunScheduler {
       permissionMode: entry.permissionMode,
       signal: entry.signal,
       workdirRoot: entry.workdirRoot || '',
+      exclusiveRoot: entry.exclusiveRoot,
       ownerId: entry.holder?.ownerId || '',
     }))
     entry.resolve(lease)
@@ -275,7 +277,7 @@ class RunScheduler {
     let claims = []
     if (permissionMode === 'workspace-write' && workdirRoot) {
       const projectRoots = await Promise.resolve(this.projectRootsProvider())
-      let mode = 'shared-legacy'
+      let mode = input.exclusiveRoot === true ? 'exclusive' : 'shared-legacy'
       if (Array.isArray(projectRoots) && projectRoots.length) {
         const workdirProbe = await makeClaim({ root: workdirRoot, path: '', mode: 'exclusive' })
         for (const projectRoot of projectRoots) {
@@ -307,6 +309,7 @@ class RunScheduler {
         holder: { kind: 'invocation', ownerId: input.ownerId || '' },
         claims,
         workdirRoot,
+        exclusiveRoot: input.exclusiveRoot === true,
       }
       entry.abortHandler = () => {
         if (entry.cancelled) return
@@ -498,6 +501,7 @@ class RunScheduler {
       get taskId() { return activeLease?.taskId || '' },
       get workspaceKey() { return activeLease?.workspaceKey || '' },
       get permissionMode() { return activeLease?.permissionMode || '' },
+      get claims() { return activeLease?.claims || [] },
       get queuedAt() { return activeLease?.queuedAt || 0 },
       get acquiredAt() { return activeLease?.acquiredAt || 0 },
       release: () => {

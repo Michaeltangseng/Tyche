@@ -326,7 +326,7 @@ class LocalWorkspaceAgentInvocation {
         && !isCodeReviewAgentKind(kind)
         ? 'workspace-write' : 'read-only')
     context = { ...context, permissionMode }
-    const leasePermissionMode = projectRoomInvocation ? 'read-only' : permissionMode
+    const leasePermissionMode = projectRoomInvocation && context.sessionPolicy !== 'room' ? 'read-only' : permissionMode
     const agentController = new AbortController()
     const registration = { agentRunId: '' }
     let queuedAbortHandler = null
@@ -362,6 +362,7 @@ class LocalWorkspaceAgentInvocation {
         workspaceKey,
         permissionMode: leasePermissionMode,
         workdirRoot: leasePermissionMode === 'workspace-write' ? workdirRoot : '',
+        exclusiveRoot: context.sessionPolicy === 'room',
         signal: agentController.signal,
       }, async (lease) => {
         if (signal && queuedAbortHandler) {
@@ -1177,7 +1178,7 @@ class LocalWorkspaceAgentInvocation {
                   projectId: group.projectId || null,
                   workdir: group.workdir,
                   permission: allowWrite ? 'workspace-write' : 'read-exec',
-                  claims: [],
+                  claims: context.sessionPolicy === 'room' ? (invocation.lease?.claims || []) : [],
                   agentKind: kind,
                 },
                 supervisorPath: this.managedSupervisorPath,

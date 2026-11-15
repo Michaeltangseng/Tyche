@@ -5,6 +5,7 @@ const CONTROLLER_TYPES = new Set([
 const USER_TYPES = new Set([
   'stop_task', 'retry_task', 'handoff_task', 'accept_artifact', 'reject_artifact',
   'answer_attention', 'pause_chat', 'resume_chat', 'archive_chat', 'restore_context',
+  'set_workspace_write',
 ])
 const PLATFORM_TYPES = new Set([
   'session_started', 'session_liveness', 'session_exited', 'report_received', 'effect_updated',
@@ -24,6 +25,7 @@ const FIELDS = Object.freeze({
     propose_retry: ['type', 'chatId', 'contextRevision', 'taskId', 'reason'],
   },
   user: {
+    set_workspace_write: ['type', 'chatId', 'allowWrite', 'commandId'],
     stop_task: ['type', 'chatId', 'taskId', 'reason'],
     retry_task: ['type', 'chatId', 'taskId', 'assignmentId', 'commandId', 'reason'],
     handoff_task: ['type', 'chatId', 'taskId', 'assignmentId', 'commandId', 'roleId', 'reason'],
@@ -65,6 +67,10 @@ function normalize(action, kind, expectedChatId = null, expectedContextRevision 
     if (!fields.includes(key)) throw new TypeError('ROOM_ACTION_UNKNOWN_FIELD')
   }
   assertId(action.chatId, 'chat_id')
+  if (kind === 'user' && action.type === 'set_workspace_write') {
+    if (typeof action.allowWrite !== 'boolean') throw new TypeError('ROOM_ACTION_ALLOW_WRITE_INVALID')
+    assertId(action.commandId, 'command_id')
+  }
   if (kind === 'user' && ['retry_task', 'handoff_task'].includes(action.type)) {
     for (const field of ['taskId', 'assignmentId', 'commandId']) assertId(action[field], field)
     if (action.type === 'handoff_task') assertId(action.roleId, 'role_id')

@@ -31,6 +31,31 @@ function deferredState(promise) {
   return state
 }
 
+test('explicit Room roots remain exclusive across suspension without legacy project registration', async t => {
+  const root = fixture(t)
+  const scheduler = new RunScheduler()
+  const input = { taskId: 'room', workspaceKey: 'room', permissionMode: 'workspace-write', workdirRoot: root, exclusiveRoot: true }
+  await scheduler.withLease(input, async lease => {
+    assert.equal(lease.claims[0].mode, 'exclusive')
+    assert.equal(Object.isFrozen(lease.claims), true)
+    assert.equal(Object.isFrozen(lease.claims[0]), true)
+    await lease.suspend(async () => {
+      const temporary = await scheduler.acquire({ ...input, taskId: 'temporary' })
+      temporary.release()
+    })
+    assert.equal(lease.claims[0].mode, 'exclusive')
+    const abort = new AbortController()
+    const waiting = scheduler.acquire({ ...input, taskId: 'waiting', workspaceKey: 'waiting', signal: abort.signal })
+    const state = deferredState(waiting)
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(state.settled, false)
+    abort.abort()
+    await assert.rejects(waiting)
+  })
+  const released = await scheduler.acquire(input)
+  released.release()
+})
+
 test('all claims are granted together or none are', async (t) => {
   const root = fixture(t)
   const a = await makeClaim({ root, path: 'a' })

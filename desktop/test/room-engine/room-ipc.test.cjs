@@ -20,6 +20,17 @@ function setup() {
   return { handlers, calls, service, ipcMain }
 }
 
+test('workspace permission uses the validated user command channel without caller-provided roots', async () => {
+  const { handlers, calls, service, ipcMain } = setup()
+  registerRoomIpc({ ipcMain, service, requireRenderer: () => {} })
+  const command = { type: 'set_workspace_write', chatId: 'chat', commandId: 'grant-1', allowWrite: true }
+  await handlers.get(CHANNELS.userCommand)({}, command)
+  assert.deepEqual(calls[0], ['applyUserCommand', command, { actorId: 'user' }])
+  await assert.rejects(handlers.get(CHANNELS.userCommand)({}, { ...command, allowWrite: 'yes' }), /ALLOW_WRITE_INVALID/)
+  await assert.rejects(handlers.get(CHANNELS.userCommand)({}, { ...command, writeAuthorizedRoot: '/tmp' }), /UNKNOWN_FIELD/)
+  assert.equal(calls.length, 1)
+})
+
 test('room IPC exposes only narrow service operations and validates renderer access', async () => {
   const { handlers, calls, service, ipcMain } = setup()
   let trusted = 0

@@ -1,5 +1,7 @@
 const path = require('node:path')
 const { createHash } = require('node:crypto')
+const fs = require('node:fs')
+const { normalizeRelativePath } = require('../runs/path-claims.cjs')
 
 // Native execution reuses the CLI transport, not a persisted legacy chat.
 function createRoomNativeRuntime({ repository, workspace } = {}) {
@@ -25,17 +27,36 @@ function createRoomNativeRuntime({ repository, workspace } = {}) {
     if (!target || context.roomId !== target.roomId || context.chatId !== target.chatId || provider !== target.provider) throw new Error('ROOM_NATIVE_TARGET_SCOPE_INVALID')
     const current = resolveTarget({ assignment: { workspace: target.workdir, provider }, chatId: target.chatId, roomId: target.roomId })
     if (!current) throw new Error('ROOM_NATIVE_TARGET_UNAVAILABLE')
-    if (context.permissionMode != null && context.permissionMode !== 'read-only') throw new Error('ROOM_NATIVE_WRITE_NOT_SUPPORTED')
     if (typeof context.traceRunId !== 'string' || !context.traceRunId) throw new Error('ROOM_NATIVE_RUN_ID_REQUIRED')
+    let writeRoot = null
+    if (context.assignmentId) {
+      const assignment = repository.getAssignmentContext(context.assignmentId)
+      if (!assignment || assignment.chat_id !== target.chatId || assignment.room_id !== target.roomId
+          || assignment.provider !== provider || assignment.task_id !== context.taskId
+          || assignment.status !== 'running' || assignment.run_id !== context.traceRunId) throw new Error('ROOM_NATIVE_ASSIGNMENT_SCOPE_INVALID')
+      const scopes = JSON.parse(assignment.write_scopes_json)
+      if (!Array.isArray(scopes)) throw new Error('ROOM_NATIVE_WRITE_SCOPES_INVALID')
+      for (const scope of scopes) normalizeRelativePath(scope)
+      if (scopes.length) {
+        writeRoot = fs.realpathSync.native(current.workdir)
+        if (repository.getRoomSnapshot(target.roomId).room.write_authorized_root !== writeRoot) throw new Error('ROOM_NATIVE_WRITE_NOT_AUTHORIZED')
+      }
+    }
+    if (context.permissionMode != null && context.permissionMode !== 'read-only'
+        && (context.permissionMode !== 'workspace-write' || !writeRoot)) throw new Error('ROOM_NATIVE_WRITE_NOT_AUTHORIZED')
     const identity = createHash('sha256').update(JSON.stringify([target.roomId, target.chatId, provider, context.traceRunId])).digest('hex')
     // This descriptor exists only for this invocation. It is never registered
     // in workspace groups, messages, activeRuns or legacy session storage.
     const surface = Object.freeze({ id: `room-native-${identity}`, conversationType: 'direct',
-      workdir: current.workdir, agentKinds: [provider], allowWrite: false })
+      workdir: writeRoot || current.workdir, agentKinds: [provider], allowWrite: Boolean(writeRoot) })
     return workspace.invokeAgent(surface, provider, mode, signal, threadRootId, {
       ...context, sessionPolicy: 'room', saveSession: false, deferMessage: true,
-      permissionMode: 'read-only', operationId: `agent-operation-${identity}`,
+      permissionMode: writeRoot ? 'workspace-write' : 'read-only', operationId: `agent-operation-${identity}`,
       traceAgentRunId: `room-agent-${identity}`,
+      onLeaseAcquired: () => {
+        if (writeRoot && (repository.getRoomSnapshot(target.roomId).room.write_authorized_root !== writeRoot
+            || fs.realpathSync.native(current.workdir) !== writeRoot)) throw new Error('ROOM_NATIVE_WRITE_AUTHORIZATION_CHANGED')
+      },
     })
   }
 

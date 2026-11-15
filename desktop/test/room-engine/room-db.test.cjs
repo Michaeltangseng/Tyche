@@ -9,6 +9,23 @@ const { createRoomRepository } = require('../../src/room-engine/room-repository.
 
 function tempDirectory() { return fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-')) }
 
+test('v2 migration preserves rooms and defaults existing workspaces to read-only', t => {
+  const directory = tempDirectory()
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const first = openRoomDatabase({ directory })
+  const roomId = createRoomRepository(first).createRoom({ name: 'Existing', workspace: directory })
+  first.database.exec('ALTER TABLE rooms DROP COLUMN write_authorized_root; PRAGMA user_version = 2;')
+  first.close()
+  const migrated = openRoomDatabase({ directory })
+  assert.equal(migrated.database.prepare('PRAGMA user_version').get().user_version, 3)
+  assert.equal(migrated.database.prepare('SELECT write_authorized_root FROM rooms WHERE id=?').get(roomId).write_authorized_root, null)
+  migrated.database.prepare('UPDATE rooms SET write_authorized_root=? WHERE id=?').run(directory, roomId)
+  migrated.close()
+  const reopened = openRoomDatabase({ directory })
+  assert.equal(reopened.database.prepare('SELECT write_authorized_root FROM rooms WHERE id=?').get(roomId).write_authorized_root, directory)
+  reopened.close()
+})
+
 test('room database creates private schema and persists the message/task/effect ledger', () => {
   const directory = tempDirectory()
   const roomDb = openRoomDatabase({ directory })
@@ -25,7 +42,7 @@ test('room database creates private schema and persists the message/task/effect 
   assert.equal(repository.listMessages(chatId).length, 1)
   assert.equal(repository.getTask(taskId).status, 'open')
   assert.equal(repository.getEffect(effectId).status, 'pending')
-  assert.equal(roomDb.database.prepare('PRAGMA user_version').get().user_version, 2)
+  assert.equal(roomDb.database.prepare('PRAGMA user_version').get().user_version, 3)
   roomDb.close()
 })
 

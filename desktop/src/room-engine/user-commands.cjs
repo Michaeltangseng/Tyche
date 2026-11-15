@@ -1,5 +1,6 @@
 const { encode } = require('./room-db.cjs')
 const { createHash } = require('node:crypto')
+const fs = require('node:fs')
 const { validateUserCommand } = require('./room-actions.cjs')
 
 function parseJson(value, fallback) {
@@ -32,7 +33,16 @@ function createUserCommandService({ roomDb, repository }) {
           return { ...recorded.result, duplicate: true, event: { eventId, sequence: existing.sequence, createdAt: existing.created_at } }
         }
       }
-      if (action.type === 'retry_task' || action.type === 'handoff_task') {
+      if (action.type === 'set_workspace_write') {
+        const running = db.prepare(`SELECT a.id FROM assignments a JOIN tasks t ON t.id = a.task_id
+          JOIN chats c ON c.id = t.chat_id WHERE c.room_id = ? AND (a.status = 'running' OR a.outcome = 'unknown') LIMIT 1`).get(chat.room_id)
+        if (running) throw new Error('ROOM_WORKSPACE_PERMISSION_BUSY')
+        const room = db.prepare('SELECT workspace FROM rooms WHERE id = ?').get(chat.room_id)
+        const root = action.allowWrite ? fs.realpathSync.native(room.workspace) : null
+        if (root && !fs.statSync(root).isDirectory()) throw new Error('ROOM_WORKSPACE_NOT_DIRECTORY')
+        db.prepare('UPDATE rooms SET write_authorized_root = ?, updated_at = ? WHERE id = ?').run(root, timestamp, chat.room_id)
+        result = { roomId: chat.room_id, allowWrite: action.allowWrite, writeAuthorizedRoot: root }
+      } else if (action.type === 'retry_task' || action.type === 'handoff_task') {
         const previous = repository.getAssignmentContext(action.assignmentId)
         if (!previous || previous.task_id !== action.taskId || previous.chat_id !== action.chatId) throw new Error('ROOM_ASSIGNMENT_NOT_FOUND')
         if (!['failed', 'waiting', 'blocked'].includes(previous.status)) throw new Error('ROOM_ASSIGNMENT_NOT_RETRYABLE')
