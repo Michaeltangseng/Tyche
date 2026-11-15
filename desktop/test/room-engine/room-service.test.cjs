@@ -197,6 +197,9 @@ test('runtime routes task creation, automatic worker execution and Report follow
         ...base, type: 'request_attention', taskId: state.repository.getReport('runtime-report').task_id,
         attentionType: 'approval', question: 'Accept draft?', options: [{ id: 'yes', label: 'Accept' }],
       }] }
+      if (input.events.some(event => event.type === 'user_answer_attention')) return { actions: [{
+        ...base, type: 'create_task', objective: 'Implement the accepted draft', kind: 'implementation',
+      }] }
       return { actions: [] }
     },
   })
@@ -222,6 +225,7 @@ test('runtime routes task creation, automatic worker execution and Report follow
     await service.flushController(state.chatId)
     assert.equal(calls.length, 4)
     assert.equal(calls[3].events[0].type, 'user_answer_attention')
+    assert.equal(service.snapshot({ roomId: state.roomId }).tasks.some(task => task.objective === 'Implement the accepted draft'), true)
   } finally {
     await service.close()
     state.roomDb.close()
