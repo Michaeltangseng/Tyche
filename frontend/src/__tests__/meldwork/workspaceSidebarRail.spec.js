@@ -47,6 +47,7 @@ function controller() {
     openConversationRename: vi.fn(),
     openNewGroup: vi.fn(),
     openProjectCreate: vi.fn(),
+    openTeamRoomCreate: vi.fn(),
     openSidebarConversationDelete: vi.fn(),
     pendingDecisionCount: ref(0),
     pendingDecisionItems: ref([]),
@@ -98,6 +99,23 @@ describe('workspace sidebar rail', () => {
     expect(wrapper.get('.project-room-nav-section').text()).toContain('room.legacyProjects')
     wrapper.unmount()
   })
+  it('places team rooms below legacy projects and offers team-room creation', async () => {
+    const fixture = controller()
+    fixture.roomWorkspaceAvailable = ref(true)
+    fixture.openRoomWorkspace = vi.fn()
+    fixture.sidebarCollapsed.value = false
+    const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })
+    const projectSection = wrapper.get('.project-room-nav-section')
+    const teamSection = wrapper.get('.team-room-nav-section')
+    expect(
+      projectSection.element.compareDocumentPosition(teamSection.element)
+        & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    await wrapper.get('.team-room-create').trigger('click')
+    expect(fixture.openTeamRoomCreate).toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   it('keeps agent and project entries in the collapsed rail', async () => {
     const fixture = controller()
     const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })

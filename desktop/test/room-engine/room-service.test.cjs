@@ -34,6 +34,31 @@ test('bootstrap creates an independent v2 room and primary chat atomically', () 
   roomDb.close()
 })
 
+test('bootstrap and new chats seed default agent seats from room providers', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-default-seats-'))
+  const roomDb = openRoomDatabase({ directory })
+  const repository = createRoomRepository(roomDb)
+  const service = createRoomService({ roomDb, repository })
+  t.after(async () => {
+    await service.close()
+    roomDb.close()
+    fs.rmSync(directory, { recursive: true, force: true })
+  })
+  const created = service.bootstrap({ name: 'Team', workspace: '/tmp/team', providers: ['codex', 'claude'], createdBy: 'user-1' })
+  const seats = repository.listAgentRoles(created.chatId).sort((a, b) => a.provider.localeCompare(b.provider))
+  assert.deepEqual(seats.map(seat => ({
+    provider: seat.provider,
+    displayName: seat.display_name,
+    createdBy: seat.created_by,
+    reason: seat.creation_reason,
+  })), [
+    { provider: 'claude', displayName: 'claude', createdBy: 'user-1', reason: 'project_default_agent' },
+    { provider: 'codex', displayName: 'codex', createdBy: 'user-1', reason: 'project_default_agent' },
+  ])
+  const next = service.createChat({ roomId: created.roomId, title: 'Second chat' })
+  assert.equal(repository.listAgentRoles(next.chatId).length, 2)
+})
+
 test('snapshot returns the v2 room ledger grouped by chat', () => {
   const { roomDb, service, repository, roomId, chatId, roleId } = setup()
   repository.createChatContextRevision({ chatId, instructions: 'Prefer concise reports and record every request.', createdBy: 'user-1' })

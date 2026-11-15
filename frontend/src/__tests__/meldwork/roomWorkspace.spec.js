@@ -466,22 +466,134 @@ describe('v2 team workspace', () => {
     expect(wrapper.find('.room-trace-blob button').exists()).toBe(false)
   })
 
-  it('creates new projects from chosen directories and closes the inline form with Escape', async () => {
+  it('creates new projects from chosen directories and closes the modal with Escape', async () => {
     const bridge = api()
     const wrapper = mountRoom(bridge)
     await flushPromises()
-    await wrapper.get('.room-toolbar button').trigger('click')
+    await wrapper.get('[data-testid="room-create-open"]').trigger('click')
     await wrapper.get('.room-create input').setValue('New team')
     await wrapper.get('.room-directory button').trigger('click')
     await flushPromises()
-    await wrapper.get('.room-provider input').setValue(true)
     await wrapper.get('.room-create').trigger('submit')
     await flushPromises()
     expect(bridge.bootstrap).toHaveBeenCalledWith({ name: 'New team', workspace: '/tmp/demo', providers: ['codex'] })
     expect(() => structuredClone(bridge.bootstrap.mock.calls[0][0])).not.toThrow()
     expect(wrapper.find('.room-create').exists()).toBe(false)
-    await wrapper.get('.room-toolbar button').trigger('click')
+    await wrapper.get('[data-testid="room-create-open"]').trigger('click')
     await wrapper.get('.room-create').trigger('keydown', { key: 'Escape' })
     expect(wrapper.find('.room-create').exists()).toBe(false)
+  })
+
+  it('opens the create modal when the sidebar requests a new team room', async () => {
+    setLocale('en')
+    const bridge = api()
+    const wrapper = mount(RoomWorkspace, { props: { api: bridge, pickDirectory: vi.fn(async () => '/tmp/demo'), agents: [{ kind: 'codex', label: 'Codex' }], createRequest: true } })
+    cleanup.push(() => wrapper.unmount())
+    await flushPromises()
+    expect(wrapper.find('.room-create').exists()).toBe(true)
+    expect(wrapper.emitted('create-request-consumed')).toHaveLength(1)
+  })
+
+  it('starts from the conversation and keeps configuration in the settings drawer', async () => {
+    const snapshot = data()
+    snapshot.room.workspace = '/tmp/current-project'
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+    expect(wrapper.get('.room-welcome').isVisible()).toBe(true)
+    expect(wrapper.get('.room-settings-modal').isVisible()).toBe(false)
+    expect(wrapper.get('.room-timeline').text()).not.toContain('/tmp/current-project')
+    await wrapper.get('.room-settings-button').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.room-settings-modal').isVisible()).toBe(true)
+    expect(wrapper.get('.room-overview').text()).toContain('/tmp/current-project')
+    await wrapper.findAll('.room-settings-tabs button')[2].trigger('click')
+    expect(wrapper.get('.room-settings-section[aria-hidden="false"]').text()).toContain('Team members')
+    await wrapper.get('.room-settings-modal').trigger('keydown', { key: 'Escape' })
+    await flushPromises()
+    expect(wrapper.get('.room-settings-modal').isVisible()).toBe(false)
+  })
+
+  it('shows default agent seats and marks the controller seat', async () => {
+    const snapshot = data()
+    snapshot.room.providers_json = ['codex']
+    snapshot.roles = [{ id: 'controller-seat', chat_id: 'chat-1', display_name: 'codex', provider: 'codex', status: 'active', creation_reason: 'project_default_agent', current_prompt: '' }]
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+    const chip = wrapper.get('.room-agent-chip')
+    expect(chip.text()).toContain('Codex')
+    expect(chip.text()).toContain('Controller')
+    await chip.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.room-role-modal').text()).toContain('This agent also acts as the controller')
+    expect(wrapper.get('.room-role-modal').text()).not.toContain('Added for')
+  })
+
+  it('opens role settings from an agent chip and saves the prompt', async () => {
+    const snapshot = data()
+    snapshot.roles = [{ id: 'worker', chat_id: 'chat-1', display_name: 'Writer', provider: 'codex', status: 'active', responsibilities: 'Write docs.', creation_reason: 'Documentation task.', current_prompt: 'Write clearly.', capabilities_json: ['write'] }]
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    await wrapper.get('.room-agent-chip').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.room-role-modal').isVisible()).toBe(true)
+    expect(wrapper.get('.room-role-modal').text()).toContain('Writer')
+    const prompt = wrapper.get('.room-role-form textarea:not([disabled])')
+    expect(prompt.element.value).toBe('Write clearly.')
+    await prompt.setValue('Write concise docs.')
+    await wrapper.get('.room-role-form .primary-button').trigger('click')
+    await flushPromises()
+    expect(bridge.applyUserCommand).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'update_role_prompt', roleId: 'worker', prompt: 'Write concise docs.', chatId: 'chat-1', commandId: expect.any(String),
+    }))
+    await wrapper.get('.room-role-modal').trigger('keydown', { key: 'Escape' })
+    await flushPromises()
+    expect(wrapper.find('.room-role-modal').exists()).toBe(false)
+  })
+
+  it('renders Attention cards in the conversation and answers them', async () => {
+    const snapshot = data()
+    snapshot.attentions = [{ id: 'attention-1', chat_id: 'chat-1', type: 'decision', question: 'Proceed?', options_json: [{ id: 'yes', label: 'Yes' }], status: 'open' }]
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    const card = wrapper.get('.room-attention-card')
+    expect(card.text()).toContain('Proceed?')
+    await card.get('select').setValue('yes')
+    await card.get('form').trigger('submit')
+    await flushPromises()
+    expect(bridge.applyUserCommand).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'answer_attention', chatId: 'chat-1', attentionId: 'attention-1', optionId: 'yes',
+    }))
+  })
+
+  it('shows the work panel only when there is work to inspect', async () => {
+    const empty = mountRoom(api(data()))
+    await flushPromises()
+    expect(empty.find('.room-ledger').exists()).toBe(false)
+    expect(empty.find('.room-work-toggle').exists()).toBe(false)
+
+    const snapshot = data()
+    snapshot.tasks = [{ id: 'task', chat_id: 'chat-1', objective: 'Build API', status: 'active' }]
+    const working = mountRoom(api(snapshot))
+    await flushPromises()
+    expect(working.find('.room-ledger').exists()).toBe(true)
+    expect(working.get('.room-work-toggle').text()).toContain('Work')
+  })
+
+  it('renders reported artifacts inline and keeps only unlinked artifacts in the work panel', async () => {
+    const snapshot = data()
+    snapshot.tasks = [{ id: 'task', chat_id: 'chat-1', objective: 'Write docs', status: 'done' }]
+    snapshot.assignments = [{ id: 'attempt', task_id: 'task', role_id: 'worker', status: 'completed' }]
+    snapshot.artifacts = [
+      { id: 'linked', path: 'docs/spec.md', version: 'commit-1', status: 'published' },
+      { id: 'loose', path: 'assets/hero.png', version: 'commit-2', status: 'published' },
+    ]
+    snapshot.reports = [{ id: 'report', task_id: 'task', assignment_id: 'attempt', summary: 'Document ready', evidence_json: [], artifact_ids_json: ['linked'], created_at: '2026-11-15T00:00:00Z' }]
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+    expect(wrapper.get('.room-message-artifacts').text()).toContain('docs/spec.md')
+    expect(wrapper.get('.room-ledger').text()).not.toContain('docs/spec.md')
+    expect(wrapper.get('.room-ledger').text()).toContain('assets/hero.png')
   })
 })

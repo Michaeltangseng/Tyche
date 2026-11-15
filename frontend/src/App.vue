@@ -82,7 +82,7 @@
           @select-group="selectGroup"
         />
 
-        <RoomWorkspace v-else-if="activeView === 'rooms' && api?.room" :api="api.room" :pick-directory="() => workspace.pickDirectory()" :agents="readyAgents" />
+        <RoomWorkspace v-else-if="activeView === 'rooms' && api?.room" :api="api.room" :pick-directory="() => workspace.pickDirectory()" :agents="readyAgents" :create-request="roomCreateRequest" @create-request-consumed="roomCreateRequest = false" />
 
         <section v-else class="conversation-pane" :class="{ 'project-room-pane': isProjectMainGroup }">
           <ConversationHeader ref="conversationHeader" :controller="conversationHeaderController" />
@@ -464,6 +464,7 @@ const {
   togglePendingDecisions,
   toggleProjectRoomExpanded,
 } = workspaceNavigationState
+const roomCreateRequest = ref(false)
 const PROJECT_DRAWER_DEFAULT_WIDTH = 420
 const PROJECT_DRAWER_MIN_WIDTH = 280
 const PROJECT_DRAWER_MAX_WIDTH = 760
@@ -1328,7 +1329,13 @@ const {
     projectRoomStatusLabel,
     openProjectCreate,
     roomWorkspaceAvailable: computed(() => Boolean(api.value?.room)),
-    openRoomWorkspace: () => { closeTracePanel(); closeCollapsedGroupMenu(); activeView.value = 'rooms' },
+    openRoomWorkspace: (options = {}) => {
+      closeTracePanel(); closeCollapsedGroupMenu(); activeView.value = 'rooms'
+      if (options?.create) roomCreateRequest.value = true
+    },
+    openTeamRoomCreate: () => {
+      closeTracePanel(); closeCollapsedGroupMenu(); activeView.value = 'rooms'; roomCreateRequest.value = true
+    },
     setProjectRoomPreview,
     refreshing,
     saving,
