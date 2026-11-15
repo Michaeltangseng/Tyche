@@ -35,6 +35,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
   const fallback = createMentionFallback({ roomDb, repository })
   const recovery = createRuntimeRecovery({ roomDb, repository, locale })
   const backlog = createControllerBacklog({ roomDb })
+  const blockedControllerChats = new Set()
   const assignmentRunner = invokeAgent && resolveGroup
     ? createAssignmentRunner({
       repository,
@@ -54,6 +55,10 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
       delayMs: controllerBatchDelayMs,
       shouldRetry: error => RETRYABLE_CONTROLLER_ERRORS.has(error?.code || error?.message),
       onRetryError: error => { if (!closed) onControllerError(error) },
+      onSettled: ({ chatId, error, retrying }) => {
+        if (error && !retrying) blockedControllerChats.add(chatId)
+        recoverControllerInputs()
+      },
     })
     : null
   const effectPump = autoRunEffects ? createEffectPump({ runNext: runNextEffect, onError: onEffectError }) : null
@@ -68,16 +73,28 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     if (closed) throw new Error('ROOM_SERVICE_CLOSED')
     if (!controllerQueue) return 0
     let count = 0
-    for (const pending of backlog.list(input)) {
-      if (!controllerAvailable(pending.chatId)) continue
-      controllerQueue.enqueue(pending).catch(error => { if (!closed) onControllerError(error) })
-      count += 1
+    for (const chat of backlog.chats(input?.chatId || null)) {
+      if (blockedControllerChats.has(chat.id)) continue
+      const limit = controllerQueue.capacity(chat.id)
+      if (!limit || !controllerAvailable(chat.id)) continue
+      for (const pending of backlog.list({ chatId: chat.id, limit, excludeKeys: controllerQueue.inputKeys(chat.id) })) {
+        queueControllerInput(pending)
+        count += 1
+      }
     }
     return count
   }
 
+  function queueControllerInput(input) {
+    if (!closed && controllerQueue && !blockedControllerChats.has(input.chatId)) {
+      controllerQueue.enqueue(input).catch(error => {
+        if (!closed && error.message !== 'ROOM_CONTROLLER_QUEUE_FULL') onControllerError(error)
+      })
+    }
+  }
+
   function wakeController(chatId, eventId) {
-    if (!closed && controllerQueue) controllerQueue.enqueue({ chatId, eventId }).catch(error => { if (!closed) onControllerError(error) })
+    queueControllerInput({ chatId, eventId })
   }
 
   async function processControllerBatch(input) {
@@ -110,7 +127,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     const result = ingress.submit(input)
     let dispatch = null
     if (controllerAvailable(input.chatId)) {
-      controllerQueue.enqueue({ chatId: input.chatId, messageId: result.message.messageId }).catch(error => { if (!closed) onControllerError(error) })
+      queueControllerInput({ chatId: input.chatId, messageId: result.message.messageId })
     } else if (deterministicFallback && input.author?.type === 'user' && result.mentions.length > 0) {
       dispatch = roomDb.withTransaction(() => {
         const dispatched = fallback.dispatch({
@@ -191,6 +208,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
       if (applied.assignmentId) enqueueAssignment(applied.assignmentId, input.chatId, applied.event.eventId)
       return applied
     })
+    if (input.type === 'resume_chat') blockedControllerChats.delete(input.chatId)
     if (input.type === 'resume_chat' || result.assignmentId) effectPump?.request()
     if (!result.duplicate && input.type !== 'pause_chat') wakeController(input.chatId, result.event.eventId)
     if (input.type === 'resume_chat') recoverControllerInputs({ chatId: input.chatId })
@@ -239,6 +257,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     },
     flushController: chatId => controllerQueue ? controllerQueue.flush(chatId) : Promise.resolve(null),
     startRuntime: () => {
+      blockedControllerChats.clear()
       recoverControllerInputs()
       return effectPump ? effectPump.request() : Promise.resolve()
     },

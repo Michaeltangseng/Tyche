@@ -158,7 +158,7 @@ test('pending input redelivered during evaluation is filtered after its first de
   await service.startRuntime()
   finish({ actions: [] })
   await running
-  assert.equal((await service.flushController(s.chatId)).duplicate, true)
+  assert.equal(await service.flushController(s.chatId), null)
   assert.equal(calls, 1)
 })
 
@@ -227,14 +227,66 @@ test('service does not automatically retry malformed controller actions', async 
 
 test('startup backlog drains through bounded controller batches', async t => {
   const s = setup(t)
-  const ids = Array.from({ length: 65 }, () => s.message())
+  const ids = s.roomDb.withTransaction(() => Array.from({ length: 600 }, () => s.message()))
+  assert.equal(createControllerBacklog({ roomDb: s.roomDb }).list().length, 256)
   const calls = []
   const service = s.service({ decideController: async input => { calls.push(input); return { actions: [] } } })
   await service.startRuntime()
-  await service.flushController(s.chatId)
-  await service.flushController(s.chatId)
-  await service.flushController(s.chatId)
-  assert.deepEqual(calls.map(input => input.messages.length), [32, 32, 1])
+  for (let batch = 0; batch < 20; batch += 1) {
+    if (await service.flushController(s.chatId) === null) break
+  }
+  assert.deepEqual(calls.map(input => input.messages.length), [...Array(18).fill(32), 24])
   assert.deepEqual(calls.flatMap(input => input.messages.map(message => message.id)), ids)
+  assert.deepEqual(createControllerBacklog({ roomDb: s.roomDb }).list(), [])
+})
+
+test('backlog pages exclude queued keys without losing later messages or business events', t => {
+  const s = setup(t)
+  const messages = Array.from({ length: 5 }, () => s.message())
+  const eventId = s.event('report_received')
+  const backlog = createControllerBacklog({ roomDb: s.roomDb })
+  const first = backlog.list({ chatId: s.chatId, limit: 3 })
+  assert.deepEqual(first.map(input => input.messageId), messages.slice(0, 3))
+  const second = backlog.list({ chatId: s.chatId, limit: 3, excludeKeys: first.map(input => `message:${input.messageId}`) })
+  assert.deepEqual(second, [{ chatId: s.chatId, messageId: messages[3] }, { chatId: s.chatId, messageId: messages[4] }, { chatId: s.chatId, eventId }])
+  for (const limit of [0, -1, 4097, 1.5]) assert.throws(() => backlog.list({ limit }), /LIMIT_INVALID/)
+})
+
+test('terminal controller failures stop automatic refill until an explicit resume', async t => {
+  const s = setup(t)
+  const messageId = s.message()
+  const calls = []
+  const service = s.service({ onControllerError: () => {}, decideController: async input => {
+    calls.push(input)
+    if (calls.length === 1) throw new Error('non-retryable failure')
+    return { actions: [] }
+  } })
+  await service.startRuntime()
+  await assert.rejects(service.flushController(s.chatId), /non-retryable failure/)
+  service.submitMessage({ chatId: s.chatId, author: { type: 'user', id: 'user' }, content: 'Additional input' })
+  assert.equal(await service.flushController(s.chatId), null)
+  assert.equal(calls.length, 1)
+  service.applyUserCommand({ type: 'resume_chat', chatId: s.chatId })
+  await service.flushController(s.chatId)
+  assert.equal(calls.length, 2)
+  assert.equal(calls[1].messages[0].id, messageId)
+  assert.equal(calls[1].messages.length, 2)
+})
+
+test('live messages exceeding chat capacity remain durable and drain without a restart', async t => {
+  const s = setup(t)
+  const ids = []
+  const routed = []
+  const errors = []
+  const service = s.service({ onControllerError: error => errors.push(error), decideController: async input => {
+    routed.push(...input.messages.map(message => message.id))
+    return { actions: [] }
+  } })
+  for (let index = 0; index < 150; index += 1) {
+    ids.push(service.submitMessage({ chatId: s.chatId, author: { type: 'user', id: 'user' }, content: `Input ${index}` }).message.messageId)
+  }
+  for (let batch = 0; batch < 6; batch += 1) if (await service.flushController(s.chatId) === null) break
+  assert.deepEqual(routed, ids)
+  assert.deepEqual(errors, [])
   assert.deepEqual(createControllerBacklog({ roomDb: s.roomDb }).list(), [])
 })

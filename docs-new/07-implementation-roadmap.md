@@ -154,7 +154,9 @@ Room Service 对明确可恢复错误启用有界重试：Controller 超时、�
 
 `controller-backlog.cjs` 使用已提交 `controller_decisions.input_ids_json` 作为消费凭据，不增加第二套队列状态。`startRuntime` 在启动 effect 消费前扫描活跃 v2 Chat，Chat 恢复时只扫描该 Chat。未删除的用户/Agent 消息，以及 Report、创建 Task/角色、用户回答 Attention/决定 Artifact/恢复 Chat/重试/交接事件，按原 sequence 进入批处理；不回放心跳、退出、普通审计与系统消息。已成功 fallback 的消息同样排除，避免 Controller 恢复后再建任务。批次执行前再次过滤已消费输入，重复扫描或运行中重入不重复提交动作；相同 batchId 仍返回原决策。
 
-决策与 actions/effects 原子提交，因此落库失败的输入仍待处理；崩溃前模型已返回但决策未提交时，恢复允许重新评估。暂停/归档/legacy Chat 不补调度；扫描时 Controller 不可用则保留积压，后续启动扫描或恢复 Chat 时再尝试。当前仍缺积压分页/内存总容量限制、按字节/Token 划分批次、重试耗尽的用户控制面和已消费消息编辑后的重新评估；32 条输入上限只约束单次队列批次，原生 Controller Prompt 仍受现有 4 MiB 校验。扫描依赖消息、决策与业务事件保留，实施归档/清理时必须同步定义消费凭据保留策略。
+积压查询已改为 SQL 消费凭据差集与 LIMIT 分页，不再把全部消息、事件和决策输入 ID 加载为 JS 数组/Set；默认页 256 条，可按 Chat 和已入队键排除。活跃 Chat 使用数据库迭代器读取。队列全局最多 256 条输入、单 Chat 最多 64 条，运行中与退避中的输入均占容量；重复输入共享 Promise。容量满时新消息/Report 仍留在 SQLite，主进程不记录为调度失败；每批结束后按剩余容量从账本补入，直至正常积压消费完。
+
+决策与 actions/effects 原子提交，因此落库失败的输入仍待处理；崩溃前模型已返回但决策未提交时，恢复允许重新评估。暂停/归档/legacy Chat 不补调度；扫描时 Controller 不可用则保留积压。非重试错误或重试耗尽后，该 Chat 停止自动补入，新消息也仅保存；已在队列的其他输入可继续完成，其他 Chat 可继续补入。显式 resume_chat 或重新启动运行时解除本次内存阻塞并重新扫描，重启也可恢复；该阻塞尚无独立持久化状态与 UI 提示。当前仍缺按字节/Token 划分批次、重试耗尽的用户控制面和已消费消息编辑后的重新评估；容量限制的是输入数量，不是整个 Electron 进程内存，原生 Controller Prompt 仍受现有 4 MiB 校验。数据库差集查询的历史扫描成本、决策/消息归档及消费凭据保留策略仍待优化。
 
 `effect-pump.cjs` 已在 main 开启，平台进程恢复结束后扫描 pending effects；新派发和 fallback Assignment 都写入幂等 effect 并唤醒消费。首版串行消费 Assignment，暂停 Chat 不领取 pending effect，恢复 Chat 后自动继续；不自动重试 failed/unknown，也不接管崩溃遗留的 running effects。服务关闭时向 Worker 传递取消信号并等待消费结束。
 
@@ -261,6 +263,6 @@ Room Engine 的第一条主进程纵向切片已经接入 Electron 生命周期�
 - 增加 `room:snapshot` 读取面，按 Room 返回 Chat、消息、Task、Assignment 和 Attention，供新 UI 使用；
 - 增加独立 `assignment-runner` 适配器：把 queued Assignment 映射到现有 `invokeAgent` 回调，记录平台 session facts；无 Report 的进程退出进入 waiting，不直接完成 Task；
 - 退出流程先停止 Room IPC 接收，再关闭数据库，避免关闭期间产生新的写入；
-- 进程对账一轮 52 项专项测试已在 Node 与 Electron 内置运行时通过；最新补调度/队列/决策/Room Service 45 项专项测试在 Electron 内置运行时通过，覆盖数据库重开、消费去重、65 条积压拆批、指数退避与重试耗尽、协议错误不重试、跨 Chat 隔离和关闭取消。尚未运行 Desktop 全量测试、真实 Electron GUI/CLI 端到端验收和打包检查。
+- 进程对账一轮 52 项专项测试已在 Node 与 Electron 内置运行时通过；最新补调度/队列/决策/Room Service 50 项专项测试在 Electron 内置运行时通过，覆盖数据库重开、600 条积压分批自动补入、150 条实时消息溢出后继续消费、全局/单 Chat 容量、运行/退避占用、终止失败停止补入与显式恢复。尚未运行 Desktop 全量测试、真实 Electron GUI/CLI 端到端验收和打包检查。
 
 这一步不改变旧 project-room/checkpoint UI，也不把新 ledger 强行映射进旧状态机。Assignment 已能通过 Room workspace 和 Provider 解析到现有 Agent group，使用稳定的 Room session key 启动调用，并在退出时记录 Supervisor session facts；无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实，不会滞留 running。主进程已接通 effect 自动消费和 Report/Event 唤醒。下一步应完成真实 CLI 端到端验收、真实进程心跳和重启恢复，再接入 v2 群聊 UI，并移除对旧 group 的宿主依赖。

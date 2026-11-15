@@ -188,4 +188,50 @@ test('queue rejects invalid capacity and retry configuration', () => {
   for (const invalid of [{ maxRetries: -1 }, { maxRetries: 11 }, { retryBaseMs: 0 }, { retryMaxMs: 1 }, { shouldRetry: null }]) {
     assert.throws(() => createControllerQueue({ ...options, ...invalid }), /RETRY_INVALID/)
   }
+  for (const invalid of [{ maxInputs: 0 }, { maxInputs: 1, maxChatInputs: 2 }, { maxChatInputs: 0 }]) {
+    assert.throws(() => createControllerQueue({ ...options, ...invalid }), /CAPACITY_INVALID/)
+  }
+})
+
+test('global and per-chat capacity includes running inputs and duplicate enqueues share a promise', async () => {
+  let finish
+  const queue = createControllerQueue({ maxInputs: 3, maxChatInputs: 2, maxBatchSize: 1,
+    getContextRevision: () => 0, processBatch: () => new Promise(resolve => { finish = resolve }) })
+  const a = queue.enqueue({ chatId: 'one', messageId: 'a' })
+  assert.equal(queue.enqueue({ chatId: 'one', messageId: 'a' }), a)
+  const b = queue.enqueue({ chatId: 'one', messageId: 'b' })
+  const c = queue.enqueue({ chatId: 'two', eventId: 'c' })
+  const bClosed = assert.rejects(b, /CLOSED/)
+  const cClosed = assert.rejects(c, /CLOSED/)
+  assert.equal(queue.capacity('one'), 0)
+  assert.equal(queue.capacity('three'), 0)
+  await assert.rejects(queue.enqueue({ chatId: 'three', messageId: 'overflow' }), /QUEUE_FULL/)
+  const running = queue.flush('one')
+  await Promise.resolve()
+  assert.equal(queue.enqueue({ chatId: 'one', messageId: 'a' }), a)
+  assert.equal(queue.capacity('three'), 0)
+  finish('done')
+  await running
+  assert.equal(await a, 'done')
+  assert.equal(queue.capacity('one'), 1)
+  assert.equal(queue.capacity('three'), 1)
+  assert.deepEqual(queue.inputKeys('one'), ['message:b'])
+  await queue.close()
+  await Promise.all([bClosed, cClosed])
+})
+
+test('cooling retry inputs still occupy capacity until the retry budget is exhausted', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const queue = createControllerQueue({ maxInputs: 1, maxChatInputs: 1, maxRetries: 1,
+    getContextRevision: () => 0, shouldRetry: () => true, processBatch: async () => { throw new Error('offline') } })
+  const a = queue.enqueue({ chatId: 'one', messageId: 'a' })
+  const rejected = assert.rejects(a, /offline/)
+  await assert.rejects(queue.flush('one'), /offline/)
+  await rejected
+  assert.equal(queue.capacity('two'), 0)
+  await assert.rejects(queue.enqueue({ chatId: 'two', messageId: 'b' }), /QUEUE_FULL/)
+  t.mock.timers.tick(1000)
+  await assert.rejects(queue.flush('one'), /offline/)
+  assert.equal(queue.capacity('two'), 1)
+  await queue.close()
 })
