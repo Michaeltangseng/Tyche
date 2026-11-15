@@ -1242,6 +1242,13 @@ if (!hasSingleInstanceLock) {
       })
       const roomRepository = createRoomRepository(roomEngineDb)
       const roomNativeRuntime = createRoomNativeRuntime({ repository: roomRepository, workspace: startupWorkspace,
+        onAssignmentEvent: payload => {
+          if (mainWindow && !mainWindow.isDestroyed()
+              && isTrustedLocalWebContents(mainWindow.webContents)
+              && payload?.assignmentId && payload?.event) {
+            mainWindow.webContents.send('room:assignment-event', payload)
+          }
+        },
         artifactSnapshots: createArtifactSnapshots({ roomDb: roomEngineDb, repository: roomRepository,
           directory: path.join(privateRoot, 'room-engine', 'artifacts'), privateRoot: app.getPath('userData'), locale: () => app.getLocale?.() || 'zh' }) })
       roomEngineService = createRoomService({

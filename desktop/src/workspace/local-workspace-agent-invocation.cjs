@@ -864,6 +864,7 @@ class LocalWorkspaceAgentInvocation {
         watchdog.toolFinished(event.id)
       }
       this.emitRunEvent(event)
+      try { context.onEvent?.(event) } catch { /* live output is best effort */ }
       this.armAgentSilence(activeRun, kind, round, harnessRun.agentRunId)
       if (event.type !== 'answer_delta' || event.seq % 8 === 0) {
         this.scheduleRunCheckpoint(group.id, activeRun)

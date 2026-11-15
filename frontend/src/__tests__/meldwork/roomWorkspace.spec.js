@@ -11,6 +11,7 @@ function data(id = 'room-1') {
     messages: [], roles: [], tasks: [], assignments: [], reports: [], artifacts: [], attentions: [] }
 }
 function api(snapshot = data()) {
+  let assignmentEvent = null
   return { listRooms: vi.fn(async () => [{ id: 'room-1', name: 'Demo' }]), snapshot: vi.fn(async () => snapshot),
     chatMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
     listStaleAssignments: vi.fn(async () => []),
@@ -19,7 +20,9 @@ function api(snapshot = data()) {
     artifactDiff: vi.fn(async () => ({ text: '+saved change', truncated: false })),
     assignmentTrace: vi.fn(async () => ({ steps: [{ seq: 1, title: 'Read source', detail: 'Opened package.json' }], cursor: 'cursor-1', hasMore: false })),
     assignmentTraceBlob: vi.fn(async () => ({ text: 'trace output', totalBytes: 12, eof: true })),
-    submitMessage: vi.fn(async () => ({ ok: true })), applyUserCommand: vi.fn(async () => ({ ok: true })) }
+    submitMessage: vi.fn(async () => ({ ok: true })), applyUserCommand: vi.fn(async () => ({ ok: true })),
+    onAssignmentEvent: vi.fn(callback => { assignmentEvent = callback; return () => { assignmentEvent = null } }),
+    emitAssignmentEvent: payload => assignmentEvent?.(payload) }
 }
 const cleanup = []
 afterEach(() => { cleanup.splice(0).forEach(dispose => dispose()); vi.useRealTimers() })
@@ -31,6 +34,23 @@ function mountRoom(bridge) {
 }
 
 describe('v2 team workspace', () => {
+  it('renders and appends live output for a running assignment', async () => {
+    const snapshot = data()
+    snapshot.roles = [{ id: 'worker', chat_id: 'chat-1', display_name: 'Writer', status: 'active' }]
+    snapshot.tasks = [{ id: 'task', chat_id: 'chat-1', objective: 'Write the document', status: 'running' }]
+    snapshot.assignments = [{ id: 'assignment', task_id: 'task', role_id: 'worker', status: 'running' }]
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    bridge.emitAssignmentEvent({ roomId: 'room-1', chatId: 'chat-1', assignmentId: 'assignment',
+      event: { type: 'answer_delta', delta: 'First part', status: 'running' } })
+    await flushPromises()
+    bridge.emitAssignmentEvent({ roomId: 'room-1', chatId: 'chat-1', assignmentId: 'assignment',
+      event: { type: 'answer_delta', delta: ' and second part', status: 'running' } })
+    await flushPromises()
+    expect(wrapper.get('.room-live-output').text()).toContain('First part and second part')
+  })
+
   it('loads an earlier message page and keeps it visible after refresh', async () => {
     const snapshot = data()
     snapshot.messages = [{ id: 'latest', chat_id: 'chat-1', sequence: 101, author_type: 'user', content: 'Latest', created_at: '2026-11-15T00:01:00Z' }]

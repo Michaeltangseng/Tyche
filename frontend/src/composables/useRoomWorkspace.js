@@ -8,6 +8,7 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
   const busy = ref(false)
   const error = ref(false)
   const staleAssignments = ref([])
+  const liveAssignments = ref({})
   const olderMessages = ref({})
   const olderMessagesAvailable = ref({})
   const loadingOlderMessages = ref(false)
@@ -17,6 +18,7 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
   let changedTimer = null
   let refreshing = null
   let unsubscribeChanges = null
+  let unsubscribeAssignmentEvents = null
   const chat = computed(() => snapshot.value?.chats.find(item => item.id === chatId.value) || null)
   const tasks = computed(() => (snapshot.value?.tasks || []).filter(item => item.chat_id === chatId.value))
   const assignments = computed(() => (snapshot.value?.assignments || []).filter(item => tasks.value.some(task => task.id === item.task_id)))
@@ -41,6 +43,19 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
       changedTimer = setTimeout(() => { void refresh({ afterCurrent: true }) }, 80)
     })
   }
+  if (typeof api.onAssignmentEvent === 'function') {
+    unsubscribeAssignmentEvents = api.onAssignmentEvent(payload => {
+      if (disposed || payload?.roomId !== roomId.value || !payload.assignmentId || !payload.event) return
+      const assignment = assignments.value.find(item => item.id === payload.assignmentId)
+      if (!assignment || !tasks.value.some(task => task.id === assignment.task_id)) return
+      const event = payload.event
+      const previous = liveAssignments.value[payload.assignmentId] || {}
+      const text = event.type === 'answer_delta' ? `${previous.text || ''}${event.delta || ''}` : previous.text || ''
+      liveAssignments.value = { ...liveAssignments.value, [payload.assignmentId]: {
+        ...previous, ...event, text: text.slice(-32 * 1024), status: event.status || previous.status || 'running',
+      } }
+    })
+  }
 
   async function refresh({ afterCurrent = false } = {}) {
     if (disposed || !roomId.value) return null
@@ -59,6 +74,8 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
         const data = await api.snapshot({ roomId: requestedRoom })
         if (disposed || generation !== requestGeneration) return null
         snapshot.value = data
+        const activeIds = new Set((data.assignments || []).filter(item => ['running', 'queued'].includes(item.status)).map(item => item.id))
+        liveAssignments.value = Object.fromEntries(Object.entries(liveAssignments.value).filter(([id]) => activeIds.has(id)))
         if (typeof api.listStaleAssignments === 'function') {
           try {
             const stale = await api.listStaleAssignments({ roomId: requestedRoom, timeoutMs: 120_000 }) || []
@@ -87,6 +104,7 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
     roomId.value = id
     snapshot.value = null
     staleAssignments.value = []
+    liveAssignments.value = {}
     olderMessages.value = {}
     olderMessagesAvailable.value = {}
     chatId.value = ''
@@ -177,7 +195,8 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
     clearTimeout(timer)
     clearTimeout(changedTimer)
     unsubscribeChanges?.()
+    unsubscribeAssignmentEvents?.()
   })
-  return { rooms, snapshot, roomId, chatId, chat, tasks, assignments, roles, messages, reports, attentions, staleAssignments,
+  return { rooms, snapshot, roomId, chatId, chat, tasks, assignments, roles, messages, reports, attentions, staleAssignments, liveAssignments,
     hasOlderMessages, loadingOlderMessages, busy, error, load, refresh, openRoom, createRoom, createChat, send, loadOlderMessages, command }
 }

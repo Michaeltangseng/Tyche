@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const { normalizeRelativePath } = require('../runs/path-claims.cjs')
 
 // Native execution reuses the CLI transport, not a persisted legacy chat.
-function createRoomNativeRuntime({ repository, workspace, artifactSnapshots } = {}) {
+function createRoomNativeRuntime({ repository, workspace, artifactSnapshots, onAssignmentEvent } = {}) {
   if (!repository || !workspace || typeof workspace.invokeAgent !== 'function') throw new TypeError('ROOM_NATIVE_RUNTIME_DEPENDENCIES_REQUIRED')
 
   function resolveTarget({ assignment, chatId, roomId } = {}) {
@@ -55,10 +55,22 @@ function createRoomNativeRuntime({ repository, workspace, artifactSnapshots } = 
     const assertActive = () => {
       if (signal?.aborted || repository.getTask(context.taskId)?.status === 'cancelled') throw new Error('ROOM_NATIVE_CANCELLED')
     }
+    const liveEvent = context.assignmentId && typeof onAssignmentEvent === 'function'
+      ? event => onAssignmentEvent({
+        roomId: target.roomId, chatId: target.chatId, taskId: context.taskId,
+        assignmentId: context.assignmentId, runId: context.traceRunId,
+        event: ['type', 'id', 'seq', 'status', 'title', 'summary', 'detail', 'delta']
+          .reduce((safe, key) => {
+            if (event?.[key] == null) return safe
+            safe[key] = typeof event[key] === 'string' ? event[key].slice(0, 32 * 1024) : event[key]
+            return safe
+          }, {}),
+      }) : null
     const result = await workspace.invokeAgent(surface, provider, mode, signal, threadRootId, {
       ...context, sessionPolicy: 'room', saveSession: false, deferMessage: true,
       permissionMode: writeRoot ? 'workspace-write' : 'read-only', operationId: `agent-operation-${identity}`,
       traceAgentRunId: `room-agent-${identity}`,
+      ...(liveEvent ? { onEvent: liveEvent } : {}),
       onLeaseAcquired: async () => {
         if (writeRoot && (repository.getRoomSnapshot(target.roomId).room.write_authorized_root !== writeRoot
             || fs.realpathSync.native(current.workdir) !== writeRoot)) throw new Error('ROOM_NATIVE_WRITE_AUTHORIZATION_CHANGED')

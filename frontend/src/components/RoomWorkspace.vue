@@ -107,6 +107,7 @@
             <button v-if="!['cancelled', 'done'].includes(task.status)" class="secondary-button" :disabled="busy" @click="command({ type: 'stop_task', taskId: task.id })">{{ t('room.stop') }}</button>
             <div v-for="assignment in taskAssignments(task.id)" :key="assignment.id" class="room-assignment">
               <p>{{ roleName(assignment.role_id) }} · {{ statusLabel(assignment.status) }}<span v-if="assignment.outcome === 'unknown'"> · {{ t('room.exitUnknown') }}</span><span v-if="staleAssignmentIds.has(assignment.id)"> · {{ t('room.stale') }}</span></p>
+              <p v-if="liveAssignments[assignment.id]?.text" class="room-live-output" aria-live="polite"><strong>{{ t('room.liveOutput') }}</strong> {{ liveAssignments[assignment.id].text }}</p>
               <p v-if="assignment.ended_reason" class="room-muted">{{ t('room.attemptEnded') }}</p>
               <details v-if="assignment.run_id" class="room-trace">
                 <summary>{{ t('room.trace') }}</summary>
@@ -161,7 +162,7 @@ import { useRoomWorkspace } from '../composables/useRoomWorkspace.js'
 import RoomArtifactDiff from './RoomArtifactDiff.vue'
 
 const props = defineProps({ api: { type: Object, required: true }, pickDirectory: { type: Function, required: true }, agents: { type: Array, default: () => [] } })
-const { rooms, snapshot, roomId, chatId, chat, tasks, assignments, roles, messages, reports, attentions, staleAssignments,
+const { rooms, snapshot, roomId, chatId, chat, tasks, assignments, roles, messages, reports, attentions, staleAssignments, liveAssignments,
   hasOlderMessages, loadingOlderMessages, busy, error, load, refresh, openRoom, createRoom, createChat, send, loadOlderMessages, command } = useRoomWorkspace({ api: props.api })
 const creating = ref(false)
 const name = ref('')
@@ -289,7 +290,7 @@ fieldset { border: 1px solid var(--border); border-radius: 8px; } .room-director
 .room-message p { white-space: pre-wrap; line-height: 1.6; } time, .room-muted { font-size: 12px; opacity: .65; }
 .room-team { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; } .room-role { border: 1px solid var(--border); border-radius: 10px; padding: 6px 9px; font-size: 12px; max-width: 100%; } .room-role summary { cursor: pointer; } .room-role-prompt { white-space: pre-wrap; line-height: 1.45; max-width: 42rem; } .room-role-editor { display: grid; gap: 6px; } .room-role-editor textarea { min-width: min(36rem, 75vw); max-width: 100%; resize: vertical; }
 .room-composer { display: flex; align-items: end; gap: 10px; padding-top: 12px; } .room-composer textarea { flex: 1; resize: vertical; min-width: 0; }
-.room-ledger { overflow: auto; min-height: 0; } .room-assignment { border-top: 1px solid var(--border); margin-top: 10px; font-size: 12px; }
+.room-ledger { overflow: auto; min-height: 0; } .room-assignment { border-top: 1px solid var(--border); margin-top: 10px; font-size: 12px; } .room-live-output { white-space: pre-wrap; max-height: 12rem; overflow: auto; padding: 8px; border-radius: 8px; background: color-mix(in srgb, var(--border) 18%, transparent); }
 .room-card form { display: flex; gap: 8px; flex-wrap: wrap; } .room-card select { min-width: 0; } .room-empty { margin: auto; opacity: .65; }
 .room-error { color: var(--danger, #b94c4c); } .room-warning { color: var(--warning, #9a6700); border: 1px solid currentColor; border-radius: 8px; padding: 8px 10px; font-size: 12px; }
 @media (max-width: 950px) { .room-body { display: flex; flex-direction: column; overflow: visible; } .room-conversation { min-height: 400px; } .room-timeline { max-height: 55vh; } .room-ledger { overflow: visible; } }

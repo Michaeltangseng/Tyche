@@ -224,7 +224,7 @@ Report 入账和状态推导在同一事务内完成，成功后将 `report_rece
 
 第一版独立入口已落地：`RoomWorkspace.vue` 与 `useRoomWorkspace.js` 直接读取 v2 SQLite 快照，不通过旧 checkpoint/group UI。支持选择目录创建项目、选择已有 Provider、新建独立团队 Chat、发送消息、展示 Chat 角色/Report/Task/Attention 和 Room Artifact，以及回答 Attention、接受/拒绝 Artifact、暂停/恢复、停止、重试、已结束执行的交接和显式目录写授权。新 Chat 不复制另一 Chat 的角色或协作上下文。所有新增文案提供中英文。
 
-快照补充 roles/reports/artifacts；Room 更新由数据库提交通知触发，并以 1.5 秒串行轮询兜底，卸载时释放计时器和订阅，切换 Room 后丢弃迟到结果。操作完成后等待旧刷新结束并重新读取，避免新 Chat 被旧快照覆盖。草稿按 Chat 隔离，发送失败保留。产物 diff、消息历史分页、运行阻塞提示和 Assignment Trace 入口均已接通。向前加载历史会保持当前阅读位置。仍缺实时流式消息和 Skill 绑定界面；角色 Prompt 与协作约定编辑已可用。Skill 绑定暂不增加假 UI，需先定义 Chat/Role 到已安装 Skill 的最小执行契约；可选隔离 workspace 属于 Phase 6。
+快照补充 roles/reports/artifacts；Room 更新由数据库提交通知触发，并以 1.5 秒串行轮询兜底，卸载时释放计时器和订阅，切换 Room 后丢弃迟到结果。操作完成后等待旧刷新结束并重新读取，避免新 Chat 被旧快照覆盖。草稿按 Chat 隔离，发送失败保留。产物 diff、消息历史分页、运行阻塞提示和 Assignment Trace 入口均已接通。向前加载历史会保持当前阅读位置。执行中实时流式输出已接通；角色 Prompt 与协作约定编辑已可用。Skill 绑定暂不增加假 UI，需先定义 Chat/Role 到已安装 Skill 的最小执行契约；默认仍使用 Room 主目录，隔离 workspace 按需实现。
 
 动态角色已有真实 CLI 闭环：Controller 可按当前需求创建 Chat 级角色，平台检查 Room Provider/能力范围，后续决策可为该角色创建任务并派发。成员卡显示主控创建角色的理由、职责及 Prompt。Room 快照返回当前 Chat 角色的最新 Prompt；用户可通过统一、幂等的 `update_role_prompt` UserCommand 更新角色 Prompt revision。更新只影响后续 Assignment，保留历史 revision，不增加角色归档或停用状态机。Prompt 仍受 Chat/Role 归属校验，不能授予新的 Provider、能力或目录权限。
 
@@ -331,7 +331,7 @@ v2 已解除对持久化旧 group 的宿主依赖。`native-runtime.cjs` 仅复�
 
 该切片在 Electron 内置 Node 运行时通过 95 项 Room/IPC/调度器定向测试，以及 14 项共享 project-room/影子 Git 调用回归；CLI 使用替身，未运行 Electron GUI、真实 CLI、打包或全量测试。
 
-每次 Room Assignment 原生调用都创建独立的临时 Session key，并由 `native-runtime.cjs` 强制 `saveSession: false`；v2 不实现旧群聊 Session 的持久化续跑。需要继续工作时，平台创建新的 Assignment，并把上一尝试的 Report、证据和 Artifact 引用作为结构化输入。无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实。v2 群聊 UI 已接通消息分页、滚动位置保持、数据库提交通知、授权/停止/重试/交接、产物 diff、运行阻塞提示和 Trace 入口；消息分页切片通过 Electron 桌面构建及启动检查。下一步聚焦可选隔离 workspace 与实时流式输出。
+每次 Room Assignment 原生调用都创建独立的临时 Session key，并由 `native-runtime.cjs` 强制 `saveSession: false`；v2 不实现旧群聊 Session 的持久化续跑。需要继续工作时，平台创建新的 Assignment，并把上一尝试的 Report、证据和 Artifact 引用作为结构化输入。无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实。v2 群聊 UI 已接通消息分页、滚动位置保持、数据库提交通知、授权/停止/重试/交接、产物 diff、运行阻塞提示、执行中实时流式输出和 Trace 入口；消息分页切片通过 Electron 桌面构建及启动检查。默认仍使用 Room 主目录；隔离 workspace 只在明确需要强隔离时按需实现。
 
 ### 自动产物版本切片（2026-11-15）
 

@@ -172,6 +172,11 @@ if (isLocalDocument) Object.assign(desktopApi, {
       ipcRenderer.on('room:changed', listener)
       return () => ipcRenderer.removeListener('room:changed', listener)
     },
+    onAssignmentEvent: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('room:assignment-event', listener)
+      return () => ipcRenderer.removeListener('room:assignment-event', listener)
+    },
   }),
   workdir: Object.freeze({
     list: input => ipcRenderer.invoke('workdir:list', input),
