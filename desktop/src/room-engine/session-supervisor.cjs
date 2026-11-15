@@ -47,14 +47,14 @@ function createSessionSupervisor({ roomDb, repository, now = () => new Date() })
   function listStale({ roomId, timeoutMs, at = now() }) {
     assertId(roomId, 'ROOM_ID_INVALID')
     if (!Number.isFinite(timeoutMs) || timeoutMs < 1) throw new TypeError('ROOM_SESSION_TIMEOUT_INVALID')
-    const rows = roomDb.database.prepare(`SELECT id, chat_id, payload_json, created_at FROM events
+    const rows = roomDb.database.prepare(`SELECT id, chat_id, sequence, payload_json, created_at FROM events
       WHERE room_id = ? AND type = 'session_liveness' ORDER BY sequence`).all(roomId)
     const latest = new Map()
     for (const row of rows) {
       let payload
       try { payload = JSON.parse(row.payload_json) } catch { continue }
       const previous = latest.get(payload.assignmentId)
-      if (!previous || row.created_at > previous.createdAt) latest.set(payload.assignmentId, { ...payload, createdAt: row.created_at, chatId: row.chat_id })
+      if (!previous || row.sequence > previous.sequence) latest.set(payload.assignmentId, { ...payload, sequence: row.sequence, createdAt: row.created_at, chatId: row.chat_id })
     }
     const cutoff = at.getTime() - timeoutMs
     return [...latest.values()].filter((entry) => entry.state === 'running' && Date.parse(entry.observedAt) < cutoff)
