@@ -24,6 +24,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup 
       supervisor: sessions,
       invokeAgent,
       resolveGroup,
+      importReport,
     })
     : null
 

@@ -55,3 +55,23 @@ test('assignment runner marks invocation failures and does not accept a second s
   assert.throws(() => runner.start({ assignmentId: state.assignmentId, prompt: 'Retry' }), /ROOM_ASSIGNMENT_NOT_QUEUED/)
   state.roomDb.close()
 })
+
+test('assignment runner imports a structured report returned by the Agent invocation', async () => {
+  const state = setup()
+  const runner = createAssignmentRunner({
+    repository: state.repository,
+    supervisor: state.supervisor,
+    resolveGroup: () => ({ id: 'legacy-group', workdir: '/tmp/demo' }),
+    importReport: input => require('../../src/room-engine/report-importer.cjs')
+      .createReportImporter({ roomDb: state.roomDb, repository: state.repository })
+      .importFromMessage(input),
+    invokeAgent: async () => ({
+      message: { content: 'done [[MELDWORK_REPORT:{"kind":"ready","summary":"API built"}]]' },
+    }),
+  })
+  const result = await runner.start({ assignmentId: state.assignmentId, prompt: 'Build' }).promise
+  assert.equal(result.roomReport.kind, 'ready')
+  assert.equal(state.repository.getAssignmentContext(state.assignmentId).status, 'completed')
+  assert.equal(state.repository.getReport(result.roomReport.id).summary, 'API built')
+  state.roomDb.close()
+})

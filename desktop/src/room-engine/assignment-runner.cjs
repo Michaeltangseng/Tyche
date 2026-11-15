@@ -1,10 +1,19 @@
 const crypto = require('node:crypto')
 
+const REPORT_EXIT_STATUS = Object.freeze({
+  progress: 'waiting',
+  ready: 'completed',
+  waiting: 'waiting',
+  blocked: 'blocked',
+  failed: 'failed',
+  handoff: 'waiting',
+})
+
 function assertId(value, code) {
   if (typeof value !== 'string' || value.length === 0) throw new TypeError(code)
 }
 
-function createAssignmentRunner({ repository, supervisor, invokeAgent, resolveGroup } = {}) {
+function createAssignmentRunner({ repository, supervisor, invokeAgent, resolveGroup, importReport } = {}) {
   if (!repository || !supervisor || typeof invokeAgent !== 'function' || typeof resolveGroup !== 'function') {
     throw new TypeError('ROOM_ASSIGNMENT_RUNNER_DEPENDENCIES_REQUIRED')
   }
@@ -46,14 +55,26 @@ function createAssignmentRunner({ repository, supervisor, invokeAgent, resolveGr
       },
     )).then(
       result => {
+        const content = result?.message?.content || result?.pendingMessage?.content
+        let report = null
+        if (typeof importReport === 'function' && typeof content === 'string') {
+          report = importReport({
+            chatId: assignment.chat_id,
+            taskId: assignment.task_id,
+            assignmentId: assignment.id,
+            actorId: assignment.role_id,
+            content,
+          })
+        }
+        const reportedStatus = report?.report ? REPORT_EXIT_STATUS[report.report.kind] : null
         repository.markAssignmentExited({
           assignmentId: assignment.id,
-          status: 'waiting',
-          endedReason: 'process_exited_without_report',
-          outcome: 'exited',
+          status: reportedStatus || 'waiting',
+          endedReason: report?.report ? null : 'process_exited_without_report',
+          outcome: report?.report ? report.report.kind : 'exited',
         })
         supervisor.exited({ assignmentId: assignment.id, chatId: assignment.chat_id, runId, reason: 'completed' })
-        return result
+        return report?.report ? { ...result, roomReport: report.report } : result
       },
       error => {
         repository.markAssignmentExited({
