@@ -18,6 +18,20 @@ function setup() {
   return { roomDb, repository, roomId, chatId, roleId, service: createRoomService({ roomDb, repository }) }
 }
 
+test('bootstrap creates an independent v2 room and primary chat atomically', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-bootstrap-'))
+  const roomDb = openRoomDatabase({ directory })
+  const repository = createRoomRepository(roomDb)
+  const service = createRoomService({ roomDb, repository })
+  const created = service.bootstrap({ name: 'New work', workspace: '/tmp/new-work', title: 'Team chat', createdBy: 'user-1' })
+  assert.equal(repository.listMessages(created.chatId).length, 0)
+  const room = roomDb.database.prepare('SELECT primary_chat_id FROM rooms WHERE id = ?').get(created.roomId)
+  const event = repository.listEvents(created.roomId)[0]
+  assert.equal(room.primary_chat_id, created.chatId)
+  assert.equal(event.type, 'chat_bootstrapped')
+  roomDb.close()
+})
+
 test('room service composes message ingress and explicit user mention fallback', () => {
   const { roomDb, service, chatId, roleId } = setup()
   const result = service.submitMessage({ chatId, author: { type: 'user', id: 'user-1' }, content: '@Backend build API' })

@@ -39,7 +39,38 @@ function createRoomService({ roomDb, repository, now } = {}) {
     return result
   }
 
+  function bootstrap(input = {}) {
+    const roomId = input.roomId
+    const chatId = input.chatId
+    const createdBy = typeof input.createdBy === 'string' && input.createdBy ? input.createdBy : 'user'
+    return roomDb.withTransaction(() => {
+      const createdRoomId = repository.createRoom({
+        roomId,
+        name: input.name,
+        workspace: input.workspace,
+        providers: input.providers,
+        allowedCapabilities: input.allowedCapabilities,
+      })
+      const createdChatId = repository.createChat({
+        chatId,
+        roomId: createdRoomId,
+        title: input.title || input.name,
+        isPrimary: true,
+        engineVersion: 'v2',
+      })
+      repository.appendEvent({
+        roomId: createdRoomId,
+        chatId: createdChatId,
+        actorId: createdBy,
+        type: 'chat_bootstrapped',
+        payload: { engineVersion: 'v2' },
+      })
+      return { roomId: createdRoomId, chatId: createdChatId }
+    })
+  }
+
   return {
+    bootstrap,
     submitMessage,
     editMessage: ingress.edit,
     deleteMessage: ingress.remove,
