@@ -12,6 +12,7 @@ const { createControllerQueue } = require('./controller-queue.cjs')
 const { createEffectPump } = require('./effect-pump.cjs')
 const { createRuntimeRecovery } = require('./runtime-recovery.cjs')
 const { createProcessReconciliation } = require('./process-reconciliation.cjs')
+const { createControllerBacklog } = require('./controller-backlog.cjs')
 
 function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController, controllerBatchDelayMs = 40, onControllerError = error => console.error('[room-controller]', error), autoRunEffects = false, onEffectError = error => console.error('[room-effects]', error), locale, getInvocationRecords } = {}) {
   if (!roomDb || !repository) throw new TypeError('ROOM_SERVICE_DEPENDENCIES_REQUIRED')
@@ -27,6 +28,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
   const userCommands = createUserCommandService({ roomDb, repository })
   const fallback = createMentionFallback({ roomDb, repository })
   const recovery = createRuntimeRecovery({ roomDb, repository, locale })
+  const backlog = createControllerBacklog({ roomDb })
   const assignmentRunner = invokeAgent && resolveGroup
     ? createAssignmentRunner({
       repository,
@@ -50,12 +52,34 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
   let closed = false
   let executionStarted = false
 
+  function controllerAvailable(chatId) {
+    return controllerQueue && (typeof decideController.isAvailable !== 'function' || decideController.isAvailable({ chatId }))
+  }
+
+  function recoverControllerInputs(input) {
+    if (closed) throw new Error('ROOM_SERVICE_CLOSED')
+    if (!controllerQueue) return 0
+    let count = 0
+    for (const pending of backlog.list(input)) {
+      if (!controllerAvailable(pending.chatId)) continue
+      controllerQueue.enqueue(pending).catch(error => { if (!closed) onControllerError(error) })
+      count += 1
+    }
+    return count
+  }
+
   function wakeController(chatId, eventId) {
     if (!closed && controllerQueue) controllerQueue.enqueue({ chatId, eventId }).catch(error => { if (!closed) onControllerError(error) })
   }
 
   async function processControllerBatch(input) {
-    const result = await controller.process(input)
+    if (input.batchId && repository.getControllerDecision({ chatId: input.chatId, batchId: input.batchId })) return controller.process(input)
+    const pending = backlog.filter(input)
+    if (((input.messageIds?.length || 0) + (input.triggerEventIds?.length || 0)) > 0
+        && pending.messageIds.length + pending.triggerEventIds.length === 0) {
+      return { duplicate: true, decision: null }
+    }
+    const result = await controller.process(pending)
     if (!result.duplicate) {
       for (const action of result.decision.results) {
         if (action.taskId || action.roleId) wakeController(input.chatId, action.event.eventId)
@@ -77,7 +101,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     if (closed) throw new Error('ROOM_SERVICE_CLOSED')
     const result = ingress.submit(input)
     let dispatch = null
-    if (controllerQueue && (typeof decideController.isAvailable !== 'function' || decideController.isAvailable({ chatId: input.chatId }))) {
+    if (controllerAvailable(input.chatId)) {
       controllerQueue.enqueue({ chatId: input.chatId, messageId: result.message.messageId }).catch(error => { if (!closed) onControllerError(error) })
     } else if (deterministicFallback && input.author?.type === 'user' && result.mentions.length > 0) {
       dispatch = roomDb.withTransaction(() => {
@@ -161,6 +185,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     })
     if (input.type === 'resume_chat' || result.assignmentId) effectPump?.request()
     if (!result.duplicate && input.type !== 'pause_chat') wakeController(input.chatId, result.event.eventId)
+    if (input.type === 'resume_chat') recoverControllerInputs({ chatId: input.chatId })
     return result
   }
 
@@ -205,7 +230,10 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
       return processControllerBatch(input)
     },
     flushController: chatId => controllerQueue ? controllerQueue.flush(chatId) : Promise.resolve(null),
-    startRuntime: () => effectPump ? effectPump.request() : Promise.resolve(),
+    startRuntime: () => {
+      recoverControllerInputs()
+      return effectPump ? effectPump.request() : Promise.resolve()
+    },
     recoverRuntime: () => {
       if (closed || executionStarted) throw new Error('ROOM_RECOVERY_REQUIRES_STARTUP')
       return recovery.recover()

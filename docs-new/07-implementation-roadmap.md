@@ -148,11 +148,15 @@ Controller Prompt、角色 Prompt 和 ChatContext revision 通过 `chat-context.
 
 Controller Session 默认在 60 秒后超时，构造时可通过 `timeoutMs` 设置正整数毫秒期限；主进程调用方可向批处理传入 `signal` 取消等待。路由器收到独立的 AbortSignal，超时/取消后释放 Chat 运行槽，迟到成功或失败不应用动作、不写入决策审计。超时计时器与取消监听在调用结束后清理。此处是逻辑取消；真实 CLI 适配器仍需遵守 signal 并接入进程终止和清理，才能保证旧进程不再消耗资源。
 
-`controller-queue.cjs` 已提供 Chat 级自动合批（默认 40 毫秒）、批内消息/事件 ID 去重，以及运行期间新输入的下一批排队。批次启动时读取最新 context revision，不同 Chat 独立运行。配置且可用的 Controller 会将用户/Agent 消息统一排队，避免同时触发确定性 fallback；未配置 Provider 或找不到空闲宿主 group 时保留显式用户 @mention fallback。运行中模型失败或输出不合规时记录错误，尚无自动 fallback/退避。服务关闭会取消运行批次、拒绝待处理请求并等待结束，主进程在此之后关闭数据库。队列当前保存在内存，消息/事件本身仍先持久化到 SQLite；重启补调度尚未接入，也不保证跨进程只调用一次模型，不能据此视为 Phase 4 已完成。main 已连接原生调用适配器，但现有桌面 UI 仍使用原路径。
+`controller-queue.cjs` 已提供 Chat 级自动合批（默认 40 毫秒）、批内消息/事件 ID 去重，以及运行期间新输入的下一批排队。批次启动时读取最新 context revision，不同 Chat 独立运行。配置且可用的 Controller 会将用户/Agent 消息统一排队，避免同时触发确定性 fallback；未配置 Provider 或找不到空闲宿主 group 时保留显式用户 @mention fallback。运行中模型失败或输出不合规时记录错误，尚无自动 fallback/退避。服务关闭会取消运行批次、拒绝待处理请求并等待结束，主进程在此之后关闭数据库。队列仍在内存，但已通过下述账本差集接入重启补调度；不保证跨进程只调用一次模型，不能据此视为 Phase 4 已完成。main 已连接原生调用适配器，但现有桌面 UI 仍使用原路径。
+
+`controller-backlog.cjs` 使用已提交 `controller_decisions.input_ids_json` 作为消费凭据，不增加第二套队列状态。`startRuntime` 在启动 effect 消费前扫描活跃 v2 Chat，Chat 恢复时只扫描该 Chat。未删除的用户/Agent 消息，以及 Report、创建 Task/角色、用户回答 Attention/决定 Artifact/恢复 Chat/重试/交接事件，按原 sequence 进入批处理；不回放心跳、退出、普通审计与系统消息。已成功 fallback 的消息同样排除，避免 Controller 恢复后再建任务。批次执行前再次过滤已消费输入，重复扫描或运行中重入不重复提交动作；相同 batchId 仍返回原决策。
+
+决策与 actions/effects 原子提交，因此落库失败的输入仍待处理；崩溃前模型已返回但决策未提交时，恢复允许重新评估。暂停/归档/legacy Chat 不补调度；Controller 不可用时保留积压，后续启动扫描或恢复 Chat 时再尝试，不自动循环调用模型。当前仍缺自动退避重试、积压分页/批量上限和已消费消息编辑后的重新评估；扫描依赖消息、决策与业务事件保留，实施归档/清理时必须同步定义消费凭据保留策略。
 
 `effect-pump.cjs` 已在 main 开启，平台进程恢复结束后扫描 pending effects；新派发和 fallback Assignment 都写入幂等 effect 并唤醒消费。首版串行消费 Assignment，暂停 Chat 不领取 pending effect，恢复 Chat 后自动继续；不自动重试 failed/unknown，也不接管崩溃遗留的 running effects。服务关闭时向 Worker 传递取消信号并等待消费结束。
 
-`runtime-recovery.cjs` 在首次消费 effect 之前运行：遗留 running effect 转 unknown，并创建恢复 Attention；没有最终 Report 的 running Assignment 转 waiting/outcome=unknown，required Assignment 会使 Task waiting。已提交最终 Report 的 Assignment 按 Report 恢复，ready 仍可使满足完成条件的 Task done；可选 Assignment 中断不会阻塞已完成的 required 工作。Attention 使用确定性 ID，重启不会重复创建；恢复动作、审计和 Attention 同一事务提交，写入失败则不继续启动消费。这里不生成 session_exited，不声称残留进程已终止，也不会因用户点击“已知悉”自动重试。恢复接口仅允许新执行开始前调用。后续进程证据对账由独立模块负责；未处理消息/事件的重启补调度仍待实现。
+`runtime-recovery.cjs` 在首次消费 effect 之前运行：遗留 running effect 转 unknown，并创建恢复 Attention；没有最终 Report 的 running Assignment 转 waiting/outcome=unknown，required Assignment 会使 Task waiting。已提交最终 Report 的 Assignment 按 Report 恢复，ready 仍可使满足完成条件的 Task done；可选 Assignment 中断不会阻塞已完成的 required 工作。Attention 使用确定性 ID，重启不会重复创建；恢复动作、审计和 Attention 同一事务提交，写入失败则不继续启动消费。这里不生成 session_exited，不声称残留进程已终止，也不会因用户点击“已知悉”自动重试。恢复接口仅允许新执行开始前调用。后续进程证据对账与消息/事件补调度分别由独立模块负责。
 
 `process-reconciliation.cjs` 已接入主进程启动和显式重试/交接：原生调用将 v2 runId 写入受管理进程的 invocationId；仅在同一 runId 的记录非空、Provider/工作目录匹配且全部 ended 时，补记 session_exited 和对账审计，unknown Assignment 改为 interrupted，关联 unknown effect 收口 failed，恢复 Attention 更新说明。最终 Report 与已完成 Task 不变，不自动重放 effect；重复对账不重复写入事实。命令触发的对账与新尝试/outbox 原子提交。缺记录、身份冲突、任一进程未 ended 时继续隔离。当前只覆盖受管理进程路径；只读、远端、旧无 runId 记录以及超过 ended 记录 24 小时保留窗口的调用，仍需后续恢复方案。对账读取注册表现有事实，不主动重新探测残留进程。
 
@@ -255,6 +259,6 @@ Room Engine 的第一条主进程纵向切片已经接入 Electron 生命周期�
 - 增加 `room:snapshot` 读取面，按 Room 返回 Chat、消息、Task、Assignment 和 Attention，供新 UI 使用；
 - 增加独立 `assignment-runner` 适配器：把 queued Assignment 映射到现有 `invokeAgent` 回调，记录平台 session facts；无 Report 的进程退出进入 waiting，不直接完成 Task；
 - 退出流程先停止 Room IPC 接收，再关闭数据库，避免关闭期间产生新的写入；
-- 最近一轮进程对账/启动恢复/用户命令/Room Service/进程注册表专项测试 52 项，在 Node 与 Electron 内置运行时均通过，覆盖身份匹配、残留与缺记录隔离、最终 Report 保留、重复重试和审计/outbox 失败原子回滚。尚未运行 Desktop 全量测试、真实 Electron GUI/CLI 端到端验收和打包检查。
+- 进程对账一轮 52 项专项测试已在 Node 与 Electron 内置运行时通过；最新补调度/队列/决策/Room Service/启动恢复 41 项专项测试在 Electron 内置运行时通过，覆盖数据库重开、消费去重、失败输入恢复、暂停恢复、fallback 排除和决策落库失败原子回滚。尚未运行 Desktop 全量测试、真实 Electron GUI/CLI 端到端验收和打包检查。
 
 这一步不改变旧 project-room/checkpoint UI，也不把新 ledger 强行映射进旧状态机。Assignment 已能通过 Room workspace 和 Provider 解析到现有 Agent group，使用稳定的 Room session key 启动调用，并在退出时记录 Supervisor session facts；无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实，不会滞留 running。主进程已接通 effect 自动消费和 Report/Event 唤醒。下一步应完成真实 CLI 端到端验收、真实进程心跳和重启恢复，再接入 v2 群聊 UI，并移除对旧 group 的宿主依赖。
