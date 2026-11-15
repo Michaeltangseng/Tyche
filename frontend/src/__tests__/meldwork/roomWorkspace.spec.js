@@ -195,6 +195,18 @@ describe('v2 team workspace', () => {
     expect(wrapper.find('.room-context').exists()).toBe(false)
   })
 
+  it('offers the existing resume command when controller routing is blocked', async () => {
+    const snapshot = data()
+    snapshot.chats[0].controller_blocked = true
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    expect(wrapper.get('.room-controller-blocked').text()).toContain('New messages are saved but not routed yet.')
+    await wrapper.get('.room-controller-blocked button').trigger('click')
+    await flushPromises()
+    expect(bridge.applyUserCommand).toHaveBeenCalledWith(expect.objectContaining({ type: 'resume_chat', chatId: 'chat-1' }))
+  })
+
   it('requires explicit directory write opt-in and disables permission changes for unknown executions', async () => {
     const snapshot = data()
     const bridge = api(snapshot)

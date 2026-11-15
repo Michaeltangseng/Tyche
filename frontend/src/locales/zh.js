@@ -13,6 +13,8 @@ export default {
     "room.refresh": "刷新",
     "room.chat": "团队聊天",
     "room.context": "当前协作约定",
+    "room.controllerBlocked": "主控连续失败后已暂停自动路由。新消息会保存，但暂时不会派发。",
+    "room.controllerRetry": "重试路由",
     "room.chatName": "新聊天名称",
     "room.newChat": "新建聊天",
     "room.allowWrite": "允许 Agent 修改此项目目录",

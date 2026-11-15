@@ -226,6 +226,8 @@ Assignment 在创建时保存 `role_prompt_revision`，执行时按该 revision 
 
 Room UI 已消费现有 Supervisor stale 查询：平台 liveness 超过两分钟未更新时，当前 Chat 对应 Assignment 显示“可能已失联”，侧栏提示检查进程或产物。该提示不改变任务状态、不自动重试；查询失败时隐藏提示，不阻塞消息和任务操作。RoomWorkspace 定向测试覆盖查询参数与提示展示。
 
+Controller 遇到终止性错误或重试耗尽后，当前 Chat 的 Room 快照会标记运行时 `controller_blocked`。UI 明确提示新消息仍会保存但暂不路由，并提供“重试路由”按钮，复用已有 `resume_chat` 命令清除阻塞并从账本补扫待处理输入。该标记沿用现有内存阻塞集合，不新增持久化状态；应用重启后积压仍由启动恢复处理。Controller backlog/Room Service 29 项及 RoomWorkspace 15 项定向测试通过。
+
 验收：18 项前端定向测试与 43 项 Electron Node 主进程/IPC/preload 测试通过；前端普通构建与桌面构建通过。Electron 临时用户目录下已检查侧栏入口和新页面的消息、角色、报告、任务及 Attention 布局。Controller 事件链已覆盖“Report → Attention → 用户回答 → 主控创建后续任务”：用户回答只写入 UserCommand/Event，主控从批次事件决定后续动作，平台再落账。窗口内用户已有草稿，未继续自动操作；发送/新 Chat/任务控制的桌面交互和真实 CLI 文档生成闭环仍待验收。临时验收项目未配置 Controller Provider，不能用于验证真实 Agent 产出。未跑全量测试或打包检查。额外尝试的旧 appControllers/App.navigation 测试存在失败，已在未修改的 HEAD 副本复现，未在此切片扩展修复。
 
 工作项：

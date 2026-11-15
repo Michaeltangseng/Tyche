@@ -192,7 +192,11 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
 
   function snapshot(input = {}) {
     if (typeof input.roomId !== 'string' || input.roomId.length === 0) throw new TypeError('ROOM_ID_INVALID')
-    return repository.getRoomSnapshot(input.roomId)
+    const result = repository.getRoomSnapshot(input.roomId)
+    return { ...result, chats: result.chats.map(chat => ({
+      ...chat,
+      controller_blocked: blockedControllerChats.has(chat.id),
+    })) }
   }
 
   function assignmentTrace({ roomId, assignmentId, cursor, direction = 'forward', limit = 50 } = {}) {

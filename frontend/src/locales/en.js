@@ -13,6 +13,8 @@ export default {
     "room.refresh": "Refresh",
     "room.chat": "Team chat",
     "room.context": "Current collaboration agreement",
+    "room.controllerBlocked": "The controller stopped after repeated failures. New messages are saved but not routed yet.",
+    "room.controllerRetry": "Retry routing",
     "room.chatName": "New chat name",
     "room.newChat": "New chat",
     "room.allowWrite": "Allow agents to modify this project directory",
