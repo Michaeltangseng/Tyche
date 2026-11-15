@@ -12,8 +12,8 @@ function createReportStateService({ roomDb }) {
   const db = roomDb.database
 
   function latestReports(taskId) {
-    const rows = db.prepare(`SELECT r.* FROM reports r
-      WHERE r.task_id = ? ORDER BY r.created_at DESC, r.id DESC`).all(taskId)
+    const rows = db.prepare(`SELECT r.*, r.rowid AS report_sequence FROM reports r
+      WHERE r.task_id = ? ORDER BY r.created_at DESC, r.rowid DESC`).all(taskId)
     const latest = new Map()
     for (const row of rows) if (!latest.has(row.assignment_id)) latest.set(row.assignment_id, row)
     return [...latest.values()]
