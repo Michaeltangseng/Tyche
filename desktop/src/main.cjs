@@ -1250,6 +1250,7 @@ if (!hasSingleInstanceLock) {
         invokeAgent: invokeRoomAgent,
         resolveGroup: resolveRoomGroup,
         autoRunEffects: true,
+        locale: () => app.getLocale?.() || 'zh',
         decideController: createControllerAgent({ repository: roomRepository, invokeAgent: invokeRoomAgent, resolveGroup: resolveRoomGroup }),
       })
       const templatesStore = new TemplatesStore({
@@ -1375,6 +1376,7 @@ if (!hasSingleInstanceLock) {
       }
     } finally {
       scheduler.exitRecoveryMode()
+      roomEngineService?.recoverRuntime()
       roomEngineService?.startRuntime()
     }
     if (attachmentStore && attachmentReferences) {

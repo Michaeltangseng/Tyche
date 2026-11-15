@@ -4,7 +4,7 @@
 
 ## 当前实现状态（2026-11-15）
 
-首个可回滚切片已落地：`desktop/src/room-engine/` 提供基于 Electron Node 运行时 `node:sqlite` 的私有账本骨架，覆盖 Room、Chat、Message、Task、Assignment、Report、Artifact、Attention、ControllerDecision、Effect 和 Event 表；Repository 已支持创建 Room/Chat、追加消息、角色、Assignment、Report、Artifact、Attention、任务和 outbox effect，`message-ingress.cjs` 已提供统一消息校验、@提及提取、编辑/删除和事件写入，`room-actions.cjs` 已分离并校验 ControllerAction、UserCommand、PlatformTransition，Controller 可将创建任务、派发、角色和 Attention 建议落到账本。`room-outbox.cjs` 已提供外部副作用的幂等入队、`pending → running → succeeded/failed/unknown` 状态机、批量 claim、失败记录和 unknown 恢复重试；`report-importer.cjs` 已严格解析 Worker 机器标记，校验 Chat/Task/Assignment 归属，以 reportId 幂等写入 Report 和 `report_received` 事件；`session-supervisor.cjs` 已记录由 Supervisor 观察到的 session started/liveness/exited 事实，并能按最近 liveness 查询 stale Assignment；`report-state.cjs` 已按每个 Assignment 的最新 Report 推导 Assignment/Task 状态，只有所有 required Assignment 为 ready 时 Task 才进入 done，blocked/failed 会进入 waiting；`user-commands.cjs` 已实现用户回答 Attention、接受/拒绝 Artifact、暂停/恢复 Chat，并为每个命令写入审计事件；`mention-fallback.cjs` 已支持 Controller 不可用时按显式 @mention 创建 Task 和 Assignment，包含幂等和归档角色过滤；`room-service.cjs` 已把上述能力组合成单一主进程入口，Agent @mention 不会绕过 Controller 直接授权，用户显式 @mention 才走确定性 fallback；`room-ipc.cjs` 已提供受信 renderer 校验和 shutdown 防护的窄 IPC 适配器，尚未绑定现有 main/preload 生命周期。副作用执行前先持久化 effect，应用重启后可继续扫描未完成项。事务失败会回滚，数据库关闭后可重开恢复。数据库目录使用 `0700`、数据库文件使用 `0600`（Windows 除外）。
+`desktop/src/room-engine/` 已提供私有 SQLite 账本、统一消息入口、ControllerAction/UserCommand/PlatformTransition 校验、Report 导入和状态推导、outbox、Supervisor 事实记录，以及 main/preload 生命周期接线。Controller 的批次动作、派发 effect 和审计在同一事务内提交；Agent 消息不能直接授权派发。数据库目录使用 `0700`、文件使用 `0600`（Windows 除外）。启动恢复会将崩溃遗留 running effects 标为 unknown 并产生 Attention，不自动重放；未启动的 pending effects 仍可继续消费。详细能力和未完成项见 Phase 4 与下方当前实现进度。
 
 当前切片仍未接入 Renderer 或旧 Chat 迁移。`controller-agent.cjs` 已在 main 中连接原生 `invokeAgent`：按 Room Provider 配置顺序选择首个 Provider，使用匹配工作目录且无旧群聊运行的宿主 group；只读调用、不写入旧消息流、严格解析 JSON。Assignment Runner 已补齐原生接口要求的 promptOverride/contextPackId，并带入角色 Prompt、任务创建时的协作约定和 Report 输出要求。独立 Controller Session 已支持批次幂等、context revision 校验和结构化决策审计；动态角色创建与 Prompt 更新已受 Room Provider/能力白名单约束。Room schema 已升级到 v2。原生调用边界使用测试替身在 Node/Electron runtime 中验证；尚未实际运行真实 CLI 完成端到端验收，也未运行仓库全量测试。
 
@@ -152,6 +152,8 @@ Controller Session 默认在 60 秒后超时，构造时可通过 `timeoutMs` �
 
 `effect-pump.cjs` 已在 main 开启，平台进程恢复结束后扫描 pending effects；新派发和 fallback Assignment 都写入幂等 effect 并唤醒消费。首版串行消费 Assignment，暂停 Chat 不领取 pending effect，恢复 Chat 后自动继续；不自动重试 failed/unknown，也不接管崩溃遗留的 running effects。服务关闭时向 Worker 传递取消信号并等待消费结束。
 
+`runtime-recovery.cjs` 在首次消费 effect 之前运行：遗留 running effect 转 unknown，并创建恢复 Attention；没有最终 Report 的 running Assignment 转 waiting/outcome=unknown，required Assignment 会使 Task waiting。已提交最终 Report 的 Assignment 按 Report 恢复，ready 仍可使满足完成条件的 Task done；可选 Assignment 中断不会阻塞已完成的 required 工作。Attention 使用确定性 ID，重启不会重复创建；恢复动作、审计和 Attention 同一事务提交，写入失败则不继续启动消费。这里不生成 session_exited，不声称残留进程已终止，也不会因用户点击“已知悉”自动重试。恢复接口仅允许新执行开始前调用。仍待实现：残留进程与 Run Ledger 的精确对账、用户确认后的重试/交接，以及未处理消息/事件的重启补调度。
+
 Report 入账和状态推导在同一事务内完成，成功后将 `report_received` 的 eventId 放入 Controller 队列；重复 Report 不重复唤醒。主控创建 Task/角色成功后，以其动作事件触发下一批，使用真实落库 ID 继续派发；用户回答 Attention、接受/拒绝 Artifact 和恢复 Chat 也产生主控输入。Controller 校验事件属于当前 Chat，并记录输入 ID；不会把事件伪造成用户消息。已用替身验证“消息 → 建任务 → 事件 → 派发 → Worker → Report → Attention → 用户回答 → 主控”，真实 CLI、进程心跳和重启恢复验收仍待完成。
 
 工作项：
@@ -249,6 +251,6 @@ Room Engine 的第一条主进程纵向切片已经接入 Electron 生命周期�
 - 增加 `room:snapshot` 读取面，按 Room 返回 Chat、消息、Task、Assignment 和 Attention，供新 UI 使用；
 - 增加独立 `assignment-runner` 适配器：把 queued Assignment 映射到现有 `invokeAgent` 回调，记录平台 session facts；无 Report 的进程退出进入 waiting，不直接完成 Task；
 - 退出流程先停止 Room IPC 接收，再关闭数据库，避免关闭期间产生新的写入；
-- 最近一轮 Controller/Assignment/队列/outbox/运行器/Room Service 专项测试为 41 项通过，使用替身隔离真实 CLI，在 Electron runtime 中验证；尚未运行 Desktop 全量测试、真实 CLI 端到端验收和打包检查。
+- 最近一轮启动恢复/Room Service/Report 状态/outbox 专项测试为 23 项通过，包含关闭并重开数据库、重复恢复、Report 保留、pending 继续执行和恢复失败回滚，在 Electron runtime 中验证；尚未运行 Desktop 全量测试、真实 CLI 端到端验收和打包检查。
 
 这一步不改变旧 project-room/checkpoint UI，也不把新 ledger 强行映射进旧状态机。Assignment 已能通过 Room workspace 和 Provider 解析到现有 Agent group，使用稳定的 Room session key 启动调用，并在退出时记录 Supervisor session facts；无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实，不会滞留 running。主进程已接通 effect 自动消费和 Report/Event 唤醒。下一步应完成真实 CLI 端到端验收、真实进程心跳和重启恢复，再接入 v2 群聊 UI，并移除对旧 group 的宿主依赖。

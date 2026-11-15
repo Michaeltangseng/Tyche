@@ -10,8 +10,9 @@ const { createAssignmentRunner } = require('./assignment-runner.cjs')
 const { createControllerSession } = require('./controller-session.cjs')
 const { createControllerQueue } = require('./controller-queue.cjs')
 const { createEffectPump } = require('./effect-pump.cjs')
+const { createRuntimeRecovery } = require('./runtime-recovery.cjs')
 
-function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController, controllerBatchDelayMs = 40, onControllerError = error => console.error('[room-controller]', error), autoRunEffects = false, onEffectError = error => console.error('[room-effects]', error) } = {}) {
+function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController, controllerBatchDelayMs = 40, onControllerError = error => console.error('[room-controller]', error), autoRunEffects = false, onEffectError = error => console.error('[room-effects]', error), locale } = {}) {
   if (!roomDb || !repository) throw new TypeError('ROOM_SERVICE_DEPENDENCIES_REQUIRED')
   const ingress = createMessageIngress(roomDb, repository)
   const actions = createRoomActionService({ roomDb, repository })
@@ -21,6 +22,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
   const sessions = createSessionSupervisor({ roomDb, repository, now })
   const userCommands = createUserCommandService({ roomDb, repository })
   const fallback = createMentionFallback({ roomDb, repository })
+  const recovery = createRuntimeRecovery({ roomDb, repository, locale })
   const assignmentRunner = invokeAgent && resolveGroup
     ? createAssignmentRunner({
       repository,
@@ -42,6 +44,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     : null
   const effectPump = autoRunEffects ? createEffectPump({ runNext: runNextEffect, onError: onEffectError }) : null
   let closed = false
+  let executionStarted = false
 
   function wakeController(chatId, eventId) {
     if (!closed && controllerQueue) controllerQueue.enqueue({ chatId, eventId }).catch(error => { if (!closed) onControllerError(error) })
@@ -153,6 +156,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
   }
 
   async function runNextEffect({ signal } = {}) {
+    executionStarted = true
     return outbox.runOnce(async effect => {
       if (effect.kind === 'start_assignment') {
         if (!assignmentRunner) throw new Error('ROOM_ASSIGNMENT_RUNNER_UNAVAILABLE')
@@ -171,6 +175,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     snapshot,
     startAssignment: input => {
       if (!assignmentRunner) throw new Error('ROOM_ASSIGNMENT_RUNNER_UNAVAILABLE')
+      executionStarted = true
       return assignmentRunner.start(input)
     },
     submitMessage,
@@ -192,6 +197,10 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     },
     flushController: chatId => controllerQueue ? controllerQueue.flush(chatId) : Promise.resolve(null),
     startRuntime: () => effectPump ? effectPump.request() : Promise.resolve(),
+    recoverRuntime: () => {
+      if (closed || executionStarted) throw new Error('ROOM_RECOVERY_REQUIRES_STARTUP')
+      return recovery.recover()
+    },
     close: async () => {
       closed = true
       await Promise.all([controllerQueue?.close(), effectPump?.close()])
