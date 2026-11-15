@@ -201,6 +201,137 @@
   flex-direction: column;
 }
 
+.sidebar-rail {
+  width: var(--sidebar-collapsed-width);
+  min-height: 0;
+  flex: 1 1 auto;
+  align-self: flex-start;
+  display: flex;
+  overflow: hidden;
+}
+
+.sidebar-rail-scroll {
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 0 14px;
+  overflow-y: auto;
+}
+
+.sidebar-rail-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.sidebar-rail-item {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.sidebar-rail-item:hover,
+.sidebar-rail-item:focus-visible,
+.sidebar-rail-item.active {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.sidebar-rail-item > img,
+.sidebar-rail-item .agent-logo-cloud,
+.sidebar-rail-item .agent-logo-cloud img {
+  width: 28px;
+  height: 28px;
+}
+
+.sidebar-rail-item .agent-logo-cloud img {
+  object-fit: contain;
+}
+
+.sidebar-rail-item.unavailable img {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+
+.sidebar-rail-divider {
+  width: 26px;
+  height: 1px;
+  flex: 0 0 auto;
+  margin: 4px 0;
+  border-radius: 1px;
+  background: var(--border);
+}
+
+.sidebar-rail-count {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  min-width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.sidebar-rail-attention {
+  color: var(--accent);
+}
+
+.sidebar-rail-project .project-room-avatar {
+  width: 30px;
+  height: 30px;
+  font-size: 12px;
+}
+
+.sidebar-rail-item > .attention-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+
+.sidebar-rail-item .agent-attention-dot {
+  top: -1px;
+  right: -3px;
+}
+
+.sidebar-rail-add {
+  color: var(--muted);
+  border: 1px dashed var(--border);
+}
+
+.sidebar-rail-add:hover,
+.sidebar-rail-add:focus-visible {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.sidebar-rail-add svg {
+  width: 18px;
+  height: 18px;
+}
+
 .collapsed-group-switcher {
   width: var(--sidebar-collapsed-width);
   flex: 0 0 auto;

@@ -34,7 +34,94 @@
       </button>
     </header>
 
-    <nav class="conversation-nav" :aria-label="t('nav.conversations')">
+    <div v-if="sidebarCollapsed" class="sidebar-rail">
+      <div class="sidebar-rail-scroll">
+        <button
+          v-if="pendingDecisionCount"
+          class="sidebar-rail-item sidebar-rail-attention"
+          type="button"
+          :title="t('projectRoom.pending.title')"
+          :aria-label="t('projectRoom.pending.title')"
+          @click="showPendingDecisions"
+        >
+          <NotificationsOutline />
+          <span class="sidebar-rail-count">{{ pendingDecisionCount }}</span>
+        </button>
+
+        <section
+          v-if="railAgents.length"
+          class="sidebar-rail-section"
+          :aria-label="t('nav.sidebarAgents')"
+        >
+          <button
+            v-for="agent in railAgents"
+            :key="agent.kind"
+            class="sidebar-rail-item"
+            :class="{ active: isRailAgentActive(agent), unavailable: !agent.ready }"
+            type="button"
+            :title="`${agent.label} · ${agentState(agent).label}`"
+            :aria-label="agent.label"
+            :disabled="isDirectCreationPending(agent.kind)"
+            @click="handleSidebarAgentMain(agent)"
+          >
+            <span class="agent-logo-cloud" :class="{ cloud: agent.cloud }">
+              <img :src="agent.logo" :alt="agent.label" />
+              <CloudOutline v-if="agent.cloud" aria-hidden="true" />
+              <span
+                v-if="agentAwaitingDecision(agent.kind)"
+                class="attention-dot agent-attention-dot"
+                :title="t('humanGate.waiting')"
+              />
+            </span>
+          </button>
+        </section>
+
+        <div
+          v-if="railAgents.length && projectRoomEntries.length"
+          class="sidebar-rail-divider"
+          aria-hidden="true"
+        />
+
+        <section
+          v-if="projectRoomEntries.length"
+          class="sidebar-rail-section"
+          :aria-label="t('projectRoom.sidebar.title')"
+        >
+          <button
+            v-for="project in projectRoomEntries"
+            :key="project.projectId"
+            class="sidebar-rail-item sidebar-rail-project"
+            :class="{ active: isProjectRoomSelected(project.projectId) }"
+            type="button"
+            :title="`${project.name} · ${projectRoomStatusLabel(project)}`"
+            :aria-label="project.name"
+            @click="selectProjectRoom(project.projectId)"
+          >
+            <span class="project-room-avatar" aria-hidden="true">{{ projectInitial(project.name) }}</span>
+            <span
+              v-if="project.pendingGateCount || project.unresolvedDriftCount || project.residualCount"
+              class="attention-dot"
+              role="img"
+              :title="t('projectRoom.sidebar.attention')"
+              :aria-label="t('projectRoom.sidebar.attention')"
+            />
+          </button>
+        </section>
+
+        <button
+          v-if="projectRoomPreviewEnabled"
+          class="sidebar-rail-item sidebar-rail-add"
+          type="button"
+          :title="t('projectRoom.sidebar.create')"
+          :aria-label="t('projectRoom.sidebar.create')"
+          @click="openProjectCreate"
+        >
+          <AddOutline />
+        </button>
+      </div>
+    </div>
+
+    <nav v-else class="conversation-nav" :aria-label="t('nav.conversations')">
       <section v-if="pendingDecisionCount" class="nav-section pending-decisions-section">
         <button
           class="nav-heading pending-decisions-heading"
@@ -70,124 +157,7 @@
         </div>
       </section>
 
-      <section
-        v-if="projectRoomPreviewEnabled || projectRoomEntries.length"
-        class="nav-section project-room-nav-section"
-      >
-        <div class="nav-heading project-room-heading" role="heading" aria-level="2">
-          <span>{{ t('projectRoom.sidebar.title') }}</span>
-          <small class="nav-heading-count">{{ projectRoomEntries.length }}</small>
-        </div>
-        <button
-          v-if="projectRoomPreviewEnabled"
-          class="project-room-create"
-          type="button"
-          @click="openProjectCreate"
-        >
-          <AddOutline />
-          <span>{{ t('projectRoom.sidebar.create') }}</span>
-        </button>
-        <div class="project-room-list">
-          <div v-for="project in projectRoomEntries" :key="project.projectId" class="project-room-entry">
-            <div class="project-room-row" :class="{ active: isProjectRoomSelected(project.projectId) }">
-              <button
-                class="project-room-open"
-                type="button"
-                :title="t(isProjectRoomExpanded(project.projectId) ? 'projectRoom.sidebar.collapse' : 'projectRoom.sidebar.expand', { name: project.name })"
-                :aria-current="isProjectRoomSelected(project.projectId) ? 'page' : undefined"
-                :aria-expanded="String(isProjectRoomExpanded(project.projectId))"
-                :aria-controls="`project-room-groups-${project.projectId}`"
-                @click="handleProjectRoomClick(project)"
-              >
-                <span class="project-room-avatar" aria-hidden="true">{{ projectInitial(project.name) }}</span>
-                <span class="project-room-copy">
-                  <strong>{{ project.name }}</strong>
-                  <small :data-tone="project.readOnly || project.deleting ? 'warning' : undefined">
-                    {{ projectRoomStatusLabel(project) }}
-                  </small>
-                </span>
-                <span
-                  v-if="project.pendingGateCount || project.unresolvedDriftCount || project.residualCount"
-                  class="attention-dot project-room-attention"
-                  role="img"
-                  :title="t('projectRoom.sidebar.attention')"
-                  :aria-label="t('projectRoom.sidebar.attention')"
-                />
-              </button>
-              <button
-                v-if="!project.deleting"
-                class="project-room-add"
-                type="button"
-                :title="t('projectRoom.sidebar.addChat', { name: project.name })"
-                :aria-label="t('projectRoom.sidebar.addChat', { name: project.name })"
-                @click.stop="addProjectChat(project.projectId)"
-              >
-                <AddOutline />
-              </button>
-              <button
-                v-if="!project.deleting"
-                class="project-room-delete"
-                type="button"
-                :title="t('projectRoom.sidebar.delete', { name: project.name })"
-                :aria-label="t('projectRoom.sidebar.delete', { name: project.name })"
-                @click.stop="deleteProjectRoom(project.projectId)"
-              >
-                <TrashOutline />
-              </button>
-            </div>
-            <div
-              v-if="project.groups.length && isProjectRoomExpanded(project.projectId)"
-              :id="`project-room-groups-${project.projectId}`"
-              class="project-room-groups"
-            >
-              <div v-for="group in project.groups" :key="group.id" class="project-room-group-row">
-                <button
-                  class="project-room-group"
-                  :class="{ active: isSelectedConversation(group) }"
-                  type="button"
-                  :title="t('nav.openGroup', { name: groupName(group) })"
-                  :aria-current="isSelectedConversation(group) ? 'page' : undefined"
-                  @click="selectGroup(group.id)"
-                >
-                  <span class="project-room-group-name">{{ groupName(group) }}</span>
-                  <span v-if="group.projectRole === 'main'" class="project-room-group-badge">
-                    {{ t('projectRoom.sidebar.mainChat') }}
-                  </span>
-                  <span
-                    v-if="isGroupAwaitingDecision(group.id) && !isSelectedConversation(group)"
-                    class="attention-mark"
-                    role="img"
-                    :title="t('humanGate.waiting')"
-                    :aria-label="t('humanGate.waiting')"
-                  >
-                    <span class="attention-dot" />
-                  </span>
-                  <span
-                    v-else-if="isGroupRunning(group.id) && !isSelectedConversation(group)"
-                    class="run-mark"
-                    :title="t('conversation.runningGeneric')"
-                  >
-                    <span class="run-agent-bars" aria-hidden="true"><i /><i /><i /></span>
-                  </span>
-                </button>
-                <button
-                  v-if="group.projectRole !== 'main'"
-                  class="project-room-group-delete"
-                  type="button"
-                  :title="t('nav.deleteGroup', { name: groupName(group) })"
-                  :aria-label="t('nav.deleteGroup', { name: groupName(group) })"
-                  :disabled="isGroupRunning(group.id)"
-                  @click.stop="openSidebarConversationDelete(group, $event)"
-                >
-                  <TrashOutline />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="nav-section">
+      <section class="nav-section agent-nav-section">
         <button
           class="nav-heading"
           type="button"
@@ -341,6 +311,123 @@
         <p v-if="!sidebarAgentGroups.length && !sidebarAgentsCollapsed && !discoveringAgents" class="nav-empty">{{ t('nav.noSidebarAgents') }}</p>
       </section>
 
+      <section
+        v-if="projectRoomPreviewEnabled || projectRoomEntries.length"
+        class="nav-section project-room-nav-section"
+      >
+        <div class="nav-heading project-room-heading" role="heading" aria-level="2">
+          <span>{{ t('projectRoom.sidebar.title') }}</span>
+          <small class="nav-heading-count">{{ projectRoomEntries.length }}</small>
+        </div>
+        <button
+          v-if="projectRoomPreviewEnabled"
+          class="project-room-create"
+          type="button"
+          @click="openProjectCreate"
+        >
+          <AddOutline />
+          <span>{{ t('projectRoom.sidebar.create') }}</span>
+        </button>
+        <div class="project-room-list">
+          <div v-for="project in projectRoomEntries" :key="project.projectId" class="project-room-entry">
+            <div class="project-room-row" :class="{ active: isProjectRoomSelected(project.projectId) }">
+              <button
+                class="project-room-open"
+                type="button"
+                :title="t(isProjectRoomExpanded(project.projectId) ? 'projectRoom.sidebar.collapse' : 'projectRoom.sidebar.expand', { name: project.name })"
+                :aria-current="isProjectRoomSelected(project.projectId) ? 'page' : undefined"
+                :aria-expanded="String(isProjectRoomExpanded(project.projectId))"
+                :aria-controls="`project-room-groups-${project.projectId}`"
+                @click="handleProjectRoomClick(project)"
+              >
+                <span class="project-room-avatar" aria-hidden="true">{{ projectInitial(project.name) }}</span>
+                <span class="project-room-copy">
+                  <strong>{{ project.name }}</strong>
+                  <small :data-tone="project.readOnly || project.deleting ? 'warning' : undefined">
+                    {{ projectRoomStatusLabel(project) }}
+                  </small>
+                </span>
+                <span
+                  v-if="project.pendingGateCount || project.unresolvedDriftCount || project.residualCount"
+                  class="attention-dot project-room-attention"
+                  role="img"
+                  :title="t('projectRoom.sidebar.attention')"
+                  :aria-label="t('projectRoom.sidebar.attention')"
+                />
+              </button>
+              <button
+                v-if="!project.deleting"
+                class="project-room-add"
+                type="button"
+                :title="t('projectRoom.sidebar.addChat', { name: project.name })"
+                :aria-label="t('projectRoom.sidebar.addChat', { name: project.name })"
+                @click.stop="addProjectChat(project.projectId)"
+              >
+                <AddOutline />
+              </button>
+              <button
+                v-if="!project.deleting"
+                class="project-room-delete"
+                type="button"
+                :title="t('projectRoom.sidebar.delete', { name: project.name })"
+                :aria-label="t('projectRoom.sidebar.delete', { name: project.name })"
+                @click.stop="deleteProjectRoom(project.projectId)"
+              >
+                <TrashOutline />
+              </button>
+            </div>
+            <div
+              v-if="project.groups.length && isProjectRoomExpanded(project.projectId)"
+              :id="`project-room-groups-${project.projectId}`"
+              class="project-room-groups"
+            >
+              <div v-for="group in project.groups" :key="group.id" class="project-room-group-row">
+                <button
+                  class="project-room-group"
+                  :class="{ active: isSelectedConversation(group) }"
+                  type="button"
+                  :title="t('nav.openGroup', { name: groupName(group) })"
+                  :aria-current="isSelectedConversation(group) ? 'page' : undefined"
+                  @click="selectGroup(group.id)"
+                >
+                  <span class="project-room-group-name">{{ groupName(group) }}</span>
+                  <span v-if="group.projectRole === 'main'" class="project-room-group-badge">
+                    {{ t('projectRoom.sidebar.mainChat') }}
+                  </span>
+                  <span
+                    v-if="isGroupAwaitingDecision(group.id) && !isSelectedConversation(group)"
+                    class="attention-mark"
+                    role="img"
+                    :title="t('humanGate.waiting')"
+                    :aria-label="t('humanGate.waiting')"
+                  >
+                    <span class="attention-dot" />
+                  </span>
+                  <span
+                    v-else-if="isGroupRunning(group.id) && !isSelectedConversation(group)"
+                    class="run-mark"
+                    :title="t('conversation.runningGeneric')"
+                  >
+                    <span class="run-agent-bars" aria-hidden="true"><i /><i /><i /></span>
+                  </span>
+                </button>
+                <button
+                  v-if="group.projectRole !== 'main'"
+                  class="project-room-group-delete"
+                  type="button"
+                  :title="t('nav.deleteGroup', { name: groupName(group) })"
+                  :aria-label="t('nav.deleteGroup', { name: groupName(group) })"
+                  :disabled="isGroupRunning(group.id)"
+                  @click.stop="openSidebarConversationDelete(group, $event)"
+                >
+                  <TrashOutline />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
     </nav>
 
   </aside>
@@ -378,11 +465,11 @@ import {
   ChevronDownOutline,
   ChevronForwardOutline,
   CloudOutline,
+  NotificationsOutline,
   PencilOutline,
   PeopleOutline,
   TrashOutline,
 } from '@vicons/ionicons5'
-import { agentLogo } from '../catalog.js'
 
 const props = defineProps({
   controller: { type: Object, required: true },
@@ -480,6 +567,19 @@ function projectInitial(name) {
 const sidebarAgentCount = computed(() => (
   unref(sidebarAgentGroups).reduce((total, group) => total + group.agents.length, 0)
 ))
+
+const railAgents = computed(() => (
+  unref(sidebarAgentGroups).flatMap(group => group.agents)
+))
+
+function isRailAgentActive(agent) {
+  return directGroupsFor(agent.kind).some(group => isSelectedConversation(group))
+}
+
+function showPendingDecisions() {
+  if (!unref(pendingDecisionsExpanded)) togglePendingDecisions()
+  sidebarCollapsed.value = false
+}
 
 function agentAwaitingDecision(kind) {
   return directGroupsFor(kind).some(group => isGroupAwaitingDecision(group.id))
