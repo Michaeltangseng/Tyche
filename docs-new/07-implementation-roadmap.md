@@ -6,7 +6,7 @@
 
 首个可回滚切片已落地：`desktop/src/room-engine/` 提供基于 Electron Node 运行时 `node:sqlite` 的私有账本骨架，覆盖 Room、Chat、Message、Task、Assignment、Report、Artifact、Attention、ControllerDecision、Effect 和 Event 表；Repository 已支持创建 Room/Chat、追加消息、角色、Assignment、Report、Artifact、Attention、任务和 outbox effect，`message-ingress.cjs` 已提供统一消息校验、@提及提取、编辑/删除和事件写入，`room-actions.cjs` 已分离并校验 ControllerAction、UserCommand、PlatformTransition，Controller 可将创建任务、派发、角色和 Attention 建议落到账本。`room-outbox.cjs` 已提供外部副作用的幂等入队、`pending → running → succeeded/failed/unknown` 状态机、批量 claim、失败记录和 unknown 恢复重试；`report-importer.cjs` 已严格解析 Worker 机器标记，校验 Chat/Task/Assignment 归属，以 reportId 幂等写入 Report 和 `report_received` 事件；`session-supervisor.cjs` 已记录由 Supervisor 观察到的 session started/liveness/exited 事实，并能按最近 liveness 查询 stale Assignment；`report-state.cjs` 已按每个 Assignment 的最新 Report 推导 Assignment/Task 状态，只有所有 required Assignment 为 ready 时 Task 才进入 done，blocked/failed 会进入 waiting；`user-commands.cjs` 已实现用户回答 Attention、接受/拒绝 Artifact、暂停/恢复 Chat，并为每个命令写入审计事件；`mention-fallback.cjs` 已支持 Controller 不可用时按显式 @mention 创建 Task 和 Assignment，包含幂等和归档角色过滤；`room-service.cjs` 已把上述能力组合成单一主进程入口，Agent @mention 不会绕过 Controller 直接授权，用户显式 @mention 才走确定性 fallback；`room-ipc.cjs` 已提供受信 renderer 校验和 shutdown 防护的窄 IPC 适配器，尚未绑定现有 main/preload 生命周期。副作用执行前先持久化 effect，应用重启后可继续扫描未完成项。事务失败会回滚，数据库关闭后可重开恢复。数据库目录使用 `0700`、数据库文件使用 `0600`（Windows 除外）。
 
-当前切片仍未接入 Renderer、Controller Session、真实 `invokeAgent` 映射或旧 Chat 迁移；这些保持在后续 Phase 1–4，避免改变现有 checkpoint 执行链。专项账本测试和 Electron 39 runtime spike 已通过；仓库全量测试受既有 workspace 长测及环境权限失败影响。
+当前切片仍未接入 Renderer、Controller Session 或旧 Chat 迁移；这些保持在后续 Phase 1–4，避免改变现有 checkpoint 执行链。Assignment Runner 已通过受控适配器接入现有 `invokeAgent`，并能把返回正文中的严格 Report 标记导入 v2 账本。专项 Room Engine 与 preload 安全测试已通过；仓库全量测试仍未运行。
 
 ## 实施原则
 
@@ -239,6 +239,6 @@ Room Engine 的第一条主进程纵向切片已经接入 Electron 生命周期�
 - 增加 `room:snapshot` 读取面，按 Room 返回 Chat、消息、Task、Assignment 和 Attention，供新 UI 使用；
 - 增加独立 `assignment-runner` 适配器：把 queued Assignment 映射到现有 `invokeAgent` 回调，记录平台 session facts；无 Report 的进程退出进入 waiting，不直接完成 Task；
 - 退出流程先停止 Room IPC 接收，再关闭数据库，避免关闭期间产生新的写入；
-- Room Engine 专项测试当前为 38 项通过；尚未运行 Desktop 全量测试和打包检查。
+- Room Engine 与 preload 安全专项测试当前为 59 项通过；尚未运行 Desktop 全量测试和打包检查。
 
-这一步只接入底层能力，不改变旧 project-room/checkpoint UI，也不把新 ledger 强行映射进旧状态机。下一步应补主目录项目映射，再以显式适配器接入 Assignment 到现有 invokeAgent/Run Ledger 的运行时桥接。
+这一步只接入底层能力，不改变旧 project-room/checkpoint UI，也不把新 ledger 强行映射进旧状态机。Assignment 已能通过 Room workspace 和 Provider 解析到现有 Agent group，使用稳定的 Room session key 启动调用，并在退出时记录 Supervisor session facts；无 Report 的退出保持 waiting，有 Report 的退出按 Report kind 更新 Assignment。下一步应接入 effect runner 的真实 Assignment 派发和 Controller Session 批处理。
