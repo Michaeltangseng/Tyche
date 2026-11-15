@@ -1,0 +1,102 @@
+# 持久化、运行时边界与迁移
+
+## SQLite 账本
+
+新项目室需要保存 Chat、动态角色、Prompt revision、Task、Report、Attention、事件审计和 Controller 决策。SQLite 适合做本地单库账本，按 `room_id` 和 `chat_id` 隔离数据；不建议为每个 Chat 建一个数据库文件。
+
+建议表：
+
+```text
+rooms
+chats
+messages
+chat_members / agent_roles
+role_prompt_revisions
+chat_context_revisions
+tasks
+assignments
+reports
+artifacts
+attentions
+controller_decisions
+events
+```
+
+关键约束：
+
+- 使用 WAL、外键、事务和 schema version；
+- 所有写入由 Room Engine 统一提交；
+- Controller action 先持久化，再执行外部副作用；
+- 用幂等键避免重复创建 Task、Assignment 和消息；
+- 事件记录“谁在何时做了什么”，决策记录“主控使用了哪个 ChatContext revision”；
+- 消息和事件需要压缩/保留策略，避免无限增长。
+
+实现前需要确认 Electron 运行时是否支持可用的 `node:sqlite`。若支持，优先使用它以避免原生模块打包和 rebuild；否则评估 `better-sqlite3` 等方案的桌面打包成本。SQLite 迁移必须覆盖现有 `state.json` 数据，不应以破坏旧项目为代价。
+
+## Trace 与 Artifact 不直接塞进 SQLite
+
+SQLite 保存引用和索引：
+
+```text
+Trace:    runId / agentRunId / jsonlPath
+Artifact: roomId / taskId / path / commit / accepted
+Diff:     shadow Git commit 或版本引用
+```
+
+完整 Trace 继续由 M7 的 JSONL 和现有脱敏机制管理；产物内容继续由工作目录和影子 Git 管理。这样数据库保持适合查询的账本，运行日志和大型文件不被复制进单一数据库。
+
+## 旧群聊模式退役
+
+“并发回复 / 顺序讨论 / 自动讨论”从新 UI 中删除模式选择器，但不立即物理删除底层能力：
+
+```text
+并发回复 → 一个 Task 的多个并行 Assignment
+顺序讨论 → Task 依赖或 Controller 等待前一份 Report
+自动讨论 → Controller 根据当前 ChatContext 邀请角色
+```
+
+旧 Chat 保持兼容；新 Chat 只暴露消息、@提及、Task、Report、Attention 和 Artifact。迁移完成后再删除旧 UI 和旧调用入口。
+
+## 迁移路线
+
+### 阶段 0：文档和数据模型
+
+明确 Room/Chat 边界、统一消息 envelope、结构化 Report、Controller actions、ChatContext revision 和 SQLite schema。
+
+### 阶段 1：读模型与 UI 切片
+
+在旧 checkpoint engine 之上投影 Thread、Task、Report、Attention 和 Artifact，先把项目室 UI 改成群聊和任务卡，不改变 Agent 执行链。
+
+### 阶段 2：新 Room Engine
+
+新 Chat 走 Task/Assignment/Report/Attention；旧项目继续走旧引擎。先实现统一消息管线、批量事件队列和确定性动作校验。
+
+### 阶段 3：Controller Session
+
+引入批量、可恢复、可降级的 Controller。主控不可用时，消息和已运行任务不能丢失；显式用户动作可以走受限确定性 fallback。
+
+### 阶段 4：动态角色与自动组队
+
+从建议模式开始，再开放受限自动模式。角色绑定已有 Provider 和能力，ChatContext 与角色 Prompt 都有版本；高成本或新权限请求用户。
+
+### 阶段 5：旧模型退役
+
+隐藏并最终移除 checkpoint、Gate、Seat、Round、主笔/评审循环和讨论模式选择器。保留底层 Trace、版本、租约、Outbox、安全和恢复能力。
+
+## 第一个可验证切片
+
+```text
+用户在 Chat 中 @codex @pi 讨论需求
+  → Controller 批量处理消息
+  → 创建两个并行 Assignment
+  → Agent 返回结构化 Report
+  → Controller 创建文档 Task
+  → 文档 Artifact 产生
+  → Controller 创建评审 Task
+  → 评审产生 Attention
+  → 用户确认
+  → Controller 创建实施 Task
+```
+
+全过程不向用户展示 checkpoint、Gate、Seat、Round、Playbook 或讨论模式选择器。
+
