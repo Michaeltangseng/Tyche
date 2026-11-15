@@ -39,6 +39,8 @@ Message
 
 实施前置规范和分阶段计划见 [05-implementation-plan-and-open-questions.md](05-implementation-plan-and-open-questions.md)。
 
+面向工程落地的代码分层、阶段退出条件、测试矩阵和提交顺序见 [07-implementation-roadmap.md](07-implementation-roadmap.md)。
+
 关键取舍见 [06-architecture-decisions.md](06-architecture-decisions.md)。`docs/product-target.md` 和 `docs/functional-architecture.md` 保留为 v1/legacy 参考；新项目室的 v2 语义以本目录为准。
 
 ## Glossary
