@@ -64,3 +64,24 @@ test('controller cannot directly mark a task complete or stop a running task', (
   assert.throws(() => service.applyController({ type: 'stop_task', chatId, contextRevision: 0, taskId: 'task-1' }), /CONTROLLER_ACTION_TYPE_INVALID/)
   roomDb.close()
 })
+
+test('dynamic roles persist prompt revisions and respect room capabilities', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-role-policy-'))
+  const roomDb = openRoomDatabase({ directory })
+  const repository = createRoomRepository(roomDb)
+  const roomId = repository.createRoom({ name: 'Policy', workspace: '/tmp/policy', providers: ['codex'], allowedCapabilities: ['text'] })
+  const chatId = repository.createChat({ roomId, title: 'Chat' })
+  const service = createRoomActionService({ roomDb, repository })
+  const role = service.applyController({
+    type: 'create_role', chatId, contextRevision: 0, displayName: 'Writer', provider: 'codex', capabilities: ['text'],
+  })
+  const prompt = service.applyController({
+    type: 'update_role_prompt', chatId, contextRevision: 0, roleId: role.roleId, prompt: 'Write concise drafts.',
+  })
+  assert.equal(prompt.prompt.revision, 1)
+  assert.equal(repository.getRolePrompt(role.roleId).prompt, 'Write concise drafts.')
+  assert.throws(() => service.applyController({
+    type: 'create_role', chatId, contextRevision: 0, displayName: 'Image', provider: 'gemini', capabilities: ['text'],
+  }), /PROVIDER_NOT_ALLOWED/)
+  roomDb.close()
+})

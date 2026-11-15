@@ -1,6 +1,6 @@
 const CONTROLLER_TYPES = new Set([
   'create_task', 'assign', 'request_attention', 'update_context', 'create_role',
-  'archive_role', 'note', 'propose_stop', 'propose_retry',
+  'update_role_prompt', 'archive_role', 'note', 'propose_stop', 'propose_retry',
 ])
 const USER_TYPES = new Set([
   'stop_task', 'retry_task', 'handoff_task', 'accept_artifact', 'reject_artifact',
@@ -17,6 +17,7 @@ const FIELDS = Object.freeze({
     request_attention: ['type', 'chatId', 'contextRevision', 'taskId', 'attentionType', 'question', 'options'],
     update_context: ['type', 'chatId', 'contextRevision', 'changes'],
     create_role: ['type', 'chatId', 'contextRevision', 'displayName', 'responsibilities', 'capabilities', 'provider', 'creationReason'],
+    update_role_prompt: ['type', 'chatId', 'contextRevision', 'roleId', 'prompt'],
     archive_role: ['type', 'chatId', 'contextRevision', 'roleId'],
     note: ['type', 'chatId', 'contextRevision', 'content'],
     propose_stop: ['type', 'chatId', 'contextRevision', 'taskId', 'reason'],
@@ -100,9 +101,20 @@ function createRoomActionService({ roomDb, repository }) {
       let result
       if (validated.type === 'create_task') result = { taskId: repository.createTask({ ...validated, createdBy: actorId, contextRevision: validated.contextRevision }) }
       else if (validated.type === 'assign') result = { assignmentId: repository.createAssignment(validated) }
-      else if (validated.type === 'create_role') result = { roleId: repository.createAgentRole({ ...validated, createdBy: actorId }) }
+      else if (validated.type === 'create_role') {
+        const chat = roomDb.database.prepare('SELECT room_id FROM chats WHERE id = ?').get(validated.chatId)
+        const room = roomDb.database.prepare('SELECT providers_json, allowed_capabilities_json FROM rooms WHERE id = ?').get(chat?.room_id)
+        const providers = JSON.parse(room?.providers_json || '[]')
+        const capabilities = JSON.parse(room?.allowed_capabilities_json || '[]')
+        if (providers.length > 0 && !providers.includes(validated.provider)) throw new Error('ROOM_ROLE_PROVIDER_NOT_ALLOWED')
+        if (capabilities.length > 0 && (validated.capabilities || []).some(capability => !capabilities.includes(capability))) {
+          throw new Error('ROOM_ROLE_CAPABILITY_NOT_ALLOWED')
+        }
+        result = { roleId: repository.createAgentRole({ ...validated, createdBy: actorId }) }
+      }
       else if (validated.type === 'request_attention') result = { attentionId: repository.createAttention({ ...validated, type: validated.attentionType, requestedBy: actorId }) }
       else if (validated.type === 'update_context') result = { context: repository.createChatContextRevision({ chatId: validated.chatId, instructions: typeof validated.changes?.instructions === 'string' ? validated.changes.instructions : '', changes: validated.changes, createdBy: actorId }) }
+      else if (validated.type === 'update_role_prompt') result = { prompt: repository.createRolePromptRevision({ roleId: validated.roleId, prompt: validated.prompt, createdBy: actorId }) }
       else result = {}
       return { ...result, event: recordEvent(validated, actorId) }
     })
