@@ -102,6 +102,23 @@ export function useWorkdirTree({
     }
   }
 
+  async function revealFile(path) {
+    const target = String(path || '').replace(/\\/g, '/').replace(/^\.\//, '')
+    if (!target || target.startsWith('/') || /^[A-Za-z]:\//.test(target)) return null
+    const segments = target.split('/').filter(Boolean)
+    if (!segments.length || segments.includes('..')) return null
+    let parent = ''
+    for (const segment of segments.slice(0, -1)) {
+      parent = joinPath(parent, segment)
+      if (expanded.value.has(parent)) continue
+      const next = new Set(expanded.value)
+      next.add(parent)
+      expanded.value = next
+      if (!directory(parent)) await loadDirectory(parent)
+    }
+    return readFile(target)
+  }
+
   async function loadMorePreview() {
     const current = preview.value
     if (!workdirApi || current?.kind !== 'text' || current.eof) return
@@ -171,6 +188,7 @@ export function useWorkdirTree({
     preview,
     readFile,
     refresh,
+    revealFile,
     selected,
     toggle,
     visibleRows,

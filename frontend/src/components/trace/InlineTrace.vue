@@ -1,35 +1,115 @@
 <template>
-  <details class="inline-trace" :class="{ live }" :open="expanded" @toggle="onToggle">
-    <summary>
-      <TerminalOutline aria-hidden="true" />
-      <span class="inline-trace-title">{{ t('trace.inline.title') }}</span>
-      <small v-if="activitySummary" class="inline-trace-summary">{{ activitySummary }}</small>
-      <small v-else-if="live" class="inline-trace-loading">{{ t('trace.inline.live') }}</small>
-      <small v-else-if="loading" class="inline-trace-loading">{{ t('trace.steps.loading') }}</small>
-      <span v-if="live" class="inline-trace-live" aria-label="live" />
-      <span class="inline-trace-spacer" />
-      <ChevronDownOutline class="inline-trace-chevron" aria-hidden="true" />
-    </summary>
-    <TraceStepList v-if="expanded && hasFullTrace" :controller="controller" :live="live" />
-    <p v-else-if="expanded && !loading" class="inline-trace-empty">
-      {{ live ? t('trace.inline.waiting') : t('trace.steps.noFullTrace') }}
-    </p>
-  </details>
+  <section class="agent-activity" :class="{ live, collapsed: !expanded }">
+    <button
+      class="agent-activity-summary"
+      type="button"
+      :aria-expanded="expanded ? 'true' : 'false'"
+      @click="toggle"
+    >
+      <ChevronForwardOutline class="agent-activity-chevron" :class="{ expanded }" aria-hidden="true" />
+      <span class="agent-activity-text">{{ summaryText }}</span>
+      <span v-if="live" class="agent-activity-live" aria-hidden="true" />
+      <span
+        v-if="hasStatus"
+        class="agent-activity-status"
+        :data-status="tone"
+        role="img"
+        :aria-label="statusText"
+      >
+        <CheckmarkCircleOutline v-if="tone === 'completed'" aria-hidden="true" />
+        <CloseCircleOutline v-else-if="tone === 'failed'" aria-hidden="true" />
+        <WarningOutline v-else-if="tone === 'partial'" aria-hidden="true" />
+        <span v-else class="agent-activity-spinner" aria-hidden="true" />
+      </span>
+    </button>
+
+    <div v-if="expanded" class="agent-activity-details">
+      <TraceStepList v-if="hasFullTrace" :controller="controller" :live="live" />
+      <p v-else-if="!loading" class="inline-trace-empty">
+        {{ live ? t('trace.inline.waiting') : t('trace.steps.noFullTrace') }}
+      </p>
+    </div>
+
+    <div v-if="visibleFiles.length" class="agent-file-list">
+      <article
+        v-for="file in visibleFiles"
+        :key="file.path"
+        class="agent-file-card"
+        :data-status="file.status"
+        :title="file.path"
+      >
+        <span class="agent-file-icon" :data-kind="fileKind(file.path)" aria-hidden="true">
+          <component :is="fileIcon(file.path)" />
+        </span>
+        <span class="agent-file-copy">
+          <span class="agent-file-name">
+            <strong>{{ file.name }}</strong>
+            <span v-if="file.deleted" class="agent-file-badge removed">{{ t('trace.files.deleted') }}</span>
+            <span v-else-if="file.created" class="agent-file-badge">{{ t('trace.files.created') }}</span>
+          </span>
+          <small>{{ file.path }}</small>
+        </span>
+        <span class="agent-file-stats" aria-hidden="true">
+          <span v-if="file.additions" class="added">+{{ file.additions }}</span>
+          <span v-if="file.deletions" class="removed">-{{ file.deletions }}</span>
+        </span>
+        <span class="agent-file-actions">
+          <button
+            v-if="previewFile && file.relativePath"
+            type="button"
+            @click.stop="preview(file)"
+          >
+            {{ t('trace.files.preview') }}
+          </button>
+        </span>
+      </article>
+      <p v-if="hiddenFileCount" class="agent-file-more">
+        {{ t('trace.files.more', { count: hiddenFileCount }) }}
+      </p>
+    </div>
+  </section>
 </template>
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { ChevronDownOutline, TerminalOutline } from '@vicons/ionicons5'
+import {
+  CheckmarkCircleOutline,
+  ChevronForwardOutline,
+  CloseCircleOutline,
+  CodeSlashOutline,
+  DocumentOutline,
+  DocumentTextOutline,
+  ImageOutline,
+  WarningOutline,
+} from '@vicons/ionicons5'
+import { runStatusTone } from '../../conversationTimelineModel.js'
+import { summarizeTraceActivity } from '../../traceActivity.js'
 import { useTraceStream } from '../../composables/useTraceStream.js'
 import TraceStepList from './TraceStepList.vue'
+
+const MAX_FILES = 6
+const CODE_EXTENSIONS = new Set([
+  'js', 'cjs', 'mjs', 'ts', 'tsx', 'jsx', 'vue', 'css', 'scss', 'less',
+  'html', 'json', 'yml', 'yaml', 'toml', 'sh', 'zsh', 'py', 'rb', 'go',
+  'rs', 'java', 'kt', 'swift', 'c', 'h', 'cc', 'cpp', 'hpp', 'sql',
+])
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'])
+const DOCUMENT_EXTENSIONS = new Set(['md', 'markdown', 'txt', 'log', 'pdf', 'doc', 'docx'])
 
 const props = defineProps({
   agentRunId: { type: String, required: true },
   defaultOpen: { type: Boolean, default: false },
+  elapsedLabel: { type: String, default: '' },
   live: { type: Boolean, default: false },
+  previewFile: { type: Function, default: null },
   runId: { type: String, required: true },
+  status: { type: String, default: '' },
+  statusLabel: { type: String, default: '' },
   t: { type: Function, required: true },
+  workdir: { type: String, default: '' },
 })
+
+const emit = defineEmits(['preview-file'])
 
 const expanded = ref(props.defaultOpen)
 const stream = useTraceStream({
@@ -50,20 +130,29 @@ const controller = {
   t: props.t,
 }
 
-const activitySummary = computed(() => {
-  const values = steps.value || []
-  if (!hasFullTrace.value || !values.length) return ''
-  let thinking = 0
-  const tools = new Set()
-  for (const step of values) {
-    if (step.kind === 'thinking') thinking += 1
-    else if (step.kind === 'tool') tools.add(step.toolCallId || step.seq)
+const activity = computed(() => summarizeTraceActivity(steps.value || [], { workdir: props.workdir }))
+const visibleFiles = computed(() => activity.value.files.slice(0, MAX_FILES))
+const hiddenFileCount = computed(() => Math.max(0, activity.value.files.length - MAX_FILES))
+const summaryText = computed(() => {
+  if (loading.value && !steps.value.length) return props.t('trace.inline.loading')
+  if (!hasFullTrace.value) {
+    return props.t(props.live ? 'trace.inline.waiting' : 'trace.inline.noSteps')
   }
   const parts = []
-  if (thinking) parts.push(props.t('trace.inline.thinking', { count: thinking }))
-  if (tools.size) parts.push(props.t('trace.inline.tools', { count: tools.size }))
-  return parts.join(' · ')
+  if (activity.value.thinkingCount) {
+    parts.push(props.t('trace.inline.thinking', { count: activity.value.thinkingCount }))
+  }
+  if (activity.value.toolCount) {
+    parts.push(props.t('trace.inline.tools', { count: activity.value.toolCount }))
+  }
+  if (props.elapsedLabel) parts.push(props.elapsedLabel)
+  return parts.length ? parts.join(' · ') : props.t('trace.inline.title')
 })
+const hasStatus = computed(() => Boolean(props.status) || props.live)
+const tone = computed(() => (
+  props.live && !props.status ? 'running' : (runStatusTone(props.status) || 'running')
+))
+const statusText = computed(() => props.statusLabel || props.status || props.t('trace.inline.live'))
 
 watch(() => props.defaultOpen, (value) => {
   if (value) expanded.value = true
@@ -79,8 +168,32 @@ onMounted(() => {
   void stream.open()
 })
 
-function onToggle(event) {
-  const open = event.target?.open === true
-  if (open !== expanded.value) expanded.value = open
+function toggle() {
+  expanded.value = !expanded.value
+}
+
+function preview(file) {
+  if (!file?.relativePath) return
+  emit('preview-file', file.relativePath)
+}
+
+function fileExtension(path) {
+  return String(path || '').split('.').at(-1).toLowerCase()
+}
+
+function fileKind(path) {
+  const extension = fileExtension(path)
+  if (IMAGE_EXTENSIONS.has(extension)) return 'image'
+  if (CODE_EXTENSIONS.has(extension)) return 'code'
+  if (DOCUMENT_EXTENSIONS.has(extension)) return 'document'
+  return 'file'
+}
+
+function fileIcon(path) {
+  const kind = fileKind(path)
+  if (kind === 'image') return ImageOutline
+  if (kind === 'code') return CodeSlashOutline
+  if (kind === 'document') return DocumentTextOutline
+  return DocumentOutline
 }
 </script>

@@ -13,7 +13,7 @@
       :role="drawer ? 'dialog' : 'complementary'"
       :aria-modal="drawer ? 'true' : undefined"
       :aria-label="t('projectRoom.drawer.title')"
-      :style="drawer ? undefined : { width: `${width}px` }"
+      :style="{ width: `${width}px` }"
       tabindex="-1"
     >
       <header class="project-room-drawer-header">
@@ -91,6 +91,7 @@ const props = defineProps({
 const {
   close,
   drawer,
+  fileRequest,
   onResize,
   open,
   projectId,
@@ -98,13 +99,10 @@ const {
   savePreferences,
   t,
   theme,
+  width,
   workdir,
 } = props.controller
 
-const DEFAULT_WIDTH = 420
-const MIN_WIDTH = 280
-const MAX_WIDTH = 760
-const width = ref(DEFAULT_WIDTH)
 const panelElement = ref(null)
 const filesPanel = ref(null)
 const previewVisible = ref(true)
@@ -152,32 +150,59 @@ watch(() => projectSnapshot.value?.revision, () => {
   void workdirTree.refresh()
 })
 
-function applyPreferences() {
-  const preferences = projectSnapshot.value?.preferences || {}
-  if (Number.isInteger(preferences.drawerWidth)) {
-    width.value = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, preferences.drawerWidth))
-  } else {
-    width.value = DEFAULT_WIDTH
-  }
+watch([fileRequest, projectId], ([request]) => {
+  const path = String(request?.path || '')
+  if (!path) return
+  previewVisible.value = true
+  void workdirTree.revealFile(path)
+}, { flush: 'post', immediate: true })
+
+const MIN_WIDTH = 280
+const MAX_WIDTH = 760
+const DEFAULT_WIDTH = 420
+
+function currentWidth() {
+  const value = Number(width?.value ?? width)
+  return Number.isFinite(value) ? value : DEFAULT_WIDTH
 }
 
-watch(() => projectSnapshot.value?.preferences, applyPreferences, { immediate: true })
-watch(() => projectId.value, applyPreferences)
+function renderedWidth() {
+  const value = Number(panelElement.value?.getBoundingClientRect?.().width)
+  return Number.isFinite(value) && value > 0 ? Math.round(value) : currentWidth()
+}
+
+function maxWidth() {
+  if (drawer?.value) {
+    const viewport = Number(window.innerWidth) || MAX_WIDTH + 24
+    return Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, viewport - 24))
+  }
+  return MAX_WIDTH
+}
 
 function persistPreferences(preferences) {
   if (projectSnapshot.value?.readOnly) return
   void savePreferences(preferences)
 }
 
+function resizeWidth() {
+  if (!resizeState) return currentWidth()
+  return Math.min(
+    maxWidth(),
+    Math.max(MIN_WIDTH, resizeState.startWidth + (resizeState.startX - resizeState.lastX)),
+  )
+}
+
 function startResize(event) {
   resizeState = {
     startX: event.clientX,
     lastX: event.clientX,
-    startWidth: width.value,
+    startWidth: renderedWidth(),
   }
   document.body.classList.add('drawer-resizing')
   window.addEventListener('pointermove', handleResize)
   window.addEventListener('pointerup', finishResize, { once: true })
+  window.addEventListener('pointercancel', finishResize, { once: true })
+  window.addEventListener('blur', finishResize, { once: true })
 }
 
 let resizeFrame = 0
@@ -189,21 +214,23 @@ function handleResize(event) {
   resizeFrame = requestAnimationFrame(() => {
     resizeFrame = 0
     if (!resizeState) return
-    width.value = Math.min(
-      MAX_WIDTH,
-      Math.max(MIN_WIDTH, resizeState.startWidth + (resizeState.startX - resizeState.lastX)),
-    )
-    onResize?.(width.value)
+    onResize?.(resizeWidth())
   })
 }
 
 function finishResize() {
+  if (!resizeState) return
+  const settled = resizeWidth()
   window.removeEventListener('pointermove', handleResize)
+  window.removeEventListener('pointerup', finishResize)
+  window.removeEventListener('pointercancel', finishResize)
+  window.removeEventListener('blur', finishResize)
   if (resizeFrame) cancelAnimationFrame(resizeFrame)
   resizeFrame = 0
   resizeState = null
   document.body.classList.remove('drawer-resizing')
-  persistPreferences({ drawerWidth: width.value })
+  onResize?.(settled)
+  persistPreferences({ drawerWidth: settled })
 }
 
 let fileResizeFrame = 0
@@ -260,8 +287,13 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('pointermove', handleResize)
+  window.removeEventListener('pointerup', finishResize)
+  window.removeEventListener('pointercancel', finishResize)
+  window.removeEventListener('blur', finishResize)
   window.removeEventListener('pointermove', handleFilePanelResize)
   window.removeEventListener('keydown', handleEscape)
+  resizeState = null
+  fileResizeState = null
   document.body.classList.remove('project-room-drawer-open')
   document.body.classList.remove('drawer-resizing')
   document.body.classList.remove('file-panel-resizing')

@@ -1,43 +1,49 @@
-import { nextTick, ref } from 'vue'
-import { mount } from '@vue/test-utils'
+import { ref } from 'vue'
+import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ProjectRoomDrawer from '../../components/ProjectRoomDrawer.vue'
 
-const at = '2026-01-01T09:30:00.000Z'
-
-function progressItem(overrides = {}) {
+function workdirApi() {
   return {
-    checkpointId: 'cp-1',
-    name: 'Requirements',
-    state: 'accepted',
-    hasPendingVersion: false,
-    acceptedVersion: {
-      id: 'version-2',
-      files: ['docs/requirements.md'],
-      acceptedAt: at,
-    },
-    ...overrides,
+    list: vi.fn(async ({ relPath = '' }) => {
+      if (relPath === '') {
+        return { entries: [{ name: 'docs', kind: 'directory' }], cursor: null, hasMore: false }
+      }
+      return {
+        entries: [{ name: 'requirements.md', kind: 'file' }],
+        cursor: null,
+        hasMore: false,
+      }
+    }),
+    read: vi.fn(async ({ relPath }) => ({
+      kind: 'text',
+      text: relPath === 'docs/requirements.md' ? 'requirements body' : 'file text',
+      totalBytes: 17,
+      eof: true,
+      encoding: 'utf-8',
+    })),
   }
 }
 
 function drawerController(overrides = {}) {
+  const api = workdirApi()
   return {
-    close: vi.fn(),
-    drawer: ref(false),
-    formatNavTime: vi.fn(() => '09:30'),
-    onResize: vi.fn(),
-    open: ref(true),
-    projectId: ref('project-1'),
-    projectSnapshot: ref({
-      readOnly: false,
-      preferences: { drawerWidth: 500, drawerTab: 'files' },
-      progress: [progressItem()],
-    }),
-    savePreferences: vi.fn(async () => ({})),
-    t: key => key,
-    traceAgentRunId: ref(''),
-    traceRunId: ref(''),
-    ...overrides,
+    api,
+    controller: {
+      close: vi.fn(),
+      drawer: ref(false),
+      fileRequest: ref(null),
+      onResize: vi.fn(),
+      open: ref(true),
+      projectId: ref('project-1'),
+      projectSnapshot: ref({ readOnly: false, revision: 1 }),
+      savePreferences: vi.fn(async () => ({})),
+      t: key => key,
+      theme: ref('light'),
+      width: ref(500),
+      workdir: ref(api),
+      ...overrides,
+    },
   }
 }
 
@@ -45,94 +51,74 @@ afterEach(() => {
   document.body.className = ''
 })
 
-describe('project room drawer', () => {
-  it('lists accepted documents with pending and stale markers', () => {
-    const controller = drawerController()
-    controller.projectSnapshot.value.progress = [
-      progressItem(),
-      progressItem({
-        checkpointId: 'cp-2',
-        name: 'Architecture',
-        state: 'stale',
-        hasPendingVersion: true,
-        acceptedVersion: { id: 'version-1', files: ['docs/architecture.md'], acceptedAt: at },
-      }),
-      progressItem({
-        checkpointId: 'cp-3',
-        name: 'Research',
-        state: 'pending',
-        acceptedVersion: null,
-      }),
-    ]
+describe('project room file sidebar', () => {
+  it('renders the workdir tree at the width owned by the app shell', async () => {
+    const { api, controller } = drawerController()
     const wrapper = mount(ProjectRoomDrawer, { props: { controller } })
+    await flushPromises()
 
-    const documents = wrapper.findAll('.accepted-doc')
-    expect(documents).toHaveLength(2)
-    expect(documents[0].text()).toContain('projectRoom.drawer.version')
-    expect(documents[0].text()).toContain('docs/requirements.md')
-    expect(documents[1].text()).toContain('projectRoom.state.stale')
-    expect(documents[1].text()).toContain('projectRoom.drawer.pendingVersion')
-    expect(documents[1].text()).toContain('docs/architecture.md')
+    expect(wrapper.get('.project-room-drawer').attributes('style')).toContain('width: 500px')
+    expect(wrapper.get('.project-room-drawer').attributes('role')).toBe('complementary')
+    expect(wrapper.get('.project-room-drawer').text()).toContain('docs')
+    expect(api.list).toHaveBeenCalledWith({ projectId: 'project-1', relPath: '' })
   })
 
-  it('restores the width and tab remembered for the project', async () => {
-    const controller = drawerController()
-    controller.projectSnapshot.value.preferences = { drawerWidth: 560, drawerTab: 'trace' }
-    const wrapper = mount(ProjectRoomDrawer, { props: { controller } })
-
-    expect(wrapper.get('.project-room-drawer').attributes('style')).toContain('width: 560px')
-    expect(wrapper.get('.project-room-drawer-tabs .active').text()).toBe('projectRoom.drawer.trace')
-    expect(wrapper.get('.project-room-drawer-body').text())
-      .toContain('projectRoom.drawer.traceUnavailable')
-
-    controller.projectSnapshot.value = {
-      ...controller.projectSnapshot.value,
-      preferences: { drawerWidth: 300, drawerTab: 'files' },
-    }
-    await nextTick()
-    expect(wrapper.get('.project-room-drawer').attributes('style')).toContain('width: 300px')
-    expect(wrapper.get('.project-room-drawer-tabs .active').text()).toBe('projectRoom.drawer.files')
-  })
-
-  it('saves the selected tab unless the project is read-only', async () => {
-    const controller = drawerController()
-    const wrapper = mount(ProjectRoomDrawer, { props: { controller } })
-
-    await wrapper.findAll('.project-room-drawer-tabs button')[1].trigger('click')
-    expect(controller.savePreferences).toHaveBeenCalledWith({ drawerTab: 'trace' })
-
-    controller.savePreferences.mockClear()
-    controller.projectSnapshot.value = {
-      ...controller.projectSnapshot.value,
-      readOnly: true,
-      preferences: { ...controller.projectSnapshot.value.preferences, drawerTab: 'files' },
-    }
-    await nextTick()
-    await wrapper.findAll('.project-room-drawer-tabs button')[1].trigger('click')
-    expect(controller.savePreferences).not.toHaveBeenCalled()
-  })
-
-  it('resizes with the pointer and saves the settled width', async () => {
-    const controller = drawerController()
+  it('resizes through the app controller and saves the settled width', () => {
+    const { controller } = drawerController()
     const wrapper = mount(ProjectRoomDrawer, { props: { controller } })
 
     wrapper.get('.project-room-drawer-resize').element.dispatchEvent(
       new MouseEvent('pointerdown', { clientX: 500, bubbles: true }),
     )
+    expect(document.body.classList.contains('drawer-resizing')).toBe(true)
     window.dispatchEvent(new MouseEvent('pointermove', { clientX: 400 }))
     window.dispatchEvent(new MouseEvent('pointerup'))
 
     expect(controller.onResize).toHaveBeenLastCalledWith(600)
     expect(controller.savePreferences).toHaveBeenCalledWith({ drawerWidth: 600 })
+    expect(document.body.classList.contains('drawer-resizing')).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('does not persist a width when the project is read-only', () => {
+    const { controller } = drawerController()
+    controller.projectSnapshot = ref({ readOnly: true, revision: 1 })
+    const wrapper = mount(ProjectRoomDrawer, { props: { controller } })
+
+    wrapper.get('.project-room-drawer-resize').element.dispatchEvent(
+      new MouseEvent('pointerdown', { clientX: 500, bubbles: true }),
+    )
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 420 }))
+    window.dispatchEvent(new MouseEvent('pointerup'))
+
+    expect(controller.onResize).toHaveBeenLastCalledWith(580)
+    expect(controller.savePreferences).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('opens a requested file by expanding its ancestor directories', async () => {
+    const { api, controller } = drawerController()
+    controller.fileRequest = ref({ path: 'docs/requirements.md', token: 1 })
+    const wrapper = mount(ProjectRoomDrawer, { props: { controller } })
+    await flushPromises()
+
+    expect(api.list).toHaveBeenCalledWith({ projectId: 'project-1', relPath: 'docs' })
+    expect(api.read).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      relPath: 'docs/requirements.md',
+    })
+    expect(wrapper.get('.file-preview').text()).toContain('requirements body')
+    expect(wrapper.get('.project-room-drawer').text()).toContain('requirements.md')
   })
 
   it('behaves as a modal overlay in a narrow window', async () => {
-    const controller = drawerController()
+    const { controller } = drawerController()
     controller.drawer = ref(true)
     const wrapper = mount(ProjectRoomDrawer, { props: { controller } })
+    await flushPromises()
 
     expect(wrapper.find('.project-room-drawer-scrim').exists()).toBe(true)
-    expect(wrapper.get('.project-room-drawer').attributes('style')).toBeUndefined()
+    expect(wrapper.get('.project-room-drawer').attributes('style')).toContain('width: 500px')
     expect(wrapper.get('.project-room-drawer').attributes('role')).toBe('dialog')
     expect(document.body.classList.contains('project-room-drawer-open')).toBe(true)
 

@@ -89,10 +89,12 @@
             v-if="message.projectRoomCard"
             :card="message.projectRoomCard"
             :format-nav-time="projectRoomFormatNavTime"
+            :preview-file="canPreviewTraceFiles ? previewTraceFile : null"
             :select-gate="projectRoomSelectGate"
             :stop-delivery="projectRoomStopDelivery"
             :t="t"
             :theme="theme"
+            :workdir="activeGroup.workdir || ''"
           />
           <template v-else>
             <template v-if="isArchivedCollapsed(message)">
@@ -232,7 +234,7 @@
             </span>
             <span
               v-if="message.role === 'agent'"
-              class="message-avatar-wrap"
+              class="message-avatar-wrap agent-avatar-tile"
               :class="{ cloud: isCloudAgentKind(message.agentKind) }"
             >
               <img
@@ -334,8 +336,14 @@
                 <InlineTrace
                   v-if="messageHasFullTrace(message)"
                   :agent-run-id="message.trace.agentRunId"
+                  :elapsed-label="messageElapsedLabel(message)"
+                  :preview-file="canPreviewTraceFiles ? previewTraceFile : null"
                   :run-id="message.trace.runId"
+                  :status="messageTraceStatus(message)"
+                  :status-label="messageTraceStatus(message) ? runStatusLabel(messageTraceStatus(message)) : ''"
                   :t="t"
+                  :workdir="activeGroup.workdir || ''"
+                  @preview-file="previewTraceFile"
                 />
                 <template v-if="isAgentReplyExpanded(message)">
                   <div
@@ -1054,9 +1062,17 @@ const displayTimelineMessages = computed(() => {
       || String(left.id).localeCompare(String(right.id))
   ))
 })
+const canPreviewTraceFiles = computed(() => (
+  activeGroup.value?.projectRole === 'main' && Boolean(activeGroup.value?.projectId)
+))
 
 function messageHasFullTrace(message) {
   return Boolean(message?.trace?.runId && message?.trace?.agentRunId)
+}
+
+function previewTraceFile(path) {
+  if (!path) return
+  props.controller.openWorkdirFile?.(path)
 }
 
 function timelineTimestamp(value) {

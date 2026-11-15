@@ -84,4 +84,25 @@ describe('useWorkdirTree', () => {
     expect(result.change.change).toBe('content-changed')
     scope.stop()
   })
+
+  it('reveals a nested file by expanding every ancestor directory', async () => {
+    const { tree, api, scope } = fixture()
+    api.list.mockImplementation(async ({ relPath }) => ({
+      entries: relPath === 'docs'
+        ? [{ name: 'guides', kind: 'directory', size: 0, mtime: '' }]
+        : [{ name: 'a.md', kind: 'file', size: 5, mtime: '' }],
+      cursor: null,
+      hasMore: false,
+    }))
+
+    await tree.revealFile('docs/guides/a.md')
+
+    expect(api.list).toHaveBeenCalledWith({ projectId: 'project-1', relPath: 'docs' })
+    expect(api.list).toHaveBeenCalledWith({ projectId: 'project-1', relPath: 'docs/guides' })
+    expect(tree.expanded.value.has('docs')).toBe(true)
+    expect(tree.expanded.value.has('docs/guides')).toBe(true)
+    expect(tree.selected.value).toBe('docs/guides/a.md')
+    expect(tree.preview.value.path).toBe('docs/guides/a.md')
+    scope.stop()
+  })
 })

@@ -62,15 +62,21 @@
             </span>
           </span>
           <span class="project-timeline-running-state">{{ runningLabel }}</span>
+          <span v-if="waitingLabel" class="project-timeline-running-waiting">
+            {{ waitingLabel }}
+          </span>
         </div>
         <InlineTrace
           v-for="invocation in card.activeInvocations || []"
           :key="`trace:${invocation.effectId}`"
           :agent-run-id="invocation.effectId"
           :default-open="true"
+          :preview-file="previewFile"
           :run-id="card.checkpointId"
           live
           :t="t"
+          :workdir="workdir"
+          @preview-file="previewFile"
         />
       </div>
     </template>
@@ -85,10 +91,12 @@ import InlineTrace from './trace/InlineTrace.vue'
 const props = defineProps({
   card: { type: Object, required: true },
   formatNavTime: { type: Function, default: () => '' },
+  previewFile: { type: Function, default: null },
   selectGate: { type: Function, default: null },
   stopDelivery: { type: Function, default: null },
   t: { type: Function, required: true },
   theme: { type: String, default: 'light' },
+  workdir: { type: String, default: '' },
 })
 
 const reasonLabel = computed(() => (
@@ -120,6 +128,11 @@ const runningLabel = computed(() => {
     accepting: 'projectRoom.state.accepting',
   }[props.card.state] || 'projectRoom.state.unknown'
   return `${props.card.name} · ${props.t(key)}`
+})
+
+const waitingLabel = computed(() => {
+  const key = WAITING_ON_KEYS[props.card.waitingOn]
+  return key ? props.t(key) : ''
 })
 
 function roleLabel(role) {

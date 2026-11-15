@@ -90,9 +90,6 @@
     pointer-events: auto;
   }
 
-  .project-room-drawer-layer.drawer .project-room-drawer-resize {
-    display: none;
-  }
 }
 
 @media (max-width: 920px) {

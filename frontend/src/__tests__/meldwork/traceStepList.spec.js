@@ -32,18 +32,18 @@ function controller(overrides = {}) {
 describe('TraceStepList', () => {
   it('groups tool steps by toolCallId and renders thinking and messages', () => {
     const wrapper = mount(TraceStepList, { props: { controller: controller() } })
-    expect(wrapper.findAll('.trace-tool-card')).toHaveLength(1)
-    expect(wrapper.get('.trace-tool-card').text()).toContain('Bash')
-    expect(wrapper.get('.trace-tool-card').text()).toContain('ls -la')
+    expect(wrapper.findAll('.trace-tool-activity')).toHaveLength(1)
+    expect(wrapper.get('.trace-tool-activity').text()).toContain('Bash')
+    expect(wrapper.get('.trace-tool-activity').text()).toContain('ls -la')
     expect(wrapper.text()).toContain('trace.steps.thinking')
-    expect(wrapper.text()).toContain('Hello.')
+    expect(wrapper.text()).toContain('I should inspect.')
   })
 
   it('switches between structured and raw views', async () => {
     const wrapper = mount(TraceStepList, { props: { controller: controller() } })
     await wrapper.get('.trace-step-view-toggle').trigger('click')
     expect(wrapper.find('.trace-raw-view').exists()).toBe(true)
-    expect(wrapper.text()).toContain('I should inspect.')
+    expect(wrapper.text()).toContain('Hello.')
     await wrapper.get('.trace-step-view-toggle').trigger('click')
     expect(wrapper.find('.trace-raw-view').exists()).toBe(false)
   })
@@ -55,7 +55,7 @@ describe('TraceStepList', () => {
     }])
     const fixture = controller({ steps })
     const wrapper = mount(TraceStepList, { props: { controller: fixture } })
-    await wrapper.get('.trace-tool-toggle').trigger('click')
+    await wrapper.get('.trace-tool-load').trigger('click')
     await wrapper.vm.$nextTick()
     expect(fixture.loadBlob).toHaveBeenCalledWith('blob-1', { offset: 0, length: 100 })
     expect(wrapper.text()).toContain('blob output')

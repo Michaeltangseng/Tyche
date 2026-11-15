@@ -1,21 +1,3 @@
-.inline-trace-summary {
-  min-width: 0;
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.inline-trace-live {
-  width: 6px;
-  height: 6px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
-  animation: trace-live-pulse 1.6s ease-in-out infinite;
-}
-
 @keyframes trace-live-pulse {
   0%, 100% { opacity: 0.45; }
   50% { opacity: 1; }

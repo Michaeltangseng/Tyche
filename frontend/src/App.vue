@@ -466,6 +466,7 @@ const PROJECT_DRAWER_MIN_WIDTH = 280
 const PROJECT_DRAWER_MAX_WIDTH = 760
 const projectDrawerOpen = ref(false)
 const projectDrawerWidthOverride = ref(null)
+const projectDrawerFileRequest = ref(null)
 const projectDrawerNarrow = ref(false)
 let projectDrawerMediaQuery = null
 
@@ -523,6 +524,16 @@ function toggleProjectDrawer() {
   if (!isProjectMainGroup.value) return
   projectDrawerOpen.value = !projectDrawerOpen.value
   if (projectDrawerOpen.value) closeTracePanel()
+  else projectDrawerFileRequest.value = null
+}
+
+function openWorkdirFile(path) {
+  if (!isProjectMainGroup.value) return
+  const value = String(path || '')
+  if (!value) return
+  projectDrawerFileRequest.value = { path: value, token: Date.now() }
+  projectDrawerOpen.value = true
+  closeTracePanel()
 }
 
 async function saveProjectPreferences(preferences) {
@@ -543,9 +554,13 @@ async function saveProjectPreferences(preferences) {
 watch(() => activeGroup.value?.projectId, () => {
   projectDrawerOpen.value = false
   projectDrawerWidthOverride.value = null
+  projectDrawerFileRequest.value = null
 })
 watch(isProjectMainGroup, (isMain) => {
-  if (!isMain) projectDrawerOpen.value = false
+  if (!isMain) {
+    projectDrawerOpen.value = false
+    projectDrawerFileRequest.value = null
+  }
 })
 
 onBeforeUnmount(() => {
@@ -690,8 +705,12 @@ const projectRoomSeatSettingsController = {
 }
 
 const projectRoomDrawerController = {
-  close: () => { projectDrawerOpen.value = false },
+  close: () => {
+    projectDrawerOpen.value = false
+    projectDrawerFileRequest.value = null
+  },
   drawer: projectDrawerNarrow,
+  fileRequest: projectDrawerFileRequest,
   onResize: (width) => { projectDrawerWidthOverride.value = width },
   open: projectDrawerOpen,
   projectId: computed(() => activeGroup.value?.projectId || ''),
@@ -699,6 +718,7 @@ const projectRoomDrawerController = {
   savePreferences: saveProjectPreferences,
   t,
   theme,
+  width: projectDrawerWidth,
   workdir: computed(() => api.value?.workdir || null),
 }
 
@@ -1236,6 +1256,7 @@ Object.assign(timelineController, {
   directHumanGates,
   directRunBudget,
   humanGateDecisionPendingIds,
+  openWorkdirFile,
 })
 
 const modalTitle = computed(() => ({
