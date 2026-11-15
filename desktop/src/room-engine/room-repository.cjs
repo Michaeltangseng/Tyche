@@ -152,6 +152,18 @@ function createRoomRepository(roomDb) {
         .run(effectId, chatId, actionId, kind, encode(payload), idempotencyKey, timestamp)
       return effectId
     },
+    getControllerDecision({ chatId, batchId }) {
+      return plain(db.prepare('SELECT * FROM controller_decisions WHERE chat_id = ? AND batch_id = ?').get(chatId, batchId))
+    },
+    createControllerDecision({ decisionId = id('decision'), chatId, batchId, contextRevision, inputIds = [], actionIds = [], results = [], model = null, latencyMs = null, cost = null }) {
+      const timestamp = now()
+      db.prepare(`INSERT INTO controller_decisions
+        (id, chat_id, batch_id, context_revision, input_ids_json, action_ids_json, results_json, model, latency_ms, cost, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        decisionId, chatId, batchId, contextRevision, encode(inputIds), encode(actionIds), encode(results), model, latencyMs, cost, timestamp,
+      )
+      return decisionId
+    },
     listMessages(chatId) {
       return db.prepare('SELECT * FROM messages WHERE chat_id = ? ORDER BY sequence').all(chatId)
     },

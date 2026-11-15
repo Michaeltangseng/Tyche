@@ -7,8 +7,9 @@ const { createSessionSupervisor } = require('./session-supervisor.cjs')
 const { createUserCommandService } = require('./user-commands.cjs')
 const { createMentionFallback } = require('./mention-fallback.cjs')
 const { createAssignmentRunner } = require('./assignment-runner.cjs')
+const { createControllerSession } = require('./controller-session.cjs')
 
-function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup } = {}) {
+function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController } = {}) {
   if (!roomDb || !repository) throw new TypeError('ROOM_SERVICE_DEPENDENCIES_REQUIRED')
   const ingress = createMessageIngress(roomDb, repository)
   const actions = createRoomActionService({ roomDb, repository })
@@ -26,6 +27,9 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup 
       resolveGroup,
       importReport,
     })
+    : null
+  const controller = typeof decideController === 'function'
+    ? createControllerSession({ roomDb, repository, applyAction: actions.applyController, decide: decideController, now: () => Date.now() })
     : null
 
   function submitMessage(input, { deterministicFallback = true } = {}) {
@@ -133,6 +137,10 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup 
     enqueueEffect: outbox.enqueue,
     runEffectOnce: outbox.runOnce,
     runNextEffect,
+    processControllerBatch: input => {
+      if (!controller) throw new Error('ROOM_CONTROLLER_UNAVAILABLE')
+      return controller.process(input)
+    },
     retryUnknownEffect: outbox.retryUnknown,
     repository,
   }
