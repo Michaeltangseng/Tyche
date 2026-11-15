@@ -1,4 +1,5 @@
 const crypto = require('node:crypto')
+const { validateControllerAction } = require('./room-actions.cjs')
 
 function assertId(value, code) {
   if (typeof value !== 'string' || value.length === 0) throw new TypeError(code)
@@ -13,7 +14,9 @@ function createControllerSession({ roomDb, repository, applyAction, decide, now 
     throw new TypeError('ROOM_CONTROLLER_SESSION_DEPENDENCIES_REQUIRED')
   }
 
-  async function process({ chatId, batchId = `batch-${crypto.randomUUID()}`, contextRevision, messageIds = [], model = null } = {}) {
+  const activeChats = new Set()
+
+  async function processBatch({ chatId, batchId = `batch-${crypto.randomUUID()}`, contextRevision, messageIds = [], model = null } = {}) {
     assertId(chatId, 'ROOM_CHAT_ID_INVALID')
     assertId(batchId, 'ROOM_CONTROLLER_BATCH_ID_INVALID')
     if (!Number.isInteger(contextRevision) || contextRevision < 0) throw new TypeError('ROOM_CONTROLLER_CONTEXT_REVISION_INVALID')
@@ -27,13 +30,20 @@ function createControllerSession({ roomDb, repository, applyAction, decide, now 
     if (chat.context_revision !== contextRevision) throw new Error('ROOM_CONTROLLER_CONTEXT_STALE')
     const messages = messageIds.map(messageId => repository.getMessage(messageId)).filter(Boolean)
     if (messages.length !== messageIds.length) throw new Error('ROOM_CONTROLLER_MESSAGE_NOT_FOUND')
+    if (messages.some(message => message.chat_id !== chatId || message.deleted_at)) throw new Error('ROOM_CONTROLLER_MESSAGE_SCOPE_INVALID')
     const chatContext = repository.getChatContext(chatId, contextRevision)
     const roles = repository.listAgentRoles(chatId)
     const startedAt = now()
     const proposal = await decide({ chatId, batchId, contextRevision, messages, context: chatContext.context, roles })
     if (!proposal || !Array.isArray(proposal.actions)) throw new TypeError('ROOM_CONTROLLER_DECISION_INVALID')
+    const currentChat = repository.getChatContext(chatId).chat
+    if (currentChat.context_revision !== contextRevision) throw new Error('ROOM_CONTROLLER_CONTEXT_STALE')
+    if (messages.some(message => JSON.stringify(repository.getMessage(message.id)) !== JSON.stringify(message))) {
+      throw new Error('ROOM_CONTROLLER_MESSAGES_STALE')
+    }
+    const actions = proposal.actions.map(action => validateControllerAction(action, { chatId, contextRevision }))
     const results = []
-    for (const action of proposal.actions) {
+    for (const action of actions) {
       results.push(applyAction(action, { actorId: 'controller', contextRevision }))
     }
     const actionIds = results.map(result => result?.event?.eventId).filter(Boolean)
@@ -49,6 +59,17 @@ function createControllerSession({ roomDb, repository, applyAction, decide, now 
       cost: proposal.cost ?? null,
     })
     return { decision: { id: decisionId, chatId, batchId, contextRevision, inputIds: messageIds, actionIds, results }, duplicate: false }
+  }
+
+  async function process(input = {}) {
+    assertId(input.chatId, 'ROOM_CHAT_ID_INVALID')
+    if (activeChats.has(input.chatId)) throw new Error('ROOM_CONTROLLER_CHAT_BUSY')
+    activeChats.add(input.chatId)
+    try {
+      return await processBatch(input)
+    } finally {
+      activeChats.delete(input.chatId)
+    }
   }
 
   return { process }

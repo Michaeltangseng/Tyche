@@ -68,3 +68,68 @@ test('controller session rejects a stale context before calling the controller',
   assert.equal(called, false)
   state.roomDb.close()
 })
+
+test('one evaluation runs per chat and failed evaluations release the slot', async () => {
+  const state = setup()
+  let rejectDecision
+  const session = createControllerSession({
+    ...state, applyAction: () => ({}),
+    decide: () => new Promise((_resolve, reject) => { rejectDecision = reject }),
+  })
+  const input = { chatId: state.chatId, contextRevision: 0 }
+  const running = session.process(input)
+  await assert.rejects(session.process(input), /CHAT_BUSY/)
+  rejectDecision(new Error('model unavailable'))
+  await assert.rejects(running, /model unavailable/)
+  const retry = session.process(input)
+  rejectDecision(new Error('retry reached model'))
+  await assert.rejects(retry, /retry reached model/)
+  state.roomDb.close()
+})
+
+test('context changes while deciding reject the entire proposal before applying actions', async () => {
+  const state = setup()
+  let applied = 0
+  const session = createControllerSession({
+    ...state, applyAction: () => { applied += 1 },
+    decide: async () => {
+      state.repository.createChatContextRevision({ chatId: state.chatId, instructions: 'New instructions', createdBy: 'user' })
+      return { actions: [{ type: 'note', chatId: state.chatId, contextRevision: 0, content: 'outdated' }] }
+    },
+  })
+  await assert.rejects(session.process({ chatId: state.chatId, contextRevision: 0 }), /CONTEXT_STALE/)
+  assert.equal(applied, 0)
+  state.roomDb.close()
+})
+
+test('foreign messages and foreign actions cannot escape the current chat', async () => {
+  const state = setup()
+  let applied = 0
+  const session = createControllerSession({
+    ...state, applyAction: () => { applied += 1 },
+    decide: async () => ({ actions: [
+      { type: 'note', chatId: state.chatId, contextRevision: 0, content: 'valid' },
+      { type: 'note', chatId: 'another-chat', contextRevision: 0, content: 'invalid' },
+    ] }),
+  })
+  await assert.rejects(session.process({ chatId: state.chatId, contextRevision: 0 }), /CHAT_MISMATCH/)
+  assert.equal(applied, 0)
+  const foreignRoom = state.repository.createRoom({ name: 'Other', workspace: '/tmp/other' })
+  const foreignChat = state.repository.createChat({ roomId: foreignRoom, title: 'Other' })
+  const foreignMessage = state.repository.appendMessage({ chatId: foreignChat, authorType: 'user', authorId: 'user', content: 'private' })
+  await assert.rejects(session.process({ chatId: state.chatId, contextRevision: 0, messageIds: [foreignMessage.messageId] }), /MESSAGE_SCOPE_INVALID/)
+  state.roomDb.close()
+})
+
+test('editing input messages during evaluation invalidates the proposal', async () => {
+  const state = setup()
+  const session = createControllerSession({
+    ...state, applyAction: () => assert.fail('stale action applied'),
+    decide: async () => {
+      state.repository.editMessage({ messageId: state.message.messageId, content: 'Stop instead' })
+      return { actions: [] }
+    },
+  })
+  await assert.rejects(session.process({ chatId: state.chatId, contextRevision: 0, messageIds: [state.message.messageId] }), /MESSAGES_STALE/)
+  state.roomDb.close()
+})
