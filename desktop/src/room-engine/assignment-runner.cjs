@@ -124,19 +124,24 @@ function createAssignmentRunner({ repository, supervisor, invokeAgent, resolveGr
       },
     ).catch(error => {
       const terminationFailed = error?.code === 'LOCAL_AGENT_TERMINATION_FAILED' || error?.message === 'LOCAL_AGENT_TERMINATION_FAILED'
-      if (terminationFailed) {
+      const executionUnknown = terminationFailed || error?.unknown === true || error?.code === 'EFFECT_UNKNOWN'
+      if (executionUnknown) {
         error.unknown = true
         try {
           withTransaction(() => {
             repository.markAssignmentExited({ assignmentId: assignment.id, status: 'waiting',
-              endedReason: 'termination_unconfirmed', outcome: 'unknown' })
+              endedReason: terminationFailed ? 'termination_unconfirmed' : (error?.message || 'execution_outcome_unknown'), outcome: 'unknown' })
             const zh = String(locale()).startsWith('zh')
-            repository.createAttention({ attentionId: `termination:${assignment.id}:${runId}`, chatId: assignment.chat_id,
+            const attentionId = `${terminationFailed ? 'termination' : 'execution-unknown'}:${assignment.id}:${runId}`
+            repository.createAttention({ attentionId, chatId: assignment.chat_id,
               taskId: assignment.task_id, type: 'failure', requestedBy: 'supervisor',
-              question: zh ? '未能确认原进程已结束，请检查残留进程后再重试或交接。' : 'Process exit could not be confirmed. Inspect residual processes before retrying or handing off.',
+              question: zh
+                ? (terminationFailed ? '未能确认原进程已结束，请检查残留进程后再重试或交接。' : '执行结果未知，请检查产物与残留进程后再重试或交接。')
+                : (terminationFailed ? 'Process exit could not be confirmed. Inspect residual processes before retrying or handing off.' : 'Execution outcome is unknown. Inspect artifacts and residual processes before retrying or handing off.'),
               options: [{ id: 'acknowledge', label: zh ? '已知悉' : 'Acknowledge' }] })
             repository.appendEvent({ roomId: assignment.room_id, chatId: assignment.chat_id, actorId: 'supervisor',
-              type: 'termination_unconfirmed', payload: { assignmentId: assignment.id, runId, outcome: 'unknown' } })
+              type: terminationFailed ? 'termination_unconfirmed' : 'execution_outcome_unknown',
+              payload: { assignmentId: assignment.id, runId, outcome: 'unknown', attentionId } })
           })
         } catch (persistenceError) {
           persistenceError.unknown = true

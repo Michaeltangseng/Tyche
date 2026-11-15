@@ -60,6 +60,24 @@ test('assignment runner marks invocation failures and does not accept a second s
   state.roomDb.close()
 })
 
+test('unknown invocation outcome stays quarantined until process reconciliation', async () => {
+  const state = setup()
+  const runner = createAssignmentRunner({
+    repository: state.repository,
+    supervisor: state.supervisor,
+    resolveGroup: () => ({ id: 'legacy-group', workdir: '/tmp/demo' }),
+    invokeAgent: async () => { throw Object.assign(new Error('provider result unknown'), { unknown: true }) },
+  })
+  await assert.rejects(runner.start({ assignmentId: state.assignmentId, prompt: 'Build' }).promise, /provider result unknown/)
+  const assignment = state.repository.getAssignmentContext(state.assignmentId)
+  assert.equal(assignment.status, 'waiting')
+  assert.equal(assignment.outcome, 'unknown')
+  assert.equal(state.repository.listEvents(state.roomId).some(event => event.type === 'session_exited'), false)
+  assert.equal(state.repository.listEvents(state.roomId).at(-1).type, 'execution_outcome_unknown')
+  assert.match(state.repository.getRoomSnapshot(state.roomId).attentions[0].question, /unknown|未知/i)
+  state.roomDb.close()
+})
+
 test('assignment runner imports a structured report returned by the Agent invocation', async () => {
   const state = setup()
   const runner = createAssignmentRunner({
