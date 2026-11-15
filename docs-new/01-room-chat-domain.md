@@ -128,5 +128,5 @@ Attention 只表示真正需要用户行动的事实：决策、澄清、审批�
 
 ## 共享 Room 主目录的可见性
 
-代码任务默认共享 Room 主目录。此模式下，Agent 可能看到其他 Assignment 尚未提交的文件变化；平台不能提供按 Assignment 的读取隔离。Prompt 可以要求 Agent 只读取任务输入和已发布 Artifact，但这只是协作约定。需要真实读写隔离时，必须使用 Assignment workspace。完整 Trace 默认仍按角色和 Task 限制读取。
+代码任务默认共享 Room 主目录。文件树可将角色辅助空间显示为隐藏目录，例如 `Room/.codex/agents/<role-id>/**`；它不代表独立 cwd 或安全隔离，也不改变 Room 级授权和租约。此模式下，Agent 可能看到其他 Assignment 尚未提交的文件变化；平台不能提供按 Assignment 的读取隔离。Prompt 可以要求 Agent 只读取任务输入和已发布 Artifact，但这只是协作约定。需要真实读写隔离时，必须使用 Assignment workspace。完整 Trace 默认仍按角色和 Task 限制读取。
 

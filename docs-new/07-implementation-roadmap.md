@@ -48,6 +48,10 @@ Assignment Runner 对所有明确标记为未知结果的原生调用统一进�
 4. Controller 只产生受校验的建议，Worker 只提交 Report；Task 状态由 Room Engine 和平台事实产生。
 5. 不在首个切片实现跨 Chat Task 依赖、默认隔离 workspace、自动删除旧引擎或新的远程服务。
 
+### Room 主目录与 Agent 隐式目录
+
+默认 Agent cwd 仍是 Room 主目录。文件树可以把 Agent 辅助文件按角色归在隐藏目录 `Room/.codex/agents/<role-id>/**` 下；这个展示/组织方式不创建隔离工作树，不改变 Room 根目录写授权、租约或 Artifact 发布语义，也不承诺 Agent 之间的文件读取隔离。项目源码与正式产物继续放在 Room 的正常项目路径；SQLite、Trace、凭据和秘密继续留在应用私有区。实现此目录前要确认不会覆盖 Provider 原生 `.codex` 配置；不要为了“每个角色一个目录”预先创建没有用途的目录或目录生命周期协议。
+
 ## 目标切片
 
 首个可交付切片只覆盖一个 Room、一个新 Chat、两个已有 Agent 角色和一条完整闭环：

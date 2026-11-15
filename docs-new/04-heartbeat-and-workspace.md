@@ -119,7 +119,8 @@ paused        用户或系统暂停派发
 ```text
 Room root                 项目主目录和共享工程事实
 Chat record               一次团队工作记录，主要保存在 SQLite
-Assignment workspace      某次 Agent 执行的隔离写入空间
+Agent home                Room root 下按角色展示的隐式辅助目录，例如 .codex/agents/<role-id>/
+Assignment workspace      某次 Agent 执行可选的隔离写入空间
 ```
 
 一个 Room 可以有多个 Chat，但默认只有一个项目主目录。例如：
@@ -129,6 +130,9 @@ Assignment workspace      某次 Agent 执行的隔离写入空间
   docs/
   src/
   assets/
+  .codex/                       # 隐藏的 Agent 辅助空间，不是默认执行目录
+    agents/
+      <role-id>/                # 可选的角色专属辅助文件
 
 应用私有区/
   rooms/<room-id>/
@@ -142,9 +146,11 @@ Assignment workspace      某次 Agent 执行的隔离写入空间
 
 ### 默认工作目录决策
 
-代码任务默认继续在 Room 主目录工作，以保留完整依赖、忽略文件、构建缓存和 Agent 对项目的真实上下文。平台通过目录/文件写入租约、受管理进程和版本快照防止冲突。
+代码任务默认继续在 Room 主目录工作，以保留完整依赖、忽略文件、构建缓存和 Agent 对项目的真实上下文。`Room/.codex/**` 是文件树中隐藏的 Agent 辅助空间，可用于角色专属的临时上下文或辅助文件；它不改变 Agent 的执行工作目录、写入租约单位或主项目产物位置。平台通过 Room 主目录写入租约、受管理进程和版本快照防止冲突。
 
-隔离 Assignment workspace 只用于：
+`Room/.codex/**` 只是组织和展示约定，不是隔离边界：在默认共享目录模式下，各 Agent 仍可能彼此读取其中的文件。平台不应把数据库、Trace、凭据或秘密写到这里。此目录不得覆盖或伪装原生 Agent 的项目配置；若与 Provider 已有的 `.codex` 配置约定冲突，应只使用 Meldwork 自己的子目录（例如 `.codex/agents/<role-id>/`），不得改写 Provider 配置。
+
+真正隔离的 Assignment workspace 只用于：
 
 - 并行探索或实验性改动；
 - 高风险、需要先验证的改动；
@@ -168,7 +174,7 @@ Agent 可以读取：
 
 ### 默认写入
 
-代码任务默认以 Room 主目录为工作目录；实际写入必须先由用户通过 `set_workspace_write` 授权。当前实现按真实 Room 根目录申请独占租约，重叠目录的写任务串行执行；Controller 始终只读。Assignment 的 `writeScopes` 表达写入意图，不构成按文件的 CLI 沙箱限制，非空范围仍需整个 Room 的用户授权。无范围的任务保持只读。探索性、高风险或显式 Artifact 契约任务才使用可选 Assignment workspace。
+代码任务默认以 Room 主目录为工作目录；`Room/.codex/agents/<role-id>/` 不作为 cwd，也不改变授权。实际写入必须先由用户通过 `set_workspace_write` 授权。当前实现按真实 Room 根目录申请独占租约，重叠目录的写任务串行执行；Controller 始终只读。Assignment 的 `writeScopes` 表达写入意图，不构成按文件的 CLI 沙箱限制，非空范围仍需整个 Room 的用户授权。无范围的任务保持只读。探索性、高风险或显式 Artifact 契约任务才使用可选 Assignment workspace。
 
 授权绑定目录的 realpath，领取租约后、启动原生调用前再次校验；目录指向或授权变化会拒绝执行。运行中或恢复状态 unknown 的 Assignment 存在时，拒绝修改同一 Room 的授权；应先停止并确认进程退出。授权 UI、自动 Artifact 快照仍待接通。只读任务不申请写租约，也不获得一致性快照，因此可能看到写任务的中间变化。
 
