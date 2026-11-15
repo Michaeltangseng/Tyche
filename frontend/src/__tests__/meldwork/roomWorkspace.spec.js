@@ -50,6 +50,28 @@ describe('v2 team workspace', () => {
     expect(wrapper.find('.room-load-older').exists()).toBe(false)
   })
 
+  it('keeps the reader at the same message position when prepending history', async () => {
+    const snapshot = data()
+    snapshot.messages = [{ id: 'latest', chat_id: 'chat-1', sequence: 101, author_type: 'user', content: 'Latest', created_at: '2026-11-15T00:01:00Z' }]
+    snapshot.messages_have_older = ['chat-1']
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    const timeline = wrapper.get('.room-timeline').element
+    let height = 500
+    Object.defineProperty(timeline, 'scrollHeight', { configurable: true, get: () => height })
+    timeline.scrollTop = 120
+    bridge.chatMessages.mockImplementationOnce(async () => {
+      height = 800
+      return { messages: [{ id: 'earlier', chat_id: 'chat-1', sequence: 1, author_type: 'user', content: 'Earlier', created_at: '2026-11-15T00:00:00Z' }], hasMore: false }
+    })
+
+    await wrapper.get('.room-load-older').trigger('click')
+    await flushPromises()
+
+    expect(timeline.scrollTop).toBe(420)
+  })
+
   it('opens saved diffs by ledger ID, escapes output and closes with Escape', async () => {
     const snapshot = data()
     snapshot.artifacts = [{ id: 'artifact', path: 'docs/spec.md', version: 'commit', status: 'published' }]

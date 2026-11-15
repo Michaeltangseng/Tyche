@@ -218,7 +218,7 @@ Report 入账和状态推导在同一事务内完成，成功后将 `report_rece
 
 第一版独立入口已落地：`RoomWorkspace.vue` 与 `useRoomWorkspace.js` 直接读取 v2 SQLite 快照，不通过旧 checkpoint/group UI。支持选择目录创建项目、选择已有 Provider、新建独立团队 Chat、发送消息、展示 Chat 角色/Report/Task/Attention 和 Room Artifact，以及回答 Attention、接受/拒绝 Artifact、暂停/恢复、停止、重试、已结束执行的交接和显式目录写授权。新 Chat 不复制另一 Chat 的角色或协作上下文。所有新增文案提供中英文。
 
-快照补充 roles/reports/artifacts；当前使用 1.5 秒串行轮询，卸载时释放计时器，切换 Room 后丢弃迟到结果。操作完成后等待旧轮询结束并重新读取，避免新 Chat 被旧快照覆盖。草稿按 Chat 隔离，发送失败保留。产物 diff 入口已接通（见下方只读切片）；分页、实时流式消息、Prompt/Skill 编辑、运行阻塞专项提示和完整 Trace 入口仍缺，不能视为 Phase 5 完成。
+快照补充 roles/reports/artifacts；当前使用 1.5 秒串行轮询，卸载时释放计时器，切换 Room 后丢弃迟到结果。操作完成后等待旧轮询结束并重新读取，避免新 Chat 被旧快照覆盖。草稿按 Chat 隔离，发送失败保留。产物 diff、消息历史分页、运行阻塞提示和 Assignment Trace 入口均已接通。向前加载历史会保持当前阅读位置。仍缺实时流式消息和 Prompt/Skill 配置界面；可选隔离 workspace 属于 Phase 6。
 
 动态角色已有真实 CLI 闭环：Controller 可按当前需求创建 Chat 级角色，平台检查 Room Provider/能力范围，后续决策可为该角色创建任务并派发。成员卡显示主控创建角色的理由、职责及 Prompt。Room 快照返回当前 Chat 角色的最新 Prompt；用户可通过统一、幂等的 `update_role_prompt` UserCommand 更新角色 Prompt revision。更新只影响后续 Assignment，保留历史 revision，不增加角色归档或停用状态机。Prompt 仍受 Chat/Role 归属校验，不能授予新的 Provider、能力或目录权限。
 

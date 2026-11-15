@@ -58,7 +58,7 @@
         <section class="room-conversation" :aria-label="t('room.chat')">
           <div ref="timeline" class="room-timeline">
             <p class="room-muted">{{ t('room.teamHint') }}</p>
-            <button v-if="hasOlderMessages" class="secondary-button room-load-older" type="button" :disabled="busy || loadingOlderMessages" @click="loadOlderMessages">{{ loadingOlderMessages ? t('room.loadingOlder') : t('room.loadOlder') }}</button>
+            <button v-if="hasOlderMessages" class="secondary-button room-load-older" type="button" :disabled="busy || loadingOlderMessages" @click="loadEarlierMessages">{{ loadingOlderMessages ? t('room.loadingOlder') : t('room.loadOlder') }}</button>
             <div class="room-team">
               <details v-for="role in roles" :key="role.id" class="room-role">
                 <summary>{{ role.display_name }} · {{ role.provider }}</summary>
@@ -249,6 +249,16 @@ async function sendMessage() {
   const target = chatId.value
   const content = draft.value
   if (await send(content)) drafts.value[target] = ''
+}
+async function loadEarlierMessages() {
+  const container = timeline.value
+  const previousHeight = container?.scrollHeight || 0
+  const previousTop = container?.scrollTop || 0
+  await loadOlderMessages()
+  await nextTick()
+  if (container && timeline.value === container) {
+    container.scrollTop = previousTop + container.scrollHeight - previousHeight
+  }
 }
 async function answer(attention) {
   await command({ type: 'answer_attention', attentionId: attention.id,
