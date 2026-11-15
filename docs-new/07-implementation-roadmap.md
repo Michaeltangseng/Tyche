@@ -54,7 +54,7 @@
 - `room-service.cjs`：Room Engine 的组合入口，后续 IPC、Controller Session 和 Agent 调用只依赖此门面。
 - `room-ipc.cjs`：将 Room Service 映射为窄 IPC channel；绑定 main/preload 时沿用现有 renderer 信任校验，不暴露数据库或进程能力。
 
-当前 v2 IPC/preload 提供 listRooms、createChat、bootstrap、snapshot、submitMessage、applyUserCommand、listStaleAssignments 七个入口。直接启动 Assignment、ControllerAction、Report 导入、Session liveness 写入和 effect 入队已从 Renderer 接口与 main channel 注册中删除，不保留旧调用兼容层；这些能力仅由主进程执行链使用。注册时必须提供 Renderer 信任校验，所有调用先完成信任与退出状态检查，再校验 DTO 字段和有界标量值。消息作者固定由 main 赋为本地 user，bootstrap 创建者和 UserCommand 审计 actor 同样由 main 赋值，Renderer 不得传入 author/actorId/createdBy 或自行指定生成对象 ID。Message 的 replyTo/taskId 必须引用同一 Chat 的有效对象。正文里的 action/Report 标记只属于消息内容，不进入平台事实写入通道。消息编辑/删除与实时订阅接口尚未开放。
+当前 v2 IPC/preload 提供 listRooms、createChat、bootstrap、snapshot、artifactDiff、submitMessage、applyUserCommand、listStaleAssignments 八个入口。直接启动 Assignment、ControllerAction、Report 导入、Session liveness 写入和 effect 入队已从 Renderer 接口与 main channel 注册中删除，不保留旧调用兼容层；这些能力仅由主进程执行链使用。注册时必须提供 Renderer 信任校验，所有调用先完成信任与退出状态检查，再校验 DTO 字段和有界标量值。消息作者固定由 main 赋为本地 user，bootstrap 创建者和 UserCommand 审计 actor 同样由 main 赋值，Renderer 不得传入 author/actorId/createdBy 或自行指定生成对象 ID。Message 的 replyTo/taskId 必须引用同一 Chat 的有效对象。正文里的 action/Report 标记只属于消息内容，不进入平台事实写入通道。消息编辑/删除与实时订阅接口尚未开放。
 
 复用 `desktop/src/project-room/project-state-schema.cjs`、`project-state-migrations.cjs`、`project-store.cjs` 的迁移经验，但不把新的 Task 状态继续塞进 checkpoint engine。复用 `desktop/src/security/private-file.cjs` 保证数据库目录权限，数据库放在应用私有区，不放入 Room 主目录。
 
@@ -188,7 +188,7 @@ Report 入账和状态推导在同一事务内完成，成功后将 `report_rece
 
 第一版独立入口已落地：`RoomWorkspace.vue` 与 `useRoomWorkspace.js` 直接读取 v2 SQLite 快照，不通过旧 checkpoint/group UI。支持选择目录创建项目、选择已有 Provider、新建独立团队 Chat、发送消息、展示 Chat 角色/Report/Task/Attention 和 Room Artifact，以及回答 Attention、接受/拒绝 Artifact、暂停/恢复、停止、重试、已结束执行的交接和显式目录写授权。新 Chat 不复制另一 Chat 的角色或协作上下文。所有新增文案提供中英文。
 
-快照补充 roles/reports/artifacts；当前使用 1.5 秒串行轮询，卸载时释放计时器，切换 Room 后丢弃迟到结果。操作完成后等待旧轮询结束并重新读取，避免新 Chat 被旧快照覆盖。草稿按 Chat 隔离，发送失败保留。此版没有分页、实时流式消息、Prompt/Skill 编辑、运行阻塞专项提示或完整 Trace/diff 入口，不能视为 Phase 5 完成。
+快照补充 roles/reports/artifacts；当前使用 1.5 秒串行轮询，卸载时释放计时器，切换 Room 后丢弃迟到结果。操作完成后等待旧轮询结束并重新读取，避免新 Chat 被旧快照覆盖。草稿按 Chat 隔离，发送失败保留。产物 diff 入口已接通（见下方只读切片）；分页、实时流式消息、Prompt/Skill 编辑、运行阻塞专项提示和完整 Trace 入口仍缺，不能视为 Phase 5 完成。
 
 验收：18 项前端定向测试与 43 项 Electron Node 主进程/IPC/preload 测试通过；前端普通构建与桌面构建通过。Electron 临时用户目录下已检查侧栏入口和新页面的消息、角色、报告、任务及 Attention 布局。窗口内用户已有草稿，未继续自动操作；发送/新 Chat/任务控制的桌面交互和真实 CLI 文档生成闭环仍待验收。临时验收项目未配置 Controller Provider，不能用于验证真实 Agent 产出。未跑全量测试或打包检查。额外尝试的旧 appControllers/App.navigation 测试存在失败，已在未修改的 HEAD 副本复现，未在此切片扩展修复。
 
@@ -285,7 +285,7 @@ v2 已解除对持久化旧 group 的宿主依赖。`native-runtime.cjs` 仅复�
 
 该切片在 Electron 内置 Node 运行时通过 95 项 Room/IPC/调度器定向测试，以及 14 项共享 project-room/影子 Git 调用回归；CLI 使用替身，未运行 Electron GUI、真实 CLI、打包或全量测试。
 
-每次原生调用仍创建新 Session；原生 sessionRef 的 v2 持久化/续跑、完整 Run Ledger/心跳接线仍待完成。无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实。v2 群聊 UI 首版和授权/停止/重试/交接入口已接通；下一步完成真实 CLI 端到端验收、运行阻塞提示与 Trace/diff 入口。
+每次原生调用仍创建新 Session；原生 sessionRef 的 v2 持久化/续跑、完整 Run Ledger/心跳接线仍待完成。无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实。v2 群聊 UI 首版和授权/停止/重试/交接及产物 diff 入口已接通；下一步完成真实 CLI 端到端验收、运行阻塞提示与 Trace 入口。
 
 ### 自动产物版本切片（2026-11-15）
 
@@ -313,4 +313,29 @@ ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/Electron.app/Contents/MacOS/
 
 另在独立临时 userData 中启动了真实 Electron 桌面应用，使用本切片生成的版本与 Report 打开 v2 项目室，通过 Renderer DOM 检查确认 `docs/requirements.md` 产物卡和报告正文均已显示。验收进程已退出，原有用户窗口和草稿未被操作；这项检查不等同于真实外部 CLI 端到端验收。
 
-边界：共享工作目录中的外部编辑器/未受平台管理的进程仍可能改变文件，因此版本记录表示执行区间内观察到的变化，不证明每一行都由该 Agent 编写。writeScopes 仍不是文件级沙箱，产物捕获记录整个工作目录的实际差异。异常退出/终止后的部分产物自动归档、快照 unknown 的专用恢复操作、已接受版本漂移提示与 Trace/diff UI 尚待实现；Artifact 接受当前只更新账本状态，不恢复工作目录。
+边界：共享工作目录中的外部编辑器/未受平台管理的进程仍可能改变文件，因此版本记录表示执行区间内观察到的变化，不证明每一行都由该 Agent 编写。writeScopes 仍不是文件级沙箱，产物捕获记录整个工作目录的实际差异。异常退出/终止后的部分产物自动归档、快照 unknown 的专用恢复操作、已接受版本漂移提示与 Trace UI 尚待实现；Artifact 接受当前只更新账本状态，不恢复工作目录。
+
+### 产物只读 diff 切片（2026-11-15）
+
+`artifact-reader.cjs` 已通过 Room Service、`room:artifact-diff` 和 preload 接入产物卡。只接受有界 `roomId/artifactId`，拒绝 Renderer 传入路径、版本或 Git 可执行文件。主进程验证 Artifact 归属，并从 `artifact_snapshot_created` 回执取得执行前后 commit；无可信回执的产物返回 unavailable，不退回读取当前工作目录。查询不创建 Git 仓库、不改账本或用户文件，无需 schema 变更。
+
+读取强制使用 literal pathspec，仅比较两个保存版本，因此当前文件被继续修改也不改变历史 diff。返回最多 256 KiB 的统一 diff，含 truncated 标记；删除和二进制变化保留 Git 的差异表示，截断多字节文本也受字节上限约束。Renderer 使用转义文本展示，不渲染产物内 HTML。
+
+`RoomArtifactDiff.vue` 是内联面板，支持关闭按钮、Escape、加载状态、失败重试和截断提示。切换产物、Room/Chat 或离开页面后，迟到结果不会覆盖新选择。没有增加 overlay、执行能力或旧 checkpoint 适配。
+
+验收命令：
+
+```sh
+# desktop/
+ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron --test --test-reporter=spec \
+  test/room-engine/artifact-snapshots.test.cjs test/room-engine/room-ipc.test.cjs \
+  test/security/preload-security.test.cjs test/room-engine/room-service.test.cjs
+# frontend/
+npx vitest run src/__tests__/meldwork/roomWorkspace.spec.js src/__tests__/meldwork/i18n.spec.js
+# 仓库根目录
+npm --prefix frontend run build
+npm --prefix frontend run build:desktop
+git diff --check
+```
+
+51 项 Desktop 与 19 项前端定向测试通过；两种构建通过（仍有既有的大 bundle 提示）。独立临时 userData 的真实 Electron 应用已通过 Renderer 点击产物卡、读取新增 IPC 并显示 `docs/requirements.md` 保存版本中的新增内容，验收进程随后退出，原用户窗口未操作。未运行全量测试、打包或真实外部 Agent CLI 闭环。全文浏览、版本间任意比较、已接受版本漂移和 Trace 入口仍待后续切片。

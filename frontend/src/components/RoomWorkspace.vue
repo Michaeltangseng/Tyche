@@ -99,6 +99,8 @@
           <h2>{{ t('room.artifacts') }}</h2>
           <article v-for="artifact in snapshot.artifacts" :key="artifact.id" class="room-card">
             <strong>{{ artifact.path }}</strong><p>{{ artifact.version }} · {{ statusLabel(artifact.status) }}</p>
+            <button class="secondary-button room-show-diff" type="button" @click="diffArtifactId = artifact.id">{{ t('room.diff') }}</button>
+            <RoomArtifactDiff v-if="diffArtifactId === artifact.id" :key="`${roomId}:${artifact.id}`" :api="api" :room-id="roomId" :artifact="artifact" @close="diffArtifactId = ''" />
             <div v-if="artifact.status === 'published'" class="room-actions">
               <button class="secondary-button" :disabled="busy" @click="command({ type: 'accept_artifact', artifactId: artifact.id })">{{ t('room.accept') }}</button>
               <button class="secondary-button" :disabled="busy" @click="command({ type: 'reject_artifact', artifactId: artifact.id })">{{ t('room.reject') }}</button>
@@ -115,6 +117,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { t } from '../i18n.js'
 import { useRoomWorkspace } from '../composables/useRoomWorkspace.js'
+import RoomArtifactDiff from './RoomArtifactDiff.vue'
 
 const props = defineProps({ api: { type: Object, required: true }, pickDirectory: { type: Function, required: true }, agents: { type: Array, default: () => [] } })
 const { rooms, snapshot, roomId, chatId, chat, tasks, assignments, roles, messages, reports, attentions,
@@ -124,6 +127,7 @@ const name = ref('')
 const directory = ref('')
 const providers = ref([])
 const chatTitle = ref('')
+const diffArtifactId = ref('')
 const drafts = ref({})
 const draft = computed({ get: () => drafts.value[chatId.value] || '', set: value => { drafts.value[chatId.value] = value } })
 const answers = ref({})
@@ -164,7 +168,7 @@ async function answer(attention) {
   await command({ type: 'answer_attention', attentionId: attention.id,
     ...(attention.options_json?.length ? { optionId: answers.value[attention.id] } : { comment: answers.value[attention.id] }) })
 }
-watch(chatId, () => { handoffRoles.value = {}; answers.value = {} })
+watch([roomId, chatId], () => { handoffRoles.value = {}; answers.value = {}; diffArtifactId.value = '' })
 watch(() => entries.value.length, async () => { await nextTick(); if (timeline.value) timeline.value.scrollTop = timeline.value.scrollHeight })
 onMounted(load)
 </script>

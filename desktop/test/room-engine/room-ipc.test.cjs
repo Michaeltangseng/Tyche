@@ -67,12 +67,25 @@ test('internal execution and platform fact channels are not registered', () => {
   const { handlers, service, ipcMain } = setup()
   registerRoomIpc({ ipcMain, service, requireRenderer: () => {} })
   assert.deepEqual([...handlers.keys()].sort(), [
-    'room:list', 'room:chat-create',
+    'room:list', 'room:chat-create', 'room:artifact-diff',
     'room:bootstrap', 'room:snapshot', 'room:message-submit', 'room:user-command', 'room:assignments-stale',
   ].sort())
   for (const channel of ['room:assignment-start', 'room:controller-action', 'room:report-import', 'room:session-liveness', 'room:effect-enqueue']) {
     assert.equal(handlers.has(channel), false)
   }
+})
+
+test('artifact diff IPC accepts only bounded ledger IDs, never paths or versions', async () => {
+  const { handlers, calls, service, ipcMain } = setup()
+  registerRoomIpc({ ipcMain, service, requireRenderer: () => {} })
+  const input = { roomId: 'room', artifactId: 'artifact' }
+  await handlers.get(CHANNELS.artifactDiff)({}, input)
+  assert.deepEqual(calls[0], ['artifactDiff', input, undefined])
+  for (const extra of [{ path: '/etc/passwd' }, { version: 'HEAD' }, { gitExecutable: 'other' }]) {
+    await assert.rejects(handlers.get(CHANNELS.artifactDiff)({}, { ...input, ...extra }), /UNKNOWN_FIELD/)
+  }
+  await assert.rejects(handlers.get(CHANNELS.artifactDiff)({}, { ...input, artifactId: 'x'.repeat(257) }), /TEXT_INVALID/)
+  assert.equal(calls.length, 1)
 })
 
 test('Room index and fresh Chat creation reject extra identities and remain SQLite-owned', async t => {

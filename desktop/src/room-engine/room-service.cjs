@@ -20,7 +20,7 @@ const RETRYABLE_CONTROLLER_ERRORS = new Set([
   'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN',
 ])
 
-function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController, controllerBatchDelayMs = 40, onControllerError = error => console.error('[room-controller]', error), autoRunEffects = false, onEffectError = error => console.error('[room-effects]', error), locale, getInvocationRecords } = {}) {
+function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController, controllerBatchDelayMs = 40, onControllerError = error => console.error('[room-controller]', error), autoRunEffects = false, onEffectError = error => console.error('[room-effects]', error), locale, getInvocationRecords, readArtifactDiff } = {}) {
   if (!roomDb || !repository) throw new TypeError('ROOM_SERVICE_DEPENDENCIES_REQUIRED')
   const ingress = createMessageIngress(roomDb, repository)
   const actions = createRoomActionService({ roomDb, repository })
@@ -263,6 +263,11 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     listRooms: () => repository.listRooms(),
     createChat,
     snapshot,
+    artifactDiff: input => {
+      if (closed) throw new Error('ROOM_SERVICE_CLOSED')
+      if (typeof readArtifactDiff !== 'function') throw new Error('ROOM_ARTIFACT_DIFF_UNAVAILABLE')
+      return readArtifactDiff(input)
+    },
     startAssignment: input => {
       if (closed) throw new Error('ROOM_SERVICE_CLOSED')
       if (!assignmentRunner) throw new Error('ROOM_ASSIGNMENT_RUNNER_UNAVAILABLE')

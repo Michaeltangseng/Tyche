@@ -9,6 +9,7 @@ const CHANNELS = Object.freeze({
   createChat: 'room:chat-create',
   bootstrap: 'room:bootstrap',
   snapshot: 'room:snapshot',
+  artifactDiff: 'room:artifact-diff',
   submitMessage: 'room:message-submit',
   userCommand: 'room:user-command',
   listStale: 'room:assignments-stale',
@@ -82,6 +83,12 @@ function registerRoomIpc({ ipcMain, service, requireRenderer, isShuttingDown = (
       return service.snapshot(input)
     }],
     [CHANNELS.submitMessage, input => service.submitMessage(messageInput(input))],
+    [CHANNELS.artifactDiff, input => {
+      assertInput(input, ['roomId', 'artifactId'])
+      text(input.roomId)
+      text(input.artifactId)
+      return service.artifactDiff(input)
+    }],
     [CHANNELS.userCommand, input => service.applyUserCommand(commandInput(input), { actorId: LOCAL_USER.id })],
     [CHANNELS.listStale, input => {
       assertInput(input, ['roomId', 'timeoutMs'])

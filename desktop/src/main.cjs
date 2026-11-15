@@ -113,6 +113,7 @@ const { createRoomService } = require('./room-engine/room-service.cjs')
 const { createControllerAgent } = require('./room-engine/controller-agent.cjs')
 const { createRoomNativeRuntime } = require('./room-engine/native-runtime.cjs')
 const { createArtifactSnapshots } = require('./room-engine/artifact-snapshots.cjs')
+const { createArtifactReader } = require('./room-engine/artifact-reader.cjs')
 const { registerRoomIpc } = require('./room-engine/room-ipc.cjs')
 const { nativeOpenClawOptions } = require('./agents/cli/openclaw-runtime.cjs')
 const { migrateLegacyProductData } = require('./product-data-migration.cjs')
@@ -1239,6 +1240,7 @@ if (!hasSingleInstanceLock) {
       roomEngineService = createRoomService({
         roomDb: roomEngineDb,
         repository: roomRepository,
+        readArtifactDiff: createArtifactReader({ roomDb: roomEngineDb, directory: path.join(privateRoot, 'room-engine', 'artifacts') }),
         invokeAgent: roomNativeRuntime.invokeAgent,
         resolveGroup: roomNativeRuntime.resolveTarget,
         autoRunEffects: true,

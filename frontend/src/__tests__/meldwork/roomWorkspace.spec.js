@@ -14,6 +14,7 @@ function api(snapshot = data()) {
   return { listRooms: vi.fn(async () => [{ id: 'room-1', name: 'Demo' }]), snapshot: vi.fn(async () => snapshot),
     bootstrap: vi.fn(async () => ({ roomId: 'room-1', chatId: 'chat-1' })),
     createChat: vi.fn(async () => ({ roomId: 'room-1', chatId: 'chat-2' })),
+    artifactDiff: vi.fn(async () => ({ text: '+saved change', truncated: false })),
     submitMessage: vi.fn(async () => ({ ok: true })), applyUserCommand: vi.fn(async () => ({ ok: true })) }
 }
 const cleanup = []
@@ -26,6 +27,58 @@ function mountRoom(bridge) {
 }
 
 describe('v2 team workspace', () => {
+  it('opens saved diffs by ledger ID, escapes output and closes with Escape', async () => {
+    const snapshot = data()
+    snapshot.artifacts = [{ id: 'artifact', path: 'docs/spec.md', version: 'commit', status: 'published' }]
+    const bridge = api(snapshot)
+    bridge.artifactDiff.mockResolvedValue({ text: '+<script>unsafe()</script>', truncated: true })
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    await wrapper.get('.room-show-diff').trigger('click')
+    await flushPromises()
+    expect(bridge.artifactDiff).toHaveBeenCalledWith({ roomId: 'room-1', artifactId: 'artifact' })
+    expect(wrapper.get('.room-artifact-diff pre').text()).toContain('<script>unsafe()</script>')
+    expect(wrapper.find('.room-artifact-diff script').exists()).toBe(false)
+    expect(wrapper.get('.room-artifact-diff [role=status]').text()).toContain('first part')
+    await wrapper.get('.room-artifact-diff').trigger('keydown', { key: 'Escape' })
+    expect(wrapper.find('.room-artifact-diff').exists()).toBe(false)
+  })
+
+  it('ignores a late diff after changing artifacts and clears it on a chat switch', async () => {
+    const snapshot = data()
+    snapshot.artifacts = ['one', 'two'].map(id => ({ id, path: `${id}.md`, version: 'commit', status: 'published' }))
+    const bridge = api(snapshot)
+    let finish
+    bridge.artifactDiff.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    bridge.artifactDiff.mockResolvedValue({ text: '+second artifact', truncated: false })
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    await wrapper.findAll('.room-show-diff')[0].trigger('click')
+    await flushPromises()
+    await wrapper.findAll('.room-show-diff')[1].trigger('click')
+    await flushPromises()
+    finish({ text: '+old artifact', truncated: false })
+    await flushPromises()
+    expect(wrapper.get('.room-artifact-diff pre').text()).toBe('+second artifact')
+    await wrapper.get('.room-chat-toolbar select').setValue('chat-2')
+    expect(wrapper.find('.room-artifact-diff').exists()).toBe(false)
+  })
+
+  it('shows diff read failures and lets the user retry', async () => {
+    const snapshot = data()
+    snapshot.artifacts = [{ id: 'artifact', path: 'spec.md', version: 'commit', status: 'published' }]
+    const bridge = api(snapshot)
+    bridge.artifactDiff.mockRejectedValueOnce(new Error('unavailable'))
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    await wrapper.get('.room-show-diff').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.room-artifact-diff [role=alert]').text()).toContain('unavailable')
+    await wrapper.get('.room-artifact-diff [role=alert] button').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.room-artifact-diff pre').text()).toBe('+saved change')
+  })
+
   it('serializes polling and discards stale Room responses and disposes its timer', async () => {
     vi.useFakeTimers()
     let finish
