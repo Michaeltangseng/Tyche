@@ -36,7 +36,7 @@ function mountRoom(bridge) {
 }
 
 describe('v2 team workspace', () => {
-  it('saves chat skill defaults and restores a role to inheritance', async () => {
+  it('saves cloneable chat and role skill payloads and restores inheritance', async () => {
     const snapshot = data()
     snapshot.room.providers_json = ['codex']
     snapshot.chats[0].skill_bindings_json = []
@@ -48,10 +48,19 @@ describe('v2 team workspace', () => {
     await chatSkill.setValue(true)
     await wrapper.get('.room-skill-settings button').trigger('click')
     expect(bridge.updateSkillBindings).toHaveBeenCalledWith({ chatId: 'chat-1', selections: [{ targetKind: 'codex', namespace: 'local', slug: 'review', name: 'Review' }] })
+    expect(() => structuredClone(bridge.updateSkillBindings.mock.calls[0][0])).not.toThrow()
+    const roleSkill = wrapper.get('.room-role-skills input[type=checkbox]')
+    await roleSkill.setValue(false)
+    await roleSkill.setValue(true)
+    await wrapper.get('.room-role-skills button').trigger('click')
+    await flushPromises()
+    expect(bridge.updateSkillBindings).toHaveBeenLastCalledWith({ chatId: 'chat-1', roleId: 'worker', selections: [{ targetKind: 'codex', namespace: 'local', slug: 'review', name: 'Review' }] })
+    expect(() => structuredClone(bridge.updateSkillBindings.mock.calls.at(-1)[0])).not.toThrow()
     const roleMode = wrapper.find('.room-role-skills select')
     await roleMode.setValue('inherit')
     await wrapper.get('.room-role-skills button').trigger('click')
     expect(bridge.updateSkillBindings).toHaveBeenLastCalledWith({ chatId: 'chat-1', roleId: 'worker', inheritChat: true })
+    expect(() => structuredClone(bridge.updateSkillBindings.mock.calls.at(-1)[0])).not.toThrow()
   })
 
   it('renders and appends live output for a running assignment', async () => {
@@ -398,6 +407,7 @@ describe('v2 team workspace', () => {
     await wrapper.get('.room-create').trigger('submit')
     await flushPromises()
     expect(bridge.bootstrap).toHaveBeenCalledWith({ name: 'New team', workspace: '/tmp/demo', providers: ['codex'] })
+    expect(() => structuredClone(bridge.bootstrap.mock.calls[0][0])).not.toThrow()
     expect(wrapper.find('.room-create').exists()).toBe(false)
     await wrapper.get('.room-toolbar button').trigger('click')
     await wrapper.get('.room-create').trigger('keydown', { key: 'Escape' })

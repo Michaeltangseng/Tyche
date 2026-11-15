@@ -230,6 +230,9 @@ const entries = computed(() => [
 
 function roleName(id) { return roles.value.find(item => item.id === id)?.display_name || t('room.agent') }
 function skillKey(skill) { return `${skill.targetKind}:${skill.namespace}:${skill.slug}` }
+function plainSkill(skill) {
+  return { targetKind: skill.targetKind, namespace: skill.namespace, slug: skill.slug, name: skill.name }
+}
 function hasSkill(bindings, skill) { return (bindings || []).some(item => skillKey(item) === skillKey(skill)) }
 function skillCatalogFor(role) { return skillCatalog.value.filter(skill => !role?.provider || skill.targetKind === role.provider) }
 function toggleChatSkill(skill, checked) {
@@ -248,7 +251,7 @@ function markRoleSkillsDirty(roleId) { roleSkillsDirty.value = { ...roleSkillsDi
 async function saveChatSkills() {
   if (typeof props.api.updateSkillBindings !== 'function') return
   chatSkillsBusy.value = true
-  try { await props.api.updateSkillBindings({ chatId: chatId.value, selections: chatSkills.value }); chatSkillsDirty.value = false; await refresh({ afterCurrent: true }) }
+  try { await props.api.updateSkillBindings({ chatId: chatId.value, selections: chatSkills.value.map(plainSkill) }); chatSkillsDirty.value = false; await refresh({ afterCurrent: true }) }
   finally { chatSkillsBusy.value = false }
 }
 async function saveRoleSkills(role) {
@@ -256,7 +259,7 @@ async function saveRoleSkills(role) {
   roleSkillsBusy.value = { ...roleSkillsBusy.value, [role.id]: true }
   try {
     const mode = roleSkillModes.value[role.id]
-    const input = mode === 'inherit' ? { chatId: chatId.value, roleId: role.id, inheritChat: true } : { chatId: chatId.value, roleId: role.id, selections: mode === 'none' ? [] : (roleSkills.value[role.id] || []) }
+    const input = mode === 'inherit' ? { chatId: chatId.value, roleId: role.id, inheritChat: true } : { chatId: chatId.value, roleId: role.id, selections: mode === 'none' ? [] : (roleSkills.value[role.id] || []).map(plainSkill) }
     await props.api.updateSkillBindings(input)
     roleSkillsDirty.value = { ...roleSkillsDirty.value, [role.id]: false }
     await refresh({ afterCurrent: true })
@@ -317,7 +320,7 @@ async function chooseDirectory() {
   finally { picking.value = false }
 }
 async function create() {
-  if (await createRoom({ name: name.value.trim(), workspace: directory.value, providers: providers.value })) creating.value = false
+  if (await createRoom({ name: name.value.trim(), workspace: directory.value, providers: [...providers.value] })) creating.value = false
 }
 async function newChat() { if (await createChat(chatTitle.value.trim())) chatTitle.value = '' }
 async function sendMessage() {
