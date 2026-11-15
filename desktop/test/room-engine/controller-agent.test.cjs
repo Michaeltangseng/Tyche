@@ -55,6 +55,11 @@ test('message queue invokes a read-only native controller and commits its action
   assert.equal(context.saveSession, false)
   assert.equal(normalizeContextPackId(context.contextPackId), context.contextPackId)
   assert.ok(context.promptOverride.includes(submitted.message.messageId))
+  assert.ok(context.promptOverride.includes('The discriminator key for each action object is "type"'))
+  assert.ok(context.promptOverride.includes('"type":"create_task"'))
+  const facts = JSON.parse(context.promptOverride.split('\n').at(-1))
+  assert.deepEqual(facts.workspace, { writeAuthorized: false })
+  assert.deepEqual(facts.artifacts, [])
   assert.equal(state.roomDb.database.prepare('SELECT objective FROM tasks').get().objective, 'Write requirements')
   assert.equal(state.roomDb.database.prepare('SELECT COUNT(*) AS count FROM controller_decisions').get().count, 1)
   await service.close()
@@ -87,4 +92,36 @@ test('native controller forwards cancellation and rejects malformed output', asy
   await assert.rejects(decide(input), /RESPONSE_JSON_INVALID/)
   abort.abort()
   await assert.rejects(decide(input), /CONTROLLER_CANCELLED/)
+})
+
+test('controller sees persisted write authorization and Room artifacts as facts', async t => {
+  const state = setup(t)
+  const roomId = state.repository.getChatContext(state.chatId).chat.room_id
+  state.roomDb.database.prepare('UPDATE rooms SET write_authorized_root=? WHERE id=?').run('/tmp/demo', roomId)
+  const artifactId = state.repository.createArtifact({ roomId, path: 'docs/requirements.md', kind: 'file', version: 'saved-version' })
+  let facts
+  const decide = createControllerAgent({ repository: state.repository, resolveGroup: () => ({ id: 'host' }),
+    invokeAgent: async (...args) => {
+      facts = JSON.parse(args[5].promptOverride.split('\n').at(-1))
+      return { pendingMessage: { content: '{"actions":[]}' } }
+    } })
+  await decide({ chatId: state.chatId, batchId: 'facts', contextRevision: 0, roles: [], messages: [] })
+  assert.equal(facts.workspace.writeAuthorized, true)
+  assert.equal(facts.artifacts[0].id, artifactId)
+  assert.equal(facts.artifacts[0].version, 'saved-version')
+})
+
+test('the real-provider action-key failure is rejected atomically without compatibility coercion', async t => {
+  const state = setup(t)
+  const decide = createControllerAgent({ repository: state.repository, resolveGroup: () => ({ id: 'host' }),
+    invokeAgent: async () => ({ pendingMessage: { content: JSON.stringify({ actions: [
+      { type: 'create_task', chatId: state.chatId, contextRevision: 0, objective: 'Must not persist', kind: 'draft' },
+      { action: 'create_role', chatId: state.chatId, contextRevision: 0, displayName: 'Writer', provider: 'codex' },
+    ] }) } }) })
+  const service = createRoomService({ ...state, decideController: decide })
+  t.after(() => service.close())
+  await assert.rejects(service.processControllerBatch({ chatId: state.chatId, batchId: 'bad-discriminator', contextRevision: 0 }), /ACTION_TYPE_INVALID/)
+  assert.equal(state.roomDb.database.prepare('SELECT count(*) AS n FROM tasks').get().n, 0)
+  assert.equal(state.roomDb.database.prepare('SELECT count(*) AS n FROM agent_roles').get().n, 0)
+  assert.equal(state.roomDb.database.prepare('SELECT count(*) AS n FROM controller_decisions').get().n, 0)
 })

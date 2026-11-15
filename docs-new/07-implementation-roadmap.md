@@ -6,7 +6,7 @@
 
 `desktop/src/room-engine/` 已提供私有 SQLite 账本、统一消息入口、ControllerAction/UserCommand/PlatformTransition 校验、Report 导入和状态推导、outbox、Supervisor 事实记录，以及 main/preload 生命周期接线。Controller 的批次动作、派发 effect 和审计在同一事务内提交；Agent 消息不能直接授权派发。数据库目录使用 `0700`、文件使用 `0600`（Windows 除外）。启动恢复会将崩溃遗留 running effects 标为 unknown 并产生 Attention，不自动重放；未启动的 pending effects 仍可继续消费。详细能力和未完成项见 Phase 4 与下方当前实现进度。
 
-当前切片已接入独立的 v2 Renderer 页面，尚未接入旧 Chat 迁移。`controller-agent.cjs` 已在 main 中通过 `native-runtime.cjs` 连接原生 `invokeAgent`：按 Room Provider 配置顺序选择首个 Provider，验证 Chat/目录归属与已安装 Agent；创建本次调用的临时执行描述，不查找已有 group，也不创建隐藏群聊。Controller 强制只读、不写入旧消息/Session、严格解析 JSON；Worker 写入需要用户授权与根目录独占租约。Assignment Runner 已补齐原生接口要求的 promptOverride/contextPackId，并带入角色 Prompt、任务创建时的协作约定和 Report 输出要求。独立 Controller Session 已支持批次幂等、context revision 校验和结构化决策审计；动态角色创建与 Prompt 更新已受 Room Provider/能力白名单约束。Room schema 已升级到 v3，既有 Room 默认只读。测试已穿过真实 LocalWorkspace 调用路径，但 CLI 进程仍使用替身；尚未实际运行真实 CLI 完成端到端验收，也未运行仓库全量测试。
+当前切片已接入独立的 v2 Renderer 页面，尚未接入旧 Chat 迁移。`controller-agent.cjs` 已在 main 中通过 `native-runtime.cjs` 连接原生 `invokeAgent`：按 Room Provider 配置顺序选择首个 Provider，验证 Chat/目录归属与已安装 Agent；创建本次调用的临时执行描述，不查找已有 group，也不创建隐藏群聊。Controller 强制只读、不写入旧消息/Session、严格解析 JSON；Worker 写入需要用户授权与根目录独占租约。Assignment Runner 已补齐原生接口要求的 promptOverride/contextPackId，并带入角色 Prompt、任务创建时的协作约定和 Report 输出要求。独立 Controller Session 已支持批次幂等、context revision 校验和结构化决策审计；动态角色创建与 Prompt 更新已受 Room Provider/能力白名单约束。Room schema 已升级到 v3，既有 Room 默认只读。已在 Electron main 使用真实 Claude Code CLI 跑通自动组队、单文档任务、结构化 Report、产物快照/diff 和确认 Attention，并验证账本重开；真实多 Agent 评审、长任务心跳、原生会话续跑和异常恢复验收仍待完成，未运行仓库全量测试。
 
 ## 实施原则
 
@@ -339,3 +339,23 @@ git diff --check
 ```
 
 51 项 Desktop 与 19 项前端定向测试通过；两种构建通过（仍有既有的大 bundle 提示）。独立临时 userData 的真实 Electron 应用已通过 Renderer 点击产物卡、读取新增 IPC 并显示 `docs/requirements.md` 保存版本中的新增内容，验收进程随后退出，原用户窗口未操作。未运行全量测试、打包或真实外部 Agent CLI 闭环。全文浏览、版本间任意比较、已接受版本漂移和 Trace 入口仍待后续切片。
+
+### 真实 CLI 首个闭环（2026-11-15）
+
+新增显式入口 `desktop/scripts/smoke-room.cjs`。它在 Electron main 内通过真实 LocalWorkspace、原生 CLI adapter、Room Service 和影子 Git 工作，不模拟模型返回。平台账本、Trace 和产物保存到新建的临时目录；CLI 使用原生配置/凭据，不安装 Provider、不改配置或覆盖模型。当前脚本接受 claude/codex/gemini 作为显式选择，不加入默认测试。
+
+首次 Claude Code 调用暴露了主控契约不足：Prompt 只列出动作名称与参数，模型返回 `action` 字段，运行时要求 `type`，整批被拒绝。修正为明确 discriminator、平铺参数与完整 JSON 示例，仍严格拒绝错误字段，不做兼容转换。另向主控提供平台写授权事实和 Room 产物引用，说明写任务需要已授权的非空 writeScopes，以及不重复创建开放 Attention。
+
+修复后两次真实验收成功：均为 4 次 CLI 模型调用（3 次 Controller、1 次 Worker），分别约 33.5 秒和 42.5 秒。主控自行创建 1 位角色、1 个文档任务并派发；Worker 实际写出包含目标、操作、计分、失败条件与验收标准的 `docs/requirements.md`，返回 ready Report；平台生成 commit/Artifact 并关联 Report；主控发起同 Task 的 approval/decision Attention。第二次验收还关闭并重新打开数据库，确认产物、报告、Attention 与保存版本 diff 均可读取。没有预先创建角色/任务或向模型注入固定动作答案。
+
+复现命令（`desktop/`）：
+
+```sh
+npm run smoke:room -- --run --provider claude
+ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron --test --test-reporter=spec \
+  test/room-engine/controller-agent.test.cjs test/room-engine/controller-session.test.cjs test/room-engine/native-runtime.test.cjs
+```
+
+真实验收需显式 `--run`，缺失时以退出码 2 结束，不启动模型。最多 8 次 CLI 调用，单次 Worker 调用期限 90 秒，等待目标闭环期限 180 秒；退出时通过服务关闭取消并等待运行收口。控制台只打印阶段、身份、数量与错误码，详细平台 Trace 在临时私有目录，CLI 自身会话按原生配置保存。`userData/smoke-result.json` 保存本地验收摘要。29 项定向回归、语法检查及 `git diff --check` 通过；未跑全量测试或打包。本机 Codex 命令因安装缺失原生二进制无法启动，本轮未改安装或用其他可执行文件冒充通过；Gemini 尚未验收。
+
+范围限制：本切片验证到“单 Worker 文档产出 → 等待用户确认”，不包含真实用户接受后实施、多 Agent 互评、成本/角色上限、长时心跳、原生 Session 续跑、崩溃后的残留进程对账，也不等同于完整产品验收。下一步优先补齐主控上下文更新与角色生命周期，再扩展真实评审与用户决策后的闭环。
