@@ -8,8 +8,9 @@ const { createUserCommandService } = require('./user-commands.cjs')
 const { createMentionFallback } = require('./mention-fallback.cjs')
 const { createAssignmentRunner } = require('./assignment-runner.cjs')
 const { createControllerSession } = require('./controller-session.cjs')
+const { createControllerQueue } = require('./controller-queue.cjs')
 
-function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController } = {}) {
+function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController, controllerBatchDelayMs = 40, onControllerError = error => console.error('[room-controller]', error) } = {}) {
   if (!roomDb || !repository) throw new TypeError('ROOM_SERVICE_DEPENDENCIES_REQUIRED')
   const ingress = createMessageIngress(roomDb, repository)
   const actions = createRoomActionService({ roomDb, repository })
@@ -31,11 +32,20 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
   const controller = typeof decideController === 'function'
     ? createControllerSession({ roomDb, repository, applyAction: applyControllerAction, decide: decideController, now: () => Date.now() })
     : null
+  const controllerQueue = controller
+    ? createControllerQueue({
+      processBatch: controller.process,
+      getContextRevision: chatId => repository.getChatContext(chatId).revision,
+      delayMs: controllerBatchDelayMs,
+    })
+    : null
 
   function submitMessage(input, { deterministicFallback = true } = {}) {
     const result = ingress.submit(input)
     let dispatch = null
-    if (deterministicFallback && input.author?.type === 'user' && result.mentions.length > 0) {
+    if (controllerQueue) {
+      controllerQueue.enqueue({ chatId: input.chatId, messageId: result.message.messageId }).catch(onControllerError)
+    } else if (deterministicFallback && input.author?.type === 'user' && result.mentions.length > 0) {
       dispatch = fallback.dispatch({
         chatId: input.chatId,
         messageId: result.message.messageId,
@@ -143,6 +153,8 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
       if (!controller) throw new Error('ROOM_CONTROLLER_UNAVAILABLE')
       return controller.process(input)
     },
+    flushController: chatId => controllerQueue ? controllerQueue.flush(chatId) : Promise.resolve(null),
+    close: () => controllerQueue ? controllerQueue.close() : Promise.resolve(),
     retryUnknownEffect: outbox.retryUnknown,
     repository,
   }

@@ -156,3 +156,22 @@ test('failed decision audit persistence rolls back all batch actions and effects
   assert.equal(state.repository.listEvents(state.roomId).length, 0)
   state.roomDb.close()
 })
+
+test('configured controller batches user and agent messages without duplicate fallback dispatch', async () => {
+  const state = setup()
+  const calls = []
+  const service = createRoomService({
+    roomDb: state.roomDb, repository: state.repository,
+    decideController: async input => { calls.push(input); return { actions: [] } },
+    onControllerError: error => assert.fail(error),
+  })
+  const first = service.submitMessage({ chatId: state.chatId, author: { type: 'user', id: 'user' }, content: '@Backend build' })
+  const second = service.submitMessage({ chatId: state.chatId, author: { type: 'agent', id: state.roleId }, content: '@Backend review' })
+  assert.equal(first.dispatch, null)
+  await service.flushController(state.chatId)
+  assert.equal(calls.length, 1)
+  assert.deepEqual(calls[0].messages.map(message => message.id), [first.message.messageId, second.message.messageId])
+  assert.equal(state.repository.listAssignments(state.taskId).length, 1)
+  await service.close()
+  state.roomDb.close()
+})

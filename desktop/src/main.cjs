@@ -1427,7 +1427,8 @@ if (!hasSingleInstanceLock) {
         }
       },
       () => installer?.waitForIdle(),
-      () => {
+      async () => {
+        await roomEngineService?.close()
         roomEngineDb?.close()
         roomEngineDb = null
         roomEngineService = null

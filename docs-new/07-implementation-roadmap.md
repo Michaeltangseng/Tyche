@@ -146,7 +146,9 @@ Controller Prompt、角色 Prompt 和 ChatContext revision 通过 `chat-context.
 
 当前批处理入口已实现 Chat 级单批次运行保护、决策前后 context revision 校验、输入消息编辑/删除检测，以及 Message/ControllerAction 的 Chat 归属校验。模型输出的所有动作会先完成协议校验，再开始应用；模型失败会释放运行槽。动作、派发 effect 和决策审计在同一同步事务中提交，后续动作或审计写入失败会整批回滚；嵌套服务事务通过 SQLite savepoint 组合。Controller 批次统一经过 Room Service 的派发入口，避免只创建 Assignment 而漏建 effect。模型调用发生在事务外，事务内不启动 Agent。
 
-Controller Session 默认在 60 秒后超时，构造时可通过 `timeoutMs` 设置正整数毫秒期限；主进程调用方可向批处理传入 `signal` 取消等待。路由器收到独立的 AbortSignal，超时/取消后释放 Chat 运行槽，迟到成功或失败不应用动作、不写入决策审计。超时计时器与取消监听在调用结束后清理。此处是逻辑取消；真实 CLI 适配器仍需遵守 signal 并接入进程终止和清理，才能保证旧进程不再消耗资源。这里仍未实现自动合批队列，也不保证跨进程只调用一次模型，不能据此视为 Phase 4 已完成。
+Controller Session 默认在 60 秒后超时，构造时可通过 `timeoutMs` 设置正整数毫秒期限；主进程调用方可向批处理传入 `signal` 取消等待。路由器收到独立的 AbortSignal，超时/取消后释放 Chat 运行槽，迟到成功或失败不应用动作、不写入决策审计。超时计时器与取消监听在调用结束后清理。此处是逻辑取消；真实 CLI 适配器仍需遵守 signal 并接入进程终止和清理，才能保证旧进程不再消耗资源。
+
+`controller-queue.cjs` 已提供 Chat 级自动合批（默认 40 毫秒）、批内 messageId 去重，以及运行期间新消息的下一批排队。批次启动时读取最新 context revision，不同 Chat 独立运行。配置了 `decideController` 的 Room Service 会将用户/Agent 消息统一排队，避免同时触发确定性 fallback；未配置 Controller 时保留显式用户 @mention fallback。服务关闭会取消运行批次、拒绝待处理请求并等待结束，主进程在此之后关闭数据库。队列当前保存在内存，消息本身仍先持久化到 SQLite；重启补调度、失败退避重试和 Report/Event 触发器尚未接入，也不保证跨进程只调用一次模型，不能据此视为 Phase 4 已完成。真实 Controller 模型仍未在 main 中配置，因此现有桌面 UI 仍使用原路径。
 
 工作项：
 
