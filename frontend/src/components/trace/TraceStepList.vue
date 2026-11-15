@@ -1,5 +1,5 @@
 <template>
-  <section class="trace-step-list" :class="{ compact }">
+  <section ref="listElement" class="trace-step-list" :class="{ compact }" @scroll="onScroll">
     <header v-if="!compact" class="trace-step-list-header">
       <div class="trace-step-list-title">
         <strong>{{ t('trace.steps.title') }}</strong>
@@ -119,7 +119,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import {
   ChevronDownOutline,
   CodeSlashOutline,
@@ -160,6 +160,10 @@ const {
 } = props.controller
 
 const rawView = ref(false)
+const listElement = ref(null)
+let pinnedToBottom = true
+let loadingOlder = false
+let autoFillBudget = 3
 const activities = computed(() => buildTraceActivities(steps.value || [], {
   workdir: props.workdir,
 }))
@@ -167,6 +171,65 @@ const blocks = computed(() => activities.value.blocks)
 const rawSteps = computed(() => (steps.value || [])
   .filter(step => ['message', 'raw', 'stderr'].includes(step.kind))
   .slice(-200))
+
+async function onScroll(event) {
+  if (!props.compact) return
+  const element = event.currentTarget
+  if (!element) return
+  pinnedToBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 24
+  if (!hasMore.value || loading.value || loadingOlder) return
+  if (element.scrollTop > 32) return
+  const beforeHeight = element.scrollHeight
+  loadingOlder = true
+  try {
+    await loadOlder()
+    await nextTick()
+    element.scrollTop += element.scrollHeight - beforeHeight
+  } finally {
+    loadingOlder = false
+  }
+}
+
+async function pinToBottom() {
+  if (!props.compact || !pinnedToBottom) return
+  await nextTick()
+  const element = listElement.value
+  if (!element) return
+  element.scrollTop = element.scrollHeight
+}
+
+async function loadIfNotScrollable() {
+  if (!props.compact || autoFillBudget <= 0) return
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await nextTick()
+    const element = listElement.value
+    if (!element || !element.clientHeight) return
+    if (element.scrollHeight > element.clientHeight + 8) return
+    if (!hasMore.value || loading.value || loadingOlder) return
+    loadingOlder = true
+    autoFillBudget -= 1
+    try {
+      await loadOlder()
+      await nextTick()
+    } finally {
+      loadingOlder = false
+    }
+  }
+}
+
+watch(() => steps.value.length, () => {
+  void pinToBottom()
+  void loadIfNotScrollable()
+})
+
+watch(loading, (value) => {
+  if (!value) void loadIfNotScrollable()
+})
+
+onMounted(() => {
+  void pinToBottom()
+  void loadIfNotScrollable()
+})
 
 function fileExtension(path) {
   return String(path || '').split('.').at(-1).toLowerCase()

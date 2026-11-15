@@ -51,6 +51,17 @@ describe('TraceStepList', () => {
     expect(wrapper.get('.trace-step-row-command').text()).toContain('$ ls -la')
   })
 
+  it('loads the next older batch when the compact trace scrolls to the top', async () => {
+    const fixture = controller({ hasMore: ref(true) })
+    const wrapper = mount(TraceStepList, {
+      props: { compact: true, controller: fixture },
+    })
+
+    expect(wrapper.get('.trace-step-scroll-hint').text()).toBe('trace.steps.scrollOlder')
+    await wrapper.get('.trace-step-list').trigger('scroll')
+    expect(fixture.loadOlder).toHaveBeenCalledTimes(1)
+  })
+
   it('switches between structured and raw views', async () => {
     const wrapper = mount(TraceStepList, { props: { controller: controller() } })
     await wrapper.get('.trace-step-view-toggle').trigger('click')

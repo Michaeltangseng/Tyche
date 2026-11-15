@@ -532,6 +532,21 @@
 
 .trace-step-list.compact {
   gap: 4px;
+  max-height: 360px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.trace-step-scroll-hint {
+  min-height: 20px;
+  display: grid;
+  place-items: center;
+  color: var(--faint);
+  font-size: 10px;
+  user-select: none;
 }
 
 .trace-step-list-header {

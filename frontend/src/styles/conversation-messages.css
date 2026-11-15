@@ -1262,24 +1262,6 @@
   padding: 2px 4px 2px 2px;
 }
 
-.agent-activity-full-trace {
-  justify-self: start;
-  margin-top: 2px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.agent-activity-full-trace:hover,
-.agent-activity-full-trace:focus-visible {
-  outline: none;
-  color: var(--text);
-}
-
 .inline-trace-empty {
   margin: 0;
   padding: 2px 0;

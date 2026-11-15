@@ -421,7 +421,6 @@
                   :status="messageTraceStatus(message)"
                   :status-label="messageTraceStatus(message) ? runStatusLabel(messageTraceStatus(message)) : ''"
                   :t="t"
-                  :open-trace="opener => openMessageTrace(message, opener)"
                   :workdir="activeGroup.workdir || ''"
                   @preview-file="previewTraceFile"
                 />
@@ -807,16 +806,6 @@
                 </small>
               </div>
             </div>
-            <button
-              v-if="activeGroup.conversationType !== 'direct' && displayedRunAgentRuns.length"
-              class="icon-button run-details-button"
-              type="button"
-              :title="t('run.openDetails')"
-              :aria-label="t('run.openDetails')"
-              @click="openDisplayedRunTrace($event.currentTarget)"
-            >
-              <TerminalOutline />
-            </button>
           </header>
           <div v-if="isDisplayedCoordinatedRun" class="run-agent-list" :aria-label="t('run.agents')">
             <button
@@ -1006,7 +995,6 @@ const {
   messageTraceKey,
   messageTraceStatus,
   messageTraceSummary,
-  openDisplayedRunTrace,
   openAttachment,
   openDisplayedTraceForAgent,
   openTraceForMessage,
@@ -1075,10 +1063,6 @@ function messageHasFullTrace(message) {
 function previewTraceFile(path) {
   if (!path) return
   props.controller.openWorkdirFile?.(path)
-}
-
-function openMessageTrace(message, opener) {
-  props.controller.openTraceForMessage?.(message, opener)
 }
 
 function timelineTimestamp(value) {

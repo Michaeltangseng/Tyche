@@ -37,14 +37,6 @@
       <p v-else-if="!loading" class="inline-trace-empty">
         {{ live ? t('trace.inline.waiting') : t('trace.steps.noFullTrace') }}
       </p>
-      <button
-        v-if="hasFullTrace && openTrace"
-        class="agent-activity-full-trace"
-        type="button"
-        @click="openFullTrace"
-      >
-        {{ t('trace.inline.openFullTrace') }}
-      </button>
     </div>
 
     <div v-if="!expanded && visibleFiles.length" class="agent-file-list">
@@ -120,7 +112,6 @@ const props = defineProps({
   defaultOpen: { type: Boolean, default: false },
   elapsedLabel: { type: String, default: '' },
   live: { type: Boolean, default: false },
-  openTrace: { type: Function, default: null },
   previewFile: { type: Function, default: null },
   runId: { type: String, required: true },
   status: { type: String, default: '' },
@@ -206,10 +197,6 @@ function toggle() {
 function previewPath(path) {
   if (!path) return
   emit('preview-file', path)
-}
-
-function openFullTrace(event) {
-  props.openTrace?.(event?.currentTarget || null)
 }
 
 function preview(file) {
