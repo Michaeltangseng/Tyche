@@ -20,6 +20,32 @@ const {
   waitFor,
 } = require('../support/main-security-test-harness.cjs')
 
+test('room skill binding callbacks use the initialized snapshot service', async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-skill-wiring-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const { createRoomService } = require('../../src/room-engine/room-service.cjs')
+  let roomOptions
+  const { harness } = loadMain(directory, {
+    moduleMocks: {
+      './room-engine/native-runtime.cjs': {
+        createRoomNativeRuntime: () => ({ invokeAgent: async () => {}, resolveTarget: async () => ({}) }),
+      },
+      './room-engine/room-service.cjs': {
+        createRoomService(input) { roomOptions = input; return createRoomService(input) },
+      },
+    },
+  })
+  await harness.ready()
+  assert.ok(roomOptions)
+  const selections = [{ targetKind: 'codex', namespace: 'global', slug: 'review', name: 'Review' }]
+  assert.deepEqual(await roomOptions.prepareSkillBindings({ selections, allowedProviders: ['codex'] }), selections)
+  assert.deepEqual(await roomOptions.prepareSkillSelections('codex', selections), selections)
+  assert.deepEqual(harness.skillSnapshotSelectionInstances[0].prepareCalls, [
+    { kind: 'codex', selections }, { kind: 'codex', selections },
+  ])
+  await assert.rejects(roomOptions.prepareSkillBindings({ selections, provider: 'claude', allowedProviders: ['claude'] }), /ROOM_SKILL_PROVIDER_NOT_ALLOWED/)
+})
+
 test('local desktop authorization requires the current main frame and exact frontend file', (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-main-security-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))

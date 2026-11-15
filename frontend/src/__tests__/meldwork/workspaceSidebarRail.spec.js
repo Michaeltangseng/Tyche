@@ -83,6 +83,21 @@ function controller() {
 }
 
 describe('workspace sidebar rail', () => {
+  it('hides the legacy project tree while viewing team rooms', async () => {
+    const fixture = controller()
+    fixture.roomWorkspaceAvailable = ref(true)
+    fixture.openRoomWorkspace = vi.fn()
+    fixture.activeView.value = 'rooms'
+    const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })
+    expect(wrapper.find('.sidebar-rail-project').exists()).toBe(false)
+    fixture.sidebarCollapsed.value = false
+    await nextTick()
+    expect(wrapper.find('.project-room-nav-section').exists()).toBe(false)
+    fixture.activeView.value = 'home'
+    await nextTick()
+    expect(wrapper.get('.project-room-nav-section').text()).toContain('room.legacyProjects')
+    wrapper.unmount()
+  })
   it('keeps agent and project entries in the collapsed rail', async () => {
     const fixture = controller()
     const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })

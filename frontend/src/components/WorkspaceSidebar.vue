@@ -84,7 +84,7 @@
         />
 
         <section
-          v-if="projectRoomEntries.length"
+          v-if="projectRoomEntries.length && activeView !== 'rooms'"
           class="sidebar-rail-section"
           :aria-label="t('projectRoom.sidebar.title')"
         >
@@ -316,11 +316,11 @@
       </section>
 
       <section
-        v-if="projectRoomPreviewEnabled || projectRoomEntries.length"
+        v-if="activeView !== 'rooms' && (projectRoomPreviewEnabled || projectRoomEntries.length)"
         class="nav-section project-room-nav-section"
       >
         <div class="nav-heading project-room-heading" role="heading" aria-level="2">
-          <span>{{ t('projectRoom.sidebar.title') }}</span>
+          <span>{{ t(roomWorkspaceAvailable ? 'room.legacyProjects' : 'projectRoom.sidebar.title') }}</span>
           <small class="nav-heading-count">{{ projectRoomEntries.length }}</small>
         </div>
         <button

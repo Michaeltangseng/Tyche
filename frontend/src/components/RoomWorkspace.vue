@@ -31,6 +31,11 @@
 
     <p v-if="error || pickerError" class="room-error" role="alert">{{ t('room.error') }} <button class="secondary-button" @click="reload">{{ t('room.refresh') }}</button></p>
     <template v-if="snapshot">
+      <section class="room-overview" :aria-label="t('room.overview')">
+        <div><strong>{{ t('room.directory') }}</strong><span class="room-workspace-path">{{ snapshot.room.workspace || t('room.noDirectory') }}</span></div>
+        <div><strong>{{ t('room.controller') }}</strong><span>{{ providerLabel(snapshot.room.providers_json?.[0]) }}</span><span class="room-status">{{ t(chat?.controller_blocked ? 'room.routingBlocked' : chat?.status === 'paused' ? 'room.routingPaused' : 'room.routingEnabled') }}</span></div>
+        <div><strong>{{ t('room.availableAgents') }}</strong><span>{{ (snapshot.room.providers_json || []).map(providerLabel).join(' · ') || t('room.noProviders') }}</span></div>
+      </section>
       <div class="room-chat-toolbar">
         <select v-model="chatId" :aria-label="t('room.chat')" :disabled="busy">
           <option v-for="item in snapshot.chats" :key="item.id" :value="item.id">{{ item.title }}</option>
@@ -40,22 +45,32 @@
           <button class="secondary-button" :disabled="busy || !chatTitle.trim()">{{ t('room.newChat') }}</button>
         </form>
       </div>
-      <article v-if="chat?.current_context?.instructions" class="room-context" :aria-label="t('room.context')">
-        <strong>{{ t('room.context') }} · v{{ chat.current_context.revision }}</strong>
-        <p>{{ chat.current_context.instructions }}</p>
-      </article>
+      <details class="room-context room-settings">
+        <summary>{{ t('room.context') }}<span v-if="chat?.current_context"> · v{{ chat.current_context.revision }}</span></summary>
+        <p class="room-context-content">{{ chat?.current_context?.instructions || t('room.noContext') }}</p>
+        <p class="room-muted">{{ t('room.contextHint') }}</p>
+        <form class="room-context-editor" @submit.prevent="sendContext">
+          <textarea v-model="contextDraft" :aria-label="t('room.contextInput')" :placeholder="t('room.contextInput')" rows="2" maxlength="100000" />
+          <button class="secondary-button" :disabled="busy || !chat || !contextDraft.trim()">{{ t('room.sendContext') }}</button>
+        </form>
+      </details>
       <article v-if="chat?.controller_blocked" class="room-warning room-controller-blocked" role="alert">
         <span>{{ t('room.controllerBlocked') }}</span>
         <button class="secondary-button" :disabled="busy" @click="command({ type: 'resume_chat' })">{{ t('room.controllerRetry') }}</button>
       </article>
-      <section v-if="skillCatalog.length" class="room-skill-settings" :aria-label="t('room.skills')">
+      <details class="room-skill-settings room-settings" :aria-label="t('room.skills')">
+        <summary>{{ t('room.skills') }} · {{ chat?.skill_bindings_json?.length || 0 }}</summary>
         <header><strong>{{ t('room.chatSkills') }}</strong><span class="room-muted">{{ t('room.skillsHint') }}</span></header>
+        <p v-if="skillsLoading" class="room-muted">{{ t('room.skillsLoading') }}</p>
+        <p v-if="skillsError" class="room-error" role="alert">{{ t('room.skillsLoadError') }} <button class="secondary-button" type="button" @click="loadSkillCatalog">{{ t('room.refresh') }}</button></p>
+        <p v-else-if="!skillsLoading && !skillCatalog.length" class="room-muted">{{ t('room.skillsEmpty') }}</p>
+        <p v-if="skillsSaveError" class="room-error" role="alert">{{ t(skillsSaveError) }}</p>
         <label v-for="skill in skillCatalog" :key="skillKey(skill)" class="room-skill-option">
-          <input type="checkbox" :checked="hasSkill(chat?.skill_bindings_json, skill)" :disabled="busy || chatSkillsBusy" @change="toggleChatSkill(skill, $event.target.checked)" />
-          {{ skill.name || skill.slug }} <small>{{ skill.targetKind }}</small>
+          <input type="checkbox" :checked="hasSkill(chatSkills, skill)" :disabled="busy || chatSkillsBusy" @change="toggleChatSkill(skill, $event.target.checked)" />
+          {{ skill.name || skill.slug }} <small>{{ skill.targetKind }} · {{ skill.namespace }}</small>
         </label>
         <button class="secondary-button" :disabled="busy || chatSkillsBusy || !chatSkillsDirty" @click="saveChatSkills">{{ chatSkillsBusy ? t('room.skillsSaving') : t('room.saveSkills') }}</button>
-      </section>
+      </details>
       <div class="room-permissions">
         <label><input type="checkbox" :checked="Boolean(snapshot.room.write_authorized_root)" :disabled="busy || permissionBusy" @change="command({ type: 'set_workspace_write', allowWrite: $event.target.checked })" />{{ t('room.allowWrite') }}</label>
         <span class="room-muted">{{ t('room.writeHint') }}</span>
@@ -66,6 +81,8 @@
         <section class="room-conversation" :aria-label="t('room.chat')">
           <div ref="timeline" class="room-timeline">
             <p class="room-muted">{{ t('room.teamHint') }}</p>
+            <h2>{{ t('room.members', { count: roles.length }) }}</h2>
+            <p v-if="!roles.length" class="room-team-empty">{{ t('room.noMembers') }}</p>
             <button v-if="hasOlderMessages" class="secondary-button room-load-older" type="button" :disabled="busy || loadingOlderMessages" @click="loadEarlierMessages">{{ loadingOlderMessages ? t('room.loadingOlder') : t('room.loadOlder') }}</button>
             <div class="room-team">
               <details v-for="role in roles" :key="role.id" class="room-role">
@@ -88,7 +105,7 @@
                   <div v-if="roleSkillModes[role.id] === 'override'" class="room-skill-options">
                     <label v-for="skill in skillCatalogFor(role)" :key="skillKey(skill)" class="room-skill-option">
                       <input type="checkbox" :checked="hasSkill(roleSkills[role.id], skill)" :disabled="busy || roleSkillsBusy[role.id]" @change="toggleRoleSkill(role, skill, $event.target.checked)" />
-                      {{ skill.name || skill.slug }} <small>{{ skill.targetKind }}</small>
+                      {{ skill.name || skill.slug }} <small>{{ skill.targetKind }} · {{ skill.namespace }}</small>
                     </label>
                   </div>
                   <button class="secondary-button" :disabled="busy || roleSkillsBusy[role.id] || !roleSkillsDirty[role.id]" @click="saveRoleSkills(role)">{{ roleSkillsBusy[role.id] ? t('room.skillsSaving') : t('room.saveSkills') }}</button>
@@ -199,6 +216,11 @@ const answers = ref({})
 const handoffRoles = ref({})
 const rolePrompts = ref({})
 const skillCatalog = ref([])
+const skillsLoading = ref(false)
+const skillsError = ref(false)
+const skillsSaveError = ref(false)
+let skillLoadGeneration = 0
+const contextDraft = ref('')
 const chatSkills = ref([])
 const chatSkillsDirty = ref(false)
 const chatSkillsBusy = ref(false)
@@ -229,6 +251,7 @@ const entries = computed(() => [
 ].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))))
 
 function roleName(id) { return roles.value.find(item => item.id === id)?.display_name || t('room.agent') }
+function providerLabel(kind) { return props.agents.find(agent => agent.kind === kind)?.label || kind || t('room.noProviders') }
 function skillKey(skill) { return `${skill.targetKind}:${skill.namespace}:${skill.slug}` }
 function plainSkill(skill) {
   return { targetKind: skill.targetKind, namespace: skill.namespace, slug: skill.slug, name: skill.name }
@@ -248,32 +271,54 @@ function toggleRoleSkill(role, skill, checked) {
   roleSkillsDirty.value = { ...roleSkillsDirty.value, [role.id]: true }
 }
 function markRoleSkillsDirty(roleId) { roleSkillsDirty.value = { ...roleSkillsDirty.value, [roleId]: true } }
+function skillSaveErrorKey(error) {
+  if (String(error?.message || '').includes('LOCAL_SKILL_MANIFEST_MISSING')) return 'room.skillsManifestMissing'
+  if (String(error?.message || '').includes('LOCAL_SKILL_TRUST_REQUIRED')) return 'room.skillsTrustRequired'
+  return 'room.skillsSaveError'
+}
 async function saveChatSkills() {
   if (typeof props.api.updateSkillBindings !== 'function') return
   chatSkillsBusy.value = true
-  try { await props.api.updateSkillBindings({ chatId: chatId.value, selections: chatSkills.value.map(plainSkill) }); chatSkillsDirty.value = false; await refresh({ afterCurrent: true }) }
+  skillsSaveError.value = false
+  const targetChat = chatId.value
+  try { await props.api.updateSkillBindings({ chatId: targetChat, selections: chatSkills.value.map(plainSkill) }); if (chatId.value === targetChat) chatSkillsDirty.value = false; await refresh({ afterCurrent: true }) }
+  catch (error) { if (chatId.value === targetChat) skillsSaveError.value = skillSaveErrorKey(error) }
   finally { chatSkillsBusy.value = false }
 }
 async function saveRoleSkills(role) {
   if (typeof props.api.updateSkillBindings !== 'function') return
   roleSkillsBusy.value = { ...roleSkillsBusy.value, [role.id]: true }
+  skillsSaveError.value = false
   try {
     const mode = roleSkillModes.value[role.id]
     const input = mode === 'inherit' ? { chatId: chatId.value, roleId: role.id, inheritChat: true } : { chatId: chatId.value, roleId: role.id, selections: mode === 'none' ? [] : (roleSkills.value[role.id] || []).map(plainSkill) }
     await props.api.updateSkillBindings(input)
     roleSkillsDirty.value = { ...roleSkillsDirty.value, [role.id]: false }
     await refresh({ afterCurrent: true })
-  } finally { roleSkillsBusy.value = { ...roleSkillsBusy.value, [role.id]: false } }
+  } catch (error) { if (chatId.value === role.chat_id) skillsSaveError.value = skillSaveErrorKey(error) }
+  finally { roleSkillsBusy.value = { ...roleSkillsBusy.value, [role.id]: false } }
 }
+const skillProviders = computed(() => [...new Set([...(snapshot.value?.room?.providers_json || []), ...roles.value.map(role => role.provider)].filter(Boolean))].sort().join(','))
 async function loadSkillCatalog() {
-  if (typeof props.api.skills !== 'function') { skillCatalog.value = []; return }
-  const kinds = new Set([...(snapshot.value?.room?.providers_json || []), ...roles.value.map(role => role.provider)].filter(Boolean))
-  const results = await Promise.all([...kinds].map(kind => props.api.skills(kind).catch(() => ({ skills: [] }))))
-  skillCatalog.value = results.flatMap(result => result?.skills || [])
-  if (chat.value) chatSkills.value = chat.value.skill_bindings_json || []
+  const generation = ++skillLoadGeneration
+  skillsLoading.value = true
+  skillsError.value = false
+  const kinds = skillProviders.value ? skillProviders.value.split(',') : []
+  const results = await Promise.allSettled(kinds.map(kind => typeof props.api.skills === 'function' ? props.api.skills(kind) : Promise.reject(new Error('SKILLS_UNAVAILABLE'))))
+  if (generation !== skillLoadGeneration) return
+  skillsError.value = results.some(result => result.status === 'rejected' || result.value?.supported === false)
+  const skills = results.flatMap(result => result.status === 'fulfilled' ? result.value?.skills || [] : [])
+  skillCatalog.value = [...new Map(skills.map(skill => [skillKey(skill), skill])).values()]
+  skillsLoading.value = false
+}
+function syncSkillDrafts() {
+  if (!chatSkillsDirty.value) chatSkills.value = chat.value?.skill_bindings_json || []
   const modes = {}; const values = {}
-  for (const role of roles.value) { modes[role.id] = role.skill_bindings_json === null ? 'inherit' : (role.skill_bindings_json?.length ? 'override' : 'none'); values[role.id] = role.skill_bindings_json || [] }
-  roleSkillModes.value = modes; roleSkills.value = values; roleSkillsDirty.value = {}
+  for (const role of roles.value) {
+    modes[role.id] = roleSkillsDirty.value[role.id] ? roleSkillModes.value[role.id] : role.skill_bindings_json === null ? 'inherit' : (role.skill_bindings_json?.length ? 'override' : 'none')
+    values[role.id] = roleSkillsDirty.value[role.id] ? roleSkills.value[role.id] : role.skill_bindings_json || []
+  }
+  roleSkillModes.value = modes; roleSkills.value = values
 }
 function taskAssignments(id) { return assignments.value.filter(item => item.task_id === id) }
 function canRetry(item) { return ['failed', 'waiting', 'blocked', 'cancelled'].includes(item.status) && item.outcome !== 'unknown' && !assignments.value.some(next => next.previous_assignment_id === item.id) }
@@ -328,6 +373,10 @@ async function sendMessage() {
   const content = draft.value
   if (await send(content)) drafts.value[target] = ''
 }
+async function sendContext() {
+  const targetChat = chatId.value
+  if (await send(contextDraft.value.trim())) { if (targetChat === chatId.value) contextDraft.value = '' }
+}
 async function loadEarlierMessages() {
   const container = timeline.value
   const previousHeight = container?.scrollHeight || 0
@@ -342,19 +391,33 @@ async function answer(attention) {
   await command({ type: 'answer_attention', attentionId: attention.id,
     ...(attention.options_json?.length ? { optionId: answers.value[attention.id] } : { comment: answers.value[attention.id] }) })
 }
-watch([roomId, chatId], () => { handoffRoles.value = {}; answers.value = {}; rolePrompts.value = {}; chatSkillsDirty.value = false; diffArtifactId.value = ''; traceSteps.value = {}; traceLoaded.value = {}; traceErrors.value = {}; traceCursors.value = {}; traceHasMore.value = {}; traceBlobTexts.value = {}; traceBlobOffsets.value = {}; traceBlobBusy.value = {}; traceBlobEof.value = {}; void loadSkillCatalog() })
+watch([roomId, chatId], () => { handoffRoles.value = {}; answers.value = {}; rolePrompts.value = {}; contextDraft.value = ''; chatSkillsDirty.value = false; roleSkillsDirty.value = {}; skillsSaveError.value = false; syncSkillDrafts(); diffArtifactId.value = ''; traceSteps.value = {}; traceLoaded.value = {}; traceErrors.value = {}; traceCursors.value = {}; traceHasMore.value = {}; traceBlobTexts.value = {}; traceBlobOffsets.value = {}; traceBlobBusy.value = {}; traceBlobEof.value = {} })
 watch(roles, items => {
   const next = { ...rolePrompts.value }
   for (const role of items) if (!(role.id in next)) next[role.id] = role.current_prompt || ''
   rolePrompts.value = next
 }, { immediate: true })
-watch([snapshot, roles], () => { void loadSkillCatalog() }, { immediate: true })
+watch(skillProviders, () => { void loadSkillCatalog() }, { immediate: true })
+watch([snapshot, roles, chatId], syncSkillDrafts, { immediate: true })
 watch(() => entries.value.length, async () => { await nextTick(); if (timeline.value) timeline.value.scrollTop = timeline.value.scrollHeight })
 onMounted(load)
 </script>
 
 <style scoped>
 .room-workspace { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: auto; padding: 24px; gap: 16px; }
+.room-overview { display: flex; flex-wrap: wrap; gap: 10px 24px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 12px; }
+.room-overview > div { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.room-overview > div:first-child { flex-basis: 100%; }
+.room-workspace-path { overflow-wrap: anywhere; }
+.room-status { opacity: .65; }
+.room-settings { flex-shrink: 0; max-height: 28vh; overflow: auto; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.room-settings summary { cursor: pointer; font-size: 13px; }
+.room-settings header { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.room-skill-option { display: inline-flex; gap: 6px; align-items: center; margin: 6px 14px 6px 0; font-size: 12px; }
+.room-context-content { white-space: pre-wrap; font-size: 13px; }
+.room-context-editor { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.room-context-editor textarea { flex: 1; min-width: min(100%, 220px); }
+.room-team-empty { font-size: 13px; line-height: 1.6; opacity: .75; }
 .room-toolbar, .room-chat-toolbar, .room-permissions, .room-actions, .room-new-chat { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 h1 { font-size: 20px; margin: 0 auto 0 0; } h2 { font-size: 14px; margin: 10px 0; }
 input:not([type=checkbox]), select, textarea { border: 1px solid var(--border); background: var(--surface); color: inherit; border-radius: 8px; padding: 8px 10px; max-width: 100%; }

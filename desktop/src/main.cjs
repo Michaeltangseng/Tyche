@@ -173,6 +173,7 @@ const knowledgeBaseSourcesCache = new Map()
 let attachmentStore = null
 let skillCatalog = null
 let skillTrustStore = null
+let skillSnapshotSelections = null
 let shutdownStarted = false
 let roomEngineDb = null
 let roomEngineService = null
@@ -740,7 +741,7 @@ function createWorkspace() {
   skillTrustStore = new LocalSkillTrustStore({
     storagePath: path.join(privateRoot, 'skill-trust-audit.jsonl'),
   })
-  const skillSnapshotSelections = new LocalSkillSnapshotSelections({
+  skillSnapshotSelections = new LocalSkillSnapshotSelections({
     catalog: skillCatalog,
     snapshotStore: skillSnapshotStore,
     contentBlobStore,

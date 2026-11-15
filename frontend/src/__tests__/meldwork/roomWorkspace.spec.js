@@ -36,6 +36,77 @@ function mountRoom(bridge) {
 }
 
 describe('v2 team workspace', () => {
+  it('shows the directory, controller, available agents and empty configuration states', async () => {
+    const snapshot = data()
+    snapshot.room.workspace = '/tmp/current-project'
+    snapshot.room.providers_json = ['codex', 'claude']
+    const bridge = api(snapshot)
+    bridge.skills.mockResolvedValue({ supported: true, skills: [] })
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    expect(wrapper.get('.room-overview').text()).toContain('/tmp/current-project')
+    expect(wrapper.get('.room-overview').text()).toContain('Codex')
+    expect(wrapper.get('.room-overview').text()).toContain('Automatic dispatch enabled')
+    expect(wrapper.get('.room-team-empty').text()).toContain('No execution roles yet')
+    expect(wrapper.get('.room-skill-settings').text()).toContain('No skills found')
+    expect(wrapper.get('.room-context').text()).toContain('No collaboration agreement yet')
+    await wrapper.get('.room-context-editor textarea').setValue('Ask two reviewers before implementing.')
+    await wrapper.get('.room-context-editor').trigger('submit')
+    await flushPromises()
+    expect(bridge.submitMessage).toHaveBeenCalledWith({ chatId: 'chat-1', content: 'Ask two reviewers before implementing.' })
+  })
+
+  it('preserves unsaved skills across polling and keeps the catalog deduplicated', async () => {
+    vi.useFakeTimers()
+    const snapshot = data()
+    snapshot.room.providers_json = ['codex']
+    const bridge = api(snapshot)
+    bridge.snapshot.mockImplementation(async () => structuredClone(snapshot))
+    const skill = { targetKind: 'codex', namespace: 'local', slug: 'review', name: 'Review' }
+    bridge.skills.mockResolvedValue({ supported: true, skills: [skill, skill] })
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    expect(wrapper.findAll('.room-skill-settings input')).toHaveLength(1)
+    await wrapper.get('.room-skill-settings input').setValue(true)
+    await vi.advanceTimersByTimeAsync(1600)
+    expect(wrapper.get('.room-skill-settings input').element.checked).toBe(true)
+    expect(bridge.skills).toHaveBeenCalledTimes(1)
+    bridge.updateSkillBindings.mockRejectedValueOnce(new Error('save failed'))
+    await wrapper.get('.room-skill-settings > button').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.room-skill-settings [role=alert]').text()).toContain('Your selection is preserved')
+    await wrapper.get('.room-skill-settings > button').trigger('click')
+    await flushPromises()
+    expect(bridge.updateSkillBindings).toHaveBeenLastCalledWith({ chatId: 'chat-1', selections: [skill] })
+  })
+
+  it('shows skill discovery errors and offers a retry', async () => {
+    const snapshot = data()
+    snapshot.room.providers_json = ['codex']
+    const bridge = api(snapshot)
+    bridge.skills.mockRejectedValueOnce(new Error('unavailable'))
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    expect(wrapper.get('.room-skill-settings [role=alert]').text()).toContain('could not be read')
+    await wrapper.get('.room-skill-settings [role=alert] button').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.room-skill-settings [role=alert]').exists()).toBe(false)
+    expect(wrapper.findAll('.room-skill-settings input')).toHaveLength(1)
+  })
+
+  it('explains a missing skill manifest without discarding the selection', async () => {
+    const snapshot = data()
+    snapshot.room.providers_json = ['codex']
+    const bridge = api(snapshot)
+    bridge.updateSkillBindings.mockRejectedValue(new Error("Error invoking remote method: LOCAL_SKILL_MANIFEST_MISSING"))
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    await wrapper.get('.room-skill-settings input').setValue(true)
+    await wrapper.get('.room-skill-settings > button').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.room-skill-settings [role=alert]').text()).toContain('missing meldwork.skill.json')
+    expect(wrapper.get('.room-skill-settings input').element.checked).toBe(true)
+  })
   it('saves cloneable chat and role skill payloads and restores inheritance', async () => {
     const snapshot = data()
     snapshot.room.providers_json = ['codex']
@@ -245,19 +316,19 @@ describe('v2 team workspace', () => {
     bridge.submitMessage.mockRejectedValueOnce(new Error('offline'))
     const wrapper = mountRoom(bridge)
     await flushPromises()
-    await wrapper.get('textarea').setValue('first draft')
+    await wrapper.get('.room-composer textarea').setValue('first draft')
     await wrapper.get('.room-chat-toolbar select').setValue('chat-2')
-    await wrapper.get('textarea').setValue('second draft')
+    await wrapper.get('.room-composer textarea').setValue('second draft')
     await wrapper.get('.room-chat-toolbar select').setValue('chat-1')
-    expect(wrapper.get('textarea').element.value).toBe('first draft')
+    expect(wrapper.get('.room-composer textarea').element.value).toBe('first draft')
     await wrapper.get('.room-composer').trigger('submit')
     await flushPromises()
-    expect(wrapper.get('textarea').element.value).toBe('first draft')
+    expect(wrapper.get('.room-composer textarea').element.value).toBe('first draft')
     expect(wrapper.get('[role=alert]').text()).toContain('could not be completed')
     await wrapper.get('.room-composer').trigger('submit')
     await flushPromises()
     expect(bridge.submitMessage).toHaveBeenLastCalledWith({ chatId: 'chat-1', content: 'first draft' })
-    expect(wrapper.get('textarea').element.value).toBe('')
+    expect(wrapper.get('.room-composer textarea').element.value).toBe('')
   })
 
   it('renders Reports as escaped text, isolates chat roles and exposes validated task controls', async () => {
@@ -300,7 +371,7 @@ describe('v2 team workspace', () => {
     expect(wrapper.get('.room-context').text()).toContain('Current collaboration agreement')
     expect(wrapper.get('.room-context').text()).toContain('Use English reports and ask before implementation.')
     await wrapper.get('.room-chat-toolbar select').setValue('chat-2')
-    expect(wrapper.find('.room-context').exists()).toBe(false)
+    expect(wrapper.get('.room-context').text()).toContain('No collaboration agreement yet')
   })
 
   it('offers the existing resume command when controller routing is blocked', async () => {
