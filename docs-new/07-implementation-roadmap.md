@@ -86,7 +86,7 @@ Assignment Runner 对所有明确标记为未知结果的原生调用统一进�
 - `room-service.cjs`：Room Engine 的组合入口，后续 IPC、Controller Session 和 Agent 调用只依赖此门面。
 - `room-ipc.cjs`：将 Room Service 映射为窄 IPC channel；绑定 main/preload 时沿用现有 renderer 信任校验，不暴露数据库或进程能力。
 
-当前 v2 IPC/preload 提供 listRooms、createChat、bootstrap、snapshot、artifactDiff、submitMessage、applyUserCommand、listStaleAssignments、assignmentTrace 九个入口。assignmentTrace 只接收 Room/Assignment ID 与分页参数；主进程按数据库中的 Assignment 归属及 runId 推导 traceAgentRunId，再由 Trace reader 对照 Room Assignment 授权，不接受 Renderer 提交 Trace 路径或执行标识。直接启动 Assignment、ControllerAction、Report 导入、Session liveness 写入和 effect 入队已从 Renderer 接口与 main channel 注册中删除，不保留旧调用兼容层；这些能力仅由主进程执行链使用。注册时必须提供 Renderer 信任校验，所有调用先完成信任与退出状态检查，再校验 DTO 字段和有界标量值。消息作者固定由 main 赋为本地 user，bootstrap 创建者和 UserCommand 审计 actor 同样由 main 赋值，Renderer 不得传入 author/actorId/createdBy 或自行指定生成对象 ID。Message 的 replyTo/taskId 必须引用同一 Chat 的有效对象。正文里的 action/Report 标记只属于消息内容，不进入平台事实写入通道。消息编辑/删除与实时订阅接口尚未开放。
+当前 v2 IPC/preload 提供 listRooms、createChat、bootstrap、snapshot、chatMessages、artifactDiff、submitMessage、applyUserCommand、listStaleAssignments、assignmentTrace 等请求，以及只读、可取消的 `room:changed` 订阅。assignmentTrace 只接收 Room/Assignment ID 与分页参数；主进程按数据库中的 Assignment 归属及 runId 推导 traceAgentRunId，再由 Trace reader 对照 Room Assignment 授权，不接受 Renderer 提交 Trace 路径或执行标识。直接启动 Assignment、ControllerAction、Report 导入、Session liveness 写入和 effect 入队已从 Renderer 接口与 main channel 注册中删除，不保留旧调用兼容层；这些能力仅由主进程执行链使用。注册时必须提供 Renderer 信任校验，所有调用先完成信任与退出状态检查，再校验 DTO 字段和有界标量值。消息作者固定由 main 赋为本地 user，bootstrap 创建者和 UserCommand 审计 actor 同样由 main 赋值，Renderer 不得传入 author/actorId/createdBy 或自行指定生成对象 ID。Message 的 replyTo/taskId 必须引用同一 Chat 的有效对象。正文里的 action/Report 标记只属于消息内容，不进入平台事实写入通道。消息编辑/删除尚未开放。
 
 复用 `desktop/src/project-room/project-state-schema.cjs`、`project-state-migrations.cjs`、`project-store.cjs` 的迁移经验，但不把新的 Task 状态继续塞进 checkpoint engine。复用 `desktop/src/security/private-file.cjs` 保证数据库目录权限，数据库放在应用私有区，不放入 Room 主目录。
 
@@ -220,7 +220,7 @@ Report 入账和状态推导在同一事务内完成，成功后将 `report_rece
 
 第一版独立入口已落地：`RoomWorkspace.vue` 与 `useRoomWorkspace.js` 直接读取 v2 SQLite 快照，不通过旧 checkpoint/group UI。支持选择目录创建项目、选择已有 Provider、新建独立团队 Chat、发送消息、展示 Chat 角色/Report/Task/Attention 和 Room Artifact，以及回答 Attention、接受/拒绝 Artifact、暂停/恢复、停止、重试、已结束执行的交接和显式目录写授权。新 Chat 不复制另一 Chat 的角色或协作上下文。所有新增文案提供中英文。
 
-快照补充 roles/reports/artifacts；当前使用 1.5 秒串行轮询，卸载时释放计时器，切换 Room 后丢弃迟到结果。操作完成后等待旧轮询结束并重新读取，避免新 Chat 被旧快照覆盖。草稿按 Chat 隔离，发送失败保留。产物 diff、消息历史分页、运行阻塞提示和 Assignment Trace 入口均已接通。向前加载历史会保持当前阅读位置。仍缺实时流式消息和 Skill 绑定界面；角色 Prompt 与协作约定编辑已可用。Skill 绑定暂不增加假 UI，需先定义 Chat/Role 到已安装 Skill 的最小执行契约；可选隔离 workspace 属于 Phase 6。
+快照补充 roles/reports/artifacts；Room 更新由数据库提交通知触发，并以 1.5 秒串行轮询兜底，卸载时释放计时器和订阅，切换 Room 后丢弃迟到结果。操作完成后等待旧刷新结束并重新读取，避免新 Chat 被旧快照覆盖。草稿按 Chat 隔离，发送失败保留。产物 diff、消息历史分页、运行阻塞提示和 Assignment Trace 入口均已接通。向前加载历史会保持当前阅读位置。仍缺实时流式消息和 Skill 绑定界面；角色 Prompt 与协作约定编辑已可用。Skill 绑定暂不增加假 UI，需先定义 Chat/Role 到已安装 Skill 的最小执行契约；可选隔离 workspace 属于 Phase 6。
 
 动态角色已有真实 CLI 闭环：Controller 可按当前需求创建 Chat 级角色，平台检查 Room Provider/能力范围，后续决策可为该角色创建任务并派发。成员卡显示主控创建角色的理由、职责及 Prompt。Room 快照返回当前 Chat 角色的最新 Prompt；用户可通过统一、幂等的 `update_role_prompt` UserCommand 更新角色 Prompt revision。更新只影响后续 Assignment，保留历史 revision，不增加角色归档或停用状态机。Prompt 仍受 Chat/Role 归属校验，不能授予新的 Provider、能力或目录权限。
 
@@ -327,7 +327,7 @@ v2 已解除对持久化旧 group 的宿主依赖。`native-runtime.cjs` 仅复�
 
 该切片在 Electron 内置 Node 运行时通过 95 项 Room/IPC/调度器定向测试，以及 14 项共享 project-room/影子 Git 调用回归；CLI 使用替身，未运行 Electron GUI、真实 CLI、打包或全量测试。
 
-每次 Room Assignment 原生调用都创建独立的临时 Session key，并由 `native-runtime.cjs` 强制 `saveSession: false`；v2 不实现旧群聊 Session 的持久化续跑。需要继续工作时，平台创建新的 Assignment，并把上一尝试的 Report、证据和 Artifact 引用作为结构化输入。无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实。v2 群聊 UI 已接通消息分页、滚动位置保持、授权/停止/重试/交接、产物 diff、运行阻塞提示和 Trace 入口；消息分页切片通过 Electron 桌面构建及启动检查。下一步聚焦实时消息更新与可选隔离 workspace。
+每次 Room Assignment 原生调用都创建独立的临时 Session key，并由 `native-runtime.cjs` 强制 `saveSession: false`；v2 不实现旧群聊 Session 的持久化续跑。需要继续工作时，平台创建新的 Assignment，并把上一尝试的 Report、证据和 Artifact 引用作为结构化输入。无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实。v2 群聊 UI 已接通消息分页、滚动位置保持、数据库提交通知、授权/停止/重试/交接、产物 diff、运行阻塞提示和 Trace 入口；消息分页切片通过 Electron 桌面构建及启动检查。下一步聚焦可选隔离 workspace 与实时流式输出。
 
 ### 自动产物版本切片（2026-11-15）
 
