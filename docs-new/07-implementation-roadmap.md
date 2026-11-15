@@ -49,7 +49,7 @@
 - `report-importer.cjs`：解析严格的 `[[MELDWORK_REPORT:{...}]]` 机器标记，写入 Report 真源和 `report_received` 审计事件；不从自由文本推断任务完成。
 - `session-supervisor.cjs`：由主进程记录 session liveness 和退出事实，并查询 stale Assignment；Worker 自报消息不构成 liveness 证明。
 - `report-state.cjs`：根据最新 Report 推导 Assignment/Task 状态；状态转移不接受 Controller 自由设置。
-- `user-commands.cjs`：执行用户回答 Attention、Artifact 接受/拒绝和 Chat 暂停/恢复；停止、重试和交接仍需平台副作用与进程事实。
+- `user-commands.cjs`：执行用户回答 Attention、Artifact 接受/拒绝、Chat 暂停/恢复，以及已结束 Assignment 的幂等重试/交接；停止运行中进程和 unknown 执行的对账恢复仍待接入。
 - `mention-fallback.cjs`：Controller 不可用时按显式 @mention 确定性创建 Task/Assignment；不从普通自由文本推断角色或授权。
 - `room-service.cjs`：Room Engine 的组合入口，后续 IPC、Controller Session 和 Agent 调用只依赖此门面。
 - `room-ipc.cjs`：将 Room Service 映射为窄 IPC channel；绑定 main/preload 时沿用现有 renderer 信任校验，不暴露数据库或进程能力。
@@ -156,6 +156,8 @@ Controller Session 默认在 60 秒后超时，构造时可通过 `timeoutMs` �
 
 Report 入账和状态推导在同一事务内完成，成功后将 `report_received` 的 eventId 放入 Controller 队列；重复 Report 不重复唤醒。主控创建 Task/角色成功后，以其动作事件触发下一批，使用真实落库 ID 继续派发；用户回答 Attention、接受/拒绝 Artifact 和恢复 Chat 也产生主控输入。Controller 校验事件属于当前 Chat，并记录输入 ID；不会把事件伪造成用户消息。已用替身验证“消息 → 建任务 → 事件 → 派发 → Worker → Report → Attention → 用户回答 → 主控”，真实 CLI、进程心跳和重启恢复验收仍待完成。
 
+用户 `retry_task` / `handoff_task` 已实现针对具体 Assignment 的新尝试派发：命令要求 commandId 并以用户/Chat 为范围幂等；新 Assignment 通过 previousAssignmentId 关联原尝试，继承 required 和写入范围，attempt 加一。新 Assignment、命令审计、outbox effect 同一事务提交，重复命令不重复派发。报告状态和启动恢复只计算替代链上最新的 required Assignment，旧失败和迟到报告不阻塞新尝试完成；新 Worker Prompt 携带上一尝试的报告、证据和产物引用。当前仅允许 failed/waiting/blocked 且原进程已结束的尝试；未知执行仍被拒绝，必须先完成进程对账，不能用重试命令绕过恢复边界。运行中停止后交接尚未实现。
+
 工作项：
 
 - 实现按 Chat 批处理、去重、退避和 stale session 重启；
@@ -251,6 +253,6 @@ Room Engine 的第一条主进程纵向切片已经接入 Electron 生命周期�
 - 增加 `room:snapshot` 读取面，按 Room 返回 Chat、消息、Task、Assignment 和 Attention，供新 UI 使用；
 - 增加独立 `assignment-runner` 适配器：把 queued Assignment 映射到现有 `invokeAgent` 回调，记录平台 session facts；无 Report 的进程退出进入 waiting，不直接完成 Task；
 - 退出流程先停止 Room IPC 接收，再关闭数据库，避免关闭期间产生新的写入；
-- 最近一轮启动恢复/Room Service/Report 状态/outbox 专项测试为 23 项通过，包含关闭并重开数据库、重复恢复、Report 保留、pending 继续执行和恢复失败回滚，在 Electron runtime 中验证；尚未运行 Desktop 全量测试、真实 CLI 端到端验收和打包检查。
+- 本轮用户命令/Room Service/Report 状态/恢复/动作专项测试 32 项、Assignment Runner 专项测试 5 项在 Electron runtime 中通过，覆盖重试去重、交接链、旧尝试报告隔离、进程退出限制、outbox 失败回滚和交接 Prompt。尚未运行 Desktop 全量测试、真实 CLI 端到端验收和打包检查。
 
 这一步不改变旧 project-room/checkpoint UI，也不把新 ledger 强行映射进旧状态机。Assignment 已能通过 Room workspace 和 Provider 解析到现有 Agent group，使用稳定的 Room session key 启动调用，并在退出时记录 Supervisor session facts；无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实，不会滞留 running。主进程已接通 effect 自动消费和 Report/Event 唤醒。下一步应完成真实 CLI 端到端验收、真实进程心跳和重启恢复，再接入 v2 群聊 UI，并移除对旧 group 的宿主依赖。

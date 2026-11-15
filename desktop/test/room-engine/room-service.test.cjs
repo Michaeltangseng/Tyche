@@ -245,3 +245,46 @@ test('runtime defers paused chat effects and automatically wakes on resume', asy
   await service.close()
   state.roomDb.close()
 })
+
+test('user retry dispatches one new attempt and old failure no longer prevents task completion', async () => {
+  const state = setup()
+  let invocations = 0
+  const service = createRoomService({
+    roomDb: state.roomDb, repository: state.repository,
+    resolveGroup: () => ({ id: 'host' }),
+    invokeAgent: async () => {
+      invocations += 1
+      if (invocations === 1) throw new Error('first attempt failed')
+      return { pendingMessage: { content: '[[MELDWORK_REPORT:{"kind":"ready","summary":"retry worked"}]]' } }
+    },
+  })
+  try {
+    await assert.rejects(service.startAssignment({ assignmentId: state.assignmentId, prompt: 'Build' }).promise, /first attempt failed/)
+    const command = { type: 'retry_task', chatId: state.chatId, taskId: state.taskId, assignmentId: state.assignmentId, commandId: 'retry-once' }
+    const retried = service.applyUserCommand(command)
+    assert.equal(service.applyUserCommand(command).assignmentId, retried.assignmentId)
+    assert.equal(state.roomDb.database.prepare('SELECT COUNT(*) AS count FROM effects').get().count, 1)
+    const executed = await service.runNextEffect()
+    assert.equal(executed.effect.status, 'succeeded')
+    assert.equal(state.repository.getTask(state.taskId).status, 'done')
+    assert.equal(state.repository.getAssignmentContext(state.assignmentId).status, 'failed')
+    assert.equal(state.repository.getAssignmentContext(retried.assignmentId).status, 'completed')
+    assert.equal(await service.runNextEffect(), null)
+    assert.equal(invocations, 2)
+  } finally { await service.close(); state.roomDb.close() }
+})
+
+test('retry command, new assignment and audit roll back if outbox persistence fails', async () => {
+  const state = setup()
+  state.roomDb.database.prepare("UPDATE assignments SET status = 'failed' WHERE id = ?").run(state.assignmentId)
+  state.roomDb.database.exec(`CREATE TRIGGER reject_retry_effect BEFORE INSERT ON effects
+    BEGIN SELECT RAISE(ABORT, 'effect storage failed'); END;`)
+  const command = { type: 'retry_task', chatId: state.chatId, taskId: state.taskId, assignmentId: state.assignmentId, commandId: 'retry-rollback' }
+  assert.throws(() => state.service.applyUserCommand(command), /effect storage failed/)
+  assert.equal(state.repository.listAssignments(state.taskId).length, 1)
+  assert.equal(state.repository.listEvents(state.roomId).length, 0)
+  state.roomDb.database.exec('DROP TRIGGER reject_retry_effect')
+  assert.equal(state.service.applyUserCommand(command).attempt, 2)
+  await state.service.close()
+  state.roomDb.close()
+})

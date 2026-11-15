@@ -149,9 +149,13 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
   }
 
   function applyUserCommand(input, options) {
-    const result = userCommands.apply(input, options)
-    if (input.type === 'resume_chat') effectPump?.request()
-    if (input.type !== 'pause_chat') wakeController(input.chatId, result.event.eventId)
+    const result = roomDb.withTransaction(() => {
+      const applied = userCommands.apply(input, options)
+      if (applied.assignmentId) enqueueAssignment(applied.assignmentId, input.chatId, applied.event.eventId)
+      return applied
+    })
+    if (input.type === 'resume_chat' || result.assignmentId) effectPump?.request()
+    if (!result.duplicate && input.type !== 'pause_chat') wakeController(input.chatId, result.event.eventId)
     return result
   }
 

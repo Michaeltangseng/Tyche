@@ -1,4 +1,5 @@
 const { encode } = require('./room-db.cjs')
+const { createHash } = require('node:crypto')
 const { validateUserCommand } = require('./room-actions.cjs')
 
 function parseJson(value, fallback) {
@@ -21,7 +22,41 @@ function createUserCommandService({ roomDb, repository }) {
       const chat = chatContext(action.chatId)
       let result = {}
       const timestamp = new Date().toISOString()
-      if (action.type === 'answer_attention') {
+      const eventId = action.commandId ? `user-command-${createHash('sha256').update(encode([action.chatId, actorId, action.commandId])).digest('hex')}` : undefined
+      if (eventId) {
+        const existing = db.prepare('SELECT * FROM events WHERE id = ?').get(eventId)
+        if (existing) {
+          const recorded = JSON.parse(existing.payload_json)
+          const fields = new Set([...Object.keys(recorded.command), ...Object.keys(action)])
+          if ([...fields].some(field => recorded.command[field] !== action[field])) throw new Error('ROOM_USER_COMMAND_ID_REUSED')
+          return { ...recorded.result, duplicate: true, event: { eventId, sequence: existing.sequence, createdAt: existing.created_at } }
+        }
+      }
+      if (action.type === 'retry_task' || action.type === 'handoff_task') {
+        const previous = repository.getAssignmentContext(action.assignmentId)
+        if (!previous || previous.task_id !== action.taskId || previous.chat_id !== action.chatId) throw new Error('ROOM_ASSIGNMENT_NOT_FOUND')
+        if (!['failed', 'waiting', 'blocked'].includes(previous.status)) throw new Error('ROOM_ASSIGNMENT_NOT_RETRYABLE')
+        if (previous.outcome === 'unknown') throw new Error('ROOM_ASSIGNMENT_RECOVERY_UNRESOLVED')
+        if (db.prepare('SELECT id FROM assignments WHERE previous_assignment_id = ?').get(previous.id)) throw new Error('ROOM_ASSIGNMENT_ALREADY_REPLACED')
+        if (previous.run_id) {
+          const exited = repository.listEvents(chat.room_id, { chatId: action.chatId }).some(event => {
+            if (event.type !== 'session_exited') return false
+            const payload = parseJson(event.payload_json, {})
+            return payload.assignmentId === previous.id && payload.runId === previous.run_id
+          })
+          if (!exited) throw new Error('ROOM_ASSIGNMENT_PROCESS_NOT_EXITED')
+        }
+        const roleId = action.type === 'handoff_task' ? action.roleId : previous.role_id
+        const role = db.prepare('SELECT * FROM agent_roles WHERE id = ? AND chat_id = ?').get(roleId, action.chatId)
+        if (!role || role.status !== 'active') throw new Error('ROOM_ASSIGNMENT_ROLE_INACTIVE')
+        const assignmentId = repository.createAssignment({ taskId: previous.task_id, roleId,
+          previousAssignmentId: previous.id, attempt: previous.attempt + 1,
+          required: Boolean(previous.required), workspaceRef: previous.workspace_ref,
+          writeScopes: parseJson(previous.write_scopes_json, []),
+        })
+        db.prepare("UPDATE tasks SET status = 'active', updated_at = ? WHERE id = ?").run(timestamp, previous.task_id)
+        result = { taskId: previous.task_id, assignmentId, previousAssignmentId: previous.id, attempt: previous.attempt + 1 }
+      } else if (action.type === 'answer_attention') {
         const attention = db.prepare('SELECT * FROM attentions WHERE id = ? AND chat_id = ?').get(action.attentionId, action.chatId)
         if (!attention) throw new Error('ROOM_ATTENTION_NOT_FOUND')
         if (attention.status !== 'open') throw new Error('ROOM_ATTENTION_ALREADY_ANSWERED')
@@ -48,6 +83,7 @@ function createUserCommandService({ roomDb, repository }) {
         throw new Error('ROOM_USER_COMMAND_UNSUPPORTED')
       }
       const event = repository.appendEvent({
+        eventId,
         roomId: chat.room_id,
         chatId: action.chatId,
         actorId,

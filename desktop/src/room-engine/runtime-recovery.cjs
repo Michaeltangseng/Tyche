@@ -60,7 +60,9 @@ function createRuntimeRecovery({ roomDb, repository, locale = () => 'en' } = {})
           payload: { assignmentId: assignment.id, runId: assignment.run_id, outcome: 'unknown' } }).eventId)
       }
       for (const taskId of affectedTasks) {
-        const required = repository.listAssignments(taskId).filter(assignment => assignment.required)
+        const all = repository.listAssignments(taskId)
+        const replaced = new Set(all.map(assignment => assignment.previous_assignment_id).filter(Boolean))
+        const required = all.filter(assignment => assignment.required && !replaced.has(assignment.id))
         const latest = new Map(reportState.latestReports(taskId).map(report => [report.assignment_id, report]))
         let status = 'active'
         if (required.some(assignment => ['waiting', 'blocked', 'failed'].includes(assignment.status))) status = 'waiting'

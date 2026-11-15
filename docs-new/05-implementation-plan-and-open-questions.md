@@ -128,6 +128,10 @@ restore_context_revision
 archive_chat
 ```
 
+当前已实现的 `retry_task` / `handoff_task` 必须携带 `chatId`、`taskId`、`assignmentId` 和 `commandId`；handoff 另需 `roleId`，`reason` 可选。命令只接受同一 Chat 内已处于 failed/waiting/blocked、且已结束原生执行的 Assignment；有 runId 时必须存在匹配的 Supervisor `session_exited` 事实。恢复后 outcome=unknown 的执行仍需先完成残留进程对账，不能仅凭重试命令重跑。当前不支持停止运行中任务后直接交接。
+
+成功命令新建 attempt+1 的 queued Assignment，保留 previousAssignmentId、required 和写入范围；Room Service 将新 Assignment、命令事件和幂等派发 effect 一起提交。相同用户/Chat/commandId 的相同载荷重放返回原结果，不重复派发；改变载荷复用 commandId 或对同一旧 Assignment 再建分支都会拒绝。这里的 commandId 是已实现的重试/交接命令幂等契约，不代表上方所有规划命令已支持统一幂等 envelope。
+
 ### 5. PlatformTransition
 
 PlatformTransition 是平台根据 Report、Supervisor liveness、进程事实、超时和 UserCommand 产生的内部事实，不是 Controller 可直接调用的工具。例如 `assignment_started`、`assignment_exited`、`task_done`、`task_waiting` 和 `task_cancelled`。它们必须带 source、sourceId 和时间，不能由自由文本合成。

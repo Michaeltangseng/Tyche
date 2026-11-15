@@ -120,7 +120,7 @@ Attention 只表示真正需要用户行动的事实：决策、澄清、审批�
 
 ## Task 完成条件
 
-一个 Task 可以有多个 Assignment。每个 Assignment 明确记录 `required`。默认情况下，所有 required Assignment 都产生 `ready` Report 后，Task 才能进入 `done`；任一 required Assignment 进入 `blocked` 或 `failed` 时，Task 进入 `waiting` 并可创建 Attention。optional Assignment 不阻塞 Task 完成。
+一个 Task 可以有多个 Assignment。每个 Assignment 明确记录 `required`。重试/交接通过 `previousAssignmentId` 形成替代链，完成条件只计算每条链上未被后继替代的最新 Assignment；旧 Assignment 保留原 required、状态与历史报告，不再阻塞新尝试完成。默认情况下，所有当前 required Assignment 都产生 `ready` Report 后，Task 才能进入 `done`；任一当前 required Assignment 进入 `blocked` 或 `failed` 时，Task 进入 `waiting` 并可创建 Attention。optional Assignment 不阻塞 Task 完成。旧尝试的迟到 Report 可以保留，但不得覆盖其已保留的执行状态或改变新尝试的完成条件。
 
 第一版不支持跨 Chat 的 Task 依赖。跨 Chat 协作通过 Room Artifact 和消息/Controller 链接完成，避免把多个 Chat 的依赖图合并成新的全局流程状态机。
 

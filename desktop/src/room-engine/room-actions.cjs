@@ -25,8 +25,8 @@ const FIELDS = Object.freeze({
   },
   user: {
     stop_task: ['type', 'chatId', 'taskId', 'reason'],
-    retry_task: ['type', 'chatId', 'taskId', 'reason'],
-    handoff_task: ['type', 'chatId', 'taskId', 'roleId', 'reason'],
+    retry_task: ['type', 'chatId', 'taskId', 'assignmentId', 'commandId', 'reason'],
+    handoff_task: ['type', 'chatId', 'taskId', 'assignmentId', 'commandId', 'roleId', 'reason'],
     accept_artifact: ['type', 'chatId', 'artifactId'],
     reject_artifact: ['type', 'chatId', 'artifactId', 'reason'],
     answer_attention: ['type', 'chatId', 'attentionId', 'optionId', 'comment'],
@@ -65,6 +65,11 @@ function normalize(action, kind, expectedChatId = null, expectedContextRevision 
     if (!fields.includes(key)) throw new TypeError('ROOM_ACTION_UNKNOWN_FIELD')
   }
   assertId(action.chatId, 'chat_id')
+  if (kind === 'user' && ['retry_task', 'handoff_task'].includes(action.type)) {
+    for (const field of ['taskId', 'assignmentId', 'commandId']) assertId(action[field], field)
+    if (action.type === 'handoff_task') assertId(action.roleId, 'role_id')
+    if (action.reason !== undefined) assertString(action.reason, 'ROOM_ACTION_REASON_INVALID')
+  }
   if (expectedChatId !== null && action.chatId !== expectedChatId) throw new Error('ROOM_ACTION_CHAT_MISMATCH')
   if (kind === 'controller') {
     if (!Number.isInteger(action.contextRevision) || action.contextRevision < 0) throw new TypeError('ROOM_ACTION_CONTEXT_REVISION_INVALID')

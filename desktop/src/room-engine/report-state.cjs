@@ -24,16 +24,18 @@ function createReportStateService({ roomDb }) {
       const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId)
       if (!task) throw new Error('ROOM_TASK_NOT_FOUND')
       const assignments = db.prepare('SELECT * FROM assignments WHERE task_id = ? ORDER BY created_at, id').all(taskId)
+      const replaced = new Set(assignments.map(assignment => assignment.previous_assignment_id).filter(Boolean))
+      const current = assignments.filter(assignment => !replaced.has(assignment.id))
       const reports = latestReports(taskId)
       const reportByAssignment = new Map(reports.map((report) => [report.assignment_id, report]))
-      for (const assignment of assignments) {
+      for (const assignment of current) {
         const report = reportByAssignment.get(assignment.id)
         if (!report) continue
         const status = REPORT_ASSIGNMENT_STATUS[report.kind]
         db.prepare('UPDATE assignments SET status = ?, ended_reason = ?, outcome = ?, updated_at = ? WHERE id = ?')
           .run(status, report.kind === 'failed' ? report.summary : null, report.kind, new Date().toISOString(), assignment.id)
       }
-      const required = assignments.filter((assignment) => assignment.required === 1)
+      const required = current.filter((assignment) => assignment.required === 1)
       const requiredReports = required.map((assignment) => reportByAssignment.get(assignment.id)).filter(Boolean)
       let status = 'open'
       if (required.some((assignment) => ['blocked', 'failed'].includes(reportByAssignment.get(assignment.id)?.kind))) status = 'waiting'
@@ -43,7 +45,7 @@ function createReportStateService({ roomDb }) {
       db.prepare('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?').run(status, timestamp, taskId)
       return { taskId, status, assignmentStatuses: assignments.map((assignment) => ({
         assignmentId: assignment.id,
-        status: reportByAssignment.has(assignment.id) ? REPORT_ASSIGNMENT_STATUS[reportByAssignment.get(assignment.id).kind] : assignment.status,
+        status: !replaced.has(assignment.id) && reportByAssignment.has(assignment.id) ? REPORT_ASSIGNMENT_STATUS[reportByAssignment.get(assignment.id).kind] : assignment.status,
       })) }
     })
   }

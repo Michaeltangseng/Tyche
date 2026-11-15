@@ -186,6 +186,9 @@ function createRoomRepository(roomDb) {
       return attentionId
     },
     getReport(reportId) { return plain(db.prepare('SELECT * FROM reports WHERE id = ?').get(reportId)) },
+    getAssignmentLatestReport(assignmentId) {
+      return decodeRow(db.prepare('SELECT * FROM reports WHERE assignment_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1').get(assignmentId), ['evidence_json', 'artifact_ids_json', 'next_request_json'])
+    },
     listAssignments(taskId) { return db.prepare('SELECT * FROM assignments WHERE task_id = ? ORDER BY created_at, id').all(taskId).map(plain) },
     createEffect({ effectId = id('effect'), chatId, actionId = null, kind, payload = {}, idempotencyKey }) {
       const timestamp = now()

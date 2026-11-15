@@ -93,3 +93,20 @@ test('malformed Worker report records an exited failure rather than leaving the 
   assert.equal(state.repository.listEvents(state.roomId).at(-1).type, 'session_exited')
   state.roomDb.close()
 })
+
+test('replacement worker receives the previous attempt report and evidence', async () => {
+  const state = setup()
+  state.repository.createReport({ taskId: state.taskId, assignmentId: state.assignmentId, kind: 'blocked', summary: 'Schema ready, database unavailable', evidence: ['docs/schema.md'] })
+  const previous = state.repository.getAssignmentContext(state.assignmentId)
+  const replacement = state.repository.createAssignment({ taskId: state.taskId, roleId: previous.role_id, previousAssignmentId: state.assignmentId, attempt: 2 })
+  let prompt
+  const runner = createAssignmentRunner({
+    repository: state.repository, supervisor: state.supervisor, resolveGroup: () => ({ id: 'host' }),
+    invokeAgent: async (...args) => { prompt = args[5].promptOverride; return {} },
+  })
+  await runner.start({ assignmentId: replacement, prompt: 'Continue' }).promise
+  assert.ok(prompt.includes('Schema ready, database unavailable'))
+  assert.ok(prompt.includes('docs/schema.md'))
+  assert.ok(prompt.includes(state.assignmentId))
+  state.roomDb.close()
+})
