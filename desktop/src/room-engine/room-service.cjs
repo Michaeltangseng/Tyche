@@ -14,6 +14,12 @@ const { createRuntimeRecovery } = require('./runtime-recovery.cjs')
 const { createProcessReconciliation } = require('./process-reconciliation.cjs')
 const { createControllerBacklog } = require('./controller-backlog.cjs')
 
+const RETRYABLE_CONTROLLER_ERRORS = new Set([
+  'ROOM_CONTROLLER_TIMEOUT', 'ROOM_CONTROLLER_GROUP_NOT_FOUND', 'ROOM_CONTROLLER_CHAT_BUSY',
+  'ROOM_CONTROLLER_CONTEXT_STALE', 'ROOM_CONTROLLER_MESSAGES_STALE',
+  'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN',
+])
+
 function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController, controllerBatchDelayMs = 40, onControllerError = error => console.error('[room-controller]', error), autoRunEffects = false, onEffectError = error => console.error('[room-effects]', error), locale, getInvocationRecords } = {}) {
   if (!roomDb || !repository) throw new TypeError('ROOM_SERVICE_DEPENDENCIES_REQUIRED')
   const ingress = createMessageIngress(roomDb, repository)
@@ -46,6 +52,8 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
       processBatch: processControllerBatch,
       getContextRevision: chatId => repository.getChatContext(chatId).revision,
       delayMs: controllerBatchDelayMs,
+      shouldRetry: error => RETRYABLE_CONTROLLER_ERRORS.has(error?.code || error?.message),
+      onRetryError: error => { if (!closed) onControllerError(error) },
     })
     : null
   const effectPump = autoRunEffects ? createEffectPump({ runNext: runNextEffect, onError: onEffectError }) : null

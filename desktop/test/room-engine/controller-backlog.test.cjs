@@ -183,3 +183,58 @@ test('failed decision commit leaves inputs pending together with rolled-back act
   await restarted.flushController(s.chatId)
   assert.equal(s.roomDb.database.prepare('SELECT COUNT(*) AS count FROM tasks').get().count, 1)
 })
+
+test('service automatically retries transient controller failure and commits its input only once', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const s = setup(t)
+  const messageId = s.message()
+  const errors = []
+  let calls = 0
+  const service = s.service({ onControllerError: error => errors.push(error), decideController: async input => {
+    calls += 1
+    if (calls === 1) throw new Error('ROOM_CONTROLLER_TIMEOUT')
+    assert.deepEqual(input.messages.map(message => message.id), [messageId])
+    return { actions: [] }
+  } })
+  await service.startRuntime()
+  await assert.rejects(service.flushController(s.chatId), /TIMEOUT/)
+  assert.equal(s.roomDb.database.prepare('SELECT COUNT(*) AS count FROM controller_decisions').get().count, 0)
+  assert.equal(await service.flushController(s.chatId), null)
+  t.mock.timers.tick(1000)
+  await service.flushController(s.chatId)
+  assert.equal(calls, 2)
+  assert.equal(errors.length, 1)
+  assert.equal(s.roomDb.database.prepare('SELECT COUNT(*) AS count FROM controller_decisions').get().count, 1)
+  assert.deepEqual(createControllerBacklog({ roomDb: s.roomDb }).list(), [])
+})
+
+test('service does not automatically retry malformed controller actions', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const s = setup(t)
+  s.message()
+  let calls = 0
+  const service = s.service({ onControllerError: () => {}, decideController: async input => {
+    calls += 1
+    return { actions: [{ type: 'stop_task', chatId: input.chatId, contextRevision: input.contextRevision }] }
+  } })
+  await service.startRuntime()
+  await assert.rejects(service.flushController(s.chatId), /ACTION_TYPE_INVALID/)
+  t.mock.timers.tick(30_000)
+  assert.equal(await service.flushController(s.chatId), null)
+  assert.equal(calls, 1)
+  assert.equal(createControllerBacklog({ roomDb: s.roomDb }).list().length, 1)
+})
+
+test('startup backlog drains through bounded controller batches', async t => {
+  const s = setup(t)
+  const ids = Array.from({ length: 65 }, () => s.message())
+  const calls = []
+  const service = s.service({ decideController: async input => { calls.push(input); return { actions: [] } } })
+  await service.startRuntime()
+  await service.flushController(s.chatId)
+  await service.flushController(s.chatId)
+  await service.flushController(s.chatId)
+  assert.deepEqual(calls.map(input => input.messages.length), [32, 32, 1])
+  assert.deepEqual(calls.flatMap(input => input.messages.map(message => message.id)), ids)
+  assert.deepEqual(createControllerBacklog({ roomDb: s.roomDb }).list(), [])
+})
