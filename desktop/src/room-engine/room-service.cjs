@@ -43,7 +43,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
   function submitMessage(input, { deterministicFallback = true } = {}) {
     const result = ingress.submit(input)
     let dispatch = null
-    if (controllerQueue) {
+    if (controllerQueue && (typeof decideController.isAvailable !== 'function' || decideController.isAvailable({ chatId: input.chatId }))) {
       controllerQueue.enqueue({ chatId: input.chatId, messageId: result.message.messageId }).catch(onControllerError)
     } else if (deterministicFallback && input.author?.type === 'user' && result.mentions.length > 0) {
       dispatch = fallback.dispatch({

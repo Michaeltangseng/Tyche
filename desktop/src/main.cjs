@@ -110,6 +110,7 @@ const { LocalKnowledgeConnectors } = require('./knowledge/local-knowledge-connec
 const { openRoomDatabase } = require('./room-engine/room-db.cjs')
 const { createRoomRepository } = require('./room-engine/room-repository.cjs')
 const { createRoomService } = require('./room-engine/room-service.cjs')
+const { createControllerAgent } = require('./room-engine/controller-agent.cjs')
 const { registerRoomIpc } = require('./room-engine/room-ipc.cjs')
 const { nativeOpenClawOptions } = require('./agents/cli/openclaw-runtime.cjs')
 const { migrateLegacyProductData } = require('./product-data-migration.cjs')
@@ -1229,21 +1230,26 @@ if (!hasSingleInstanceLock) {
       roomEngineDb = openRoomDatabase({
         directory: path.join(privateRoot, 'room-engine'),
       })
+      const roomRepository = createRoomRepository(roomEngineDb)
+      const invokeRoomAgent = (...args) => startupWorkspace.invokeAgent(...args)
+      const resolveRoomGroup = ({ assignment }) => {
+        const requestedWorkspace = typeof assignment.workspace === 'string'
+          ? path.resolve(assignment.workspace)
+          : ''
+        return (startupWorkspace.state.groups || []).find(group => (
+          typeof group.workdir === 'string'
+          && path.resolve(group.workdir) === requestedWorkspace
+          && Array.isArray(group.agentKinds)
+          && group.agentKinds.includes(assignment.provider)
+          && !startupWorkspace.activeRuns.has(group.id)
+        )) || null
+      }
       roomEngineService = createRoomService({
         roomDb: roomEngineDb,
-        repository: createRoomRepository(roomEngineDb),
-        invokeAgent: (...args) => startupWorkspace.invokeAgent(...args),
-        resolveGroup: ({ assignment }) => {
-          const requestedWorkspace = typeof assignment.workspace === 'string'
-            ? path.resolve(assignment.workspace)
-            : ''
-          return (startupWorkspace.state.groups || []).find(group => (
-            typeof group.workdir === 'string'
-            && path.resolve(group.workdir) === requestedWorkspace
-            && Array.isArray(group.agentKinds)
-            && group.agentKinds.includes(assignment.provider)
-          )) || null
-        },
+        repository: roomRepository,
+        invokeAgent: invokeRoomAgent,
+        resolveGroup: resolveRoomGroup,
+        decideController: createControllerAgent({ repository: roomRepository, invokeAgent: invokeRoomAgent, resolveGroup: resolveRoomGroup }),
       })
       const templatesStore = new TemplatesStore({
         storagePath: path.join(privateRoot, 'templates.json'),
