@@ -1,0 +1,268 @@
+# 实施前置规范与计划
+
+这份文档把架构中尚未收敛的部分转成实施前需要确定的协议、边界和验收指标。它不重新引入固定 workflow；它规定的是平台如何记录事实、校验动作和恢复运行。
+
+## 一、实施前必须冻结的三个协议
+
+### 1. Message Envelope
+
+```json
+{
+  "messageId": "msg-123",
+  "chatId": "chat-001",
+  "author": { "type": "user", "id": "user-1" },
+  "content": "@agent2 请评审架构文档",
+  "mentions": ["role-agent2"],
+  "replyTo": "msg-120",
+  "taskId": "task-7",
+  "createdAt": "..."
+}
+```
+
+规则：
+
+- 消息先写入 Thread，再进入 Controller 事件队列；
+- `mentions` 是解析结果，不等于授权；
+- `taskId` 只表示上下文关联，不能凭空改变 Task 状态；
+- 消息不可通过编辑绕过历史审计，编辑应产生新事件；
+- 用户、Agent、系统消息统一使用此 envelope。
+
+### 2. Controller Action
+
+Controller 只能产生有限的结构化动作：
+
+```json
+{
+  "actionId": "action-55",
+  "type": "create_task",
+  "chatId": "chat-001",
+  "objective": "评审架构文档",
+  "assignees": ["role-pi"],
+  "inputs": ["artifact-12"],
+  "sourceMessageIds": ["msg-123"],
+  "contextRevision": 4,
+  "idempotencyKey": "chat-001:review:artifact-12:v1"
+}
+```
+
+初始动作集合：
+
+```text
+create_task
+assign
+reassign
+update_task
+request_attention
+update_context
+create_role
+archive_role
+stop_task
+retry_task
+note
+```
+
+Room Engine 对每个动作逐项校验：成员、权限、能力、Task 去重、写入范围、资源上限、Attention 字段、Context revision 和幂等键。批量动作允许部分成功，但每项必须有独立结果，不能因为一项失败而丢失其他合法动作。
+
+### 3. Report
+
+Worker 的自然语言正文和机器可读报告分离：
+
+```json
+{
+  "reportId": "report-88",
+  "taskId": "task-7",
+  "assignmentId": "assignment-9",
+  "kind": "ready",
+  "summary": "接口实现完成，测试已通过",
+  "evidence": ["test-run-12"],
+  "artifactIds": ["artifact-23"],
+  "nextRequest": {
+    "kind": "review",
+    "roles": ["role-pi"]
+  },
+  "createdAt": "..."
+}
+```
+
+`kind` 至少包括 `progress`、`ready`、`waiting`、`blocked`、`failed`、`handoff`。缺失或解析失败时，平台不猜测完成状态，Task 保持原状态并把消息交给 Controller 或用户处理。
+
+## 二、Task 依赖与状态边界
+
+不设置九个固定阶段，但仍需要表达轻量依赖：
+
+```text
+Task B blocks on Task A
+Task B waits for Artifact C
+Task D is optional
+```
+
+依赖只回答“是否可以派发”，不定义整个项目的阶段图。建议第一版只支持：
+
+- `blockedByTaskIds`；
+- `requiredArtifactIds`；
+- `optional`；
+- `parentTaskId`。
+
+Task 状态只由结构化 Report、平台事实或用户动作改变：
+
+```text
+open → active → waiting → done / cancelled
+```
+
+Assignment 的失败、重试和交接不重写 Task 目标；它们产生新的 Assignment 和事件。
+
+## 三、用户控制面
+
+用户必须能在不理解内部状态机的情况下控制项目室：
+
+```text
+暂停 Chat
+继续 Chat
+停止 Task
+重试 Assignment
+交接给另一个 Agent
+修改角色 Prompt
+归档动态角色
+接受 / 拒绝 Artifact
+撤销最近一次派发
+恢复旧的 ChatContext revision
+```
+
+操作应写入 Thread 和事件审计。撤销只影响尚未开始的外部副作用；已经写入的文件、已发送的消息和已启动的进程需要通过新的补偿动作处理。
+
+## 四、Controller 不可用和重复执行
+
+需要定义以下运行参数：
+
+- 事件批处理窗口；
+- Controller 调用超时；
+- 连续失败后的退避时间；
+- 事件最大重试次数；
+- stale Session 的观察窗口；
+- action 幂等保留时间。
+
+降级规则：
+
+1. 消息和心跳始终先落盘；
+2. 已运行 Assignment 继续运行，除非平台明确停止；
+3. 明确的用户操作可以走受限确定性 fallback；
+4. Controller 恢复后重新评估未处理事件；
+5. 每个 action 使用幂等键，重复恢复不能创建重复 Task 或 Assignment。
+
+## 五、动态角色和成本边界
+
+ChatContext 可以管理“应该如何组队”，平台需要限制“最多能组到什么程度”：
+
+- 最大活跃角色数；
+- 最大活跃 Assignment 和 Session 数；
+- Provider 白名单；
+- 单 Chat、单 Task 和单 Assignment 成本上限；
+- 新 Provider、高成本模型、外部能力和长期保存角色需要用户确认；
+- 相同职责的动态角色优先复用；
+- Agent 提议新增角色不等于角色已经创建。
+
+动态角色创建记录：角色职责、生成原因、绑定 Provider、能力范围、创建消息、Prompt revision 和生命周期状态。
+
+## 六、Room 与 Chat 的可见性规则
+
+默认规则：
+
+- Task、Assignment、Report、Attention 属于 Chat；
+- Artifact 属于 Room，但可以有 Chat 级可见性；
+- 未发布的 Assignment 中间文件不跨 Assignment 可见；
+- 已接受 Artifact 可以被同一 Room 的其他 Chat 引用；
+- Chat 归档不删除 Room Artifact；
+- Agent 默认只能读取自己 Task 的 Trace，其他 Trace 需要显式授权。
+
+这些规则必须在读取接口中强制执行，不依赖 Worker Prompt 自律。
+
+## 七、安全、恢复和桌面边界
+
+实施时必须继续遵守：
+
+- Agent 执行只在 Electron main process；
+- Renderer 只能使用窄的 preload API；
+- Prompt 和消息不能修改 secrets、执行路径、工作目录和进程权限；
+- 动态角色不能创建新的凭据或 Provider；
+- 目录租约、受管理进程、脱敏、Outbox 和恢复逻辑保留；
+- SQLite 事务提交后再执行外部副作用；
+- Trace 使用现有 JSONL 路径，数据库只保存引用。
+
+## 八、分阶段实施计划
+
+### Phase 0：文档与只读模型
+
+目标是验证概念，不改变 Agent 执行链：
+
+- 定义 Message、Action、Report schema；
+- 定义 Room/Chat 边界；
+- 从旧 checkpoint 状态投影 Task、Report、Attention；
+- UI 显示群聊、Task 卡和“需要你”；
+- 隐藏 checkpoint、Gate、Seat、Round 等内部词汇。
+
+验收：用户可以从群聊看到“谁在做什么、产物是什么、哪里需要我”，但旧执行链仍能继续工作。
+
+### Phase 1：统一事件和结构化报告
+
+- 建立 Chat 事件队列；
+- 接入统一心跳；
+- 兼容旧 `ready/question/continue` 回执并映射为 Report；
+- 引入 idempotency、批处理和重启恢复；
+- 不要求 Controller 模型先可用。
+
+验收：长时间运行的 Agent 完成后，完成报告可以可靠回到 Thread；应用重启不会丢失消息或重复创建任务。
+
+### Phase 2：SQLite Room Engine
+
+- 建立 schema version 和 migration；
+- 迁移或投影现有 `state.json`；
+- 让 Room Engine 成为 Task、Assignment、Report、Attention 的唯一写入者；
+- Trace、Shadow Git 和工作目录继续使用现有基础设施。
+
+验收：Room/Chat/Task/Report/Artifact 可以查询、恢复和审计；旧项目仍可打开。
+
+### Phase 3：Controller Session
+
+- 引入批量 Controller；
+- 实现 action 校验和 action 结果卡；
+- 支持主控不可用时的确定性 fallback；
+- 记录 context revision 和 controller decision；
+- 支持用户修改当前 ChatContext。
+
+验收：用户和 Agent 的 @消息都进入同一管线；主控可以创建、交接、评审和请求 Attention，但不能越过平台边界。
+
+### Phase 4：动态角色与自动组队
+
+- 先做建议模式；
+- 再做受限自动模式；
+- 支持 Chat 级角色 Prompt revision；
+- 支持角色复用、归档、保存为模板；
+- 加入成本、并发和 Provider 限制。
+
+验收：用户提出一个新需求后，可以生成临时角色并完成一次多 Agent 协作；角色不会污染其他 Chat。
+
+### Phase 5：工作空间隔离和旧模式退役
+
+- 为 Assignment 分配隔离工作空间或受控 worktree；
+- 通过 Artifact 发布和版本引用交接；
+- 新 Chat 移除并发/顺序/自动讨论模式选择器；
+- 旧 Chat 保持兼容；
+- 最后删除旧 UI 和旧入口。
+
+验收：两个 Agent 并行工作不会默认覆盖对方未发布文件；用户只使用消息、Task、Report、Attention 和 Artifact 完成协作。
+
+## 九、验证指标
+
+每个阶段都应记录：
+
+- 从用户需求到第一份有效产物的时间；
+- Controller 误派、重复派发和无效角色创建率；
+- Report 丢失、重复和恢复成功率；
+- Attention 数量以及用户需要处理的时间；
+- Assignment 交接成功率；
+- 文件冲突和租约失败次数；
+- 单个 Chat、Task、Assignment 的模型调用和资源成本；
+- 用户主动纠正、停止或撤销主控决定的次数。
+
+如果主控路由错误率高、Attention 数量过多或自动组队成本不可控，应先收紧 Controller Prompt 和默认模式，不要重新引入固定 checkpoint workflow。
+

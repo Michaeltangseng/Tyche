@@ -35,6 +35,10 @@ Message
 执行层：Claude Code / Codex / Pi / 其他原生 Agent / sub-agent / skill / shell / trace
 ```
 
+运行时细节见 [04-heartbeat-and-workspace.md](04-heartbeat-and-workspace.md)：所有 Controller 和 Worker Session 使用同一套心跳与事件管线；Room 主目录保存项目事实，Assignment 工作空间隔离写入，产物通过平台发布回 Room。
+
+实施前置规范和分阶段计划见 [05-implementation-plan-and-open-questions.md](05-implementation-plan-and-open-questions.md)。
+
 ## 与当前实现的关系
 
 保留 `invokeAgent`、原生 Session、Trace、工作目录、受管理进程、影子 Git、写入租约、Outbox、幂等和重启恢复。现有 checkpoint、Gate、Seat、轮次和主笔/评审循环降为旧项目兼容或内部投影，不再作为新项目室的用户模型。
