@@ -111,6 +111,7 @@ const { openRoomDatabase } = require('./room-engine/room-db.cjs')
 const { createRoomRepository } = require('./room-engine/room-repository.cjs')
 const { createRoomService } = require('./room-engine/room-service.cjs')
 const { createControllerAgent } = require('./room-engine/controller-agent.cjs')
+const { createRoomNativeRuntime } = require('./room-engine/native-runtime.cjs')
 const { registerRoomIpc } = require('./room-engine/room-ipc.cjs')
 const { nativeOpenClawOptions } = require('./agents/cli/openclaw-runtime.cjs')
 const { migrateLegacyProductData } = require('./product-data-migration.cjs')
@@ -1231,28 +1232,16 @@ if (!hasSingleInstanceLock) {
         directory: path.join(privateRoot, 'room-engine'),
       })
       const roomRepository = createRoomRepository(roomEngineDb)
-      const invokeRoomAgent = (...args) => startupWorkspace.invokeAgent(...args)
-      const resolveRoomGroup = ({ assignment }) => {
-        const requestedWorkspace = typeof assignment.workspace === 'string'
-          ? path.resolve(assignment.workspace)
-          : ''
-        return (startupWorkspace.state.groups || []).find(group => (
-          typeof group.workdir === 'string'
-          && path.resolve(group.workdir) === requestedWorkspace
-          && Array.isArray(group.agentKinds)
-          && group.agentKinds.includes(assignment.provider)
-          && !startupWorkspace.activeRuns.has(group.id)
-        )) || null
-      }
+      const roomNativeRuntime = createRoomNativeRuntime({ repository: roomRepository, workspace: startupWorkspace })
       roomEngineService = createRoomService({
         roomDb: roomEngineDb,
         repository: roomRepository,
-        invokeAgent: invokeRoomAgent,
-        resolveGroup: resolveRoomGroup,
+        invokeAgent: roomNativeRuntime.invokeAgent,
+        resolveGroup: roomNativeRuntime.resolveTarget,
         autoRunEffects: true,
         locale: () => app.getLocale?.() || 'zh',
         getInvocationRecords: runId => startupWorkspace.processRegistry.getInvocationRecords(runId),
-        decideController: createControllerAgent({ repository: roomRepository, invokeAgent: invokeRoomAgent, resolveGroup: resolveRoomGroup }),
+        decideController: createControllerAgent({ repository: roomRepository, invokeAgent: roomNativeRuntime.invokeAgent, resolveGroup: roomNativeRuntime.resolveTarget }),
       })
       const templatesStore = new TemplatesStore({
         storagePath: path.join(privateRoot, 'templates.json'),

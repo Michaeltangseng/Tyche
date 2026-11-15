@@ -119,7 +119,7 @@ function isolatedInvocationContext(context) {
 }
 
 function projectRoomPromptContext(context) {
-  if (context?.sessionPolicy !== 'project-room') return null
+  if (!['project-room', 'room'].includes(context?.sessionPolicy)) return null
   const promptOverride = typeof context.promptOverride === 'string'
     ? context.promptOverride
     : ''
@@ -297,7 +297,9 @@ class LocalWorkspaceAgentInvocation {
     const activeRun = this.activeRuns.get(group.id)
     const taskId = cleanText(activeRun?.taskId || context.taskId || threadRootId, 120)
     if (!taskId) throw new Error('LOCAL_RUN_TASK_INVALID')
-    group = taskPermissionGroup(group, this.state(), taskId,
+    // v2 owns its captured prompt and permissions; its hash is not a legacy
+    // ContextPack record and must not resolve through the group store.
+    if (context.sessionPolicy !== 'room') group = taskPermissionGroup(group, this.state(), taskId,
       activeRun?.contextPackId || context.contextPackId, this.getContextPack)
     // Every conversation, group or direct, is its own execution surface. The
     // writer lease is scoped to the conversation, so a writable chat never
@@ -312,7 +314,7 @@ class LocalWorkspaceAgentInvocation {
       .update(`conversation\u0000${group.id}${proposalScope}`)
       .digest('hex')
     const writerKind = cleanText(context.singleWriterKind || context.writerKind, 80)
-    const projectRoomInvocation = context.sessionPolicy === 'project-room'
+    const projectRoomInvocation = ['project-room', 'room'].includes(context.sessionPolicy)
     const permissionMode = projectRoomInvocation
       ? (['workspace-write', 'read-exec'].includes(context.permissionMode)
         ? context.permissionMode
@@ -418,6 +420,7 @@ class LocalWorkspaceAgentInvocation {
       this.unregisterAgentController?.(
         activeRun, kind, registration.agentRunId, agentController,
       )
+      if (context.sessionPolicy === 'room') this.activeAgentSnapshots.delete(`${group.id}:active:${kind}`)
     }
   }
 
@@ -538,7 +541,7 @@ class LocalWorkspaceAgentInvocation {
             cleanText(context.phase, 40) || 'response',
           ])).slice(0, 48)}`
         : '')
-    if (!isolated && !frozen) {
+    if (!isolated && !frozen && context.sessionPolicy !== 'room') {
       const requiredContext = this.packedPromptContext(
         group.id, '', threadRootId, context.contextOptions || {},
       )
@@ -951,7 +954,7 @@ class LocalWorkspaceAgentInvocation {
       // engine and do not own a chat run controller, so there is no run-ledger
       // record to checkpoint here.
       const persisted = this.checkpointRun(group.id, activeRun)
-      if (context.sessionPolicy !== 'project-room'
+      if (!['project-room', 'room'].includes(context.sessionPolicy)
           && this.hasRunLedger() && persisted !== true) {
         throw new Error('LOCAL_RUN_PERSIST_FAILED')
       }
@@ -977,7 +980,7 @@ class LocalWorkspaceAgentInvocation {
       const preferencesText = isolated || projectRoom
         ? ''
         : workPreferencesPrompt(this.state().workPreferences)
-      const projectChat = isolated || frozen
+      const projectChat = isolated || frozen || context.sessionPolicy === 'room'
         ? null
         : (this.getProjectRoom()?.projectChatContext?.(group.id) || null)
       let projectChatRecorded = false
@@ -1518,7 +1521,7 @@ class LocalWorkspaceAgentInvocation {
       const reportedOutcomeRefs = !internal
         ? normalizeOutcomeRefs(result.outcomeRefs, context.v4 === true ? { strict: true } : {})
         : {}
-      const capturedOutcomeRefs = internal
+      const capturedOutcomeRefs = internal || context.sessionPolicy === 'room'
         ? { artifactIds: [], evidenceIds: [] }
         : this.recordAgentOutcomes({
             groupId: group.id,

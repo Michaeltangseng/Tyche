@@ -79,7 +79,7 @@ Diff:     shadow Git commit 或版本引用
 | 现有 workspace JSON | 迁移为 Message/Task/Report 投影；原始记录保留只读引用 |
 | V4 旧项目 | 继续使用旧引擎，或通过只读投影显示为新 Task/Report |
 
-宿主群聊可以作为内部实现保留，但新的 Room Engine 是 Chat、Task、Assignment、Report 和 Attention 的唯一业务写入者。Trace 仍由现有运行链写 JSONL，SQLite 只保存 `runId` 和路径引用。
+v2 原生执行已改为临时执行描述，不再创建或查找持久化宿主群聊；上表的旧宿主记录只属于历史数据映射，不作为新 Chat 执行前提。新的 Room Engine 是 Chat、Task、Assignment、Report 和 Attention 的唯一业务写入者。Trace 仍由现有运行链写 JSONL，SQLite 只保存 `runId` 和路径引用。当前原生 Session 不写回旧 workspace JSON，也尚未保存 sessionRef 用于 v2 续跑，见 ADR-005。
 
 ## 旧群聊模式退役
 
