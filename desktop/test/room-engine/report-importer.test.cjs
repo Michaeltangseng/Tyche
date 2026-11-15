@@ -28,6 +28,12 @@ test('parseReportMarker accepts the strict machine marker and ignores prose', ()
   assert.equal(parseReportMarker('还在处理中'), null)
 })
 
+test('parseReportMarker accepts a native CLI prose tail after the marker', () => {
+  const report = parseReportMarker('[[MELDWORK_REPORT:{"kind":"ready","summary":"API ready"}]]\n\n说明：评审已完成。')
+  assert.equal(report.kind, 'ready')
+  assert.equal(report.summary, 'API ready')
+})
+
 test('import writes one report and report_received event transactionally', () => {
   const { roomDb, repository, importer, chatId, taskId, assignmentId } = setup()
   const result = importer.importFromMessage({

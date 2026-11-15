@@ -19,9 +19,10 @@ const { createArtifactReader } = require('../src/room-engine/artifact-reader.cjs
 
 const argument = name => { const index = process.argv.indexOf(name); return index < 0 ? '' : process.argv[index + 1] || '' }
 const provider = argument('--provider')
+const scenario = argument('--scenario') || 'document'
 if (!app) throw new Error('SMOKE_REQUIRES_ELECTRON_MAIN')
-if (!process.argv.includes('--run') || !['claude', 'codex', 'gemini'].includes(provider)) {
-  console.error('Use: npm run smoke:room -- --run --provider claude|codex|gemini')
+if (!process.argv.includes('--run') || !['claude', 'codex', 'gemini'].includes(provider) || !['document', 'review'].includes(scenario)) {
+  console.error('Use: npm run smoke:room -- --run --provider claude|codex|gemini [--scenario document|review]')
   app.exit(2)
 }
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-smoke-'))
@@ -51,7 +52,7 @@ async function smoke() {
     naturalAgentResponses: true,
     runAgentTimeoutMs: 90_000,
     runAgent: async (agent, prompt, directory, options) => {
-      if (calls.length >= 8) throw new Error('SMOKE_CALL_LIMIT')
+      if (calls.length >= (scenario === 'review' ? 20 : 8)) throw new Error('SMOKE_CALL_LIMIT')
       const role = prompt.startsWith('You are the Meldwork collaboration controller') ? 'controller' : 'worker'
       calls.push({ role })
       const call = calls.length
@@ -81,6 +82,11 @@ async function smoke() {
   let failure = null
   try {
     service.applyUserCommand({ type: 'set_workspace_write', chatId, commandId: 'smoke-write-grant', allowWrite: true })
+    if (scenario === 'review') {
+      summary = await require('./smoke-room-review.cjs').runReviewSmoke({ service, repository, roomDb, roomId, chatId, workdir, read,
+        checkError: () => { if (fatal) throw fatal } })
+      summary = { ...summary, provider, calls: calls.length, elapsedMs: Date.now() - startedAt }
+    } else {
     service.submitMessage({ chatId, author: { type: 'user', id: 'user' }, content:
       '请为中文贪吃蛇 MVP 写一份简短需求文档 docs/requirements.md，包含目标、操作、计分、失败条件与验收标准。请自行创建一位文档作者并派发写任务，不需要讨论或代码实现。文档完成后用一条 Attention 请我确认，之后不要再派发。最多一个写文档任务，角色只能使用当前可用 Provider。' })
     while (Date.now() - startedAt < 180_000) {
@@ -118,6 +124,7 @@ async function smoke() {
         || updated.tasks.some(task => task.status !== 'done')) throw new Error('SMOKE_CONTEXT_CHANGE_CREATED_WORK')
     summary = { ...summary, calls: calls.length, elapsedMs: Date.now() - startedAt,
       contextRevision: context.revision, contextSourceMessageId: change.message.messageId, contextChangeVerified: true }
+    }
   } catch (error) {
     failure = error
     throw error
@@ -135,12 +142,21 @@ async function smoke() {
     const persisted = createRoomRepository(reopened).getRoomSnapshot(roomId)
     const persistedContext = createRoomRepository(reopened).getChatContext(chatId)
     if (persistedContext.revision !== summary.contextRevision
-        || !persistedContext.context?.changes.sourceMessageIds?.includes(summary.contextSourceMessageId)) throw new Error('SMOKE_REOPEN_CONTEXT_LOST')
+        || (summary.contextSourceMessageId && !persistedContext.context?.changes.sourceMessageIds?.includes(summary.contextSourceMessageId))) throw new Error('SMOKE_REOPEN_CONTEXT_LOST')
     if (!persisted.artifacts.some(item => item.id === summary.artifactId)
         || !persisted.reports.some(item => item.artifact_ids_json.includes(summary.artifactId))
         || !persisted.attentions.some(item => item.id === summary.attentionId)) throw new Error('SMOKE_REOPEN_STATE_LOST')
     const diff = await createArtifactReader({ roomDb: reopened, directory })({ roomId, artifactId: summary.artifactId })
     if (!diff.text.includes('@@')) throw new Error('SMOKE_REOPEN_DIFF_LOST')
+    if (scenario === 'review') {
+      if (!persisted.artifacts.some(item => item.id === summary.implementationArtifactId)
+          || !persisted.reports.some(item => item.id === summary.reviewReportId)
+          || !persisted.attentions.some(item => item.id === summary.attentionId && item.status === 'answered')
+          || !persisted.artifacts.some(item => item.id === summary.artifactId && item.status === 'accepted')
+          || persisted.tasks.length !== summary.tasks || persisted.tasks.some(task => task.status !== 'done')) throw new Error('SMOKE_REOPEN_REVIEW_LOST')
+      const implementationDiff = await createArtifactReader({ roomDb: reopened, directory })({ roomId, artifactId: summary.implementationArtifactId })
+      if (!implementationDiff.text.includes('@@')) throw new Error('SMOKE_REOPEN_IMPLEMENTATION_DIFF_LOST')
+    }
     summary.reopenVerified = true
   } finally { reopened.close() }
   const resultPath = path.join(privateRoot, 'smoke-result.json')

@@ -16,6 +16,10 @@
 
 简化后的验证：上述七个 room-engine 定向测试文件共 47 项通过；`git diff --check` 通过。Electron main 的真实 Claude Code CLI smoke 约 33 秒、4 次调用通过，覆盖文档、Report、产物 diff、Attention 与数据库重开。本轮未跑全量测试、构建、打包或 Renderer 交互复验。
 
+本轮完成真实的“多 Agent 评审 → 用户决定 → 继续实施”纵向验收：Electron main 中使用真实 Claude Code CLI，在临时 Room/Chat 内自动创建文档作者、只读评审者和实施者三个独立角色。文档任务与评审任务各完成一次 Assignment；评审完成后才创建 approval Attention，smoke 通过同一 UserCommand 入口接受文档并回答 `implement`，之后才创建并派发实施任务。实施者写入 `src/add.cjs` 与 `test/add.test.cjs`，平台在同一临时项目中用 Electron 内置 Node 执行 `node --test` 和额外契约断言；最终 3 个 Task、3 个 Assignment、3 个 Report、文档/实施 Artifact、Attention 和用户决定事件均通过数据库重开校验，实施派发事件序号晚于用户决定。共 11 次真实 CLI 调用，约 165 秒，`reopenVerified: true`。
+
+验收过程中发现原生 CLI 可能在机器 Report 标记后追加说明文字，导致原先要求标记位于回复末尾的解析器误判“无 Report”。`report-importer` 现从消息中读取最后一个 `[[MELDWORK_REPORT:{...}]]` 标记，仍对 JSON 字段、kind、摘要、Artifact 范围做严格校验；新增定向测试覆盖标记后有 prose tail 的情况。实施 Agent 的 `workspace-write` 会话在本机仍可能因 CLI Bash 审批策略返回 blocked，因此该 smoke 明确由 Agent 写入代码与测试，平台验收阶段执行测试命令；这保留了真实评审/用户决定/实施调度链路，同时不把交互式审批假设硬编码进产品。
+
 真实 CLI 复验发现，Report 触发的批次没有保留任务源消息，可能遗漏用户的后续要求（例如“文档完成后请我确认”）。Controller 上下文现携带任务引用的历史 `sourceMessages`，过滤跨 Chat、删除和当前批次重复消息；历史消息不作为新派发触发器，不引入固定审批流程。定向回归已覆盖该缺口。
 
 本轮验证：Electron Node 模式运行 room-actions、controller-session、controller-agent、user-commands、room-db、assignment-runner、mention-fallback 共 48 项测试通过；`git diff --check` 通过。修复后的 `npm --prefix desktop run smoke:room -- --run --provider claude` 在临时项目中以真实 Claude Code CLI 约 30 秒、4 次调用通过文档/Report/快照/diff/Attention/账本重开验证。未跑全量测试、构建或打包；本轮未复验 Renderer 点击交互。

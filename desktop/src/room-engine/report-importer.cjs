@@ -1,10 +1,13 @@
-const REPORT_MARKER = /\[\[MELDWORK_REPORT:(\{.*\})\]\]\s*$/s
+const REPORT_MARKER = /\[\[MELDWORK_REPORT:(\{[\s\S]*\})\]\]/g
 const REPORT_KINDS = new Set(['progress', 'ready', 'waiting', 'blocked', 'failed', 'handoff'])
 const REPORT_FIELDS = new Set(['reportId', 'kind', 'summary', 'evidence', 'artifacts', 'nextRequest', 'attentionId'])
 
 function parseReportMarker(content) {
   if (typeof content !== 'string') throw new TypeError('ROOM_REPORT_CONTENT_INVALID')
-  const match = content.match(REPORT_MARKER)
+  // Native CLIs occasionally append a short human-readable tail after the
+  // machine marker. The marker itself remains the authoritative payload.
+  const matches = [...content.matchAll(REPORT_MARKER)]
+  const match = matches.at(-1)
   if (!match) return null
   let value
   try { value = JSON.parse(match[1]) } catch { throw new TypeError('ROOM_REPORT_MARKER_JSON_INVALID') }
