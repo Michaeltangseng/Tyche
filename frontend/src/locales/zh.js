@@ -12,6 +12,7 @@ export default {
     "room.error": "操作未完成，请刷新检查最新状态后重试。",
     "room.refresh": "刷新",
     "room.chat": "团队聊天",
+    "room.context": "当前协作约定",
     "room.chatName": "新聊天名称",
     "room.newChat": "新建聊天",
     "room.allowWrite": "允许 Agent 修改此项目目录",

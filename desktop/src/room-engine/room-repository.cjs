@@ -260,7 +260,17 @@ function createRoomRepository(roomDb) {
       const room = db.prepare('SELECT * FROM rooms WHERE id = ?').get(roomId)
       if (!room) throw new Error('ROOM_NOT_FOUND')
       const chats = db.prepare('SELECT * FROM chats WHERE room_id = ? ORDER BY created_at, id').all(roomId)
-        .map(row => row)
+        .map(row => {
+          const context = db.prepare(`SELECT revision, instructions, changes_json, created_by, created_at
+            FROM chat_context_revisions WHERE chat_id = ? AND revision = ?`).get(row.id, row.context_revision)
+          return { ...row, current_context: context ? {
+            revision: context.revision,
+            instructions: context.instructions,
+            changes: decode(context.changes_json),
+            created_by: context.created_by,
+            created_at: context.created_at,
+          } : null }
+        })
       const chatIds = chats.map(chat => chat.id)
       const messages = chatIds.length
         ? db.prepare(`SELECT * FROM messages WHERE chat_id IN (${chatIds.map(() => '?').join(',')}) ORDER BY chat_id, sequence`).all(...chatIds)

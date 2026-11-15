@@ -40,6 +40,10 @@
           <button class="secondary-button" :disabled="busy || !chatTitle.trim()">{{ t('room.newChat') }}</button>
         </form>
       </div>
+      <article v-if="chat?.current_context?.instructions" class="room-context" :aria-label="t('room.context')">
+        <strong>{{ t('room.context') }} · v{{ chat.current_context.revision }}</strong>
+        <p>{{ chat.current_context.instructions }}</p>
+      </article>
       <div class="room-permissions">
         <label><input type="checkbox" :checked="Boolean(snapshot.room.write_authorized_root)" :disabled="busy || permissionBusy" @change="command({ type: 'set_workspace_write', allowWrite: $event.target.checked })" />{{ t('room.allowWrite') }}</label>
         <span class="room-muted">{{ t('room.writeHint') }}</span>

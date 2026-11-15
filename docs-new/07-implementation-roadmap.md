@@ -22,6 +22,8 @@ Assignment Runner 对所有明确标记为未知结果的原生调用统一进�
 
 本切片验证：七个 room-engine 定向文件共 71 项测试通过，覆盖来源身份、版本切换、同批回滚、重复批次、上下文更新唤醒与重启恢复；`git diff --check` 通过。扩展的真实 Claude Code CLI smoke 在 Electron main 约 81 秒、6 次调用通过：先完成文档与确认 Attention，再接收“以后英文报告、后续不再邀请文档作者、只更新约定”的用户消息，保存新 revision，不新增任务或停止既有工作；人工核对保存文本包含新要求且保留原有限制，数据库重开后来源与版本仍在。该验证不代表后续实际任务遵循率或完整多 Agent 验收。未运行全量测试、构建、打包或 Renderer 交互复验。
 
+当前 v2 群聊快照会返回所选 Chat 的 `current_context`（当前 revision、完整协作约定和来源信息），RoomWorkspace 在聊天栏下方展示它。这样用户提出的协作要求既保留在 SQLite 版本账本，也能在后续对话中直接核对；没有约定时不显示空卡片。主进程快照定向测试与 RoomWorkspace 单文件测试（14 项）通过。一次误用仓库默认 `npm test` 会展开旧版前端全量用例，已中断，未将其结果作为本切片验收。
+
 简化后的验证：上述七个 room-engine 定向测试文件共 47 项通过；`git diff --check` 通过。Electron main 的真实 Claude Code CLI smoke 约 33 秒、4 次调用通过，覆盖文档、Report、产物 diff、Attention 与数据库重开。本轮未跑全量测试、构建、打包或 Renderer 交互复验。
 
 本轮完成真实的“多 Agent 评审 → 用户决定 → 继续实施”纵向复验：Electron main 中使用真实 Claude Code CLI，在临时 Room/Chat 内自动创建文档作者、只读评审者和实施者三个独立角色。文档任务与评审任务各完成一次 Assignment；评审完成后才创建 approval Attention，smoke 通过同一 UserCommand 入口接受文档并回答 `implement`，之后才创建并派发实施任务。实施者写入 `src/add.cjs` 与 `test/add.test.cjs`，平台在同一临时项目中用 Electron 内置 Node 执行 `node --test` 和额外契约断言；最终 3 个 Task、3 个 Assignment、3 个 Report、文档/实施 Artifact、Attention 和用户决定事件均通过数据库重开校验，实施派发事件序号晚于用户决定。最近一次复验 10 次真实 CLI 调用、约 129 秒，`reopenVerified: true`。

@@ -183,6 +183,18 @@ describe('v2 team workspace', () => {
     expect(bridge.applyUserCommand).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'retry_task', assignmentId: 'attempt', commandId: expect.any(String) }))
   })
 
+  it('shows the current collaboration agreement for the selected chat', async () => {
+    const snapshot = data()
+    snapshot.chats[0].context_revision = 2
+    snapshot.chats[0].current_context = { revision: 2, instructions: 'Use English reports and ask before implementation.' }
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+    expect(wrapper.get('.room-context').text()).toContain('Current collaboration agreement')
+    expect(wrapper.get('.room-context').text()).toContain('Use English reports and ask before implementation.')
+    await wrapper.get('.room-chat-toolbar select').setValue('chat-2')
+    expect(wrapper.find('.room-context').exists()).toBe(false)
+  })
+
   it('requires explicit directory write opt-in and disables permission changes for unknown executions', async () => {
     const snapshot = data()
     const bridge = api(snapshot)

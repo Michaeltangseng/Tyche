@@ -12,6 +12,7 @@ export default {
     "room.error": "The operation could not be completed. Refresh to check the latest state before retrying.",
     "room.refresh": "Refresh",
     "room.chat": "Team chat",
+    "room.context": "Current collaboration agreement",
     "room.chatName": "New chat name",
     "room.newChat": "New chat",
     "room.allowWrite": "Allow agents to modify this project directory",
