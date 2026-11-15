@@ -32,6 +32,19 @@ test('bootstrap creates an independent v2 room and primary chat atomically', () 
   roomDb.close()
 })
 
+test('snapshot returns the v2 room ledger grouped by chat', () => {
+  const { roomDb, service, repository, roomId, chatId, roleId } = setup()
+  const message = repository.appendMessage({ chatId, authorType: 'user', authorId: 'user-1', content: 'draft' })
+  const taskId = repository.createTask({ chatId, objective: 'Draft', createdBy: 'user-1', sourceMessageIds: [message.messageId] })
+  repository.createAssignment({ taskId, roleId, required: false })
+  const snapshot = service.snapshot({ roomId })
+  assert.equal(snapshot.room.id, roomId)
+  assert.equal(snapshot.chats[0].id, chatId)
+  assert.deepEqual(snapshot.tasks[0].source_message_ids_json, [message.messageId])
+  assert.equal(snapshot.assignments[0].required, 0)
+  roomDb.close()
+})
+
 test('room service composes message ingress and explicit user mention fallback', () => {
   const { roomDb, service, chatId, roleId } = setup()
   const result = service.submitMessage({ chatId, author: { type: 'user', id: 'user-1' }, content: '@Backend build API' })

@@ -157,6 +157,7 @@ if (isLocalDocument) Object.assign(desktopApi, {
   }),
   room: Object.freeze({
     bootstrap: input => ipcRenderer.invoke('room:bootstrap', input),
+    snapshot: input => ipcRenderer.invoke('room:snapshot', input),
     submitMessage: input => ipcRenderer.invoke('room:message-submit', input),
     applyControllerAction: input => ipcRenderer.invoke('room:controller-action', input),
     applyUserCommand: input => ipcRenderer.invoke('room:user-command', input),

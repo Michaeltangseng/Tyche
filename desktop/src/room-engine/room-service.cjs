@@ -69,8 +69,14 @@ function createRoomService({ roomDb, repository, now } = {}) {
     })
   }
 
+  function snapshot(input = {}) {
+    if (typeof input.roomId !== 'string' || input.roomId.length === 0) throw new TypeError('ROOM_ID_INVALID')
+    return repository.getRoomSnapshot(input.roomId)
+  }
+
   return {
     bootstrap,
+    snapshot,
     submitMessage,
     editMessage: ingress.edit,
     deleteMessage: ingress.remove,

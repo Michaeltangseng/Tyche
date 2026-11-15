@@ -1,5 +1,6 @@
 const CHANNELS = Object.freeze({
   bootstrap: 'room:bootstrap',
+  snapshot: 'room:snapshot',
   submitMessage: 'room:message-submit',
   controllerAction: 'room:controller-action',
   userCommand: 'room:user-command',
@@ -18,6 +19,7 @@ function registerRoomIpc({ ipcMain, service, requireRenderer = () => {}, isShutt
   if (!ipcMain || typeof ipcMain.handle !== 'function' || !service) throw new TypeError('ROOM_IPC_DEPENDENCIES_REQUIRED')
   const handlers = new Map([
     [CHANNELS.bootstrap, (input) => service.bootstrap(assertInput(input))],
+    [CHANNELS.snapshot, (input) => service.snapshot(assertInput(input))],
     [CHANNELS.submitMessage, (input) => service.submitMessage(assertInput(input))],
     [CHANNELS.controllerAction, (input) => service.applyControllerAction(assertInput(input))],
     [CHANNELS.userCommand, (input) => service.applyUserCommand(assertInput(input))],

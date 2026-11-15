@@ -236,7 +236,8 @@ Room Engine 的第一条主进程纵向切片已经接入 Electron 生命周期�
 - `room-service` 通过 `room-ipc` 注册到受信任的主进程 IPC 边界；Renderer 只能通过窄的 preload API 调用；
 - preload 已暴露消息提交、ControllerAction、UserCommand、Report、Session liveness、stale 查询和 effect 入队接口；
 - 增加 `room:bootstrap`，在一个事务中创建独立的 v2 Room、primary Chat 和审计事件，作为新 Chat UI 的初始化入口；
+- 增加 `room:snapshot` 读取面，按 Room 返回 Chat、消息、Task、Assignment 和 Attention，供新 UI 使用；
 - 退出流程先停止 Room IPC 接收，再关闭数据库，避免关闭期间产生新的写入；
 - Room Engine 专项测试当前为 38 项通过；尚未运行 Desktop 全量测试和打包检查。
 
-这一步只接入底层能力，不改变旧 project-room/checkpoint UI，也不把新 ledger 强行映射进旧状态机。下一步应补主目录项目映射，再接入 Assignment 到现有 invokeAgent/Run Ledger 的运行时桥接。
+这一步只接入底层能力，不改变旧 project-room/checkpoint UI，也不把新 ledger 强行映射进旧状态机。下一步应补主目录项目映射，再以显式适配器接入 Assignment 到现有 invokeAgent/Run Ledger 的运行时桥接。

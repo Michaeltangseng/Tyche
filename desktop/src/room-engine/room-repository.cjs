@@ -6,6 +6,16 @@ function now() { return new Date().toISOString() }
 function id(prefix) { return `${prefix}-${crypto.randomUUID()}` }
 
 function plain(row) { return row ? { ...row } : row }
+function decode(value, fallback = null) {
+  try { return value === null || value === undefined ? fallback : JSON.parse(value) } catch { return fallback }
+}
+
+function decodeRow(row, fields) {
+  if (!row) return row
+  const result = { ...row }
+  for (const field of fields) result[field] = decode(result[field], [])
+  return result
+}
 
 const REPORT_KINDS = new Set(['progress', 'ready', 'waiting', 'blocked', 'failed', 'handoff'])
 
@@ -147,6 +157,34 @@ function createRoomRepository(roomDb) {
     },
     getTask(taskId) { return db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) },
     getEffect(effectId) { return db.prepare('SELECT * FROM effects WHERE id = ?').get(effectId) },
+    getRoomSnapshot(roomId) {
+      const room = db.prepare('SELECT * FROM rooms WHERE id = ?').get(roomId)
+      if (!room) throw new Error('ROOM_NOT_FOUND')
+      const chats = db.prepare('SELECT * FROM chats WHERE room_id = ? ORDER BY created_at, id').all(roomId)
+        .map(row => row)
+      const chatIds = chats.map(chat => chat.id)
+      const messages = chatIds.length
+        ? db.prepare(`SELECT * FROM messages WHERE chat_id IN (${chatIds.map(() => '?').join(',')}) ORDER BY chat_id, sequence`).all(...chatIds)
+        : []
+      const tasks = chatIds.length
+        ? db.prepare(`SELECT * FROM tasks WHERE chat_id IN (${chatIds.map(() => '?').join(',')}) ORDER BY created_at, id`).all(...chatIds)
+        : []
+      const taskIds = tasks.map(task => task.id)
+      const assignments = taskIds.length
+        ? db.prepare(`SELECT * FROM assignments WHERE task_id IN (${taskIds.map(() => '?').join(',')}) ORDER BY created_at, id`).all(...taskIds)
+        : []
+      const attentions = chatIds.length
+        ? db.prepare(`SELECT * FROM attentions WHERE chat_id IN (${chatIds.map(() => '?').join(',')}) ORDER BY created_at, id`).all(...chatIds)
+        : []
+      return {
+        room: decodeRow(room, ['providers_json', 'allowed_capabilities_json']),
+        chats,
+        messages: messages.map(row => decodeRow(row, ['mentions_json', 'attachment_ids_json'])),
+        tasks: tasks.map(row => decodeRow(row, ['source_message_ids_json', 'blocked_by_task_ids_json', 'required_artifact_ids_json', 'inputs_json'])),
+        assignments: assignments.map(row => decodeRow(row, ['write_scopes_json'])),
+        attentions: attentions.map(row => decodeRow(row, ['options_json'])),
+      }
+    },
   }
 }
 
