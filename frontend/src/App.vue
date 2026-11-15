@@ -82,6 +82,8 @@
           @select-group="selectGroup"
         />
 
+        <RoomWorkspace v-else-if="activeView === 'rooms' && api?.room" :api="api.room" :pick-directory="() => workspace.pickDirectory()" :agents="readyAgents" />
+
         <section v-else class="conversation-pane" :class="{ 'project-room-pane': isProjectMainGroup }">
           <ConversationHeader ref="conversationHeader" :controller="conversationHeaderController" />
 
@@ -236,6 +238,7 @@ import {
   WarningOutline,
 } from '@vicons/ionicons5'
 import ConversationComposer from './components/ConversationComposer.vue'
+import RoomWorkspace from './components/RoomWorkspace.vue'
 import WindowTitlebar from './components/WindowTitlebar.vue'
 import ConversationHeader from './components/ConversationHeader.vue'
 import ConversationTimelineView from './components/ConversationTimelineView.vue'
@@ -1324,6 +1327,8 @@ const {
     projectRoomPreviewEnabled,
     projectRoomStatusLabel,
     openProjectCreate,
+    roomWorkspaceAvailable: computed(() => Boolean(api.value?.room)),
+    openRoomWorkspace: () => { closeTracePanel(); closeCollapsedGroupMenu(); activeView.value = 'rooms' },
     setProjectRoomPreview,
     refreshing,
     saving,

@@ -193,6 +193,16 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     return repository.getRoomSnapshot(input.roomId)
   }
 
+  function createChat(input) {
+    if (closed) throw new Error('ROOM_SERVICE_CLOSED')
+    return roomDb.withTransaction(() => {
+      repository.getRoomSnapshot(input.roomId)
+      const chatId = repository.createChat({ roomId: input.roomId, title: input.title, engineVersion: 'v2' })
+      repository.appendEvent({ roomId: input.roomId, chatId, actorId: 'user', type: 'chat_created', payload: {} })
+      return { roomId: input.roomId, chatId }
+    })
+  }
+
   function applyControllerAction(input, options) {
     return roomDb.withTransaction(() => {
       const result = actions.applyController(input, options)
@@ -250,6 +260,8 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
 
   return {
     bootstrap,
+    listRooms: () => repository.listRooms(),
+    createChat,
     snapshot,
     startAssignment: input => {
       if (closed) throw new Error('ROOM_SERVICE_CLOSED')

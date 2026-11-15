@@ -6,7 +6,7 @@
 
 `desktop/src/room-engine/` 已提供私有 SQLite 账本、统一消息入口、ControllerAction/UserCommand/PlatformTransition 校验、Report 导入和状态推导、outbox、Supervisor 事实记录，以及 main/preload 生命周期接线。Controller 的批次动作、派发 effect 和审计在同一事务内提交；Agent 消息不能直接授权派发。数据库目录使用 `0700`、文件使用 `0600`（Windows 除外）。启动恢复会将崩溃遗留 running effects 标为 unknown 并产生 Attention，不自动重放；未启动的 pending effects 仍可继续消费。详细能力和未完成项见 Phase 4 与下方当前实现进度。
 
-当前切片仍未接入 Renderer 或旧 Chat 迁移。`controller-agent.cjs` 已在 main 中通过 `native-runtime.cjs` 连接原生 `invokeAgent`：按 Room Provider 配置顺序选择首个 Provider，验证 Chat/目录归属与已安装 Agent；创建本次调用的临时执行描述，不查找已有 group，也不创建隐藏群聊。Controller 强制只读、不写入旧消息/Session、严格解析 JSON；Worker 写入需要用户授权与根目录独占租约。Assignment Runner 已补齐原生接口要求的 promptOverride/contextPackId，并带入角色 Prompt、任务创建时的协作约定和 Report 输出要求。独立 Controller Session 已支持批次幂等、context revision 校验和结构化决策审计；动态角色创建与 Prompt 更新已受 Room Provider/能力白名单约束。Room schema 已升级到 v3，既有 Room 默认只读。测试已穿过真实 LocalWorkspace 调用路径，但 CLI 进程仍使用替身；尚未实际运行真实 CLI 完成端到端验收，也未运行仓库全量测试。
+当前切片已接入独立的 v2 Renderer 页面，尚未接入旧 Chat 迁移。`controller-agent.cjs` 已在 main 中通过 `native-runtime.cjs` 连接原生 `invokeAgent`：按 Room Provider 配置顺序选择首个 Provider，验证 Chat/目录归属与已安装 Agent；创建本次调用的临时执行描述，不查找已有 group，也不创建隐藏群聊。Controller 强制只读、不写入旧消息/Session、严格解析 JSON；Worker 写入需要用户授权与根目录独占租约。Assignment Runner 已补齐原生接口要求的 promptOverride/contextPackId，并带入角色 Prompt、任务创建时的协作约定和 Report 输出要求。独立 Controller Session 已支持批次幂等、context revision 校验和结构化决策审计；动态角色创建与 Prompt 更新已受 Room Provider/能力白名单约束。Room schema 已升级到 v3，既有 Room 默认只读。测试已穿过真实 LocalWorkspace 调用路径，但 CLI 进程仍使用替身；尚未实际运行真实 CLI 完成端到端验收，也未运行仓库全量测试。
 
 ## 实施原则
 
@@ -49,12 +49,12 @@
 - `report-importer.cjs`：解析严格的 `[[MELDWORK_REPORT:{...}]]` 机器标记，写入 Report 真源和 `report_received` 审计事件；不从自由文本推断任务完成。
 - `session-supervisor.cjs`：由主进程记录 session liveness 和退出事实，并查询 stale Assignment；Worker 自报消息不构成 liveness 证明。
 - `report-state.cjs`：根据最新 Report 推导 Assignment/Task 状态；状态转移不接受 Controller 自由设置。
-- `user-commands.cjs`：执行用户回答 Attention、Artifact 接受/拒绝、Chat 暂停/恢复、Task 停止，以及已结束 Assignment 的幂等重试/交接；unknown 执行已接入受管理进程记录对账，无记录执行恢复与用户控制 UI 仍待接入。
+- `user-commands.cjs`：执行用户回答 Attention、Artifact 接受/拒绝、Chat 暂停/恢复、Task 停止，以及已结束 Assignment 的幂等重试/交接；unknown 执行已接入受管理进程记录对账，用户控制 UI 首版已接入，无记录执行恢复仍待完善。
 - `mention-fallback.cjs`：Controller 不可用时按显式 @mention 确定性创建 Task/Assignment；不从普通自由文本推断角色或授权。
 - `room-service.cjs`：Room Engine 的组合入口，后续 IPC、Controller Session 和 Agent 调用只依赖此门面。
 - `room-ipc.cjs`：将 Room Service 映射为窄 IPC channel；绑定 main/preload 时沿用现有 renderer 信任校验，不暴露数据库或进程能力。
 
-当前 v2 IPC/preload 仅保留 bootstrap、snapshot、submitMessage、applyUserCommand、listStaleAssignments 五个入口。直接启动 Assignment、ControllerAction、Report 导入、Session liveness 写入和 effect 入队已从 Renderer 接口与 main channel 注册中删除，不保留旧调用兼容层；这些能力仅由主进程执行链使用。注册时必须提供 Renderer 信任校验，所有调用先完成信任与退出状态检查，再校验 DTO 字段和有界标量值。消息作者固定由 main 赋为本地 user，bootstrap 创建者和 UserCommand 审计 actor 同样由 main 赋值，Renderer 不得传入 author/actorId/createdBy 或自行指定生成对象 ID。Message 的 replyTo/taskId 必须引用同一 Chat 的有效对象。正文里的 action/Report 标记只属于消息内容，不进入平台事实写入通道。新 UI 尚未接入，消息编辑/删除与实时订阅接口也未开放。
+当前 v2 IPC/preload 提供 listRooms、createChat、bootstrap、snapshot、submitMessage、applyUserCommand、listStaleAssignments 七个入口。直接启动 Assignment、ControllerAction、Report 导入、Session liveness 写入和 effect 入队已从 Renderer 接口与 main channel 注册中删除，不保留旧调用兼容层；这些能力仅由主进程执行链使用。注册时必须提供 Renderer 信任校验，所有调用先完成信任与退出状态检查，再校验 DTO 字段和有界标量值。消息作者固定由 main 赋为本地 user，bootstrap 创建者和 UserCommand 审计 actor 同样由 main 赋值，Renderer 不得传入 author/actorId/createdBy 或自行指定生成对象 ID。Message 的 replyTo/taskId 必须引用同一 Chat 的有效对象。正文里的 action/Report 标记只属于消息内容，不进入平台事实写入通道。消息编辑/删除与实时订阅接口尚未开放。
 
 复用 `desktop/src/project-room/project-state-schema.cjs`、`project-state-migrations.cjs`、`project-store.cjs` 的迁移经验，但不把新的 Task 状态继续塞进 checkpoint engine。复用 `desktop/src/security/private-file.cjs` 保证数据库目录权限，数据库放在应用私有区，不放入 Room 主目录。
 
@@ -186,6 +186,12 @@ Report 入账和状态推导在同一事务内完成，成功后将 `report_rece
 
 ### Phase 5：动态角色与新 Chat UI
 
+第一版独立入口已落地：`RoomWorkspace.vue` 与 `useRoomWorkspace.js` 直接读取 v2 SQLite 快照，不通过旧 checkpoint/group UI。支持选择目录创建项目、选择已有 Provider、新建独立团队 Chat、发送消息、展示 Chat 角色/Report/Task/Attention 和 Room Artifact，以及回答 Attention、接受/拒绝 Artifact、暂停/恢复、停止、重试、已结束执行的交接和显式目录写授权。新 Chat 不复制另一 Chat 的角色或协作上下文。所有新增文案提供中英文。
+
+快照补充 roles/reports/artifacts；当前使用 1.5 秒串行轮询，卸载时释放计时器，切换 Room 后丢弃迟到结果。操作完成后等待旧轮询结束并重新读取，避免新 Chat 被旧快照覆盖。草稿按 Chat 隔离，发送失败保留。此版没有分页、实时流式消息、Prompt/Skill 编辑、运行阻塞专项提示或完整 Trace/diff 入口，不能视为 Phase 5 完成。
+
+验收：18 项前端定向测试与 43 项 Electron Node 主进程/IPC/preload 测试通过；前端普通构建与桌面构建通过。Electron 临时用户目录下已检查侧栏入口和新页面的消息、角色、报告、任务及 Attention 布局。窗口内用户已有草稿，未继续自动操作；发送/新 Chat/任务控制的桌面交互和真实 CLI 文档生成闭环仍待验收。临时验收项目未配置 Controller Provider，不能用于验证真实 Agent 产出。未跑全量测试或打包检查。额外尝试的旧 appControllers/App.navigation 测试存在失败，已在未修改的 HEAD 副本复现，未在此切片扩展修复。
+
 工作项：
 
 - 实现建议模式的动态角色草案；
@@ -264,7 +270,7 @@ Room Engine 的第一条主进程纵向切片已经接入 Electron 生命周期�
 
 - SQLite ledger 初始化在应用私有目录 `userData/meldwork-private/room-engine`，不写入用户项目目录；
 - `room-service` 通过 `room-ipc` 注册到受信任的主进程 IPC 边界；Renderer 只能通过窄的 preload API 调用；
-- preload 仅暴露 bootstrap、snapshot、用户消息提交、UserCommand 和 stale 只读查询；ControllerAction、Report、Session 事实、effect 和直接执行均保留在 main；
+- preload 仅暴露 Room 列表、Chat 创建、bootstrap、snapshot、用户消息提交、UserCommand 和 stale 只读查询；ControllerAction、Report、Session 事实、effect 和直接执行均保留在 main；
 - 增加 `room:bootstrap`，在一个事务中创建独立的 v2 Room、primary Chat 和审计事件，作为新 Chat UI 的初始化入口；
 - 增加 `room:snapshot` 读取面，按 Room 返回 Chat、消息、Task、Assignment 和 Attention，供新 UI 使用；
 - 增加独立 `assignment-runner` 适配器：把 queued Assignment 映射到现有 `invokeAgent` 回调，记录平台 session facts；无 Report 的进程退出进入 waiting，不直接完成 Task；
@@ -279,4 +285,4 @@ v2 已解除对持久化旧 group 的宿主依赖。`native-runtime.cjs` 仅复�
 
 该切片在 Electron 内置 Node 运行时通过 95 项 Room/IPC/调度器定向测试，以及 14 项共享 project-room/影子 Git 调用回归；CLI 使用替身，未运行 Electron GUI、真实 CLI、打包或全量测试。
 
-每次原生调用仍创建新 Session；原生 sessionRef 的 v2 持久化/续跑、完整 Run Ledger/心跳接线仍待完成。无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实。下一步完成真实 CLI 端到端验收、运行控制收口与 v2 群聊 UI。
+每次原生调用仍创建新 Session；原生 sessionRef 的 v2 持久化/续跑、完整 Run Ledger/心跳接线仍待完成。无 Report 的退出保持 waiting，畸形 Report 记录 failed 和退出事实。v2 群聊 UI 首版和授权/停止/重试/交接入口已接通；下一步完成真实 CLI 端到端验收、自动 Artifact 快照、运行阻塞提示与 Trace/diff 入口。

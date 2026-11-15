@@ -22,6 +22,9 @@ const REPORT_KINDS = new Set(['progress', 'ready', 'waiting', 'blocked', 'failed
 function createRoomRepository(roomDb) {
   const db = roomDb.database
   return {
+    listRooms() {
+      return db.prepare('SELECT id, name, workspace, primary_chat_id, updated_at FROM rooms ORDER BY updated_at DESC, id').all().map(plain)
+    },
     createRoom({ roomId = id('room'), name, workspace, providers = [], allowedCapabilities = [] }) {
       const timestamp = now()
       db.prepare(`INSERT INTO rooms
@@ -267,6 +270,11 @@ function createRoomRepository(roomDb) {
         tasks: tasks.map(row => decodeRow(row, ['source_message_ids_json', 'blocked_by_task_ids_json', 'required_artifact_ids_json', 'inputs_json'])),
         assignments: assignments.map(row => decodeRow(row, ['write_scopes_json'])),
         attentions: attentions.map(row => decodeRow(row, ['options_json'])),
+        roles: chatIds.length ? db.prepare(`SELECT * FROM agent_roles WHERE chat_id IN (${chatIds.map(() => '?').join(',')}) ORDER BY created_at, id`).all(...chatIds)
+          .map(row => decodeRow(row, ['capabilities_json'])) : [],
+        reports: taskIds.length ? db.prepare(`SELECT * FROM reports WHERE task_id IN (${taskIds.map(() => '?').join(',')}) ORDER BY created_at, rowid`).all(...taskIds)
+          .map(row => decodeRow(row, ['evidence_json', 'artifact_ids_json', 'next_request_json'])) : [],
+        artifacts: db.prepare('SELECT * FROM artifacts WHERE room_id=? ORDER BY created_at, id').all(roomId).map(plain),
       }
     },
   }

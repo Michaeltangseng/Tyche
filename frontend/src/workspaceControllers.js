@@ -46,6 +46,8 @@ export function createWorkspaceControllers({
     openConversationRename: conversationActions.openConversationRename,
     openNewGroup: conversationActions.openNewGroup,
     openProjectCreate: app.openProjectCreate,
+    roomWorkspaceAvailable: app.roomWorkspaceAvailable,
+    openRoomWorkspace: app.openRoomWorkspace,
     openSidebarConversationDelete: conversationActions.openSidebarConversationDelete,
     pendingDecisionCount: app.pendingDecisionCount,
     pendingDecisionItems: app.pendingDecisionItems,

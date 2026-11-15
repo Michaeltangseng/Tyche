@@ -5,6 +5,8 @@ const { validateUserCommand } = require('./room-actions.cjs')
 const LOCAL_USER = Object.freeze({ type: 'user', id: 'user' })
 
 const CHANNELS = Object.freeze({
+  listRooms: 'room:list',
+  createChat: 'room:chat-create',
   bootstrap: 'room:bootstrap',
   snapshot: 'room:snapshot',
   submitMessage: 'room:message-submit',
@@ -66,6 +68,13 @@ function commandInput(input) {
 function registerRoomIpc({ ipcMain, service, requireRenderer, isShuttingDown = () => false }) {
   if (!ipcMain || typeof ipcMain.handle !== 'function' || !service || typeof requireRenderer !== 'function') throw new TypeError('ROOM_IPC_DEPENDENCIES_REQUIRED')
   const handlers = new Map([
+    [CHANNELS.listRooms, input => { assertInput(input, []); return service.listRooms() }],
+    [CHANNELS.createChat, input => {
+      assertInput(input, ['roomId', 'title'])
+      text(input.roomId)
+      text(input.title)
+      return service.createChat(input)
+    }],
     [CHANNELS.bootstrap, input => service.bootstrap(bootstrapInput(input))],
     [CHANNELS.snapshot, input => {
       assertInput(input, ['roomId'])

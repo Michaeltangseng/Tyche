@@ -67,11 +67,36 @@ test('internal execution and platform fact channels are not registered', () => {
   const { handlers, service, ipcMain } = setup()
   registerRoomIpc({ ipcMain, service, requireRenderer: () => {} })
   assert.deepEqual([...handlers.keys()].sort(), [
+    'room:list', 'room:chat-create',
     'room:bootstrap', 'room:snapshot', 'room:message-submit', 'room:user-command', 'room:assignments-stale',
   ].sort())
   for (const channel of ['room:assignment-start', 'room:controller-action', 'room:report-import', 'room:session-liveness', 'room:effect-enqueue']) {
     assert.equal(handlers.has(channel), false)
   }
+})
+
+test('Room index and fresh Chat creation reject extra identities and remain SQLite-owned', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-ui-'))
+  const roomDb = openRoomDatabase({ directory })
+  const repository = createRoomRepository(roomDb)
+  const service = createRoomService({ roomDb, repository })
+  t.after(async () => { await service.close(); roomDb.close(); fs.rmSync(directory, { recursive: true, force: true }) })
+  const { handlers, ipcMain } = setup()
+  registerRoomIpc({ ipcMain, service, requireRenderer: () => {} })
+  const room = service.bootstrap({ name: 'Team', workspace: directory })
+  repository.createAgentRole({ chatId: room.chatId, displayName: 'Private role', provider: 'codex', createdBy: 'user' })
+  assert.equal((await handlers.get(CHANNELS.listRooms)({}, {}))[0].id, room.roomId)
+  await assert.rejects(handlers.get(CHANNELS.listRooms)({}, { databasePath: '/tmp/foreign' }), /UNKNOWN_FIELD/)
+  await assert.rejects(handlers.get(CHANNELS.createChat)({}, { roomId: room.roomId, title: 'Team', chatId: 'forged' }), /UNKNOWN_FIELD/)
+  await assert.rejects(handlers.get(CHANNELS.createChat)({}, { roomId: 'missing', title: 'Team' }), /ROOM_NOT_FOUND/)
+  const next = await handlers.get(CHANNELS.createChat)({}, { roomId: room.roomId, title: 'Fresh team' })
+  const snapshot = service.snapshot({ roomId: room.roomId })
+  assert.equal(snapshot.chats.length, 2)
+  assert.equal(snapshot.chats.find(chat => chat.id === next.chatId).context_revision, 0)
+  assert.equal(snapshot.roles.filter(role => role.chat_id === next.chatId).length, 0)
+  assert.equal(snapshot.room.primary_chat_id, room.chatId)
+  assert.deepEqual(snapshot.reports, [])
+  assert.deepEqual(snapshot.artifacts, [])
 })
 
 test('renderer trust is mandatory and checked before accepting any payload', async () => {

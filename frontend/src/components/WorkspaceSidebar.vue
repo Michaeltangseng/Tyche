@@ -36,6 +36,7 @@
 
     <div v-if="sidebarCollapsed" class="sidebar-rail">
       <div class="sidebar-rail-scroll">
+        <button v-if="roomWorkspaceAvailable" class="sidebar-rail-item" type="button" :title="t('room.title')" :aria-label="t('room.title')" :aria-current="activeView === 'rooms' ? 'page' : undefined" @click="openRoomWorkspace"><PeopleOutline /></button>
         <button
           v-if="pendingDecisionCount"
           class="sidebar-rail-item sidebar-rail-attention"
@@ -122,6 +123,9 @@
     </div>
 
     <nav v-else class="conversation-nav" :aria-label="t('nav.conversations')">
+      <section v-if="roomWorkspaceAvailable" class="nav-section">
+        <button class="project-room-create" :class="{ active: activeView === 'rooms' }" type="button" :aria-current="activeView === 'rooms' ? 'page' : undefined" @click="openRoomWorkspace"><PeopleOutline /><span>{{ t('room.title') }}</span></button>
+      </section>
       <section v-if="pendingDecisionCount" class="nav-section pending-decisions-section">
         <button
           class="nav-heading pending-decisions-heading"
@@ -511,6 +515,8 @@ const {
   openConversationRename,
   openNewGroup,
   openProjectCreate,
+  roomWorkspaceAvailable,
+  openRoomWorkspace,
   openSidebarConversationDelete,
   pendingDecisionCount,
   pendingDecisionItems,
