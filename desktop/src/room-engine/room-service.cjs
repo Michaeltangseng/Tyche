@@ -51,7 +51,16 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     })
     : null
   const controller = typeof decideController === 'function'
-    ? createControllerSession({ roomDb, repository, applyAction: applyControllerAction, decide: decideController, now: () => Date.now() })
+    ? createControllerSession({
+      roomDb,
+      repository,
+      applyAction: applyControllerAction,
+      decide: decideController,
+      now: () => Date.now(),
+      fallbackNote: () => (String(locale?.() || '').toLowerCase().startsWith('zh')
+        ? '已收到消息；本轮没有需要派发的任务。'
+        : 'Message received; no work needed this round.'),
+    })
     : null
   const controllerQueue = controller
     ? createControllerQueue({

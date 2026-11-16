@@ -75,6 +75,8 @@ test('message queue invokes a read-only native controller and commits its action
   assert.equal(normalizeContextPackId(context.contextPackId), context.contextPackId)
   assert.ok(context.promptOverride.includes(submitted.message.messageId))
   assert.ok(context.promptOverride.includes('The discriminator key for each action object is "type"'))
+  assert.ok(context.promptOverride.includes('must return at least one action'))
+  assert.ok(context.promptOverride.includes('Valid note example'))
   assert.ok(context.promptOverride.includes('"type":"create_task"'))
   assert.ok(!context.promptOverride.includes('archive_role'))
   assert.ok(context.promptOverride.includes('A request to stop inviting a role does not cancel its existing work'))

@@ -74,22 +74,17 @@ role = SELECT prompt_revision, skill_bindings_json FROM agent_roles WHERE id = ?
 
 - Phase 0 的退出条件可复现：未知字段、错误 actor、过期 revision、重复幂等键、缺失必填字段都被拒绝。
 
-### [ ] P0-03 `note`、`propose_stop`、`propose_retry` 只有审计事件，没有产品效果
+### [ ] P0-03 `note` 已有产品效果，`propose_stop/retry` 仍只有审计事件
 
-**现状**
+**进展（2026-11-16）**
 
-`room-actions.cjs:163` 的 `else result = {}` 会接收这些动作并记录 `action_note` / `action_propose_*` 事件，但：
+`note` 现在会写入一条 `author_type=controller` 的 Chat 消息，并由前端显示为主控消息。Controller Prompt 要求包含用户消息的批次不得返回空动作；若模型仍返回 `[]`，Controller Session 会生成一条本地化兜底主控消息，避免用户消息完全无回应。
 
-- `note` 不会出现在 Thread，也没有可读的卡片；
-- `propose_stop` 不创建 Attention，也不生成用户可执行的停止建议；
-- `propose_retry` 同上；
-- `controller-agent.cjs` 的 “Supported actions” 甚至没有列出 `propose_stop/retry`。
+**仍待做**
 
-**需要做**
+`propose_stop` / `propose_retry` 仍只记录审计事件，没有 Attention 或可执行建议；`controller-agent.cjs` 也未在 Supported actions 中列出它们。二选一：
 
-二选一：
-
-1. 实现最小产品语义：`note` 生成 Controller 系统消息；`propose_stop/retry` 生成 Attention 或 UserCommand 建议；
+1. 实现最小产品语义：生成 Attention 或 UserCommand 建议；
 2. 暂时从 `CONTROLLER_TYPES`、文档和测试中移除，等有 UI 再接。
 
 **验收**

@@ -9,7 +9,7 @@ function decode(value, fallback = []) {
   try { return value == null ? fallback : JSON.parse(value) } catch { return fallback }
 }
 
-function createControllerSession({ roomDb, repository, applyAction, decide, now = () => Date.now(), timeoutMs = 60_000 } = {}) {
+function createControllerSession({ roomDb, repository, applyAction, decide, now = () => Date.now(), timeoutMs = 60_000, fallbackNote = null } = {}) {
   if (!roomDb || !repository || typeof applyAction !== 'function' || typeof decide !== 'function') {
     throw new TypeError('ROOM_CONTROLLER_SESSION_DEPENDENCIES_REQUIRED')
   }
@@ -84,6 +84,14 @@ function createControllerSession({ roomDb, repository, applyAction, decide, now 
       if (contextUpdates.length > 1) throw new Error('ROOM_CONTROLLER_MULTIPLE_CONTEXT_UPDATES')
       const orderedActions = [...contextUpdates, ...actions.filter(action => action.type !== 'update_context')]
       const userMessageIds = messages.filter(message => message.author_type === 'user').map(message => message.id)
+      if (!orderedActions.length && userMessageIds.length && typeof fallbackNote === 'function') {
+        const content = String(fallbackNote({ chatId, messages }) || '').trim()
+        if (content) {
+          orderedActions.push(validateControllerAction({
+            type: 'note', chatId, contextRevision, content,
+          }, { chatId, contextRevision }))
+        }
+      }
       const results = []
       for (const action of orderedActions) {
         const effectiveRevision = repository.getChatContext(chatId).revision

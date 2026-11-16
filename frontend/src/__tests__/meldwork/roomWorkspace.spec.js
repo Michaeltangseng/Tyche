@@ -135,6 +135,19 @@ describe('v2 team workspace', () => {
     expect(() => structuredClone(bridge.updateSkillBindings.mock.calls.at(-1)[0])).not.toThrow()
   })
 
+  it('renders controller notes as visible controller messages', async () => {
+    const snapshot = data()
+    snapshot.messages = [{
+      id: 'controller-note', chat_id: 'chat-1', sequence: 1, author_type: 'controller', author_id: 'controller',
+      content: 'Message received; no work needed this round.', created_at: '2026-11-16T12:00:00Z',
+    }]
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+    const note = wrapper.get('.room-message-controller')
+    expect(note.text()).toContain('Controller')
+    expect(note.text()).toContain('Message received; no work needed this round.')
+  })
+
   it('renders and appends live output for a running assignment', async () => {
     const snapshot = data()
     snapshot.roles = [{ id: 'worker', chat_id: 'chat-1', display_name: 'Writer', status: 'active' }]

@@ -159,6 +159,7 @@ function normalize(action, kind, expectedChatId = null, expectedContextRevision 
     }
     if (action.type === 'update_role_prompt') assertId(action.roleId, 'role_id')
     if (action.type === 'update_role_prompt') assertString(action.prompt, 'ROOM_ACTION_PROMPT_INVALID')
+    if (action.type === 'note') assertString(action.content, 'ROOM_ACTION_NOTE_INVALID')
   }
   return Object.freeze({ ...action })
 }
@@ -219,6 +220,15 @@ function createRoomActionService({ roomDb, repository }) {
         const role = roomDb.database.prepare('SELECT id FROM agent_roles WHERE id = ? AND chat_id = ?').get(validated.roleId, validated.chatId)
         if (!role) throw new Error('ROOM_ROLE_NOT_FOUND')
         result = { roleId: validated.roleId, prompt: repository.createRolePromptRevision({ roleId: validated.roleId, prompt: validated.prompt, createdBy: actorId }) }
+      }
+      else if (validated.type === 'note') {
+        const message = repository.appendMessage({
+          chatId: validated.chatId,
+          authorType: 'controller',
+          authorId: 'controller',
+          content: validated.content,
+        })
+        result = { messageId: message.messageId, sequence: message.sequence }
       }
       else result = {}
       return { ...result, event: recordEvent(validated, actorId) }

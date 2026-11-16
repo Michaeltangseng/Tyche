@@ -67,7 +67,7 @@
               <p class="room-muted">{{ t('room.emptyHint') }}</p>
               <p v-if="!roles.length" class="room-muted">{{ t('room.teamHint') }}</p>
             </div>
-            <article v-for="entry in entries" :key="entry.key" class="room-message" :class="{ 'room-message-user': entry.isUser, 'room-message-agent': !entry.isUser, 'room-report': entry.report }">
+            <article v-for="entry in entries" :key="entry.key" class="room-message" :class="{ 'room-message-user': entry.isUser, 'room-message-agent': !entry.isUser, 'room-message-controller': entry.isController, 'room-report': entry.report }">
               <span v-if="!entry.isUser" class="room-message-avatar">
                 <img v-if="entry.provider" :src="agentLogo(entry.provider)" alt="" />
                 <span v-else>{{ entry.author.slice(0, 1) }}</span>
@@ -517,8 +517,10 @@ const liveEntries = computed(() => Object.entries(liveAssignments.value).map(([i
 const entries = computed(() => [
   ...messages.value.map(message => {
     const role = roles.value.find(item => item.id === message.author_id)
-    return { key: message.id, author: message.author_type === 'user' ? t('room.you') : roleLabel(role),
-      content: message.content, createdAt: message.created_at, isUser: message.author_type === 'user', provider: role?.provider || '', report: false }
+    const isController = message.author_type === 'controller'
+    return { key: message.id, author: message.author_type === 'user' ? t('room.you') : isController ? t('room.controller') : roleLabel(role),
+      content: message.content, createdAt: message.created_at, isUser: message.author_type === 'user', isController,
+      provider: role?.provider || (isController ? snapshot.value?.room?.providers_json?.[0] || '' : ''), report: false }
   }),
   ...reports.value.map(report => {
     const assignment = assignments.value.find(item => item.id === report.assignment_id)
@@ -1036,6 +1038,7 @@ onBeforeUnmount(() => {
 .room-message p { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.65; }
 .room-message ul { margin: 8px 0 0; padding-left: 18px; color: var(--text-soft); font-size: var(--text-xs); line-height: 1.55; }
 .room-report .room-message-body { padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); }
+.room-message-controller .room-message-body { padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--accent-soft) 34%, var(--surface-raised)); }
 .room-message-artifacts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .room-artifact-card { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--surface) 80%, var(--surface-raised)); }
 .room-artifact-head { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; }

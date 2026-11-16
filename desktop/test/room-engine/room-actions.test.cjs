@@ -103,6 +103,20 @@ test('controller create_task, assign, role, and attention actions become ledger 
   roomDb.close()
 })
 
+test('controller notes become visible controller messages', () => {
+  const { roomDb, repository, chatId } = setup()
+  const service = createRoomActionService({ roomDb, repository })
+  const note = service.applyController({
+    type: 'note', chatId, contextRevision: 0, content: 'No work needed this round.',
+  }, { actorId: 'controller' })
+  const message = repository.getMessage(note.messageId)
+  assert.equal(message.author_type, 'controller')
+  assert.equal(message.author_id, 'controller')
+  assert.equal(message.content, 'No work needed this round.')
+  assert.throws(() => validateControllerAction({ type: 'note', chatId, contextRevision: 0, content: '' }), /NOTE_INVALID/)
+  roomDb.close()
+})
+
 test('controller cannot directly mark a task complete or stop a running task', () => {
   const { roomDb, repository, chatId } = setup()
   const service = createRoomActionService({ roomDb, repository })

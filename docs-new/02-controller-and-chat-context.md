@@ -13,6 +13,8 @@ Controller 可以：
 - 更新 ChatContext；
 - 发出简短的系统派发说明。
 
+`note` 动作写入一条 `author_type=controller` 的可见 Chat 消息，用于路由说明、简短答复或“本轮无需派发”的反馈；它不是 Worker 产出，不能承载实现结果或权限变更。包含用户消息的批次不应返回空动作；平台在模型返回空动作时会生成一条兜底主控消息。
+
 Controller 不可以：
 
 - 编写业务代码或替代 Worker 做技术判断；

@@ -133,6 +133,34 @@ test('controller session processes a message batch once and records its decision
   state.roomDb.close()
 })
 
+test('empty user-message decisions produce a visible fallback controller note', async () => {
+  const state = setup()
+  const actions = createRoomActionService(state)
+  const session = createControllerSession({
+    ...state,
+    applyAction: actions.applyController,
+    decide: async () => ({ actions: [] }),
+    fallbackNote: () => 'Message received; no work needed this round.',
+  })
+  const result = await session.process({
+    chatId: state.chatId, batchId: 'fallback-note', contextRevision: 0, messageIds: [state.message.messageId],
+  })
+  assert.equal(result.decision.results.length, 1)
+  const message = state.repository.getMessage(result.decision.results[0].messageId)
+  assert.equal(message.author_type, 'controller')
+  assert.equal(message.content, 'Message received; no work needed this round.')
+
+  const eventOnly = createControllerSession({
+    ...state,
+    applyAction: actions.applyController,
+    decide: async () => ({ actions: [] }),
+    fallbackNote: () => assert.fail('fallback note must not run for event-only batches'),
+  })
+  const eventResult = await eventOnly.process({ chatId: state.chatId, batchId: 'event-only', contextRevision: 0 })
+  assert.equal(eventResult.decision.results.length, 0)
+  state.roomDb.close()
+})
+
 test('context revisions are persisted and supplied to controller decisions', async () => {
   const state = setup()
   const context = state.repository.createChatContextRevision({ chatId: state.chatId, instructions: 'Prefer concise reports', changes: { reviewRequired: true }, createdBy: 'user-1' })
