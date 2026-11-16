@@ -44,6 +44,13 @@ test('user role creation requires provider, name and replay identity', () => {
   assert.throws(() => validateUserCommand({ ...base, capabilities: 'read' }), /ROLE_CAPABILITIES_INVALID/)
 })
 
+test('user retry can request explicit write scopes', () => {
+  const base = { type: 'retry_task', chatId: 'chat-1', taskId: 'task-1', assignmentId: 'assignment-1', commandId: 'retry-1' }
+  assert.deepEqual(validateUserCommand({ ...base, writeScopes: ['.'] }).writeScopes, ['.'])
+  assert.throws(() => validateUserCommand({ ...base, writeScopes: 'docs' }), /WRITE_SCOPES_INVALID/)
+  assert.throws(() => validateUserCommand({ ...base, writeScopes: [''] }), /WRITE_SCOPES_INVALID/)
+})
+
 test('user role deletion requires a role and replay identity', () => {
   const base = { type: 'delete_role', chatId: 'chat-1', roleId: 'role-1', commandId: 'delete-role-1' }
   assert.equal(validateUserCommand(base).roleId, 'role-1')

@@ -2,6 +2,7 @@ const { encode } = require('./room-db.cjs')
 const { createHash } = require('node:crypto')
 const fs = require('node:fs')
 const { validateUserCommand } = require('./room-actions.cjs')
+const { normalizeRelativePath } = require('../project-room/workdir-access.cjs')
 
 function parseJson(value, fallback) {
   try { return JSON.parse(value) } catch { return fallback }
@@ -152,10 +153,20 @@ function createUserCommandService({ roomDb, repository }) {
         const roleId = action.type === 'handoff_task' ? action.roleId : previous.role_id
         const role = db.prepare('SELECT * FROM agent_roles WHERE id = ? AND chat_id = ?').get(roleId, action.chatId)
         if (!role || role.status !== 'active') throw new Error('ROOM_ASSIGNMENT_ROLE_INACTIVE')
+        let writeScopes = parseJson(previous.write_scopes_json, [])
+        if (action.writeScopes !== undefined) {
+          const room = db.prepare('SELECT write_authorized_root FROM rooms WHERE id = ?').get(chat.room_id)
+          if (action.writeScopes.length && !room?.write_authorized_root) throw new Error('ROOM_ASSIGNMENT_WRITE_NOT_AUTHORIZED')
+          try {
+            writeScopes = action.writeScopes.map(scope => normalizeRelativePath(scope).relative || '.')
+          } catch {
+            throw new Error('ROOM_ASSIGNMENT_WRITE_SCOPES_INVALID')
+          }
+        }
         const assignmentId = repository.createAssignment({ taskId: previous.task_id, roleId,
           previousAssignmentId: previous.id, attempt: previous.attempt + 1,
           required: Boolean(previous.required), workspaceRef: previous.workspace_ref,
-          writeScopes: parseJson(previous.write_scopes_json, []),
+          writeScopes,
         })
         db.prepare("UPDATE tasks SET status = 'active', updated_at = ? WHERE id = ?").run(timestamp, previous.task_id)
         result = { taskId: previous.task_id, assignmentId, previousAssignmentId: previous.id, attempt: previous.attempt + 1 }

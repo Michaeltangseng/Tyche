@@ -431,6 +431,43 @@ describe('v2 team workspace', () => {
     expect(bridge.applyUserCommand).toHaveBeenCalledWith(expect.objectContaining({ type: 'resume_chat', chatId: 'chat-1' }))
   })
 
+  it('enables workspace writes and retries a waiting read-only attempt', async () => {
+    const snapshot = data()
+    snapshot.room.workspace = '/tmp/project'
+    snapshot.tasks = [{ id: 'task', chat_id: 'chat-1', objective: 'Write snake.html', status: 'active' }]
+    snapshot.assignments = [{ id: 'attempt', task_id: 'task', role_id: 'worker', status: 'waiting', outcome: 'waiting', run_id: 'run-1', write_scopes_json: [] }]
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    expect(wrapper.get('.room-write-required').text()).toContain('read-only')
+    await wrapper.get('.room-write-required .secondary-button').trigger('click')
+    await wrapper.get('.room-write-required .primary-button').trigger('click')
+    await flushPromises()
+    expect(bridge.applyUserCommand).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      type: 'set_workspace_write', allowWrite: true, chatId: 'chat-1', commandId: expect.any(String),
+    }))
+    expect(bridge.applyUserCommand).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      type: 'retry_task', taskId: 'task', assignmentId: 'attempt', writeScopes: ['.'], chatId: 'chat-1', commandId: expect.any(String),
+    }))
+  })
+
+  it('adds a write scope when manually retrying after write authorization', async () => {
+    const snapshot = data()
+    snapshot.room.workspace = '/tmp/project'
+    snapshot.room.write_authorized_root = '/tmp/project'
+    snapshot.tasks = [{ id: 'task', chat_id: 'chat-1', objective: 'Write snake.html', status: 'active' }]
+    snapshot.assignments = [{ id: 'attempt', task_id: 'task', role_id: 'worker', status: 'failed', outcome: 'failed', run_id: 'run-1', write_scopes_json: [] }]
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    const retry = wrapper.findAll('button').find(button => button.text() === 'Retry')
+    await retry.trigger('click')
+    await flushPromises()
+    expect(bridge.applyUserCommand).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'retry_task', taskId: 'task', assignmentId: 'attempt', writeScopes: ['.'],
+    }))
+  })
+
   it('requires explicit directory write opt-in and disables permission changes for unknown executions', async () => {
     const snapshot = data()
     const bridge = api(snapshot)
@@ -456,7 +493,7 @@ describe('v2 team workspace', () => {
     const wrapper = mountRoom(bridge)
     await flushPromises()
     expect(bridge.listStaleAssignments).toHaveBeenCalledWith({ roomId: 'room-1', timeoutMs: 120000 })
-    expect(wrapper.get('.room-warning').text()).toContain('no platform heartbeat')
+    expect(wrapper.get('.room-stale-warning').text()).toContain('no platform heartbeat')
     expect(wrapper.get('.room-assignment').text()).toContain('Possibly disconnected')
   })
 

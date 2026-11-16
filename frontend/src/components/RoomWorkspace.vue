@@ -14,7 +14,9 @@
             </button>
           </h1>
         </div>
-        <span v-if="snapshot && workdirName" class="room-subtitle">{{ workdirName }}</span>
+        <span v-if="snapshot" class="room-subtitle">
+          <template v-if="workdirName">{{ workdirName }} · </template>{{ t(writeAuthorized ? 'room.writable' : 'room.readOnly') }}
+        </span>
       </div>
 
       <div v-if="snapshot" class="room-agent-strip" :aria-label="t('room.members', { count: roles.length })">
@@ -44,11 +46,22 @@
     </header>
 
     <p v-if="error || pickerError" class="room-error room-banner" role="alert">{{ t('room.error') }} <button class="secondary-button" @click="reload">{{ t('room.refresh') }}</button></p>
+    <article v-if="snapshot && !writeAuthorized" class="room-warning room-write-required room-banner" role="status">
+      <span>{{ t('room.writeRequired') }}</span>
+      <span v-if="!writeConfirmOpen" class="room-actions">
+        <button class="secondary-button" type="button" :disabled="busy" @click="writeConfirmOpen = true">{{ t('room.enableWrite') }}</button>
+      </span>
+      <span v-else class="room-actions">
+        <span class="room-muted">{{ t('room.writeConfirm') }}</span>
+        <button class="primary-button" type="button" :disabled="busy" @click="enableWorkspaceWrite">{{ t('room.confirmWrite') }}</button>
+        <button class="secondary-button" type="button" :disabled="busy" @click="writeConfirmOpen = false">{{ t('common.cancel') }}</button>
+      </span>
+    </article>
     <article v-if="chat?.controller_blocked" class="room-warning room-controller-blocked room-banner" role="alert">
       <span>{{ t('room.controllerBlocked') }}</span>
       <button class="secondary-button" :disabled="busy" @click="command({ type: 'resume_chat' })">{{ t('room.controllerRetry') }}</button>
     </article>
-    <p v-if="staleAssignmentIds.size" class="room-warning room-banner" role="alert">{{ t('room.staleWarning', { count: staleAssignmentIds.size }) }}</p>
+    <p v-if="staleAssignmentIds.size" class="room-warning room-stale-warning room-banner" role="alert">{{ t('room.staleWarning', { count: staleAssignmentIds.size }) }}</p>
 
     <div v-if="!snapshot" class="room-landing">
       <div class="room-landing-inner">
@@ -154,7 +167,7 @@
               :workdir="snapshot?.room?.workspace || ''"
             />
             <div v-if="canRetry(assignment)" class="room-actions">
-              <button class="secondary-button" :disabled="busy" @click="command({ type: 'retry_task', taskId: task.id, assignmentId: assignment.id })">{{ t('room.retry') }}</button>
+              <button class="secondary-button" :disabled="busy" @click="command(retryPayload(assignment))">{{ t('room.retry') }}</button>
               <select v-model="handoffRoles[assignment.id]" :aria-label="t('room.handoffTo')">
                 <option value="">{{ t('room.handoffTo') }}</option>
                 <option v-for="role in roles.filter(item => item.status === 'active')" :key="role.id" :value="role.id">{{ roleLabel(role) }}</option>
@@ -439,6 +452,7 @@ const settingsOpen = ref(false)
 const settingsRef = ref(null)
 const chatSettingsOpen = ref(false)
 const chatSettingsRef = ref(null)
+const writeConfirmOpen = ref(false)
 const roleCreateDraft = ref(null)
 const roleDeleteArmed = ref(false)
 const roleSettingsId = ref('')
@@ -478,6 +492,7 @@ const staleAssignmentIds = computed(() => new Set(staleAssignments.value
   .filter(item => assignments.value.some(assignment => assignment.id === item.assignmentId))
   .map(item => item.assignmentId)))
 const workdirName = computed(() => (snapshot.value?.room?.workspace || '').split(/[\\/]/).filter(Boolean).at(-1) || '')
+const writeAuthorized = computed(() => Boolean(snapshot.value?.room?.write_authorized_root))
 const projectLabel = computed(() => snapshot.value?.room?.name || t('room.title'))
 const activeChatLabel = computed(() => {
   const item = chat.value
@@ -874,6 +889,36 @@ async function answer(attention) {
   await command({ type: 'answer_attention', attentionId: attention.id,
     ...(attention.options_json?.length ? { optionId: answers.value[attention.id] } : { comment: answers.value[attention.id] }) })
 }
+function retryScopesFor(assignment) {
+  return writeAuthorized.value && !(assignment.write_scopes_json || []).length ? ['.'] : undefined
+}
+function retryPayload(assignment) {
+  const writeScopes = retryScopesFor(assignment)
+  return {
+    type: 'retry_task', taskId: assignment.task_id, assignmentId: assignment.id,
+    ...(writeScopes ? { writeScopes } : {}),
+  }
+}
+async function enableWorkspaceWrite() {
+  if (busy.value) return
+  const result = await command({ type: 'set_workspace_write', allowWrite: true })
+  if (!result) return
+  writeConfirmOpen.value = false
+  const candidates = assignments.value.filter(assignment => {
+    const task = tasks.value.find(item => item.id === assignment.task_id)
+    return task && !['cancelled', 'done'].includes(task.status)
+      && ['waiting', 'failed', 'blocked', 'cancelled'].includes(assignment.status)
+      && assignment.outcome !== 'unknown'
+      && assignment.run_id
+      && !(assignment.write_scopes_json || []).length
+      && !assignments.value.some(next => next.previous_assignment_id === assignment.id)
+  })
+  for (const assignment of candidates) {
+    await command({
+      type: 'retry_task', taskId: assignment.task_id, assignmentId: assignment.id, writeScopes: ['.'],
+    })
+  }
+}
 function onOverlayKeydown(event) {
   if (event.key !== 'Escape') return
   if (creating.value) { event.preventDefault(); creating.value = false }
@@ -913,6 +958,7 @@ watch([roomId, chatId], ([room, chat]) => {
   roleSettingsId.value = ''
   roleCreateDraft.value = null
   roleDeleteArmed.value = false
+  writeConfirmOpen.value = false
   handoffRoles.value = {}
   answers.value = {}
   roleDrafts.value = {}
@@ -1119,6 +1165,8 @@ onBeforeUnmount(() => {
 .room-permissions label { display: inline-flex; gap: 6px; align-items: center; }
 .room-error { color: var(--danger, #b94c4c); font-size: var(--text-xs); }
 .room-warning { padding: 8px 10px; border: 1px solid currentColor; border-radius: 8px; color: var(--warning, #9a6700); font-size: var(--text-xs); }
+.room-write-required { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; border-color: color-mix(in srgb, var(--accent) 36%, var(--border)); background: color-mix(in srgb, var(--accent-soft) 30%, transparent); color: var(--text-soft); }
+.room-write-required .room-actions { margin-left: auto; }
 .room-controller-blocked { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .room-muted { color: var(--faint); }
 h2 { font-size: var(--text-sm); }

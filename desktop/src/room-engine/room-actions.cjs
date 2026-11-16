@@ -26,7 +26,7 @@ const FIELDS = Object.freeze({
   user: {
     set_workspace_write: ['type', 'chatId', 'allowWrite', 'commandId'],
     stop_task: ['type', 'chatId', 'taskId', 'commandId', 'reason'],
-    retry_task: ['type', 'chatId', 'taskId', 'assignmentId', 'commandId', 'reason'],
+    retry_task: ['type', 'chatId', 'taskId', 'assignmentId', 'commandId', 'reason', 'writeScopes'],
     handoff_task: ['type', 'chatId', 'taskId', 'assignmentId', 'commandId', 'roleId', 'reason'],
     accept_artifact: ['type', 'chatId', 'artifactId'],
     reject_artifact: ['type', 'chatId', 'artifactId', 'reason'],
@@ -140,6 +140,16 @@ function normalize(action, kind, expectedChatId = null, expectedContextRevision 
     for (const field of ['taskId', 'assignmentId', 'commandId']) assertId(action[field], field)
     if (action.type === 'handoff_task') assertId(action.roleId, 'role_id')
     if (action.reason !== undefined) assertString(action.reason, 'ROOM_ACTION_REASON_INVALID')
+    if (action.writeScopes !== undefined) {
+      if (!Array.isArray(action.writeScopes) || action.writeScopes.length > 32) {
+        throw new TypeError('ROOM_ACTION_WRITE_SCOPES_INVALID')
+      }
+      for (const scope of action.writeScopes) {
+        if (typeof scope !== 'string' || !scope || scope.length > 4096 || scope.includes('\u0000')) {
+          throw new TypeError('ROOM_ACTION_WRITE_SCOPES_INVALID')
+        }
+      }
+    }
   }
   if (kind === 'user' && action.type === 'stop_task') {
     for (const field of ['taskId', 'commandId']) assertId(action[field], field)

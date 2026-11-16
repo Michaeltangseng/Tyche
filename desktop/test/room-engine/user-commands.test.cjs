@@ -144,6 +144,25 @@ test('user can create a role with a prompt and replay the command safely', () =>
   state.roomDb.close()
 })
 
+test('retry can attach write scopes only after workspace authorization', () => {
+  const state = setup()
+  const roomId = state.repository.getChatContext(state.chatId).chat.room_id
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-retry-write-'))
+  state.roomDb.database.prepare('UPDATE rooms SET workspace = ? WHERE id = ?').run(root, roomId)
+  const roleId = state.repository.createAgentRole({ chatId: state.chatId, displayName: 'Writer', provider: 'codex', createdBy: 'user' })
+  const taskId = state.repository.createTask({ chatId: state.chatId, objective: 'Write file', createdBy: 'user' })
+  const source = state.repository.createAssignment({ taskId, roleId, status: 'waiting', runId: 'run-write-1' })
+  state.repository.appendEvent({ roomId, chatId: state.chatId, actorId: 'supervisor', type: 'session_exited',
+    payload: { assignmentId: source, runId: 'run-write-1' } })
+  const base = { type: 'retry_task', chatId: state.chatId, taskId, assignmentId: source, writeScopes: ['.'] }
+  assert.throws(() => state.commands.apply({ ...base, commandId: 'retry-write-1' }), /WRITE_NOT_AUTHORIZED/)
+  state.commands.apply({ type: 'set_workspace_write', chatId: state.chatId, allowWrite: true, commandId: 'grant-write' })
+  const retried = state.commands.apply({ ...base, commandId: 'retry-write-2' })
+  assert.deepEqual(JSON.parse(state.repository.getAssignmentContext(retried.assignmentId).write_scopes_json), ['.'])
+  state.roomDb.close()
+  fs.rmSync(root, { recursive: true, force: true })
+})
+
 test('user can move the chat controller flag between roles', () => {
   const state = setup()
   const first = state.repository.createAgentRole({ chatId: state.chatId, displayName: 'First', provider: 'codex', createdBy: 'user' })

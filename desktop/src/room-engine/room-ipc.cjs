@@ -82,6 +82,16 @@ function commandInput(input) {
   if (command.isController !== undefined && typeof command.isController !== 'boolean') {
     throw new TypeError('ROOM_IPC_ROLE_CONTROLLER_INVALID')
   }
+  if (command.writeScopes !== undefined) {
+    if (!Array.isArray(command.writeScopes) || command.writeScopes.length > 32) {
+      throw new TypeError('ROOM_IPC_WRITE_SCOPES_INVALID')
+    }
+    for (const scope of command.writeScopes) {
+      if (typeof scope !== 'string' || !scope.length || scope.length > 4096 || scope.includes('\u0000')) {
+        throw new TypeError('ROOM_IPC_WRITE_SCOPES_INVALID')
+      }
+    }
+  }
   const required = {
     stop_task: ['taskId'], answer_attention: ['attentionId'], update_role_prompt: ['roleId', 'prompt', 'commandId'],
     update_role: ['roleId', 'commandId'], create_role: ['displayName', 'provider', 'commandId'],

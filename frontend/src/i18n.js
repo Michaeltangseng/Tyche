@@ -173,6 +173,7 @@ export const DESKTOP_ERROR_MESSAGE_KEYS = Object.freeze({
   ROOM_ROLE_CAPABILITY_NOT_ALLOWED: 'room.roleCapabilityNotAllowed',
   ROOM_ROLE_BUSY: 'room.roleBusy',
   ROOM_ROLE_IN_USE: 'room.roleInUse',
+  ROOM_ASSIGNMENT_WRITE_NOT_AUTHORIZED: 'room.writeRequired',
   LOCAL_AGENT_PERMISSION_TERMINAL_RACE: 'error.agentPermissionRace',
   LOCAL_AGENT_VERSION_UNSUPPORTED: 'agent.incompatibleVersion',
   LOCAL_AGENT_REQUIRED_CAPABILITY_MISSING: 'agent.incompatibleCapability',
