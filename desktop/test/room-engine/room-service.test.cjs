@@ -39,7 +39,7 @@ test('bootstrap creates an independent v2 room and primary chat atomically', () 
   roomDb.close()
 })
 
-test('bootstrap and new chats seed default agent seats from room providers', async t => {
+test('bootstrap and new chats keep provider availability without auto-adding roles', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-default-seats-'))
   const roomDb = openRoomDatabase({ directory })
   const repository = createRoomRepository(roomDb)
@@ -50,18 +50,10 @@ test('bootstrap and new chats seed default agent seats from room providers', asy
     fs.rmSync(directory, { recursive: true, force: true })
   })
   const created = service.bootstrap({ name: 'Team', workspace: '/tmp/team', providers: ['codex', 'claude'], createdBy: 'user-1' })
-  const seats = repository.listAgentRoles(created.chatId).sort((a, b) => a.provider.localeCompare(b.provider))
-  assert.deepEqual(seats.map(seat => ({
-    provider: seat.provider,
-    displayName: seat.display_name,
-    createdBy: seat.created_by,
-    reason: seat.creation_reason,
-  })), [
-    { provider: 'claude', displayName: 'claude', createdBy: 'user-1', reason: 'project_default_agent' },
-    { provider: 'codex', displayName: 'codex', createdBy: 'user-1', reason: 'project_default_agent' },
-  ])
+  assert.equal(repository.listAgentRoles(created.chatId).length, 0)
+  assert.deepEqual(JSON.parse(repository.getRoom(created.roomId).providers_json), ['codex', 'claude'])
   const next = service.createChat({ roomId: created.roomId, title: 'Second chat' })
-  assert.equal(repository.listAgentRoles(next.chatId).length, 2)
+  assert.equal(repository.listAgentRoles(next.chatId).length, 0)
 })
 
 test('deleting a primary chat promotes the oldest remaining chat and cascades its ledger', () => {
@@ -81,7 +73,7 @@ test('deleting a primary chat promotes the oldest remaining chat and cascades it
   assert.equal(snapshot.chats[0].id, second.chatId)
   assert.equal(snapshot.room.primary_chat_id, second.chatId)
   assert.equal(snapshot.roles.filter(role => role.chat_id === created.chatId).length, 0)
-  assert.equal(snapshot.roles.filter(role => role.chat_id === second.chatId).length, 1)
+  assert.equal(snapshot.roles.filter(role => role.chat_id === second.chatId).length, 0)
   assert.equal(snapshot.messages.length, 0)
   assert.equal(repository.listEvents(created.roomId).at(-1).type, 'chat_deleted')
   assert.throws(() => service.deleteChat({ roomId: created.roomId, chatId: second.chatId }), /PRIMARY_CHAT_UNDELETABLE/)

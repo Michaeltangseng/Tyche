@@ -161,20 +161,6 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     return result
   }
 
-  function createDefaultAgentSeats({ chatId, providers = [], createdBy }) {
-    for (const provider of [...new Set(providers.filter(provider => typeof provider === 'string' && provider))]) {
-      repository.createAgentRole({
-        chatId,
-        displayName: provider,
-        responsibilities: '',
-        capabilities: [],
-        provider,
-        createdBy,
-        creationReason: 'project_default_agent',
-      })
-    }
-  }
-
   function bootstrap(input = {}) {
     const roomId = input.roomId
     const chatId = input.chatId
@@ -194,7 +180,6 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
         isPrimary: true,
         engineVersion: 'v2',
       })
-      createDefaultAgentSeats({ chatId: createdChatId, providers: input.providers, createdBy })
       repository.appendEvent({
         roomId: createdRoomId,
         chatId: createdChatId,
@@ -272,9 +257,8 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
   function createChat(input) {
     if (closed) throw new Error('ROOM_SERVICE_CLOSED')
     return roomDb.withTransaction(() => {
-      const room = repository.getRoomSnapshot(input.roomId).room
+      if (!repository.getRoom(input.roomId)) throw new Error('ROOM_NOT_FOUND')
       const chatId = repository.createChat({ roomId: input.roomId, title: input.title, engineVersion: 'v2' })
-      createDefaultAgentSeats({ chatId, providers: room.providers_json || [], createdBy: 'user' })
       repository.appendEvent({ roomId: input.roomId, chatId, actorId: 'user', type: 'chat_created', payload: {} })
       return { roomId: input.roomId, chatId }
     })
