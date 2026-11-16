@@ -47,7 +47,6 @@ describe('v2 team workspace', () => {
     expect(wrapper.get('.room-overview').text()).toContain('/tmp/current-project')
     expect(wrapper.get('.room-overview').text()).toContain('Codex')
     expect(wrapper.get('.room-overview').text()).toContain('Automatic dispatch enabled')
-    expect(wrapper.get('.room-team-empty').text()).toContain('No execution roles yet')
     expect(wrapper.get('.room-skill-settings').text()).toContain('No skills found')
     expect(wrapper.get('.room-context').text()).toContain('No collaboration agreement yet')
     await wrapper.get('.room-context-editor textarea').setValue('Ask two reviewers before implementing.')
@@ -120,16 +119,18 @@ describe('v2 team workspace', () => {
     await wrapper.get('.room-skill-settings button').trigger('click')
     expect(bridge.updateSkillBindings).toHaveBeenCalledWith({ chatId: 'chat-1', selections: [{ targetKind: 'codex', namespace: 'local', slug: 'review', name: 'Review' }] })
     expect(() => structuredClone(bridge.updateSkillBindings.mock.calls[0][0])).not.toThrow()
-    const roleSkill = wrapper.get('.room-role-skills input[type=checkbox]')
+    await wrapper.get('.room-agent-chip').trigger('click')
+    await flushPromises()
+    const roleSkill = wrapper.get('.room-role-v2-skills input[type=checkbox]')
     await roleSkill.setValue(false)
     await roleSkill.setValue(true)
-    await wrapper.get('.room-role-skills button').trigger('click')
+    await wrapper.get('.room-role-v2-skills button').trigger('click')
     await flushPromises()
     expect(bridge.updateSkillBindings).toHaveBeenLastCalledWith({ chatId: 'chat-1', roleId: 'worker', selections: [{ targetKind: 'codex', namespace: 'local', slug: 'review', name: 'Review' }] })
     expect(() => structuredClone(bridge.updateSkillBindings.mock.calls.at(-1)[0])).not.toThrow()
-    const roleMode = wrapper.find('.room-role-skills select')
+    const roleMode = wrapper.find('.room-role-v2-skills select')
     await roleMode.setValue('inherit')
-    await wrapper.get('.room-role-skills button').trigger('click')
+    await wrapper.get('.room-role-v2-skills button').trigger('click')
     expect(bridge.updateSkillBindings).toHaveBeenLastCalledWith({ chatId: 'chat-1', roleId: 'worker', inheritChat: true })
     expect(() => structuredClone(bridge.updateSkillBindings.mock.calls.at(-1)[0])).not.toThrow()
   })
@@ -242,7 +243,7 @@ describe('v2 team workspace', () => {
     finish({ text: '+old artifact', truncated: false })
     await flushPromises()
     expect(wrapper.get('.room-artifact-diff pre').text()).toBe('+second artifact')
-    await wrapper.get('.room-chat-toolbar select').setValue('chat-2')
+    await wrapper.get('.room-chat-settings select').setValue('chat-2')
     expect(wrapper.find('.room-artifact-diff').exists()).toBe(false)
   })
 
@@ -317,9 +318,9 @@ describe('v2 team workspace', () => {
     const wrapper = mountRoom(bridge)
     await flushPromises()
     await wrapper.get('.room-composer textarea').setValue('first draft')
-    await wrapper.get('.room-chat-toolbar select').setValue('chat-2')
+    await wrapper.get('.room-chat-settings select').setValue('chat-2')
     await wrapper.get('.room-composer textarea').setValue('second draft')
-    await wrapper.get('.room-chat-toolbar select').setValue('chat-1')
+    await wrapper.get('.room-chat-settings select').setValue('chat-1')
     expect(wrapper.get('.room-composer textarea').element.value).toBe('first draft')
     await wrapper.get('.room-composer').trigger('submit')
     await flushPromises()
@@ -342,16 +343,21 @@ describe('v2 team workspace', () => {
     await flushPromises()
     expect(wrapper.find('.room-report script').exists()).toBe(false)
     expect(wrapper.get('.room-report').text()).toContain('<script>unsafe()</script>')
-    expect(wrapper.get('.room-team').text()).not.toContain('Other team')
-    expect(wrapper.get('.room-team').text()).toContain('Build reliable APIs.')
-    expect(wrapper.get('.room-team').text()).toContain('The request includes backend implementation.')
-    const roleEditor = wrapper.get('.room-role-editor textarea')
-    await roleEditor.setValue('Prefer small, tested changes.')
-    await wrapper.get('.room-role-editor').trigger('submit')
+    expect(wrapper.findAll('.room-agent-chip')).toHaveLength(1)
+    await wrapper.get('.room-agent-chip').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.room-role-responsibilities').element.value).toBe('Implement backend changes.')
+    expect(wrapper.get('.room-role-modal').text()).toContain('Adjust the role name')
+    const rolePrompt = wrapper.get('.room-role-prompt')
+    expect(rolePrompt.element.value).toBe('Build reliable APIs.')
+    await rolePrompt.setValue('Prefer small, tested changes.')
+    await wrapper.get('.room-role-v2-footer .primary-button').trigger('click')
     await flushPromises()
     expect(bridge.applyUserCommand).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'update_role_prompt', roleId: 'worker', prompt: 'Prefer small, tested changes.', chatId: 'chat-1', commandId: expect.any(String),
+      type: 'update_role', roleId: 'worker', prompt: 'Prefer small, tested changes.', chatId: 'chat-1', commandId: expect.any(String),
     }))
+    await wrapper.get('.room-role-modal').trigger('keydown', { key: 'Escape' })
+    await flushPromises()
     const stop = wrapper.findAll('button').find(button => button.text() === 'Stop task')
     await stop.trigger('click')
     await flushPromises()
@@ -370,7 +376,7 @@ describe('v2 team workspace', () => {
     await flushPromises()
     expect(wrapper.get('.room-context').text()).toContain('Current collaboration agreement')
     expect(wrapper.get('.room-context').text()).toContain('Use English reports and ask before implementation.')
-    await wrapper.get('.room-chat-toolbar select').setValue('chat-2')
+    await wrapper.get('.room-chat-settings select').setValue('chat-2')
     expect(wrapper.get('.room-context').text()).toContain('No collaboration agreement yet')
   })
 
@@ -476,7 +482,7 @@ describe('v2 team workspace', () => {
     await flushPromises()
     await wrapper.get('.room-create').trigger('submit')
     await flushPromises()
-    expect(bridge.bootstrap).toHaveBeenCalledWith({ name: 'New team', workspace: '/tmp/demo', providers: ['codex'] })
+    expect(bridge.bootstrap).toHaveBeenCalledWith({ name: 'New team', workspace: '/tmp/demo', providers: ['codex'], title: 'Team chat' })
     expect(() => structuredClone(bridge.bootstrap.mock.calls[0][0])).not.toThrow()
     expect(wrapper.find('.room-create').exists()).toBe(false)
     await wrapper.get('[data-testid="room-create-open"]').trigger('click')
@@ -494,23 +500,29 @@ describe('v2 team workspace', () => {
     expect(wrapper.emitted('create-request-consumed')).toHaveLength(1)
   })
 
-  it('starts from the conversation and keeps configuration in the settings drawer', async () => {
+  it('opens project settings from the project name and chat settings from the chat title', async () => {
     const snapshot = data()
     snapshot.room.workspace = '/tmp/current-project'
     const wrapper = mountRoom(api(snapshot))
     await flushPromises()
     expect(wrapper.get('.room-welcome').isVisible()).toBe(true)
-    expect(wrapper.get('.room-settings-modal').isVisible()).toBe(false)
+    expect(wrapper.get('.room-project-settings-modal').isVisible()).toBe(false)
+    expect(wrapper.get('.room-chat-settings-modal').isVisible()).toBe(false)
     expect(wrapper.get('.room-timeline').text()).not.toContain('/tmp/current-project')
-    await wrapper.get('.room-settings-button').trigger('click')
+    await wrapper.get('.room-project-name').trigger('click')
     await flushPromises()
-    expect(wrapper.get('.room-settings-modal').isVisible()).toBe(true)
+    expect(wrapper.get('.room-project-settings-modal').isVisible()).toBe(true)
     expect(wrapper.get('.room-overview').text()).toContain('/tmp/current-project')
-    await wrapper.findAll('.room-settings-tabs button')[2].trigger('click')
-    expect(wrapper.get('.room-settings-section[aria-hidden="false"]').text()).toContain('Team members')
-    await wrapper.get('.room-settings-modal').trigger('keydown', { key: 'Escape' })
+    await wrapper.get('.room-project-settings-modal').trigger('keydown', { key: 'Escape' })
     await flushPromises()
-    expect(wrapper.get('.room-settings-modal').isVisible()).toBe(false)
+    expect(wrapper.get('.room-project-settings-modal').isVisible()).toBe(false)
+    await wrapper.get('.room-chat-title').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.room-chat-settings-modal').isVisible()).toBe(true)
+    expect(wrapper.get('.room-context').text()).toContain('No collaboration agreement yet')
+    await wrapper.get('.room-chat-settings-modal').trigger('keydown', { key: 'Escape' })
+    await flushPromises()
+    expect(wrapper.get('.room-chat-settings-modal').isVisible()).toBe(false)
   })
 
   it('shows default agent seats and marks the controller seat', async () => {
@@ -538,17 +550,91 @@ describe('v2 team workspace', () => {
     await flushPromises()
     expect(wrapper.get('.room-role-modal').isVisible()).toBe(true)
     expect(wrapper.get('.room-role-modal').text()).toContain('Writer')
-    const prompt = wrapper.get('.room-role-form textarea:not([disabled])')
+    const prompt = wrapper.get('.room-role-prompt')
     expect(prompt.element.value).toBe('Write clearly.')
     await prompt.setValue('Write concise docs.')
-    await wrapper.get('.room-role-form .primary-button').trigger('click')
+    await wrapper.get('.room-role-v2-footer .primary-button').trigger('click')
     await flushPromises()
     expect(bridge.applyUserCommand).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'update_role_prompt', roleId: 'worker', prompt: 'Write concise docs.', chatId: 'chat-1', commandId: expect.any(String),
+      type: 'update_role', roleId: 'worker', prompt: 'Write concise docs.', chatId: 'chat-1', commandId: expect.any(String),
     }))
     await wrapper.get('.room-role-modal').trigger('keydown', { key: 'Escape' })
     await flushPromises()
     expect(wrapper.find('.room-role-modal').exists()).toBe(false)
+  })
+
+  it('removes the header chat select and adds an agent from the roster', async () => {
+    const snapshot = data()
+    snapshot.room.providers_json = ['codex', 'claude']
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    expect(wrapper.find('.room-chat-toolbar').exists()).toBe(false)
+
+    await wrapper.get('.room-agent-add').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.room-add-agent-modal').isVisible()).toBe(true)
+    await wrapper.get('.room-add-agent-modal input').setValue('Reviewer')
+    await wrapper.get('.room-add-agent-modal').trigger('submit')
+    await flushPromises()
+
+    expect(bridge.applyUserCommand).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'create_role',
+      displayName: 'Reviewer',
+      provider: 'codex',
+      chatId: 'chat-1',
+      commandId: expect.any(String),
+    }))
+  })
+
+  it('edits role name, responsibilities, agent and capabilities through one command', async () => {
+    const snapshot = data()
+    snapshot.room.providers_json = ['codex', 'claude']
+    snapshot.roles = [{ id: 'worker', chat_id: 'chat-1', display_name: 'Writer', provider: 'codex', status: 'active', responsibilities: 'Write docs.', current_prompt: 'Write clearly.', capabilities_json: ['read'] }]
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    await wrapper.get('.room-agent-chip').trigger('click')
+    await flushPromises()
+
+    const name = wrapper.get('.room-role-v2-name input')
+    await name.setValue('Editor')
+    await wrapper.get('.room-role-responsibilities').setValue('Edit and publish docs.')
+    await wrapper.get('.room-role-v2-provider select').setValue('claude')
+    const writeDrafts = wrapper.findAll('.room-capability-tile input')[2]
+    await writeDrafts.setValue(true)
+    await wrapper.get('.room-role-v2-footer .primary-button').trigger('click')
+    await flushPromises()
+
+    expect(bridge.applyUserCommand).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'update_role',
+      roleId: 'worker',
+      displayName: 'Editor',
+      responsibilities: 'Edit and publish docs.',
+      provider: 'claude',
+      capabilities: ['read', 'write-drafts'],
+      chatId: 'chat-1',
+      commandId: expect.any(String),
+    }))
+    expect(() => structuredClone(bridge.applyUserCommand.mock.calls[0][0])).not.toThrow()
+  })
+
+  it('opens the requested chat and reports active room changes', async () => {
+    const snapshot = data()
+    const bridge = api(snapshot)
+    setLocale('en')
+    const wrapper = mount(RoomWorkspace, {
+      props: {
+        api: bridge,
+        pickDirectory: vi.fn(async () => '/tmp/demo'),
+        agents: [{ kind: 'codex', label: 'Codex' }],
+        openRequest: { roomId: 'room-1', chatId: 'chat-2', nonce: 1 },
+      },
+    })
+    cleanup.push(() => wrapper.unmount())
+    await flushPromises()
+    expect(wrapper.get('.room-chat-title').text()).toContain('Second chat')
+    expect(wrapper.emitted('active-change').at(-1)[0]).toEqual({ roomId: 'room-1', chatId: 'chat-2' })
   })
 
   it('renders Attention cards in the conversation and answers them', async () => {

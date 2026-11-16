@@ -82,7 +82,16 @@
           @select-group="selectGroup"
         />
 
-        <RoomWorkspace v-else-if="activeView === 'rooms' && api?.room" :api="api.room" :pick-directory="() => workspace.pickDirectory()" :agents="readyAgents" :create-request="roomCreateRequest" @create-request-consumed="roomCreateRequest = false" />
+        <RoomWorkspace
+          v-else-if="activeView === 'rooms' && api?.room"
+          :api="api.room"
+          :pick-directory="() => workspace.pickDirectory()"
+          :agents="readyAgents"
+          :create-request="roomCreateRequest"
+          :open-request="teamRoomOpenRequest"
+          @create-request-consumed="roomCreateRequest = false"
+          @active-change="teamRoomNavigation.syncActive"
+        />
 
         <section v-else class="conversation-pane" :class="{ 'project-room-pane': isProjectMainGroup }">
           <ConversationHeader ref="conversationHeader" :controller="conversationHeaderController" />
@@ -286,6 +295,7 @@ import { useOverlayLifecycle } from './composables/useOverlayLifecycle.js'
 import { useProjectRoomView } from './composables/useProjectRoomView.js'
 import { useRunFinishedNotifications } from './composables/useRunFinishedNotifications.js'
 import { useSystemSettingsNavigation } from './composables/useSystemSettingsNavigation.js'
+import { useTeamRoomNavigation } from './composables/useTeamRoomNavigation.js'
 import { useWorkspaceNavigationState } from './composables/useWorkspaceNavigationState.js'
 import { desktopApi, emptySnapshot, normalizeSnapshot } from './desktop.js'
 import { locale, t, translateError, translateSystemMessage } from './i18n.js'
@@ -464,6 +474,16 @@ const {
   togglePendingDecisions,
   toggleProjectRoomExpanded,
 } = workspaceNavigationState
+const teamRoomNavigation = useTeamRoomNavigation({
+  roomApi: computed(() => api.value?.room || null),
+  activeView,
+  t,
+  showError,
+})
+const {
+  rooms: teamRooms,
+  openRequest: teamRoomOpenRequest,
+} = teamRoomNavigation
 const roomCreateRequest = ref(false)
 const PROJECT_DRAWER_DEFAULT_WIDTH = 420
 const PROJECT_DRAWER_MIN_WIDTH = 280
@@ -1328,14 +1348,23 @@ const {
     projectRoomPreviewEnabled,
     projectRoomStatusLabel,
     openProjectCreate,
+    addTeamChat: teamRoomNavigation.addChat,
+    deleteTeamChat: teamRoomNavigation.deleteChat,
+    deleteTeamRoom: teamRoomNavigation.deleteRoom,
+    handleTeamRoomClick: teamRoomNavigation.handleRoomClick,
+    isTeamChatSelected: teamRoomNavigation.isChatSelected,
+    isTeamRoomExpanded: teamRoomNavigation.isExpanded,
+    isTeamRoomSelected: teamRoomNavigation.isRoomSelected,
     roomWorkspaceAvailable: computed(() => Boolean(api.value?.room)),
     openRoomWorkspace: (options = {}) => {
-      closeTracePanel(); closeCollapsedGroupMenu(); activeView.value = 'rooms'
+      closeTracePanel(); closeCollapsedGroupMenu(); teamRoomNavigation.openWorkspace()
       if (options?.create) roomCreateRequest.value = true
     },
     openTeamRoomCreate: () => {
-      closeTracePanel(); closeCollapsedGroupMenu(); activeView.value = 'rooms'; roomCreateRequest.value = true
+      closeTracePanel(); closeCollapsedGroupMenu(); teamRoomNavigation.openCreate(); roomCreateRequest.value = true
     },
+    selectTeamChat: teamRoomNavigation.selectChat,
+    teamRooms,
     setProjectRoomPreview,
     refreshing,
     saving,

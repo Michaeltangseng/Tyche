@@ -34,6 +34,28 @@ test('controller action rejects stale context and unknown fields', () => {
   assert.throws(() => validateControllerAction({ ...action, debug: true }), /ROOM_ACTION_UNKNOWN_FIELD/)
 })
 
+test('user role creation requires provider, name and replay identity', () => {
+  const base = { type: 'create_role', chatId: 'chat-1', commandId: 'role-create-1', displayName: 'Writer', provider: 'codex' }
+  assert.equal(validateUserCommand(base).displayName, 'Writer')
+  assert.equal(validateUserCommand({ ...base, prompt: '' }).prompt, '')
+  assert.throws(() => validateUserCommand({ ...base, displayName: '   ' }), /ROLE_NAME_INVALID/)
+  assert.throws(() => validateUserCommand({ ...base, provider: '' }), /PROVIDER_INVALID/)
+  assert.throws(() => validateUserCommand({ ...base, commandId: '' }), /COMMAND_ID_INVALID/)
+  assert.throws(() => validateUserCommand({ ...base, capabilities: 'read' }), /ROLE_CAPABILITIES_INVALID/)
+})
+
+test('user role metadata updates validate editable fields and reject empty updates', () => {
+  const base = { type: 'update_role', chatId: 'chat-1', roleId: 'role-1', commandId: 'role-1' }
+  assert.equal(validateUserCommand({ ...base, displayName: 'Editor' }).displayName, 'Editor')
+  assert.equal(validateUserCommand({ ...base, responsibilities: '' }).responsibilities, '')
+  assert.equal(validateUserCommand({ ...base, capabilities: ['read'] }).capabilities[0], 'read')
+  assert.equal(validateUserCommand({ ...base, prompt: '' }).prompt, '')
+  assert.throws(() => validateUserCommand(base), /ROLE_UPDATE_EMPTY/)
+  assert.throws(() => validateUserCommand({ ...base, displayName: '   ' }), /ROLE_NAME_INVALID/)
+  assert.throws(() => validateUserCommand({ ...base, capabilities: 'read' }), /ROLE_CAPABILITIES_INVALID/)
+  assert.throws(() => validateUserCommand({ ...base, webhook: 'https://example.test' }), /UNKNOWN_FIELD/)
+})
+
 test('context action requires explicit instructions and sources and rejects stale direct writes', () => {
   const { roomDb, repository, chatId } = setup()
   const service = createRoomActionService({ roomDb, repository })

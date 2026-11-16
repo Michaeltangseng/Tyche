@@ -158,6 +158,8 @@ if (isLocalDocument) Object.assign(desktopApi, {
   room: Object.freeze({
     listRooms: () => ipcRenderer.invoke('room:list', {}),
     createChat: input => ipcRenderer.invoke('room:chat-create', input),
+    deleteChat: input => ipcRenderer.invoke('room:chat-delete', input),
+    deleteRoom: input => ipcRenderer.invoke('room:room-delete', input),
     artifactDiff: input => ipcRenderer.invoke('room:artifact-diff', input),
     bootstrap: input => ipcRenderer.invoke('room:bootstrap', input),
     snapshot: input => ipcRenderer.invoke('room:snapshot', input),

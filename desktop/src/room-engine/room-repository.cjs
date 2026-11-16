@@ -39,7 +39,35 @@ function createRoomRepository(roomDb) {
   const db = roomDb.database
   return {
     listRooms() {
-      return db.prepare('SELECT id, name, workspace, primary_chat_id, updated_at FROM rooms ORDER BY updated_at DESC, id').all().map(plain)
+      const rooms = db.prepare('SELECT id, name, workspace, primary_chat_id, updated_at FROM rooms ORDER BY updated_at DESC, id').all().map(plain)
+      if (!rooms.length) return []
+      const chatsByRoom = new Map()
+      const chats = db.prepare(`SELECT id, room_id, title, is_primary, status, updated_at
+        FROM chats ORDER BY is_primary DESC, created_at, id`).all()
+      for (const row of chats) {
+        if (!chatsByRoom.has(row.room_id)) chatsByRoom.set(row.room_id, [])
+        chatsByRoom.get(row.room_id).push({ ...plain(row), is_primary: Boolean(row.is_primary) })
+      }
+      return rooms.map(room => ({ ...room, chats: chatsByRoom.get(room.id) || [] }))
+    },
+    getRoom(roomId) {
+      return plain(db.prepare('SELECT * FROM rooms WHERE id = ?').get(roomId))
+    },
+    listChats(roomId) {
+      return db.prepare('SELECT * FROM chats WHERE room_id = ? ORDER BY is_primary DESC, created_at, id')
+        .all(roomId).map(plain)
+    },
+    deleteChat(chatId) {
+      return db.prepare('DELETE FROM chats WHERE id = ?').run(chatId).changes
+    },
+    deleteRoom(roomId) {
+      return db.prepare('DELETE FROM rooms WHERE id = ?').run(roomId).changes
+    },
+    setPrimaryChat(roomId, chatId) {
+      const timestamp = now()
+      db.prepare('UPDATE chats SET is_primary = CASE WHEN id = ? THEN 1 ELSE 0 END, updated_at = ? WHERE room_id = ?')
+        .run(chatId, timestamp, roomId)
+      db.prepare('UPDATE rooms SET primary_chat_id = ?, updated_at = ? WHERE id = ?').run(chatId, timestamp, roomId)
     },
     createRoom({ roomId = id('room'), name, workspace, providers = [], allowedCapabilities = [] }) {
       const timestamp = now()

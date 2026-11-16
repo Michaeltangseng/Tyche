@@ -67,7 +67,7 @@ test('internal execution and platform fact channels are not registered', () => {
   const { handlers, service, ipcMain } = setup()
   registerRoomIpc({ ipcMain, service, requireRenderer: () => {} })
   assert.deepEqual([...handlers.keys()].sort(), [
-    'room:list', 'room:chat-create', 'room:artifact-diff',
+    'room:list', 'room:chat-create', 'room:chat-delete', 'room:room-delete', 'room:artifact-diff',
     'room:bootstrap', 'room:snapshot', 'room:chat-messages', 'room:message-submit', 'room:user-command', 'room:assignments-stale',
     'room:assignment-trace', 'room:assignment-trace-blob', 'room:skill-bindings-update',
   ].sort())
@@ -114,6 +114,19 @@ test('artifact diff IPC accepts only bounded ledger IDs, never paths or versions
   }
   await assert.rejects(handlers.get(CHANNELS.artifactDiff)({}, { ...input, artifactId: 'x'.repeat(257) }), /TEXT_INVALID/)
   assert.equal(calls.length, 1)
+})
+
+test('chat and room deletion IPC accept only bounded ledger identifiers', async () => {
+  const { handlers, calls, service, ipcMain } = setup()
+  registerRoomIpc({ ipcMain, service, requireRenderer: () => {} })
+  await handlers.get(CHANNELS.deleteChat)({}, { roomId: 'room', chatId: 'chat' })
+  assert.deepEqual(calls[0], ['deleteChat', { roomId: 'room', chatId: 'chat' }, undefined])
+  await handlers.get(CHANNELS.deleteRoom)({}, { roomId: 'room' })
+  assert.deepEqual(calls[1], ['deleteRoom', { roomId: 'room' }, undefined])
+  await assert.rejects(handlers.get(CHANNELS.deleteChat)({}, { roomId: 'room' }), /TEXT_INVALID|CHAT_ID/)
+  await assert.rejects(handlers.get(CHANNELS.deleteChat)({}, { roomId: 'room', chatId: 'chat', path: '/tmp' }), /UNKNOWN_FIELD/)
+  await assert.rejects(handlers.get(CHANNELS.deleteRoom)({}, { roomId: 'room', force: true }), /UNKNOWN_FIELD/)
+  assert.equal(calls.length, 2)
 })
 
 test('Room index and fresh Chat creation reject extra identities and remain SQLite-owned', async t => {
@@ -190,6 +203,11 @@ test('room IPC rejects malformed or privileged payloads before service invocatio
     [CHANNELS.userCommand, { type: 'session_exited', chatId: 'chat' }],
     [CHANNELS.userCommand, { type: 'answer_attention', chatId: 'chat', attentionId: 'a', optionId: {} }],
     [CHANNELS.userCommand, { type: 'accept_artifact', chatId: 'chat' }],
+    [CHANNELS.userCommand, { type: 'update_role', chatId: 'chat', roleId: 'role', commandId: 'role-1' }],
+    [CHANNELS.userCommand, { type: 'update_role', chatId: 'chat', roleId: 'role', commandId: 'role-1', displayName: '   ' }],
+    [CHANNELS.userCommand, { type: 'update_role', chatId: 'chat', roleId: 'role', commandId: 'role-1', capabilities: Array(17).fill('read') }],
+    [CHANNELS.userCommand, { type: 'create_role', chatId: 'chat', commandId: 'role-1', provider: 'codex' }],
+    [CHANNELS.userCommand, { type: 'create_role', chatId: 'chat', commandId: 'role-1', displayName: 'Writer' }],
     [CHANNELS.listStale, { roomId: 'room', timeoutMs: 0 }],
     [CHANNELS.listStale, { roomId: 'room', timeoutMs: 1000, at: 'forged-time' }],
   ]

@@ -86,6 +86,83 @@ test('user can revise a role prompt with an idempotent command', () => {
   state.roomDb.close()
 })
 
+test('user can update role metadata and prompt in one idempotent command', () => {
+  const state = setup()
+  const roleId = state.repository.createAgentRole({
+    chatId: state.chatId, displayName: 'Writer', responsibilities: 'Write docs',
+    capabilities: ['read'], provider: 'codex', createdBy: 'user',
+  })
+  const command = {
+    type: 'update_role', chatId: state.chatId, roleId, commandId: 'role-1',
+    displayName: 'Editor', responsibilities: 'Edit and publish docs',
+    capabilities: ['read', 'write-drafts'], provider: 'claude', prompt: 'Edit carefully.',
+  }
+  const first = state.commands.apply(command, { actorId: 'user-1' })
+  assert.equal(first.displayName, 'Editor')
+  assert.equal(first.provider, 'claude')
+  assert.deepEqual(first.capabilities, ['read', 'write-drafts'])
+  assert.equal(first.promptRevision.revision, 1)
+  const row = state.roomDb.database.prepare('SELECT * FROM agent_roles WHERE id = ?').get(roleId)
+  assert.equal(row.display_name, 'Editor')
+  assert.equal(row.responsibilities, 'Edit and publish docs')
+  assert.equal(row.provider, 'claude')
+  assert.deepEqual(JSON.parse(row.capabilities_json), ['read', 'write-drafts'])
+  assert.equal(state.repository.getRolePrompt(roleId).prompt, 'Edit carefully.')
+  const second = state.commands.apply(command, { actorId: 'user-1' })
+  assert.equal(second.duplicate, true)
+  assert.equal(state.roomDb.database.prepare('SELECT COUNT(*) AS count FROM role_prompt_revisions WHERE role_id = ?').get(roleId).count, 1)
+  assert.throws(() => state.commands.apply({ ...command, prompt: 'different' }, { actorId: 'user-1' }), /COMMAND_ID_REUSED/)
+  state.roomDb.close()
+})
+
+test('user can create a role with a prompt and replay the command safely', () => {
+  const state = setup()
+  const roomId = state.repository.getChatContext(state.chatId).chat.room_id
+  state.roomDb.database.prepare('UPDATE rooms SET providers_json = ? WHERE id = ?').run(JSON.stringify(['codex']), roomId)
+  const command = {
+    type: 'create_role', chatId: state.chatId, commandId: 'create-role-1',
+    displayName: 'Reviewer', provider: 'codex', responsibilities: 'Review changes',
+    capabilities: ['read'], prompt: 'Review carefully.',
+  }
+  const first = state.commands.apply(command, { actorId: 'user-1' })
+  assert.ok(first.roleId)
+  const role = state.roomDb.database.prepare('SELECT * FROM agent_roles WHERE id = ?').get(first.roleId)
+  assert.equal(role.display_name, 'Reviewer')
+  assert.equal(role.created_by, 'user-1')
+  assert.equal(role.creation_reason, 'user_created')
+  assert.deepEqual(JSON.parse(role.capabilities_json), ['read'])
+  assert.equal(state.repository.getRolePrompt(first.roleId).prompt, 'Review carefully.')
+  const second = state.commands.apply(command, { actorId: 'user-1' })
+  assert.equal(second.duplicate, true)
+  assert.equal(second.roleId, first.roleId)
+  assert.throws(() => state.commands.apply({ ...command, prompt: 'different' }, { actorId: 'user-1' }), /COMMAND_ID_REUSED/)
+  assert.throws(() => state.commands.apply({
+    type: 'create_role', chatId: state.chatId, commandId: 'create-role-2', displayName: 'Bad', provider: 'claude',
+  }), /PROVIDER_NOT_ALLOWED/)
+  state.roomDb.close()
+})
+
+test('role metadata update rejects a provider outside the room and provider changes while busy', () => {
+  const state = setup()
+  const roomId = state.repository.getChatContext(state.chatId).chat.room_id
+  state.roomDb.database.prepare('UPDATE rooms SET providers_json = ? WHERE id = ?').run(JSON.stringify(['codex']), roomId)
+  const roleId = state.repository.createAgentRole({ chatId: state.chatId, displayName: 'Writer', provider: 'codex', createdBy: 'user' })
+  assert.throws(() => state.commands.apply({
+    type: 'update_role', chatId: state.chatId, roleId, commandId: 'role-provider', provider: 'claude',
+  }), /PROVIDER_NOT_ALLOWED/)
+  const busyRoleId = state.repository.createAgentRole({ chatId: state.chatId, displayName: 'Reviewer', provider: 'claude', createdBy: 'user' })
+  const taskId = state.repository.createTask({ chatId: state.chatId, objective: 'Write', createdBy: 'user' })
+  state.repository.createAssignment({ taskId, roleId: busyRoleId, status: 'running' })
+  assert.throws(() => state.commands.apply({
+    type: 'update_role', chatId: state.chatId, roleId: busyRoleId, commandId: 'role-busy', provider: 'codex',
+  }), /ROLE_BUSY/)
+  state.commands.apply({
+    type: 'update_role', chatId: state.chatId, roleId, commandId: 'role-name', displayName: 'Editor',
+  })
+  assert.equal(state.roomDb.database.prepare('SELECT display_name FROM agent_roles WHERE id = ?').get(roleId).display_name, 'Editor')
+  state.roomDb.close()
+})
+
 test('invalid attention option and unsupported lifecycle command are rejected', () => {
   const { roomDb, commands, chatId, attentionId } = setup()
   assert.throws(() => commands.apply({ type: 'answer_attention', chatId, attentionId, optionId: 'maybe' }), /OPTION_INVALID/)

@@ -280,6 +280,58 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     })
   }
 
+  function hasActiveAssignments({ chatId = null, roomId = null }) {
+    const sql = chatId
+      ? `SELECT a.id FROM assignments a JOIN tasks t ON t.id = a.task_id
+          WHERE t.chat_id = ? AND (a.status IN ('queued', 'running') OR a.outcome = 'unknown') LIMIT 1`
+      : `SELECT a.id FROM assignments a JOIN tasks t ON t.id = a.task_id
+          JOIN chats c ON c.id = t.chat_id
+          WHERE c.room_id = ? AND (a.status IN ('queued', 'running') OR a.outcome = 'unknown') LIMIT 1`
+    return Boolean(roomDb.database.prepare(sql).get(chatId || roomId))
+  }
+
+  function deleteChat(input = {}) {
+    if (closed) throw new Error('ROOM_SERVICE_CLOSED')
+    return roomDb.withTransaction(() => {
+      const chat = repository.getChat(input.chatId)
+      if (!chat) throw new Error('ROOM_CHAT_NOT_FOUND')
+      if (input.roomId && input.roomId !== chat.room_id) throw new Error('ROOM_CHAT_ROOM_MISMATCH')
+      if (hasActiveAssignments({ chatId: chat.id })) throw new Error('ROOM_CHAT_DELETE_BUSY')
+      let promotedChatId = null
+      if (chat.is_primary) {
+        const remaining = roomDb.database.prepare(`SELECT id FROM chats
+          WHERE room_id = ? AND id <> ? ORDER BY created_at, id LIMIT 1`).get(chat.room_id, chat.id)
+        if (!remaining) throw new Error('ROOM_PRIMARY_CHAT_UNDELETABLE')
+        promotedChatId = remaining.id
+      }
+      repository.deleteChat(chat.id)
+      if (promotedChatId) repository.setPrimaryChat(chat.room_id, promotedChatId)
+      roomDb.database.prepare('UPDATE rooms SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), chat.room_id)
+      repository.appendEvent({
+        roomId: chat.room_id,
+        chatId: null,
+        actorId: 'user',
+        type: 'chat_deleted',
+        payload: { chatId: chat.id, title: chat.title, promotedChatId },
+      })
+      blockedControllerChats.delete(chat.id)
+      return { roomId: chat.room_id, chatId: chat.id, promotedChatId }
+    })
+  }
+
+  function deleteRoom(input = {}) {
+    if (closed) throw new Error('ROOM_SERVICE_CLOSED')
+    return roomDb.withTransaction(() => {
+      const room = repository.getRoom(input.roomId)
+      if (!room) throw new Error('ROOM_NOT_FOUND')
+      if (hasActiveAssignments({ roomId: room.id })) throw new Error('ROOM_ROOM_DELETE_BUSY')
+      const chats = repository.listChats(room.id)
+      repository.deleteRoom(room.id)
+      for (const chat of chats) blockedControllerChats.delete(chat.id)
+      return { roomId: room.id, deleted: true }
+    })
+  }
+
   function applyControllerAction(input, options) {
     return roomDb.withTransaction(() => {
       const result = actions.applyController(input, options)
@@ -364,6 +416,8 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     bootstrap,
     listRooms: () => repository.listRooms(),
     createChat,
+    deleteChat,
+    deleteRoom,
     snapshot,
     listChatMessages,
     artifactDiff: input => {

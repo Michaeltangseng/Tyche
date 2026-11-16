@@ -432,8 +432,86 @@
       </section>
 
       <section v-if="roomWorkspaceAvailable" class="nav-section team-room-nav-section">
-        <button class="project-room-create" :class="{ active: activeView === 'rooms' }" type="button" :aria-current="activeView === 'rooms' ? 'page' : undefined" @click="openRoomWorkspace"><PeopleOutline /><span>{{ t('room.title') }}</span></button>
-        <button class="project-room-create team-room-create" type="button" @click="openTeamRoomCreate"><AddOutline /><span>{{ t('room.createTeamRoom') }}</span></button>
+        <div class="nav-heading project-room-heading team-room-heading" role="heading" aria-level="2">
+          <span>{{ t('room.title') }}</span>
+          <small class="nav-heading-count">{{ teamRoomList.length }}</small>
+          <button class="project-room-add team-room-add" type="button" :title="t('room.createTeamRoom')" :aria-label="t('room.createTeamRoom')" @click="openTeamRoomCreate">
+            <AddOutline />
+          </button>
+        </div>
+        <div v-if="teamRoomList.length" class="project-room-list team-room-list">
+          <div v-for="room in teamRoomList" :key="room.id" class="project-room-entry team-room-entry">
+            <div class="project-room-row team-room-row" :class="{ active: isTeamRoomSelected(room.id) }">
+              <button
+                class="project-room-open"
+                type="button"
+                :title="t(isTeamRoomExpanded(room.id) ? 'room.collapseChats' : 'room.expandChats', { name: room.name })"
+                :aria-current="isTeamRoomSelected(room.id) ? 'page' : undefined"
+                :aria-expanded="String(isTeamRoomExpanded(room.id))"
+                :aria-controls="`team-room-chats-${room.id}`"
+                @click="handleTeamRoomClick(room)"
+              >
+                <span class="project-room-avatar" aria-hidden="true">{{ projectInitial(room.name) }}</span>
+                <span class="project-room-copy">
+                  <strong>{{ room.name }}</strong>
+                  <small>{{ t('room.chatCount', { count: room.chats?.length || 0 }) }}</small>
+                </span>
+              </button>
+              <button
+                class="project-room-add team-room-add-chat"
+                type="button"
+                :title="t('room.addChat', { name: room.name })"
+                :aria-label="t('room.addChat', { name: room.name })"
+                @click.stop="addTeamChat(room.id)"
+              >
+                <AddOutline />
+              </button>
+              <button
+                class="project-room-delete team-room-delete"
+                type="button"
+                :title="t('room.deleteRoom', { name: room.name })"
+                :aria-label="t('room.deleteRoom', { name: room.name })"
+                @click.stop="openTeamDelete({ type: 'room', roomId: room.id, name: room.name }, $event)"
+              >
+                <TrashOutline />
+              </button>
+            </div>
+            <div
+              v-if="room.chats?.length && isTeamRoomExpanded(room.id)"
+              :id="`team-room-chats-${room.id}`"
+              class="project-room-groups team-room-chats"
+            >
+              <div v-for="chat in room.chats" :key="chat.id" class="project-room-group-row">
+                <button
+                  class="project-room-group"
+                  :class="{ active: isTeamChatSelected(room.id, chat.id) }"
+                  type="button"
+                  :title="t('room.openChat', { name: chat.title })"
+                  :aria-current="isTeamChatSelected(room.id, chat.id) ? 'page' : undefined"
+                  @click="selectTeamChat(room.id, chat.id)"
+                >
+                  <span class="project-room-group-name">{{ teamChatLabel(room, chat) }}</span>
+                  <span v-if="chat.is_primary && teamChatLabel(room, chat) !== t('room.primaryChat')" class="project-room-group-badge">
+                    {{ t('room.primaryChat') }}
+                  </span>
+                </button>
+                <button
+                  v-if="!chat.is_primary || room.chats.length > 1"
+                  class="project-room-group-delete team-room-delete-chat"
+                  type="button"
+                  :title="t('room.deleteChat', { name: teamChatLabel(room, chat) })"
+                  :aria-label="t('room.deleteChat', { name: teamChatLabel(room, chat) })"
+                  @click.stop="openTeamDelete({ type: 'chat', roomId: room.id, chatId: chat.id, name: teamChatLabel(room, chat) }, $event)"
+                >
+                  <TrashOutline />
+                </button>
+              </div>
+            </div>
+            <p v-else-if="isTeamRoomExpanded(room.id) && !room.chats?.length" class="team-room-chat-empty">
+              {{ t('room.noChats') }}
+            </p>
+          </div>
+        </div>
       </section>
 
     </nav>
@@ -460,11 +538,33 @@
         </button>
       </span>
     </span>
+    <span v-if="teamDeleteTarget" class="team-delete-backdrop" aria-hidden="true" @click="dismissTeamDelete" />
+    <span
+      v-if="teamDeleteTarget"
+      class="settings-delete-popover sidebar-delete-popover"
+      role="dialog"
+      aria-modal="false"
+      :style="teamDeletePopoverStyle"
+      :aria-labelledby="`team-delete-title-${teamDeleteTarget.type}-${teamDeleteTarget.roomId}`"
+    >
+      <strong :id="`team-delete-title-${teamDeleteTarget.type}-${teamDeleteTarget.roomId}`">
+        {{ t('room.deleteTitle', { name: teamDeleteTarget.name }) }}
+      </strong>
+      <p>{{ t(teamDeleteTarget.type === 'room' ? 'room.deleteRoomHint' : 'room.deleteChatHint') }}</p>
+      <span class="settings-delete-actions">
+        <button class="secondary-button compact" type="button" @click="dismissTeamDelete">
+          {{ t('common.cancel') }}
+        </button>
+        <button class="danger-button" type="button" @click="confirmTeamDelete">
+          {{ t('room.deleteConfirm') }}
+        </button>
+      </span>
+    </span>
   </Teleport>
 </template>
 
 <script setup>
-import { computed, unref } from 'vue'
+import { computed, onBeforeUnmount, ref, unref, watch } from 'vue'
 import {
   AddOutline,
   ChatbubblesOutline,
@@ -485,6 +585,7 @@ const props = defineProps({
 
 const {
   addProjectChat,
+  addTeamChat,
   activeView,
   agentState,
   collapsedGroupMenu,
@@ -495,6 +596,8 @@ const {
   createDirectSession,
   deleteProjectRoom,
   deleteSidebarConversation,
+  deleteTeamChat,
+  deleteTeamRoom,
   directGroupsFor,
   discoveringAgents,
   dismissSidebarDeleteConfirmation,
@@ -506,6 +609,7 @@ const {
   groupName,
   groupSessionListExpanded,
   handleSidebarAgentMain,
+  handleTeamRoomClick,
   hasFinishedDirectRun,
   hasMoreDirectGroups,
   hasMoreGroupGroups,
@@ -516,6 +620,9 @@ const {
   isProjectRoomExpanded,
   isProjectRoomSelected,
   isSidebarAgentExpanded,
+  isTeamChatSelected,
+  isTeamRoomExpanded,
+  isTeamRoomSelected,
   openConversationRename,
   openNewGroup,
   openProjectCreate,
@@ -537,6 +644,7 @@ const {
   selectGroup,
   selectPendingDecision,
   selectProjectRoom,
+  selectTeamChat,
   selectedGroupId,
   sidebarAgentSessionListId,
   sidebarAgentGroups,
@@ -546,6 +654,7 @@ const {
   sidebarDeleteGroup,
   sidebarDeletePopoverStyle,
   t,
+  teamRooms,
   theme,
   toggleCollapsedGroupMenu,
   toggleDirectSessionListExpanded,
@@ -575,9 +684,60 @@ function projectInitial(name) {
   return String(name || '').trim().slice(0, 1).toUpperCase() || '•'
 }
 
+function teamChatLabel(room, chat) {
+  return chat?.is_primary && chat.title === room?.name ? t('room.primaryChat') : chat?.title
+}
+
+const teamDeleteTarget = ref(null)
+const teamDeletePopoverStyle = ref({})
+
+function openTeamDelete(target, event) {
+  const rect = event?.currentTarget?.getBoundingClientRect?.()
+  teamDeleteTarget.value = target
+  if (!rect || typeof window === 'undefined') return
+  const width = 278
+  const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8))
+  const top = Math.min(rect.bottom + 6, Math.max(8, window.innerHeight - 190))
+  teamDeletePopoverStyle.value = { top: `${top}px`, left: `${left}px` }
+}
+
+function dismissTeamDelete() {
+  teamDeleteTarget.value = null
+}
+
+function handleTeamDeleteKey(event) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    dismissTeamDelete()
+  }
+}
+
+function confirmTeamDelete() {
+  const target = teamDeleteTarget.value
+  teamDeleteTarget.value = null
+  if (!target) return
+  if (target.type === 'room') void deleteTeamRoom(target.roomId)
+  else void deleteTeamChat(target.roomId, target.chatId)
+}
+
+watch(teamDeleteTarget, (target) => {
+  if (typeof document === 'undefined') return
+  document.removeEventListener('keydown', handleTeamDeleteKey)
+  if (target) document.addEventListener('keydown', handleTeamDeleteKey)
+})
+
+onBeforeUnmount(() => {
+  if (typeof document !== 'undefined') document.removeEventListener('keydown', handleTeamDeleteKey)
+})
+
 const sidebarAgentCount = computed(() => (
   unref(sidebarAgentGroups).reduce((total, group) => total + group.agents.length, 0)
 ))
+
+const teamRoomList = computed(() => {
+  const value = unref(teamRooms)
+  return Array.isArray(value) ? value : []
+})
 
 const railAgents = computed(() => (
   unref(sidebarAgentGroups).flatMap(group => group.agents)

@@ -29,7 +29,9 @@ function createUserCommandService({ roomDb, repository }) {
         if (existing) {
           const recorded = JSON.parse(existing.payload_json)
           const fields = new Set([...Object.keys(recorded.command), ...Object.keys(action)])
-          if ([...fields].some(field => recorded.command[field] !== action[field])) throw new Error('ROOM_USER_COMMAND_ID_REUSED')
+          if ([...fields].some(field => JSON.stringify(recorded.command[field]) !== JSON.stringify(action[field]))) {
+            throw new Error('ROOM_USER_COMMAND_ID_REUSED')
+          }
           return { ...recorded.result, duplicate: true, event: { eventId, sequence: existing.sequence, createdAt: existing.created_at } }
         }
       }
@@ -60,6 +62,63 @@ function createUserCommandService({ roomDb, repository }) {
         const role = db.prepare('SELECT id FROM agent_roles WHERE id = ? AND chat_id = ?').get(action.roleId, action.chatId)
         if (!role) throw new Error('ROOM_ROLE_NOT_FOUND')
         result = repository.createRolePromptRevision({ roleId: action.roleId, prompt: action.prompt, createdBy: actorId })
+      } else if (action.type === 'create_role') {
+        const room = db.prepare('SELECT providers_json, allowed_capabilities_json FROM rooms WHERE id = ?').get(chat.room_id)
+        const providers = parseJson(room?.providers_json, [])
+        const allowedCapabilities = parseJson(room?.allowed_capabilities_json, [])
+        if (providers.length > 0 && !providers.includes(action.provider)) throw new Error('ROOM_ROLE_PROVIDER_NOT_ALLOWED')
+        const capabilities = [...new Set(action.capabilities || [])]
+        if (allowedCapabilities.length > 0 && capabilities.some(capability => !allowedCapabilities.includes(capability))) {
+          throw new Error('ROOM_ROLE_CAPABILITY_NOT_ALLOWED')
+        }
+        const displayName = action.displayName.trim()
+        const roleId = repository.createAgentRole({
+          chatId: action.chatId,
+          displayName,
+          responsibilities: action.responsibilities || '',
+          capabilities,
+          provider: action.provider,
+          createdBy: actorId,
+          creationReason: 'user_created',
+        })
+        let promptRevision = null
+        if (action.prompt !== undefined && action.prompt !== '') {
+          promptRevision = repository.createRolePromptRevision({ roleId, prompt: action.prompt, createdBy: actorId })
+        }
+        result = { roleId, displayName, provider: action.provider, capabilities, promptRevision }
+      } else if (action.type === 'update_role') {
+        const role = db.prepare('SELECT * FROM agent_roles WHERE id = ? AND chat_id = ?').get(action.roleId, action.chatId)
+        if (!role) throw new Error('ROOM_ROLE_NOT_FOUND')
+        const room = db.prepare('SELECT providers_json, allowed_capabilities_json FROM rooms WHERE id = ?').get(chat.room_id)
+        const providers = parseJson(room?.providers_json, [])
+        const allowedCapabilities = parseJson(room?.allowed_capabilities_json, [])
+        if (action.provider !== undefined && action.provider !== role.provider) {
+          if (providers.length > 0 && !providers.includes(action.provider)) throw new Error('ROOM_ROLE_PROVIDER_NOT_ALLOWED')
+          const running = db.prepare("SELECT id FROM assignments WHERE role_id = ? AND status = 'running' LIMIT 1").get(action.roleId)
+          if (running) throw new Error('ROOM_ROLE_BUSY')
+        }
+        const capabilities = action.capabilities === undefined
+          ? parseJson(role.capabilities_json, [])
+          : [...new Set(action.capabilities)]
+        if (allowedCapabilities.length > 0 && capabilities.some(capability => !allowedCapabilities.includes(capability))) {
+          throw new Error('ROOM_ROLE_CAPABILITY_NOT_ALLOWED')
+        }
+        const displayName = action.displayName === undefined ? role.display_name : action.displayName.trim()
+        const responsibilities = action.responsibilities === undefined ? role.responsibilities : action.responsibilities
+        const provider = action.provider === undefined ? role.provider : action.provider
+        db.prepare(`UPDATE agent_roles SET display_name = ?, responsibilities = ?, capabilities_json = ?,
+          provider = ?, updated_at = ? WHERE id = ?`)
+          .run(displayName, responsibilities, encode(capabilities), provider, timestamp, action.roleId)
+        let promptRevision = null
+        if (action.prompt !== undefined) {
+          const current = db.prepare(`SELECT p.prompt FROM agent_roles r
+            LEFT JOIN role_prompt_revisions p ON p.role_id = r.id AND p.revision = r.prompt_revision
+            WHERE r.id = ?`).get(action.roleId)
+          if ((current?.prompt || '') !== action.prompt) {
+            promptRevision = repository.createRolePromptRevision({ roleId: action.roleId, prompt: action.prompt, createdBy: actorId })
+          }
+        }
+        result = { roleId: action.roleId, displayName, responsibilities, capabilities, provider, promptRevision }
       } else if (action.type === 'retry_task' || action.type === 'handoff_task') {
         const previous = repository.getAssignmentContext(action.assignmentId)
         if (!previous || previous.task_id !== action.taskId || previous.chat_id !== action.chatId) throw new Error('ROOM_ASSIGNMENT_NOT_FOUND')

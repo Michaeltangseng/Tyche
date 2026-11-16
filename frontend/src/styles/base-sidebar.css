@@ -1225,6 +1225,27 @@
   border-left: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
 }
 
+.team-room-row {
+  grid-template-columns: minmax(0, 1fr) 28px 24px;
+}
+
+.team-room-heading .team-room-add {
+  margin-left: 2px;
+  opacity: 1;
+}
+
+.team-delete-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 139;
+}
+
+.team-room-chat-empty {
+  margin: 2px 3px 6px 29px;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
 .project-room-group-row {
   min-width: 0;
   display: flex;

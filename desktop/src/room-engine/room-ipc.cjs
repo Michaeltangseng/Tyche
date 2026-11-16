@@ -7,6 +7,8 @@ const LOCAL_USER = Object.freeze({ type: 'user', id: 'user' })
 const CHANNELS = Object.freeze({
   listRooms: 'room:list',
   createChat: 'room:chat-create',
+  deleteChat: 'room:chat-delete',
+  deleteRoom: 'room:room-delete',
   bootstrap: 'room:bootstrap',
   snapshot: 'room:snapshot',
   chatMessages: 'room:chat-messages',
@@ -60,9 +62,24 @@ function commandInput(input) {
   for (const field of ['chatId', 'taskId', 'assignmentId', 'commandId', 'roleId', 'attentionId', 'artifactId', 'optionId']) {
     if (command[field] !== undefined) text(command[field])
   }
-  for (const field of ['reason', 'comment', 'prompt']) if (command[field] !== undefined) text(command[field], 100_000)
+  for (const field of ['reason', 'comment']) if (command[field] !== undefined) text(command[field], 100_000)
+  if (command.prompt !== undefined) {
+    if (['update_role', 'create_role'].includes(command.type)) {
+      if (typeof command.prompt !== 'string' || command.prompt.length > 100_000) throw new TypeError('ROOM_IPC_TEXT_INVALID')
+    } else {
+      text(command.prompt, 100_000)
+    }
+  }
+  if (command.displayName !== undefined) text(command.displayName, 120)
+  if (command.provider !== undefined) text(command.provider)
+  if (command.responsibilities !== undefined
+      && (typeof command.responsibilities !== 'string' || command.responsibilities.length > 4000)) {
+    throw new TypeError('ROOM_IPC_ROLE_RESPONSIBILITIES_INVALID')
+  }
+  if (command.capabilities !== undefined) stringList(command.capabilities, 16)
   const required = {
     stop_task: ['taskId'], answer_attention: ['attentionId'], update_role_prompt: ['roleId', 'prompt', 'commandId'],
+    update_role: ['roleId', 'commandId'], create_role: ['displayName', 'provider', 'commandId'],
     accept_artifact: ['artifactId'], reject_artifact: ['artifactId'],
   }
   for (const field of required[command.type] || []) text(command[field])
@@ -79,6 +96,17 @@ function registerRoomIpc({ ipcMain, service, requireRenderer, isShuttingDown = (
       text(input.roomId)
       text(input.title)
       return service.createChat(input)
+    }],
+    [CHANNELS.deleteChat, input => {
+      assertInput(input, ['roomId', 'chatId'])
+      text(input.roomId)
+      text(input.chatId)
+      return service.deleteChat(input)
+    }],
+    [CHANNELS.deleteRoom, input => {
+      assertInput(input, ['roomId'])
+      text(input.roomId)
+      return service.deleteRoom(input)
     }],
     [CHANNELS.bootstrap, input => service.bootstrap(bootstrapInput(input))],
     [CHANNELS.snapshot, input => {

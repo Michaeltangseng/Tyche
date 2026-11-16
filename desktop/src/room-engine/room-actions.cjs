@@ -5,7 +5,7 @@ const CONTROLLER_TYPES = new Set([
 const USER_TYPES = new Set([
   'stop_task', 'retry_task', 'handoff_task', 'accept_artifact', 'reject_artifact',
   'answer_attention', 'pause_chat', 'resume_chat', 'archive_chat', 'restore_context',
-  'set_workspace_write', 'update_role_prompt',
+  'set_workspace_write', 'update_role_prompt', 'update_role', 'create_role',
 ])
 const PLATFORM_TYPES = new Set([
   'session_started', 'session_liveness', 'session_exited', 'report_received', 'effect_updated',
@@ -36,6 +36,8 @@ const FIELDS = Object.freeze({
     archive_chat: ['type', 'chatId'],
     restore_context: ['type', 'chatId', 'contextRevision'],
     update_role_prompt: ['type', 'chatId', 'roleId', 'prompt', 'commandId'],
+    update_role: ['type', 'chatId', 'roleId', 'commandId', 'displayName', 'responsibilities', 'capabilities', 'provider', 'prompt'],
+    create_role: ['type', 'chatId', 'commandId', 'displayName', 'responsibilities', 'capabilities', 'provider', 'prompt'],
   },
   platform: {
     session_started: ['type', 'chatId', 'assignmentId', 'runId'],
@@ -75,6 +77,52 @@ function normalize(action, kind, expectedChatId = null, expectedContextRevision 
     assertId(action.roleId, 'role_id')
     assertId(action.commandId, 'command_id')
     assertString(action.prompt, 'ROOM_ACTION_PROMPT_INVALID')
+  }
+  if (kind === 'user' && action.type === 'create_role') {
+    assertId(action.commandId, 'command_id')
+    assertId(action.provider, 'provider')
+    if (typeof action.displayName !== 'string' || !action.displayName.trim() || action.displayName.length > 120) {
+      throw new TypeError('ROOM_ACTION_ROLE_NAME_INVALID')
+    }
+    if (action.responsibilities !== undefined
+        && (typeof action.responsibilities !== 'string' || action.responsibilities.length > 4000)) {
+      throw new TypeError('ROOM_ACTION_ROLE_RESPONSIBILITIES_INVALID')
+    }
+    if (action.capabilities !== undefined) {
+      if (!Array.isArray(action.capabilities) || action.capabilities.length > 16) {
+        throw new TypeError('ROOM_ACTION_ROLE_CAPABILITIES_INVALID')
+      }
+      for (const capability of action.capabilities) assertId(capability, 'capability')
+    }
+    if (action.prompt !== undefined && (typeof action.prompt !== 'string' || action.prompt.length > 100_000)) {
+      throw new TypeError('ROOM_ACTION_PROMPT_INVALID')
+    }
+  }
+  if (kind === 'user' && action.type === 'update_role') {
+    assertId(action.roleId, 'role_id')
+    assertId(action.commandId, 'command_id')
+    if (action.displayName !== undefined
+        && (typeof action.displayName !== 'string' || !action.displayName.trim() || action.displayName.length > 120)) {
+      throw new TypeError('ROOM_ACTION_ROLE_NAME_INVALID')
+    }
+    if (action.responsibilities !== undefined
+        && (typeof action.responsibilities !== 'string' || action.responsibilities.length > 4000)) {
+      throw new TypeError('ROOM_ACTION_ROLE_RESPONSIBILITIES_INVALID')
+    }
+    if (action.provider !== undefined) assertId(action.provider, 'provider')
+    if (action.capabilities !== undefined) {
+      if (!Array.isArray(action.capabilities) || action.capabilities.length > 16) {
+        throw new TypeError('ROOM_ACTION_ROLE_CAPABILITIES_INVALID')
+      }
+      for (const capability of action.capabilities) assertId(capability, 'capability')
+    }
+    if (action.prompt !== undefined && (typeof action.prompt !== 'string' || action.prompt.length > 100_000)) {
+      throw new TypeError('ROOM_ACTION_PROMPT_INVALID')
+    }
+    if (action.displayName === undefined && action.responsibilities === undefined
+        && action.provider === undefined && action.capabilities === undefined && action.prompt === undefined) {
+      throw new TypeError('ROOM_ACTION_ROLE_UPDATE_EMPTY')
+    }
   }
   if (kind === 'user' && ['retry_task', 'handoff_task'].includes(action.type)) {
     for (const field of ['taskId', 'assignmentId', 'commandId']) assertId(action[field], field)

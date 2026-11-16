@@ -38,14 +38,14 @@ note
 
 `update_task` 只能修改目标描述、依赖、优先级和输入等元数据；状态转移由 Report、平台运行事实或 `UserCommand` 触发。
 
-`UserCommand` 是另一类结构化动作，例如 `pause_chat`、`resume_chat`、`stop_task`、`retry_task`、`accept_artifact`、`reject_artifact`、`revoke_pending_action` 和 `restore_context_revision`。它们必须由平台确认的用户身份产生。
+`UserCommand` 是另一类结构化动作，例如 `pause_chat`、`resume_chat`、`stop_task`、`retry_task`、`accept_artifact`、`reject_artifact`、`create_role`、`update_role`、`revoke_pending_action` 和 `restore_context_revision`。它们必须由平台确认的用户身份产生。
 
 权限边界：
 
 | Actor | 可以做什么 |
 | --- | --- |
 | Controller | 创建/派发/交接建议、请求 Attention、更新 ChatContext、创建角色及更新角色 Prompt、记录 Note |
-| User | 暂停/继续 Chat、停止/重试/交接 Task、接受/拒绝 Artifact、撤销未执行派发、恢复 Context revision |
+| User | 暂停/继续 Chat、停止/重试/交接 Task、接受/拒绝 Artifact、撤销未执行派发、恢复 Context revision、新增角色、编辑角色名称/职责/Provider/能力 |
 | Platform | 校验权限、创建 Assignment、执行状态转移、启动/停止进程、处理租约、恢复和重试 |
 
 Controller 对停止、重试或交接只能提出建议（例如生成 Attention 或 `propose_*` action），不能绕过 UserCommand 或平台事实直接终止正在运行的进程。`handoff` 只有在当前 Assignment 已结束，或用户明确提交 `handoff_task` 后，平台才可创建新的 Assignment。
