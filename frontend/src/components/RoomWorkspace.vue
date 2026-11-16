@@ -325,8 +325,8 @@
           <aside class="room-role-v2-side">
             <div class="room-role-v2-profile">
               <div class="room-role-v2-avatar">
-                <img v-if="selectedRole.provider" :src="agentLogo(selectedRole.provider)" alt="" />
-                <span v-else>{{ roleLabel(selectedRole).slice(0, 1) }}</span>
+                <img v-if="selectedRoleDraft.provider" :src="agentLogo(selectedRoleDraft.provider)" alt="" />
+                <span v-else>{{ selectedRoleDraft.displayName.slice(0, 1) }}</span>
               </div>
               <label class="room-role-v2-name">
                 <input v-model="selectedRoleDraft.displayName" maxlength="120" :aria-label="t('room.roleName')" @input="markRoleDraftDirty(selectedRole.id)" />
