@@ -21,8 +21,9 @@ const RETRYABLE_CONTROLLER_ERRORS = new Set([
   'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN',
 ])
 
-function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController, prepareSkillSelections, prepareSkillBindings, controllerBatchDelayMs = 40, heartbeatMs = 30_000, onControllerError = error => console.error('[room-controller]', error), autoRunEffects = false, onEffectError = error => console.error('[room-effects]', error), locale, getInvocationRecords, readArtifactDiff, traceReader } = {}) {
+function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup, decideController, prepareSkillSelections, prepareSkillBindings, controllerBatchDelayMs = 40, heartbeatMs = 30_000, onControllerError = error => console.error('[room-controller]', error), autoRunEffects = false, onEffectError = error => console.error('[room-effects]', error), locale, getInvocationRecords, readArtifactDiff, traceReader, getTraceReader } = {}) {
   if (!roomDb || !repository) throw new TypeError('ROOM_SERVICE_DEPENDENCIES_REQUIRED')
+  const resolveTraceReader = () => (typeof getTraceReader === 'function' ? getTraceReader() : traceReader)
   const ingress = createMessageIngress(roomDb, repository)
   const actions = createRoomActionService({ roomDb, repository })
   const outbox = createRoomOutbox({ roomDb, repository })
@@ -219,12 +220,13 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
   }
 
   function assignmentTrace({ roomId, assignmentId, cursor, direction = 'forward', limit = 50 } = {}) {
-    if (!traceReader || typeof traceReader.page !== 'function') throw new Error('ROOM_TRACE_UNAVAILABLE')
+    const reader = resolveTraceReader()
+    if (!reader || typeof reader.page !== 'function') throw new Error('ROOM_TRACE_UNAVAILABLE')
     const assignment = repository.getAssignmentContext(assignmentId)
     if (!assignment || assignment.room_id !== roomId || !assignment.run_id) throw new Error('ROOM_TRACE_NOT_FOUND')
     const agentRunId = roomAgentRunId(assignment)
     try {
-      return traceReader.page({
+      return reader.page({
         runId: assignment.run_id,
         agentRunId,
         cursor,
@@ -245,11 +247,12 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
   }
 
   function assignmentTraceBlob({ roomId, assignmentId, blobId, offset = 0, length = 256 * 1024 } = {}) {
-    if (!traceReader || typeof traceReader.blob !== 'function') throw new Error('ROOM_TRACE_UNAVAILABLE')
+    const reader = resolveTraceReader()
+    if (!reader || typeof reader.blob !== 'function') throw new Error('ROOM_TRACE_UNAVAILABLE')
     const assignment = repository.getAssignmentContext(assignmentId)
     if (!assignment || assignment.room_id !== roomId || !assignment.run_id) throw new Error('ROOM_TRACE_NOT_FOUND')
     try {
-      return traceReader.blob({ runId: assignment.run_id, agentRunId: roomAgentRunId(assignment), blobId, offset, length })
+      return reader.blob({ runId: assignment.run_id, agentRunId: roomAgentRunId(assignment), blobId, offset, length })
     } catch (error) {
       if (error?.code === 'TRACE_NOT_FOUND') throw new Error('ROOM_TRACE_NOT_FOUND')
       throw error

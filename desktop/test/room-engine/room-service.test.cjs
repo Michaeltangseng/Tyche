@@ -102,6 +102,26 @@ function state(roomDb, sql) {
   roomDb.database.exec(sql)
 }
 
+test('assignment trace resolves a lazily initialized trace reader', () => {
+  const { roomDb, service, repository, roomId, roleId, taskId } = setup()
+  const assignmentId = repository.createAssignment({ taskId, roleId, runId: 'run-trace' })
+  assert.throws(() => service.assignmentTrace({ roomId, assignmentId }), /TRACE_UNAVAILABLE/)
+  let pageInput = null
+  const lazyService = createRoomService({
+    roomDb,
+    repository,
+    getTraceReader: () => ({
+      page: input => { pageInput = input; return { steps: [{ seq: 1 }], hasMore: false } },
+      blob: () => ({ text: 'blob-text', eof: true }),
+    }),
+  })
+  const page = lazyService.assignmentTrace({ roomId, assignmentId })
+  assert.equal(page.steps.length, 1)
+  assert.equal(pageInput.runId, 'run-trace')
+  assert.equal(lazyService.assignmentTraceBlob({ roomId, assignmentId, blobId: 'blob', offset: 0, length: 10 }).text, 'blob-text')
+  roomDb.close()
+})
+
 test('snapshot returns the v2 room ledger grouped by chat', () => {
   const { roomDb, service, repository, roomId, chatId, roleId } = setup()
   repository.createChatContextRevision({ chatId, instructions: 'Prefer concise reports and record every request.', createdBy: 'user-1' })

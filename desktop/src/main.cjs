@@ -1256,7 +1256,7 @@ if (!hasSingleInstanceLock) {
         roomDb: roomEngineDb,
         repository: roomRepository,
         readArtifactDiff: createArtifactReader({ roomDb: roomEngineDb, directory: path.join(privateRoot, 'room-engine', 'artifacts') }),
-        traceReader: roomTraceReader,
+        getTraceReader: () => roomTraceReader,
         invokeAgent: roomNativeRuntime.invokeAgent,
         resolveGroup: roomNativeRuntime.resolveTarget,
         prepareSkillSelections: (kind, selections) => skillSnapshotSelections.prepare(kind, selections),
