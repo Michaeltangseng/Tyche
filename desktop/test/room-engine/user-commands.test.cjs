@@ -142,6 +142,22 @@ test('user can create a role with a prompt and replay the command safely', () =>
   state.roomDb.close()
 })
 
+test('user can move the chat controller flag between roles', () => {
+  const state = setup()
+  const first = state.repository.createAgentRole({ chatId: state.chatId, displayName: 'First', provider: 'codex', createdBy: 'user' })
+  const second = state.repository.createAgentRole({ chatId: state.chatId, displayName: 'Second', provider: 'claude', createdBy: 'user' })
+  state.commands.apply({ type: 'update_role', chatId: state.chatId, roleId: first, commandId: 'controller-1', isController: true })
+  const controllerFlag = roleId => state.roomDb.database.prepare('SELECT is_controller FROM agent_roles WHERE id = ?').get(roleId).is_controller
+  assert.equal(controllerFlag(first), 1)
+  assert.equal(controllerFlag(second), 0)
+  state.commands.apply({ type: 'update_role', chatId: state.chatId, roleId: second, commandId: 'controller-2', isController: true })
+  assert.equal(controllerFlag(first), 0)
+  assert.equal(controllerFlag(second), 1)
+  state.commands.apply({ type: 'update_role', chatId: state.chatId, roleId: second, commandId: 'controller-3', isController: false })
+  assert.equal(controllerFlag(second), 0)
+  state.roomDb.close()
+})
+
 test('role metadata update rejects a provider outside the room and provider changes while busy', () => {
   const state = setup()
   const roomId = state.repository.getChatContext(state.chatId).chat.room_id

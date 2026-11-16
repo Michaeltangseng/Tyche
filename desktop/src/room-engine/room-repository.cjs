@@ -161,17 +161,35 @@ function createRoomRepository(roomDb) {
         .run(taskId, chatId, objective, kind, createdBy, encode(sourceMessageIds), parentTaskId, encode(blockedByTaskIds), encode(requiredArtifactIds), optional ? 1 : 0, contextRevision, encode(inputs), timestamp, timestamp)
       return taskId
     },
-    createAgentRole({ roleId = id('role'), chatId, displayName, responsibilities = '', capabilities = [], provider, promptRevision = 0, createdBy, creationReason = null, status = 'active', skillBindings = null }) {
+    createAgentRole({ roleId = id('role'), chatId, displayName, responsibilities = '', capabilities = [], provider, promptRevision = 0, isController = false, createdBy, creationReason = null, status = 'active', skillBindings = null }) {
       const timestamp = now()
       db.prepare(`INSERT INTO agent_roles
-        (id, chat_id, display_name, responsibilities, capabilities_json, provider, prompt_revision, skill_bindings_json,
-         created_by, creation_reason, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        (id, chat_id, display_name, responsibilities, capabilities_json, provider, prompt_revision, is_controller,
+         skill_bindings_json, created_by, creation_reason, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
         roleId, chatId, displayName, responsibilities, encode(capabilities), provider, promptRevision,
-        skillBindings === null ? null : encode(normalizeSkillBindings(skillBindings)),
+        isController ? 1 : 0, skillBindings === null ? null : encode(normalizeSkillBindings(skillBindings)),
         createdBy, creationReason, status, timestamp, timestamp,
       )
       return roleId
+    },
+    getControllerProvider(chatId) {
+      const role = db.prepare(`SELECT provider FROM agent_roles
+        WHERE chat_id = ? AND status = 'active' AND is_controller = 1
+        ORDER BY created_at, rowid LIMIT 1`).get(chatId)
+      if (role?.provider) return role.provider
+      const chat = db.prepare('SELECT room_id FROM chats WHERE id = ?').get(chatId)
+      const room = chat ? db.prepare('SELECT providers_json FROM rooms WHERE id = ?').get(chat.room_id) : null
+      return decode(room?.providers_json, [])[0] || null
+    },
+    setControllerRole({ chatId, roleId = null }) {
+      const timestamp = now()
+      db.prepare('UPDATE agent_roles SET is_controller = 0, updated_at = ? WHERE chat_id = ? AND is_controller = 1')
+        .run(timestamp, chatId)
+      if (!roleId) return
+      const role = db.prepare('SELECT id FROM agent_roles WHERE id = ? AND chat_id = ?').get(roleId, chatId)
+      if (!role) throw new Error('ROOM_ROLE_NOT_FOUND')
+      db.prepare('UPDATE agent_roles SET is_controller = 1, updated_at = ? WHERE id = ?').run(timestamp, roleId)
     },
     createRolePromptRevision({ roleId, prompt, createdBy }) {
       const role = db.prepare('SELECT prompt_revision FROM agent_roles WHERE id = ?').get(roleId)

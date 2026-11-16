@@ -27,6 +27,25 @@ test('controller response accepts only a bounded JSON object with actions', () =
   }
 })
 
+test('a chat controller role selects its provider over Room provider order', async t => {
+  const state = setup(t)
+  const roomId = state.repository.getChatContext(state.chatId).chat.room_id
+  state.roomDb.database.prepare('UPDATE rooms SET providers_json = ? WHERE id = ?')
+    .run(JSON.stringify(['codex', 'claude']), roomId)
+  state.repository.createAgentRole({
+    chatId: state.chatId, displayName: 'Claude lead', provider: 'claude',
+    isController: true, createdBy: 'user',
+  })
+  let providerSeen = ''
+  const decide = createControllerAgent({
+    repository: state.repository,
+    resolveGroup: ({ assignment }) => { providerSeen = assignment.provider; return { id: 'native-host' } },
+    invokeAgent: async () => ({ pendingMessage: { content: '{"actions":[]}' } }),
+  })
+  await decide({ chatId: state.chatId, batchId: 'controller-role', contextRevision: 0, messages: [], roles: [] })
+  assert.equal(providerSeen, 'claude')
+})
+
 test('message queue invokes a read-only native controller and commits its actions', async t => {
   const state = setup(t)
   let invocation

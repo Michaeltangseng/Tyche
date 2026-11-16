@@ -313,7 +313,7 @@
         <header class="room-role-v2-header">
           <div class="room-role-v2-title">
             <span>{{ t('room.roleSettings') }}</span>
-            <strong>{{ roleLabel(selectedRole) }}<span v-if="isControllerSeat(selectedRole)" class="room-agent-badge">{{ t('room.controller') }}</span></strong>
+            <strong>{{ roleLabel(selectedRole) }}<span v-if="selectedRoleDraft?.isController" class="room-agent-badge">{{ t('room.controller') }}</span></strong>
           </div>
           <div class="room-role-v2-close">
             <button class="room-icon-button" type="button" :aria-label="t('common.close')" @click="cancelRoleSettings">
@@ -357,10 +357,16 @@
                 maxlength="4000"
                 @input="markRoleDraftDirty(selectedRole.id)"
               />
-              <div class="room-role-v2-stats">
-                <div><span>{{ t('room.enabledCapabilities') }}</span><strong>{{ enabledCapabilityCount }} / {{ capabilityOptions.length }}</strong></div>
-                <div><span>{{ t('room.availableSkills') }}</span><strong>{{ skillCatalogFor(selectedRole).length }}</strong></div>
-              </div>
+              <button
+                class="room-role-controller-toggle"
+                :class="{ active: selectedRoleDraft.isController }"
+                type="button"
+                :aria-pressed="selectedRoleDraft.isController"
+                @click="toggleRoleController"
+              >
+                <span class="room-role-controller-switch" aria-hidden="true" />
+                <span>{{ t(selectedRoleDraft.isController ? 'room.isController' : 'room.makeController') }}</span>
+              </button>
             </div>
           </aside>
           <div class="room-role-v2-form">
@@ -371,50 +377,46 @@
                 <span class="room-role-prompt-count">{{ selectedRoleDraft.prompt.length }} / 2000</span>
               </div>
             </section>
-            <div class="room-role-v2-pair">
-              <section class="room-role-v2-section">
-                <h3>{{ t('room.capabilities') }}</h3>
-                <div class="room-mini-options">
-                  <label
-                    v-for="capability in capabilityOptions"
-                    :key="capability"
-                    class="room-mini-option"
-                    :class="{ active: selectedRoleDraft.capabilities.includes(capability) }"
-                  >
-                    <input type="checkbox" :value="capability" v-model="selectedRoleDraft.capabilities" @change="markRoleDraftDirty(selectedRole.id)" />
-                    <span>{{ t(`room.capability.${capability}`) }}</span>
+            <section class="room-role-v2-section">
+              <h3>{{ t('room.capabilities') }}</h3>
+              <div class="room-mini-options">
+                <label
+                  v-for="capability in capabilityOptions"
+                  :key="capability"
+                  class="room-mini-option"
+                  :class="{ active: selectedRoleDraft.capabilities.includes(capability) }"
+                >
+                  <input type="checkbox" :value="capability" v-model="selectedRoleDraft.capabilities" @change="markRoleDraftDirty(selectedRole.id)" />
+                  <span>{{ t(`room.capability.${capability}`) }}</span>
+                </label>
+              </div>
+            </section>
+            <section class="room-role-v2-section">
+              <h3>{{ t('room.skills') }}</h3>
+              <div v-if="skillCatalogFor(selectedRole).length" class="room-mini-options room-role-v2-skills">
+                <button
+                  v-for="mode in skillModeOptions"
+                  :key="mode"
+                  class="room-mini-option"
+                  :class="{ active: roleSkillModes[selectedRole.id] === mode }"
+                  type="button"
+                  @click="setRoleSkillMode(selectedRole, mode)"
+                >
+                  {{ t(mode === 'inherit' ? 'room.skillsInherit' : mode === 'override' ? 'room.skillsOverride' : 'room.skillsNone') }}
+                </button>
+                <template v-if="roleSkillModes[selectedRole.id] === 'override'">
+                  <label v-for="skill in skillCatalogFor(selectedRole)" :key="skillKey(skill)" class="room-mini-option" :class="{ active: hasSkill(roleSkills[selectedRole.id], skill) }">
+                    <input type="checkbox" :checked="hasSkill(roleSkills[selectedRole.id], skill)" :disabled="busy || roleSkillsBusy[selectedRole.id]" @change="toggleRoleSkill(selectedRole, skill, $event.target.checked)" />
+                    <span>{{ skill.name || skill.slug }}</span>
                   </label>
-                </div>
-              </section>
-              <section class="room-role-v2-section">
-                <h3>{{ t('room.skills') }}</h3>
-                <div v-if="skillCatalogFor(selectedRole).length" class="room-role-v2-skills">
-                  <div class="room-mini-options">
-                    <button
-                      v-for="mode in skillModeOptions"
-                      :key="mode"
-                      class="room-mini-option"
-                      :class="{ active: roleSkillModes[selectedRole.id] === mode }"
-                      type="button"
-                      @click="setRoleSkillMode(selectedRole, mode)"
-                    >
-                      {{ t(mode === 'inherit' ? 'room.skillsInherit' : mode === 'override' ? 'room.skillsOverride' : 'room.skillsNone') }}
-                    </button>
-                  </div>
-                  <div v-if="roleSkillModes[selectedRole.id] === 'override'" class="room-mini-options">
-                    <label v-for="skill in skillCatalogFor(selectedRole)" :key="skillKey(skill)" class="room-mini-option" :class="{ active: hasSkill(roleSkills[selectedRole.id], skill) }">
-                      <input type="checkbox" :checked="hasSkill(roleSkills[selectedRole.id], skill)" :disabled="busy || roleSkillsBusy[selectedRole.id]" @change="toggleRoleSkill(selectedRole, skill, $event.target.checked)" />
-                      <span>{{ skill.name || skill.slug }}</span>
-                    </label>
-                  </div>
-                  <button class="secondary-button compact" type="button" :disabled="busy || roleSkillsBusy[selectedRole.id] || !roleSkillsDirty[selectedRole.id]" @click="saveRoleSkills(selectedRole)">{{ roleSkillsBusy[selectedRole.id] ? t('room.skillsSaving') : t('room.saveSkills') }}</button>
-                </div>
-                <div v-else class="room-mini-options">
-                  <span class="room-mini-empty">{{ t('room.skillsEmpty') }}</span>
-                  <button class="room-mini-option" type="button" @click="loadSkillCatalog">{{ t('room.refresh') }}</button>
-                </div>
-              </section>
-            </div>
+                </template>
+                <button class="secondary-button compact" type="button" :disabled="busy || roleSkillsBusy[selectedRole.id] || !roleSkillsDirty[selectedRole.id]" @click="saveRoleSkills(selectedRole)">{{ roleSkillsBusy[selectedRole.id] ? t('room.skillsSaving') : t('room.saveSkills') }}</button>
+              </div>
+              <div v-else class="room-mini-options">
+                <span class="room-mini-empty">{{ t('room.skillsEmpty') }}</span>
+                <button class="room-mini-option" type="button" @click="loadSkillCatalog">{{ t('room.refresh') }}</button>
+              </div>
+            </section>
             <p v-if="roleSaveError" class="room-error room-role-v2-error" role="alert">{{ t(roleSaveError) }}</p>
           </div>
         </div>
@@ -523,9 +525,6 @@ const providerOptions = computed(() => [...new Set([
   ...roles.value.map(role => role.provider),
 ].filter(Boolean))])
 const addAgentProviders = computed(() => [...new Set((snapshot.value?.room?.providers_json || []).filter(Boolean))])
-const enabledCapabilityCount = computed(() => (
-  (selectedRoleDraft.value?.capabilities || []).filter(capability => capabilityOptions.includes(capability)).length
-))
 const liveEntries = computed(() => Object.entries(liveAssignments.value).map(([id, live]) => {
   const assignment = assignments.value.find(item => item.id === id)
   const role = roles.value.find(item => item.id === assignment?.role_id)
@@ -549,9 +548,7 @@ const entries = computed(() => [
 ].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))))
 
 function isControllerSeat(role) {
-  const controllerProvider = snapshot.value?.room?.providers_json?.[0]
-  if (!role?.provider || role.provider !== controllerProvider) return false
-  return roles.value.find(item => item.provider === controllerProvider)?.id === role.id
+  return Boolean(role?.is_controller)
 }
 function roleLabel(role) {
   if (!role) return t('room.agent')
@@ -666,6 +663,7 @@ function roleDraftFrom(role) {
     provider: role.provider || '',
     capabilities: [...(role.capabilities_json || [])],
     prompt: role.current_prompt || '',
+    isController: Boolean(role.is_controller),
   }
 }
 function isRoleDisplayNameChanged(role, displayName) {
@@ -696,6 +694,13 @@ function changeRoleProvider(provider) {
   if (followedProvider) draft.displayName = providerLabel(provider)
   markRoleDraftDirty(role.id)
 }
+function toggleRoleController() {
+  const role = selectedRole.value
+  const draft = selectedRoleDraft.value
+  if (!role || !draft) return
+  draft.isController = !draft.isController
+  markRoleDraftDirty(role.id)
+}
 function setRoleSkillMode(role, mode) {
   if (!role || !mode) return
   roleSkillModes.value = { ...roleSkillModes.value, [role.id]: mode }
@@ -714,6 +719,7 @@ function isRoleDraftDirty(role) {
     || draft.provider !== role.provider
     || !sameCapabilities(draft.capabilities, role.capabilities_json)
     || draft.prompt !== (role.current_prompt || '')
+    || Boolean(draft.isController) !== Boolean(role.is_controller)
 }
 function syncRoleDrafts() {
   const next = { ...roleDrafts.value }
@@ -746,6 +752,7 @@ async function saveRole(role) {
   if (providerChanged) payload.provider = draft.provider
   if (!sameCapabilities(draft.capabilities, role.capabilities_json)) payload.capabilities = [...draft.capabilities]
   if (draft.prompt !== (role.current_prompt || '')) payload.prompt = draft.prompt
+  if (Boolean(draft.isController) !== Boolean(role.is_controller)) payload.isController = Boolean(draft.isController)
   if (Object.keys(payload).length === 2) return
   const result = await command(payload)
   if (!result) {
@@ -1062,24 +1069,26 @@ onBeforeUnmount(() => {
 .room-role-provider-choice.active { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent); }
 .room-role-v2-intro { width: 100%; min-height: 72px; padding: 8px 9px; border-color: transparent; background: transparent; color: var(--text-soft); font-size: var(--text-xs); line-height: 1.55; resize: vertical; }
 .room-role-v2-intro:hover, .room-role-v2-intro:focus { border-color: var(--border); background: var(--surface); }
-.room-role-v2-stats { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); font-size: var(--text-xs); }
-.room-role-v2-stats > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; color: var(--muted); }
-.room-role-v2-stats strong { color: var(--text); font-size: var(--text-sm); }
+.room-role-controller-toggle { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--text-soft); font-family: inherit; font-size: var(--text-2xs); text-align: left; cursor: pointer; }
+.room-role-controller-toggle:hover, .room-role-controller-toggle:focus-visible { outline: none; border-color: var(--border-strong); color: var(--text); }
+.room-role-controller-toggle.active { border-color: color-mix(in srgb, var(--accent) 62%, var(--border)); background: var(--accent-soft); color: var(--accent-text); }
+.room-role-controller-switch { width: 24px; height: 14px; flex: 0 0 24px; padding: 2px; border-radius: 999px; background: var(--surface-active); box-shadow: inset 0 0 0 1px var(--border); }
+.room-role-controller-switch::after { content: ""; display: block; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); transition: transform var(--dur-fast) var(--ease-standard), background var(--dur-fast) var(--ease-standard); }
+.room-role-controller-toggle.active .room-role-controller-switch { background: color-mix(in srgb, var(--accent) 30%, var(--surface-active)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.room-role-controller-toggle.active .room-role-controller-switch::after { background: var(--accent); transform: translateX(10px); }
 .room-role-v2-form { display: flex; flex-direction: column; gap: 18px; min-height: 0; overflow: auto; padding: 22px; }
 .room-role-v2-section { display: flex; flex-direction: column; gap: 8px; }
 .room-role-v2-section h3 { margin: 0; color: var(--text-soft); font-size: var(--text-xs); font-weight: 600; }
 .room-role-v2-section textarea { width: 100%; min-height: 64px; resize: vertical; }
-.room-role-v2-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .room-mini-options { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .room-mini-option { position: relative; display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text-soft); font-family: inherit; font-size: var(--text-2xs); font-weight: 500; line-height: 1.4; cursor: pointer; }
 .room-mini-option:hover, .room-mini-option:focus-visible { outline: none; border-color: var(--border-strong); color: var(--text); }
 .room-mini-option.active { border-color: color-mix(in srgb, var(--accent) 62%, var(--border)); background: var(--accent-soft); color: var(--accent-text); }
 .room-mini-option input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-.room-mini-empty { flex: 1 1 100%; color: var(--faint); font-size: var(--text-2xs); line-height: 1.5; }
+.room-mini-empty { flex: 1 1 220px; color: var(--faint); font-size: var(--text-2xs); line-height: 1.5; }
 .room-role-prompt-wrap { position: relative; }
 .room-role-prompt-wrap textarea { width: 100%; min-height: 140px; padding-bottom: 26px; resize: vertical; }
 .room-role-prompt-count { position: absolute; right: 10px; bottom: 8px; color: var(--faint); font-size: var(--text-2xs); pointer-events: none; }
-.room-role-v2-skills { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .room-role-v2-skills .secondary-button { min-height: 28px; padding-inline: 9px; font-size: var(--text-2xs); }
 .room-role-v2-footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 88%, var(--surface-raised)); }
 .room-role-v2-error { margin: 0; }
@@ -1128,7 +1137,6 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   .room-settings-modal, .room-role-modal { width: 100%; max-height: calc(100vh - 24px); }
   .room-role-v2-body { grid-template-columns: 1fr; overflow: auto; }
   .room-role-v2-side { border-right: 0; border-bottom: 1px solid var(--border); }
-  .room-role-v2-pair { grid-template-columns: 1fr; }
 }
 </style>
 

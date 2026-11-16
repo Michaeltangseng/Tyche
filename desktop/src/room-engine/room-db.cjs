@@ -13,7 +13,7 @@ const { DatabaseSync } = (() => {
 
 const { ensurePrivateDirectory } = require('../security/private-file.cjs')
 
-const ROOM_SCHEMA_VERSION = 5
+const ROOM_SCHEMA_VERSION = 6
 
 function json(value) {
   return value === undefined || value === null ? null : JSON.stringify(value)
@@ -127,6 +127,7 @@ function migrate(database) {
         capabilities_json TEXT NOT NULL DEFAULT '[]',
         provider TEXT NOT NULL,
         prompt_revision INTEGER NOT NULL DEFAULT 0,
+        is_controller INTEGER NOT NULL DEFAULT 0,
         skill_bindings_json TEXT,
         created_by TEXT NOT NULL,
         creation_reason TEXT,
@@ -328,6 +329,30 @@ function migrate(database) {
       if (!hasColumn('agent_roles', 'skill_bindings_json')) database.exec('ALTER TABLE agent_roles ADD COLUMN skill_bindings_json TEXT')
       if (!hasColumn('assignments', 'skill_hints_json')) database.exec("ALTER TABLE assignments ADD COLUMN skill_hints_json TEXT NOT NULL DEFAULT '[]'")
       database.exec('PRAGMA user_version = 5; COMMIT;')
+    } catch (error) {
+      database.exec('ROLLBACK')
+      throw error
+    }
+  }
+  if (current > 0 && current < 6) {
+    database.exec('BEGIN IMMEDIATE')
+    try {
+      const hasColumn = (table, column) => database.prepare(`PRAGMA table_info(${table})`).all().some(item => item.name === column)
+      if (!hasColumn('agent_roles', 'is_controller')) {
+        database.exec('ALTER TABLE agent_roles ADD COLUMN is_controller INTEGER NOT NULL DEFAULT 0')
+      }
+      database.exec(`UPDATE agent_roles SET is_controller = 1 WHERE id IN (
+        SELECT r.id FROM agent_roles r
+        JOIN chats c ON c.id = r.chat_id
+        JOIN rooms rm ON rm.id = c.room_id
+        WHERE r.status = 'active' AND r.provider = json_extract(rm.providers_json, '$[0]')
+          AND r.rowid = (
+            SELECT MIN(r2.rowid) FROM agent_roles r2
+            WHERE r2.chat_id = r.chat_id AND r2.status = 'active'
+              AND r2.provider = json_extract(rm.providers_json, '$[0]')
+          )
+      )`)
+      database.exec('PRAGMA user_version = 6; COMMIT;')
     } catch (error) {
       database.exec('ROLLBACK')
       throw error

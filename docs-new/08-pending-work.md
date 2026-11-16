@@ -475,7 +475,7 @@ Skill 选择器已接通，但仍需：
 
 ### [ ] P2-01 修正 schema 版本描述
 
-`07` 仍写 “Room schema 已升级到 v4”，当前代码 `room-db.cjs` 是 `ROOM_SCHEMA_VERSION = 5`。更新为 v5，并列出 v5 的 migration 内容。
+`07` 仍写 “Room schema 已升级到 v4”，当前代码 `room-db.cjs` 是 `ROOM_SCHEMA_VERSION = 6`。更新为 v6，并列出 v5（Chat/Role Skill bindings、Assignment skill hints）和 v6（`agent_roles.is_controller` 及旧角色主控回填）的 migration 内容。
 
 ### [ ] P2-02 对齐 ADR-003 的角色动作
 

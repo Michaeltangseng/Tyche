@@ -20,8 +20,8 @@ function createControllerAgent({ repository, invokeAgent, resolveGroup } = {}) {
     if (input.signal?.aborted) throw new Error('ROOM_CONTROLLER_CANCELLED')
     const chat = repository.getChatContext(input.chatId).chat
     const snapshot = repository.getRoomSnapshot(chat.room_id)
-    // Explicit Room provider order selects the controller; no provider is installed or enabled here.
-    const provider = snapshot.room.providers_json[0]
+    // A Chat-level controller role selects the provider; otherwise fall back to Room provider order.
+    const provider = repository.getControllerProvider(input.chatId)
     if (typeof provider !== 'string' || !provider) throw new Error('ROOM_CONTROLLER_PROVIDER_NOT_CONFIGURED')
     const group = resolveGroup({ assignment: { workspace: snapshot.room.workspace, provider }, chatId: input.chatId, roomId: chat.room_id })
     if (!group) throw new Error('ROOM_CONTROLLER_GROUP_NOT_FOUND')
@@ -81,7 +81,7 @@ function createControllerAgent({ repository, invokeAgent, resolveGroup } = {}) {
   decide.isAvailable = ({ chatId }) => {
     const chat = repository.getChatContext(chatId).chat
     const room = repository.getRoomSnapshot(chat.room_id).room
-    const provider = room.providers_json[0]
+    const provider = repository.getControllerProvider(chatId)
     return typeof provider === 'string' && Boolean(resolveGroup({ assignment: { workspace: room.workspace, provider }, chatId, roomId: chat.room_id }))
   }
   return decide

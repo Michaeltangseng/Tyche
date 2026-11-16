@@ -50,9 +50,11 @@ test('user role metadata updates validate editable fields and reject empty updat
   assert.equal(validateUserCommand({ ...base, responsibilities: '' }).responsibilities, '')
   assert.equal(validateUserCommand({ ...base, capabilities: ['read'] }).capabilities[0], 'read')
   assert.equal(validateUserCommand({ ...base, prompt: '' }).prompt, '')
+  assert.equal(validateUserCommand({ ...base, isController: true }).isController, true)
   assert.throws(() => validateUserCommand(base), /ROLE_UPDATE_EMPTY/)
   assert.throws(() => validateUserCommand({ ...base, displayName: '   ' }), /ROLE_NAME_INVALID/)
   assert.throws(() => validateUserCommand({ ...base, capabilities: 'read' }), /ROLE_CAPABILITIES_INVALID/)
+  assert.throws(() => validateUserCommand({ ...base, isController: 'yes' }), /ROLE_CONTROLLER_INVALID/)
   assert.throws(() => validateUserCommand({ ...base, webhook: 'https://example.test' }), /UNKNOWN_FIELD/)
 })
 

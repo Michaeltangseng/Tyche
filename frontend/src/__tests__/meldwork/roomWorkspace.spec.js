@@ -528,7 +528,7 @@ describe('v2 team workspace', () => {
   it('shows default agent seats and marks the controller seat', async () => {
     const snapshot = data()
     snapshot.room.providers_json = ['codex']
-    snapshot.roles = [{ id: 'controller-seat', chat_id: 'chat-1', display_name: 'codex', provider: 'codex', status: 'active', creation_reason: 'project_default_agent', current_prompt: '' }]
+    snapshot.roles = [{ id: 'controller-seat', chat_id: 'chat-1', display_name: 'codex', provider: 'codex', status: 'active', creation_reason: 'project_default_agent', current_prompt: '', is_controller: 1 }]
     const wrapper = mountRoom(api(snapshot))
     await flushPromises()
     const chip = wrapper.get('.room-agent-chip')
@@ -607,6 +607,7 @@ describe('v2 team workspace', () => {
     await wrapper.get('.room-role-provider-choice[data-provider="claude"]').trigger('click')
     const writeDrafts = wrapper.findAll('.room-mini-options .room-mini-option input')[2]
     await writeDrafts.setValue(true)
+    await wrapper.get('.room-role-controller-toggle').trigger('click')
     await wrapper.get('.room-role-v2-footer .primary-button').trigger('click')
     await flushPromises()
 
@@ -617,6 +618,7 @@ describe('v2 team workspace', () => {
       responsibilities: 'Edit and publish docs.',
       provider: 'claude',
       capabilities: ['read', 'write-drafts'],
+      isController: true,
       chatId: 'chat-1',
       commandId: expect.any(String),
     }))

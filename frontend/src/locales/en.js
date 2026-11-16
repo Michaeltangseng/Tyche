@@ -99,6 +99,8 @@ export default {
     "room.addAgent": "Add agent",
     "room.addAgentHint": "The new role joins this chat. Configure its responsibilities, capabilities, and prompt after creation.",
     "room.createAgent": "Add agent",
+    "room.makeController": "Make controller",
+    "room.isController": "Controller",
     "room.skills": "Skills",
     "room.chatSkills": "Chat default skills",
     "room.skillsHint": "These bindings are inherited by roles unless they choose another setting.",

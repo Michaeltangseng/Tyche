@@ -99,6 +99,8 @@ export default {
     "room.addAgent": "新增 Agent",
     "room.addAgentHint": "新角色会加入当前聊天，创建后可继续配置职责、能力和提示词。",
     "room.createAgent": "添加 Agent",
+    "room.makeController": "设为主控",
+    "room.isController": "主控",
     "room.skills": "技能",
     "room.chatSkills": "聊天默认技能",
     "room.skillsHint": "角色默认继承这里的绑定，也可以单独覆盖或明确不使用技能。",

@@ -36,7 +36,7 @@ const FIELDS = Object.freeze({
     archive_chat: ['type', 'chatId'],
     restore_context: ['type', 'chatId', 'contextRevision'],
     update_role_prompt: ['type', 'chatId', 'roleId', 'prompt', 'commandId'],
-    update_role: ['type', 'chatId', 'roleId', 'commandId', 'displayName', 'responsibilities', 'capabilities', 'provider', 'prompt'],
+    update_role: ['type', 'chatId', 'roleId', 'commandId', 'displayName', 'responsibilities', 'capabilities', 'provider', 'prompt', 'isController'],
     create_role: ['type', 'chatId', 'commandId', 'displayName', 'responsibilities', 'capabilities', 'provider', 'prompt'],
   },
   platform: {
@@ -119,8 +119,12 @@ function normalize(action, kind, expectedChatId = null, expectedContextRevision 
     if (action.prompt !== undefined && (typeof action.prompt !== 'string' || action.prompt.length > 100_000)) {
       throw new TypeError('ROOM_ACTION_PROMPT_INVALID')
     }
+    if (action.isController !== undefined && typeof action.isController !== 'boolean') {
+      throw new TypeError('ROOM_ACTION_ROLE_CONTROLLER_INVALID')
+    }
     if (action.displayName === undefined && action.responsibilities === undefined
-        && action.provider === undefined && action.capabilities === undefined && action.prompt === undefined) {
+        && action.provider === undefined && action.capabilities === undefined && action.prompt === undefined
+        && action.isController === undefined) {
       throw new TypeError('ROOM_ACTION_ROLE_UPDATE_EMPTY')
     }
   }

@@ -109,6 +109,11 @@ function createUserCommandService({ roomDb, repository }) {
         db.prepare(`UPDATE agent_roles SET display_name = ?, responsibilities = ?, capabilities_json = ?,
           provider = ?, updated_at = ? WHERE id = ?`)
           .run(displayName, responsibilities, encode(capabilities), provider, timestamp, action.roleId)
+        if (action.isController === true) {
+          repository.setControllerRole({ chatId: action.chatId, roleId: action.roleId })
+        } else if (action.isController === false && role.is_controller) {
+          repository.setControllerRole({ chatId: action.chatId, roleId: null })
+        }
         let promptRevision = null
         if (action.prompt !== undefined) {
           const current = db.prepare(`SELECT p.prompt FROM agent_roles r
@@ -118,7 +123,8 @@ function createUserCommandService({ roomDb, repository }) {
             promptRevision = repository.createRolePromptRevision({ roleId: action.roleId, prompt: action.prompt, createdBy: actorId })
           }
         }
-        result = { roleId: action.roleId, displayName, responsibilities, capabilities, provider, promptRevision }
+        const isController = action.isController === undefined ? Boolean(role.is_controller) : action.isController
+        result = { roleId: action.roleId, displayName, responsibilities, capabilities, provider, isController, promptRevision }
       } else if (action.type === 'retry_task' || action.type === 'handoff_task') {
         const previous = repository.getAssignmentContext(action.assignmentId)
         if (!previous || previous.task_id !== action.taskId || previous.chat_id !== action.chatId) throw new Error('ROOM_ASSIGNMENT_NOT_FOUND')
