@@ -477,6 +477,14 @@ const FALLBACK_PERMISSION_MODES = {
     { id: 'no-approve', label: 'No Approve', description: 'Read-only tools without approval.', write: false, risk: 'low' },
     { id: 'approve', label: 'Approve', description: 'Allow tool use and file changes.', write: true, risk: 'medium' },
   ],
+  openclaw: [
+    { id: 'read-only', label: 'Read Only', description: 'Deny file writes and command execution while keeping native read tools.', write: false, risk: 'low' },
+    { id: 'default', label: 'Native Configuration', description: 'Use OpenClaw native tool permissions.', write: true, risk: 'medium' },
+  ],
+  kimi: [
+    { id: 'read-only', label: 'Read Only', description: 'Deny file writes and command execution while keeping native read tools.', write: false, risk: 'low' },
+    { id: 'default', label: 'Native Configuration', description: 'Use Kimi native ACP permissions.', write: true, risk: 'medium' },
+  ],
   default: [{ id: 'default', label: 'Native Configuration', description: 'Use the provider native permissions.', write: true, risk: 'medium' }],
 }
 const skillModeOptions = ['inherit', 'override', 'none']

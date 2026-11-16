@@ -389,7 +389,10 @@ function migrate(database) {
         WHEN provider = 'zcode' THEN 'plan'
         WHEN provider = 'deepseek' AND capabilities_json LIKE '%write-workdir%' THEN 'write'
         WHEN provider = 'deepseek' THEN 'read'
-        WHEN provider IN ('openclaw', 'kimi') THEN 'default'
+        WHEN provider = 'openclaw' AND capabilities_json LIKE '%write-workdir%' THEN 'default'
+        WHEN provider = 'openclaw' THEN 'read-only'
+        WHEN provider = 'kimi' AND capabilities_json LIKE '%write-workdir%' THEN 'default'
+        WHEN provider = 'kimi' THEN 'read-only'
         WHEN provider = 'opencodereview' THEN 'review'
         ELSE 'default'
       END WHERE native_permission IS NULL`)

@@ -47,9 +47,11 @@ const MODES = Object.freeze({
     { id: 'write', label: 'Write', description: 'Use the writable DeepSeek profile.', write: true, exec: true, risk: 'medium' },
   ]),
   openclaw: Object.freeze([
+    { id: 'read-only', label: 'Read Only', description: 'Deny file writes and command execution while keeping native read tools.', write: false, exec: false, risk: 'low' },
     { id: 'default', label: 'Native Configuration', description: 'Use OpenClaw native tool permissions.', write: true, exec: true, risk: 'medium' },
   ]),
   kimi: Object.freeze([
+    { id: 'read-only', label: 'Read Only', description: 'Deny file writes and command execution while keeping native read tools.', write: false, exec: false, risk: 'low' },
     { id: 'default', label: 'Native Configuration', description: 'Use Kimi native ACP permissions.', write: true, exec: true, risk: 'medium' },
   ]),
   opencodereview: Object.freeze([

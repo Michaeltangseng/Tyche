@@ -4,6 +4,7 @@ const test = require('node:test')
 const {
   capabilitiesForNativePermission,
   defaultNativePermission,
+  nativePermissionAllowsExec,
   nativePermissionAllowsWrite,
   nativePermissionModes,
 } = require('../../src/agents/native-permission-modes.cjs')
@@ -14,9 +15,15 @@ test('native permission descriptors expose provider modes and safe defaults', ()
   assert.equal(defaultNativePermission('codex'), 'read-only')
   assert.equal(defaultNativePermission('gemini'), 'default')
   assert.equal(defaultNativePermission('pi'), 'no-approve')
+  assert.equal(defaultNativePermission('openclaw'), 'read-only')
+  assert.equal(defaultNativePermission('kimi'), 'read-only')
   assert.equal(nativePermissionAllowsWrite('claude', 'acceptEdits'), true)
   assert.equal(nativePermissionAllowsWrite('claude', 'plan'), false)
   assert.equal(nativePermissionAllowsWrite('codex', 'danger-full-access'), true)
+  assert.equal(nativePermissionAllowsWrite('openclaw', 'default'), true)
+  assert.equal(nativePermissionAllowsWrite('openclaw', 'read-only'), false)
+  assert.equal(nativePermissionAllowsExec('kimi', 'default'), true)
+  assert.equal(nativePermissionAllowsExec('kimi', 'read-only'), false)
   assert.deepEqual(capabilitiesForNativePermission('claude', 'acceptEdits'), ['read', 'read-exec', 'write-drafts', 'write-workdir'])
   assert.deepEqual(capabilitiesForNativePermission('claude', 'plan'), ['read'])
   assert.deepEqual(nativePermissionModes('unknown-provider').map(mode => mode.id), ['default'])

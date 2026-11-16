@@ -26,6 +26,34 @@ test('v2 migration preserves rooms and defaults existing workspaces to read-only
   reopened.close()
 })
 
+test('v7 migration derives role native permissions from legacy capabilities', t => {
+  const directory = tempDirectory()
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const first = openRoomDatabase({ directory })
+  const repository = createRoomRepository(first)
+  const roomId = repository.createRoom({ name: 'Existing', workspace: directory, providers: ['codex', 'openclaw', 'kimi'] })
+  const chatId = repository.createChat({ roomId, title: 'Team' })
+  const roleIds = {
+    codexRead: repository.createAgentRole({ chatId, displayName: 'Codex read', provider: 'codex', createdBy: 'user' }),
+    codexWrite: repository.createAgentRole({ chatId, displayName: 'Codex write', provider: 'codex', capabilities: ['read', 'write-workdir'], createdBy: 'user' }),
+    openclawRead: repository.createAgentRole({ chatId, displayName: 'OpenClaw read', provider: 'openclaw', createdBy: 'user' }),
+    openclawWrite: repository.createAgentRole({ chatId, displayName: 'OpenClaw write', provider: 'openclaw', capabilities: ['read', 'write-workdir'], createdBy: 'user' }),
+    kimiRead: repository.createAgentRole({ chatId, displayName: 'Kimi read', provider: 'kimi', createdBy: 'user' }),
+    kimiWrite: repository.createAgentRole({ chatId, displayName: 'Kimi write', provider: 'kimi', capabilities: ['read', 'write-workdir'], createdBy: 'user' }),
+  }
+  first.database.exec('ALTER TABLE agent_roles DROP COLUMN native_permission; PRAGMA user_version = 6;')
+  first.close()
+  const migrated = openRoomDatabase({ directory })
+  const permission = roleId => migrated.database.prepare('SELECT native_permission FROM agent_roles WHERE id = ?').get(roleId).native_permission
+  assert.equal(permission(roleIds.codexRead), 'read-only')
+  assert.equal(permission(roleIds.codexWrite), 'workspace-write')
+  assert.equal(permission(roleIds.openclawRead), 'read-only')
+  assert.equal(permission(roleIds.openclawWrite), 'default')
+  assert.equal(permission(roleIds.kimiRead), 'read-only')
+  assert.equal(permission(roleIds.kimiWrite), 'default')
+  migrated.close()
+})
+
 test('room database creates private schema and persists the message/task/effect ledger', () => {
   const directory = tempDirectory()
   const roomDb = openRoomDatabase({ directory })

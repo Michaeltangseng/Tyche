@@ -40,6 +40,34 @@ test('native role permissions select workspace-write or read-only execution', as
   assert.equal(s.calls[2].runOptions.sandbox, 'read-only')
 })
 
+test('openclaw and kimi roles default to platform-enforced read-only execution', async t => {
+  const s = await setup(t)
+  s.roomDb.database.prepare('UPDATE rooms SET providers_json = ? WHERE id = ?')
+    .run(JSON.stringify(['codex', 'openclaw', 'kimi']), s.roomId)
+  const service = createRoomService({ roomDb: s.roomDb, repository: s.repository,
+    invokeAgent: s.runtime.invokeAgent, resolveGroup: s.runtime.resolveTarget })
+  t.after(() => service.close())
+  const start = provider => {
+    const roleId = s.repository.createAgentRole({
+      chatId: s.chatId, displayName: provider, provider, createdBy: 'user',
+    })
+    const taskId = s.repository.createTask({ chatId: s.chatId, objective: 'Inspect', createdBy: 'user' })
+    return { roleId, run: service.startAssignment({
+      assignmentId: s.repository.createAssignment({ taskId, roleId }), prompt: 'Inspect',
+    }).promise }
+  }
+  const openclaw = start('openclaw')
+  await openclaw.run
+  const kimi = start('kimi')
+  await kimi.run
+  assert.equal(s.repository.getAgentRole(openclaw.roleId).native_permission, 'read-only')
+  assert.equal(s.repository.getAgentRole(kimi.roleId).native_permission, 'read-only')
+  assert.equal(s.calls[0].runOptions.sandbox, 'read-only')
+  assert.equal(s.calls[0].runOptions.nativePermission, 'read-only')
+  assert.equal(s.calls[1].runOptions.sandbox, 'read-only')
+  assert.equal(s.calls[1].runOptions.nativePermission, 'read-only')
+})
+
 test('Room writers serialize in the native pipeline and a queued cancellation never starts CLI', async t => {
   let releaseFirst
   let enteredFirst
