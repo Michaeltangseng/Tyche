@@ -129,6 +129,18 @@ test('an unknown run or group is rejected', (t) => {
   )
 })
 
+test('a throwing known-group lookup falls through to room authorization', (t) => {
+  const paths = fixture(t)
+  writeTrace(paths)
+  const trace = createTraceReader({
+    tracesRoot: paths.tracesRoot,
+    isKnownGroup: () => { throw Object.assign(new Error('LOCAL_GROUP_NOT_FOUND'), { code: 'LOCAL_GROUP_NOT_FOUND' }) },
+    isAuthorizedTrace: ({ runId, agentRunId, meta }) => runId === 'run-1' && agentRunId === 'agent-1' && meta.groupId === 'group-1',
+  })
+  assert.equal(trace.status({ runId: 'run-1', agentRunId: 'agent-1' }).lastSeq, 5)
+  assert.equal(trace.page({ runId: 'run-1', agentRunId: 'agent-1', direction: 'forward', limit: 10 }).steps.length, 5)
+})
+
 test('Room traces require the main-process assignment authorization callback', (t) => {
   const paths = fixture(t)
   writeTrace(paths)

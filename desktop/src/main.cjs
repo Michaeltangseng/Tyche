@@ -1096,7 +1096,9 @@ function registerIpc() {
   const tracesRoot = path.join(app.getPath('userData'), 'meldwork-private', 'traces')
   roomTraceReader = createTraceReader({
     tracesRoot,
-    isKnownGroup: groupId => Boolean(workspace?.getGroup?.(groupId)),
+    isKnownGroup: groupId => {
+      try { return Boolean(workspace?.getGroup?.(groupId)) } catch { return false }
+    },
     isAuthorizedTrace: input => Boolean(roomEngineService?.authorizeTrace?.(input)),
   })
   const traceStore = createTraceStore({ tracesRoot })

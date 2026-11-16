@@ -66,6 +66,14 @@ function createTraceReader({
 } = {}) {
   if (!tracesRoot) throw traceError('TRACE_PATH_INVALID')
 
+  function knownGroup(groupId) {
+    try {
+      return Boolean(isKnownGroup(groupId))
+    } catch {
+      return false
+    }
+  }
+
   function runPaths(runId, agentRunId) {
     assertId(runId)
     assertId(agentRunId)
@@ -77,7 +85,7 @@ function createTraceReader({
     } catch {
       throw traceError('TRACE_NOT_FOUND')
     }
-    if (!meta || meta.runId !== runId || (!isKnownGroup(meta.groupId)
+    if (!meta || meta.runId !== runId || (!knownGroup(meta.groupId)
         && !isAuthorizedTrace({ runId, agentRunId, meta }))) {
       throw traceError('TRACE_NOT_FOUND')
     }

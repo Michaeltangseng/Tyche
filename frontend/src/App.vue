@@ -4,9 +4,9 @@
     :class="{
       'sidebar-collapsed': sidebarCollapsed,
       'trace-panel-open': tracePanelOpen || projectDrawerOpen,
-      'project-drawer-open': projectDrawerOpen,
+      'project-drawer-open': projectDrawerOpen || roomFilesOpen,
     }"
-    :style="{ '--project-room-drawer-width': `${projectDrawerWidth}px` }"
+    :style="{ '--project-room-drawer-width': `${projectDrawerOpen ? projectDrawerWidth : roomFilesWidth}px` }"
     :data-theme="theme"
     :data-platform="desktopPlatform"
     :aria-busy="agentDiscoveryPending ? 'true' : undefined"
@@ -89,8 +89,10 @@
           :agents="readyAgents"
           :create-request="roomCreateRequest"
           :open-request="teamRoomOpenRequest"
+          :files-open="roomFilesOpen"
           @create-request-consumed="roomCreateRequest = false"
           @active-change="teamRoomNavigation.syncActive"
+          @toggle-files="roomFilesOpen = !roomFilesOpen"
         />
 
         <section v-else class="conversation-pane" :class="{ 'project-room-pane': isProjectMainGroup }">
@@ -134,6 +136,18 @@
         <ProjectRoomDrawer
           v-if="projectDrawerOpen && isProjectMainGroup"
           :controller="projectRoomDrawerController"
+        />
+      </transition>
+
+      <transition name="project-drawer">
+        <RoomFilesDrawer
+          v-if="roomFilesOpen && activeView === 'rooms' && api?.room && activeTeamRoomId"
+          :key="activeTeamRoomId"
+          :api="api.room"
+          :room-id="activeTeamRoomId"
+          :width="roomFilesWidth"
+          @close="roomFilesOpen = false"
+          @resize="roomFilesWidth = $event"
         />
       </transition>
 
@@ -256,6 +270,7 @@ import OnboardingDialog from './components/OnboardingDialog.vue'
 import ProjectRoomComposer from './components/ProjectRoomComposer.vue'
 import ProjectRoomCreateDialog from './components/ProjectRoomCreateDialog.vue'
 import ProjectRoomDrawer from './components/ProjectRoomDrawer.vue'
+import RoomFilesDrawer from './components/RoomFilesDrawer.vue'
 import ProjectRoomGatePanel from './components/ProjectRoomGatePanel.vue'
 import ProjectRoomOverlay from './components/ProjectRoomOverlay.vue'
 import ProjectRoomProgress from './components/ProjectRoomProgress.vue'
@@ -483,6 +498,7 @@ const teamRoomNavigation = useTeamRoomNavigation({
 const {
   rooms: teamRooms,
   openRequest: teamRoomOpenRequest,
+  activeRoomId: activeTeamRoomId,
 } = teamRoomNavigation
 const roomCreateRequest = ref(false)
 const PROJECT_DRAWER_DEFAULT_WIDTH = 420
@@ -490,6 +506,8 @@ const PROJECT_DRAWER_MIN_WIDTH = 280
 const PROJECT_DRAWER_MAX_WIDTH = 760
 const projectDrawerOpen = ref(false)
 const projectDrawerWidthOverride = ref(null)
+const roomFilesOpen = ref(false)
+const roomFilesWidth = ref(PROJECT_DRAWER_DEFAULT_WIDTH)
 const projectDrawerFileRequest = ref(null)
 const projectDrawerNarrow = ref(false)
 let projectDrawerMediaQuery = null
@@ -505,6 +523,10 @@ function detachProjectDrawerMediaQuery() {
   projectDrawerMediaQuery = null
   projectDrawerNarrow.value = false
 }
+
+watch(activeView, (view) => {
+  if (view !== 'rooms') roomFilesOpen.value = false
+})
 
 watch(projectDrawerOpen, (open) => {
   if (!open) {

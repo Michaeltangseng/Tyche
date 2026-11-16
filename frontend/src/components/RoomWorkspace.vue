@@ -33,7 +33,7 @@
         <button v-if="attentions.length" class="room-notice-pill" type="button" @click="scrollToAttention">
           {{ t('room.attentions', { count: attentions.length }) }}
         </button>
-        <button v-if="snapshot" class="room-icon-button room-files-toggle" type="button" :aria-pressed="filesOpen" :title="t('room.files')" :aria-label="t('room.files')" @click="filesOpen = !filesOpen">
+        <button v-if="snapshot" class="room-icon-button room-files-toggle" type="button" :aria-pressed="filesOpen" :title="t('room.files')" :aria-label="t('room.files')" @click="emit('toggle-files')">
           <FolderOutline />
         </button>
         <button v-if="hasWork" class="secondary-button room-work-toggle" type="button" :aria-pressed="workPanelOpen" @click="workPanelOpen = !workPanelOpen">
@@ -207,14 +207,6 @@
         </template>
       </aside>
     </div>
-
-    <RoomFilesDrawer
-      v-if="filesOpen && snapshot"
-      :key="roomId"
-      :api="api"
-      :room-id="roomId"
-      @close="filesOpen = false"
-    />
 
     <div v-if="creating" class="room-modal-backdrop" @click.self="creating = false" @wheel.self.prevent>
       <form class="room-create room-modal" @submit.prevent="create" @keydown.esc.stop="creating = false">
@@ -466,10 +458,9 @@ import { agentLogo } from '../catalog.js'
 import { t } from '../i18n.js'
 import { useRoomWorkspace } from '../composables/useRoomWorkspace.js'
 import RoomArtifactDiff from './RoomArtifactDiff.vue'
-import RoomFilesDrawer from './RoomFilesDrawer.vue'
 
-const props = defineProps({ api: { type: Object, required: true }, pickDirectory: { type: Function, required: true }, agents: { type: Array, default: () => [] }, createRequest: { type: Boolean, default: false }, openRequest: { type: Object, default: null } })
-const emit = defineEmits(['create-request-consumed', 'active-change'])
+const props = defineProps({ api: { type: Object, required: true }, pickDirectory: { type: Function, required: true }, agents: { type: Array, default: () => [] }, createRequest: { type: Boolean, default: false }, openRequest: { type: Object, default: null }, filesOpen: { type: Boolean, default: false } })
+const emit = defineEmits(['create-request-consumed', 'active-change', 'toggle-files'])
 const { rooms, snapshot, roomId, chatId, chat, tasks, assignments, roles, messages, reports, attentions, staleAssignments, liveAssignments,
   hasOlderMessages, loadingOlderMessages, busy, error, load, refresh, openRoom, createRoom, createChat, send, loadOlderMessages, command } = useRoomWorkspace({ api: props.api })
 const creating = ref(false)
@@ -477,7 +468,6 @@ const settingsOpen = ref(false)
 const settingsRef = ref(null)
 const chatSettingsOpen = ref(false)
 const chatSettingsRef = ref(null)
-const filesOpen = ref(false)
 const roleCreateDraft = ref(null)
 const roleDeleteArmed = ref(false)
 const roleSettingsId = ref('')

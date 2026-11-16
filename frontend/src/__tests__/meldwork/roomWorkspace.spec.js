@@ -167,20 +167,11 @@ describe('v2 team workspace', () => {
     expect(trace.text()).toContain('Read source')
   })
 
-  it('opens the room files drawer and previews a file', async () => {
-    const snapshot = data()
-    snapshot.room.workspace = '/tmp/current-project'
-    const bridge = api(snapshot)
-    const wrapper = mountRoom(bridge)
+  it('requests the room files drawer from the header', async () => {
+    const wrapper = mountRoom(api(data()))
     await flushPromises()
     await wrapper.get('.room-files-toggle').trigger('click')
-    await flushPromises()
-    expect(wrapper.get('.room-files-drawer').text()).toContain('Files')
-    expect(bridge.filesList).toHaveBeenCalledWith({ roomId: 'room-1', relPath: '' })
-    await wrapper.get('.workdir-tree-file').trigger('click')
-    await flushPromises()
-    expect(bridge.filesRead).toHaveBeenCalledWith({ roomId: 'room-1', relPath: 'README.md' })
-    expect(wrapper.get('.file-preview').text()).toContain('hello')
+    expect(wrapper.emitted('toggle-files')).toHaveLength(1)
   })
 
   it('renders and appends live output for a running assignment', async () => {
