@@ -187,6 +187,27 @@ function planBlock(steps) {
   }
 }
 
+function rawStepText(step) {
+  const raw = step?.raw
+  if (raw?.role === 'user') return ''
+  if (typeof raw?.content === 'string') return raw.content
+  if (typeof step?.output === 'string') return step.output
+  if (typeof step?.detail === 'string') return step.detail
+  if (typeof step?.summary === 'string') return step.summary
+  return ''
+}
+
+function outputBlock(steps) {
+  return {
+    count: steps.length,
+    key: `output:${firstSequence(steps)}`,
+    kind: 'output',
+    status: lastStatus(steps),
+    steps,
+    text: steps.map(rawStepText).join('').trim(),
+  }
+}
+
 export function summarizeTraceActivities(blocks = []) {
   let commands = 0
   let thinking = 0
@@ -283,6 +304,16 @@ export function buildTraceActivities(steps = [], { workdir = '' } = {}) {
         steps: [...group.steps],
       }
       blocks.push(current)
+      continue
+    }
+    if (['raw', 'message', 'stderr'].includes(step?.kind)) {
+      current = null
+      const group = []
+      while (index < values.length && ['raw', 'message', 'stderr'].includes(values[index]?.kind)) {
+        group.push(values[index++])
+      }
+      const block = outputBlock(group)
+      if (block.text) blocks.push(block)
       continue
     }
     current = null

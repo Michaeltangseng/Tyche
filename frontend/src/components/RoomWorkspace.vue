@@ -91,31 +91,13 @@
                     <RoomArtifactDiff v-if="diffArtifactId === artifact.id" :key="`${roomId}:${artifact.id}`" :api="api" :room-id="roomId" :artifact="artifact" @close="diffArtifactId = ''" />
                   </article>
                 </div>
-                <details v-if="entry.assignment" class="room-message-trace" @toggle="onTraceToggle(entry.assignment, $event)">
-                  <summary>
-                    {{ t('room.trace') }}
-                    <span v-if="traceSteps[entry.assignment.id]?.length"> · {{ traceSteps[entry.assignment.id].length }}</span>
-                  </summary>
-                  <p v-if="traceBusy[entry.assignment.id]" class="room-muted">{{ t('room.loadingTrace') }}</p>
-                  <p v-if="traceErrors[entry.assignment.id]" class="room-error">
-                    {{ t('room.error') }}
-                    <button class="secondary-button" type="button" @click="loadTrace(entry.assignment)">{{ t('room.refresh') }}</button>
-                  </p>
-                  <ol v-if="traceSteps[entry.assignment.id]?.length" class="room-trace-list">
-                    <li v-for="(step, index) in traceSteps[entry.assignment.id]" :key="`report:${entry.assignment.id}:${index}:${step.seq || ''}`">
-                      <strong>{{ step.title || step.kind || t('room.trace') }}</strong>
-                      <span v-if="step.detail || step.message">{{ step.detail || step.message }}</span>
-                      <div v-for="(blob, field) in step.blobs || {}" :key="`report:${entry.assignment.id}:${step.seq}:${field}`" class="room-trace-blob">
-                        <button v-if="!traceBlobEof[`${entry.assignment.id}:${step.seq}:${field}`]" class="secondary-button" type="button" :disabled="traceBlobBusy[`${entry.assignment.id}:${step.seq}:${field}`]" @click="loadTraceBlob(entry.assignment, step, field)">
-                          {{ traceBlobOffsets[`${entry.assignment.id}:${step.seq}:${field}`] ? t('room.moreTraceOutput') : t('room.showTraceOutput', { field }) }}
-                        </button>
-                        <pre v-if="traceBlobTexts[`${entry.assignment.id}:${step.seq}:${field}`]">{{ traceBlobTexts[`${entry.assignment.id}:${step.seq}:${field}`] }}</pre>
-                      </div>
-                    </li>
-                  </ol>
-                  <button v-if="traceHasMore[entry.assignment.id]" class="secondary-button" type="button" :disabled="traceBusy[entry.assignment.id]" @click="loadTrace(entry.assignment, true)">{{ t('room.moreTrace') }}</button>
-                  <p v-else-if="traceLoaded[entry.assignment.id] && !traceSteps[entry.assignment.id]?.length" class="room-muted">{{ t('room.traceEmpty') }}</p>
-                </details>
+                <RoomAssignmentTrace
+                  v-if="entry.assignment"
+                  :api="api"
+                  :room-id="roomId"
+                  :assignment="entry.assignment"
+                  :workdir="snapshot?.room?.workspace || ''"
+                />
               </div>
               <span v-if="entry.isUser" class="room-message-avatar room-user-avatar" :aria-label="t('room.you')"><PersonOutline /></span>
             </article>
@@ -164,25 +146,13 @@
           <div v-for="assignment in taskAssignments(task.id)" :key="assignment.id" class="room-assignment">
             <p>{{ roleName(assignment.role_id) }} · {{ statusLabel(assignment.status) }}<span v-if="assignment.outcome === 'unknown'"> · {{ t('room.exitUnknown') }}</span><span v-if="staleAssignmentIds.has(assignment.id)"> · {{ t('room.stale') }}</span></p>
             <p v-if="assignment.ended_reason" class="room-muted">{{ t('room.attemptEnded') }}</p>
-            <details v-if="assignment.run_id" class="room-trace">
-              <summary>{{ t('room.trace') }}</summary>
-              <button class="secondary-button" type="button" :disabled="busy || traceBusy[assignment.id]" @click="loadTrace(assignment)">{{ t('room.loadTrace') }}</button>
-              <p v-if="traceErrors[assignment.id]" class="room-error">{{ t('room.error') }}</p>
-              <ol v-if="traceSteps[assignment.id]?.length" class="room-trace-list">
-                <li v-for="(step, index) in traceSteps[assignment.id]" :key="`${assignment.id}:${index}:${step.seq || ''}`">
-                  <strong>{{ step.title || step.kind || t('room.trace') }}</strong>
-                  <span v-if="step.detail || step.message">{{ step.detail || step.message }}</span>
-                  <div v-for="(blob, field) in step.blobs || {}" :key="`${assignment.id}:${step.seq}:${field}`" class="room-trace-blob">
-                    <button v-if="!traceBlobEof[`${assignment.id}:${step.seq}:${field}`]" class="secondary-button" type="button" :disabled="traceBlobBusy[`${assignment.id}:${step.seq}:${field}`]" @click="loadTraceBlob(assignment, step, field)">
-                      {{ traceBlobOffsets[`${assignment.id}:${step.seq}:${field}`] ? t('room.moreTraceOutput') : t('room.showTraceOutput', { field }) }}
-                    </button>
-                    <pre v-if="traceBlobTexts[`${assignment.id}:${step.seq}:${field}`]">{{ traceBlobTexts[`${assignment.id}:${step.seq}:${field}`] }}</pre>
-                  </div>
-                </li>
-              </ol>
-              <button v-if="traceHasMore[assignment.id]" class="secondary-button" type="button" :disabled="busy || traceBusy[assignment.id]" @click="loadTrace(assignment, true)">{{ t('room.moreTrace') }}</button>
-              <p v-else-if="traceLoaded[assignment.id]" class="room-muted">{{ t('room.traceEmpty') }}</p>
-            </details>
+            <RoomAssignmentTrace
+              v-if="assignment.run_id"
+              :api="api"
+              :room-id="roomId"
+              :assignment="assignment"
+              :workdir="snapshot?.room?.workspace || ''"
+            />
             <div v-if="canRetry(assignment)" class="room-actions">
               <button class="secondary-button" :disabled="busy" @click="command({ type: 'retry_task', taskId: task.id, assignmentId: assignment.id })">{{ t('room.retry') }}</button>
               <select v-model="handoffRoles[assignment.id]" :aria-label="t('room.handoffTo')">
@@ -458,6 +428,7 @@ import { agentLogo } from '../catalog.js'
 import { t } from '../i18n.js'
 import { useRoomWorkspace } from '../composables/useRoomWorkspace.js'
 import RoomArtifactDiff from './RoomArtifactDiff.vue'
+import RoomAssignmentTrace from './RoomAssignmentTrace.vue'
 
 const props = defineProps({ api: { type: Object, required: true }, pickDirectory: { type: Function, required: true }, agents: { type: Array, default: () => [] }, createRequest: { type: Boolean, default: false }, openRequest: { type: Object, default: null }, filesOpen: { type: Boolean, default: false } })
 const emit = defineEmits(['create-request-consumed', 'active-change', 'toggle-files'])
@@ -506,16 +477,6 @@ const permissionBusy = computed(() => snapshot.value?.assignments.some(item => i
 const staleAssignmentIds = computed(() => new Set(staleAssignments.value
   .filter(item => assignments.value.some(assignment => assignment.id === item.assignmentId))
   .map(item => item.assignmentId)))
-const traceSteps = ref({})
-const traceLoaded = ref({})
-const traceBusy = ref({})
-const traceErrors = ref({})
-const traceCursors = ref({})
-const traceHasMore = ref({})
-const traceBlobTexts = ref({})
-const traceBlobOffsets = ref({})
-const traceBlobBusy = ref({})
-const traceBlobEof = ref({})
 const workdirName = computed(() => (snapshot.value?.room?.workspace || '').split(/[\\/]/).filter(Boolean).at(-1) || '')
 const projectLabel = computed(() => snapshot.value?.room?.name || t('room.title'))
 const activeChatLabel = computed(() => {
@@ -646,36 +607,6 @@ function canRetry(item) { return ['failed', 'waiting', 'blocked', 'cancelled'].i
 function statusLabel(status) { const key = `room.status.${status}`; return t(key) === key ? t('room.status.waiting') : t(key) }
 function optionId(option) { return typeof option === 'string' ? option : option.id || option.optionId }
 function formatTime(value) { return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
-function onTraceToggle(assignment, event) {
-  if (!assignment || !event?.target?.open) return
-  if (!traceLoaded.value[assignment.id] && !traceBusy.value[assignment.id]) void loadTrace(assignment)
-}
-async function loadTrace(assignment, older = false) {
-  traceBusy.value = { ...traceBusy.value, [assignment.id]: true }
-  traceErrors.value = { ...traceErrors.value, [assignment.id]: false }
-  try {
-    const page = await props.api.assignmentTrace({ roomId: roomId.value, assignmentId: assignment.id, direction: 'backward', limit: 100, ...(older && traceCursors.value[assignment.id] ? { cursor: traceCursors.value[assignment.id] } : {}) })
-    const previous = older ? (traceSteps.value[assignment.id] || []) : []
-    traceSteps.value = { ...traceSteps.value, [assignment.id]: [...(page?.steps || []), ...previous] }
-    traceCursors.value = { ...traceCursors.value, [assignment.id]: page?.cursor || '' }
-    traceHasMore.value = { ...traceHasMore.value, [assignment.id]: Boolean(page?.hasMore) }
-    traceLoaded.value = { ...traceLoaded.value, [assignment.id]: true }
-  } catch { traceErrors.value = { ...traceErrors.value, [assignment.id]: true } }
-  finally { traceBusy.value = { ...traceBusy.value, [assignment.id]: false } }
-}
-async function loadTraceBlob(assignment, step, field) {
-  const key = `${assignment.id}:${step.seq}:${field}`
-  const offset = traceBlobOffsets.value[key] || 0
-  traceBlobBusy.value = { ...traceBlobBusy.value, [key]: true }
-  try {
-    const result = await props.api.assignmentTraceBlob({ roomId: roomId.value, assignmentId: assignment.id,
-      blobId: step.blobs[field].blobId, offset, length: 256 * 1024 })
-    traceBlobTexts.value = { ...traceBlobTexts.value, [key]: `${traceBlobTexts.value[key] || ''}${result?.text || ''}` }
-    traceBlobOffsets.value = { ...traceBlobOffsets.value, [key]: offset + new TextEncoder().encode(result?.text || '').length }
-    if (result?.eof) traceBlobEof.value = { ...traceBlobEof.value, [key]: true }
-  } catch { traceErrors.value = { ...traceErrors.value, [assignment.id]: true } }
-  finally { traceBlobBusy.value = { ...traceBlobBusy.value, [key]: false } }
-}
 function roleDraftFrom(role) {
   return {
     displayName: roleLabel(role),
@@ -993,15 +924,6 @@ watch([roomId, chatId], ([room, chat]) => {
   skillsSaveError.value = false
   syncSkillDrafts()
   diffArtifactId.value = ''
-  traceSteps.value = {}
-  traceLoaded.value = {}
-  traceErrors.value = {}
-  traceCursors.value = {}
-  traceHasMore.value = {}
-  traceBlobTexts.value = {}
-  traceBlobOffsets.value = {}
-  traceBlobBusy.value = {}
-  traceBlobEof.value = {}
 }, { immediate: true })
 watch(roles, () => { syncRoleDrafts() }, { immediate: true })
 watch(skillProviders, () => { void loadSkillCatalog() }, { immediate: true })

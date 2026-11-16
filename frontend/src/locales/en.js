@@ -1056,6 +1056,7 @@ export default {
     'trace.activity.files': 'Files changed: {count}',
     'trace.activity.tools': 'Tool calls: {count}',
     'trace.activity.plan': 'Plan',
+    'trace.activity.output': 'Output record',
     'trace.activity.exitCode': 'Exit code {code}',
     'trace.steps.rawView': 'Raw events',
     'trace.steps.structuredView': 'Step view',

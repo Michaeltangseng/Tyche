@@ -1,11 +1,19 @@
 <template>
-  <div class="project-room-drawer-layer">
+  <div class="project-room-drawer-layer" :class="{ drawer }">
+    <button
+      v-if="drawer"
+      class="project-room-drawer-scrim"
+      type="button"
+      :aria-label="t('room.closeFiles')"
+      @click="$emit('close')"
+    />
     <aside
       ref="panelElement"
       class="project-room-drawer"
-      role="complementary"
+      :role="drawer ? 'dialog' : 'complementary'"
+      :aria-modal="drawer ? 'true' : undefined"
       :aria-label="t('room.files')"
-      :style="{ width: `${width}px` }"
+      :style="drawer ? undefined : { width: `${width}px` }"
       tabindex="-1"
     >
       <header class="project-room-drawer-header">
@@ -57,7 +65,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { CloseOutline, EyeOffOutline, EyeOutline } from '@vicons/ionicons5'
 import { t } from '../i18n.js'
 import { useWorkdirTree } from '../composables/useWorkdirTree.js'
@@ -73,6 +81,8 @@ const emit = defineEmits(['close', 'resize'])
 
 const panelElement = ref(null)
 const filesPanel = ref(null)
+const drawer = ref(false)
+let drawerMediaQuery = null
 const previewVisible = ref(true)
 const treeHeight = ref(42)
 let resizeState = null
@@ -197,13 +207,26 @@ function handleEscape(event) {
   emit('close')
 }
 
+function syncDrawerMode() {
+  drawer.value = drawerMediaQuery?.matches === true
+}
+
+watch(drawer, (value) => {
+  document.body.classList.toggle('project-room-drawer-open', value)
+})
+
 onMounted(() => {
+  drawerMediaQuery = window.matchMedia?.('(max-width: 1179px)') || null
+  drawerMediaQuery?.addEventListener?.('change', syncDrawerMode)
+  syncDrawerMode()
   panelElement.value?.focus?.()
   window.addEventListener('keydown', handleEscape)
   void tree.loadDirectory('')
 })
 
 onBeforeUnmount(() => {
+  drawerMediaQuery?.removeEventListener?.('change', syncDrawerMode)
+  document.body.classList.remove('project-room-drawer-open')
   window.removeEventListener('pointermove', handleResize)
   window.removeEventListener('pointerup', finishResize)
   window.removeEventListener('pointercancel', finishResize)

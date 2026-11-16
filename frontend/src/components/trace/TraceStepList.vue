@@ -99,6 +99,17 @@
           </ul>
         </details>
 
+        <details v-else-if="block.kind === 'output'" class="trace-activity-block trace-output-block" open>
+          <summary class="trace-activity-header">
+            <TerminalOutline class="trace-activity-icon" aria-hidden="true" />
+            <span class="trace-activity-title">{{ t('trace.activity.output') }}</span>
+            <span class="trace-activity-spacer" />
+            <TraceStatusIcon :status="block.status" :t="t" />
+            <ChevronDownOutline class="trace-activity-chevron" aria-hidden="true" />
+          </summary>
+          <pre class="trace-thinking-text">{{ block.text }}</pre>
+        </details>
+
         <details v-else-if="block.kind === 'plan'" class="trace-activity-block trace-plan-block">
           <summary class="trace-activity-header">
             <ListOutline class="trace-activity-icon" aria-hidden="true" />
@@ -128,6 +139,7 @@ import {
   ImageOutline,
   ListOutline,
   SparklesOutline,
+  TerminalOutline,
 } from '@vicons/ionicons5'
 import { buildTraceActivities } from '../../tracePresentation.js'
 import TraceRawView from './TraceRawView.vue'

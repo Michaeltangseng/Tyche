@@ -18,7 +18,7 @@ function api(snapshot = data()) {
     bootstrap: vi.fn(async () => ({ roomId: 'room-1', chatId: 'chat-1' })),
     createChat: vi.fn(async () => ({ roomId: 'room-1', chatId: 'chat-2' })),
     artifactDiff: vi.fn(async () => ({ text: '+saved change', truncated: false })),
-    assignmentTrace: vi.fn(async () => ({ steps: [{ seq: 1, title: 'Read source', detail: 'Opened package.json' }], cursor: 'cursor-1', hasMore: false })),
+    assignmentTrace: vi.fn(async () => ({ steps: [{ seq: 1, kind: 'tool', title: 'Read source', toolCallId: 'tool-1', input: { file_path: 'package.json' }, output: 'Opened package.json', status: 'completed' }], cursor: 'cursor-1', hasMore: false })),
     assignmentTraceBlob: vi.fn(async () => ({ text: 'trace output', totalBytes: 12, eof: true })),
     filesList: vi.fn(async () => ({ entries: [{ name: 'README.md', kind: 'file', size: 5, mtime: '2026-11-16T00:00:00Z' }], hasMore: false })),
     filesRead: vi.fn(async () => ({ kind: 'text', text: 'hello', totalBytes: 5, eof: true, encoding: 'utf-8' })),
@@ -159,7 +159,7 @@ describe('v2 team workspace', () => {
     const bridge = api(snapshot)
     const wrapper = mountRoom(bridge)
     await flushPromises()
-    const trace = wrapper.get('.room-message-trace')
+    const trace = wrapper.get('.room-message-body .room-assignment-trace')
     trace.element.open = true
     await trace.trigger('toggle')
     await flushPromises()
@@ -467,48 +467,12 @@ describe('v2 team workspace', () => {
     const bridge = api(snapshot)
     const wrapper = mountRoom(bridge)
     await flushPromises()
-    await wrapper.get('.room-trace summary').trigger('click')
-    await wrapper.get('.room-trace button').trigger('click')
+    const trace = wrapper.get('.room-assignment-trace')
+    trace.element.open = true
+    await trace.trigger('toggle')
     await flushPromises()
     expect(bridge.assignmentTrace).toHaveBeenCalledWith({ roomId: 'room-1', assignmentId: 'attempt', direction: 'backward', limit: 100 })
-    expect(wrapper.get('.room-trace-list').text()).toContain('Read source')
-  })
-
-  it('loads older trace pages with the opaque cursor and prepends them', async () => {
-    const snapshot = data()
-    snapshot.tasks = [{ id: 'task', chat_id: 'chat-1', objective: 'Build API', status: 'active' }]
-    snapshot.assignments = [{ id: 'attempt', task_id: 'task', role_id: 'worker', status: 'running', run_id: 'run-private' }]
-    const bridge = api(snapshot)
-    bridge.assignmentTrace
-      .mockResolvedValueOnce({ steps: [{ seq: 3, title: 'Write' }], cursor: 'cursor-1', hasMore: true })
-      .mockResolvedValueOnce({ steps: [{ seq: 2, title: 'Plan' }], cursor: '', hasMore: false })
-    const wrapper = mountRoom(bridge)
-    await flushPromises()
-    await wrapper.get('.room-trace summary').trigger('click')
-    await wrapper.get('.room-trace button').trigger('click')
-    await flushPromises()
-    await wrapper.get('.room-trace button:last-of-type').trigger('click')
-    await flushPromises()
-    expect(bridge.assignmentTrace).toHaveBeenNthCalledWith(2, { roomId: 'room-1', assignmentId: 'attempt', direction: 'backward', limit: 100, cursor: 'cursor-1' })
-    expect(wrapper.get('.room-trace-list').text()).toMatch(/Plan[\s\S]*Write/)
-  })
-
-  it('loads large trace output through the authorized Blob endpoint', async () => {
-    const snapshot = data()
-    snapshot.tasks = [{ id: 'task', chat_id: 'chat-1', objective: 'Build API', status: 'active' }]
-    snapshot.assignments = [{ id: 'attempt', task_id: 'task', role_id: 'worker', status: 'running', run_id: 'run-private' }]
-    const bridge = api(snapshot)
-    bridge.assignmentTrace.mockResolvedValue({ steps: [{ seq: 7, title: 'Command', blobs: { output: { blobId: '7-output' } } }], hasMore: false })
-    const wrapper = mountRoom(bridge)
-    await flushPromises()
-    await wrapper.get('.room-trace summary').trigger('click')
-    await wrapper.get('.room-trace button').trigger('click')
-    await flushPromises()
-    await wrapper.get('.room-trace-blob button').trigger('click')
-    await flushPromises()
-    expect(bridge.assignmentTraceBlob).toHaveBeenCalledWith({ roomId: 'room-1', assignmentId: 'attempt', blobId: '7-output', offset: 0, length: 256 * 1024 })
-    expect(wrapper.get('.room-trace-blob pre').text()).toBe('trace output')
-    expect(wrapper.find('.room-trace-blob button').exists()).toBe(false)
+    expect(trace.text()).toContain('Read source')
   })
 
   it('creates new projects from chosen directories and closes the modal with Escape', async () => {

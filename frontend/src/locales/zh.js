@@ -1056,6 +1056,7 @@ export default {
     'trace.activity.files': '修改了 {count} 个文件',
     'trace.activity.tools': '调用了 {count} 个工具',
     'trace.activity.plan': '计划',
+    'trace.activity.output': '输出记录',
     'trace.activity.exitCode': '退出码 {code}',
     'trace.steps.rawView': '原始事件',
     'trace.steps.structuredView': '步骤视图',
