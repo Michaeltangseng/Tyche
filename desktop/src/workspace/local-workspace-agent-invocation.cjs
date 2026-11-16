@@ -17,6 +17,10 @@ const {
   requireTerminalAgentResult,
 } = require('../agents/agent-runtime-contract.cjs')
 const {
+  nativePermissionAllowsExec,
+  nativePermissionAllowsWrite,
+} = require('../agents/native-permission-modes.cjs')
+const {
   cleanupStagedAgentInputs,
   stageAgentInputs,
 } = require('../agents/agent-input-staging.cjs')
@@ -493,21 +497,22 @@ class LocalWorkspaceAgentInvocation {
     const frozen = invocationContext?.policy === 'frozen'
     const internal = context.internal === true
     if (internal && !isolated) throw new Error('LOCAL_RUN_INTERNAL_CONTEXT_INVALID')
-    const requestedPermission = context.permissionMode == null
-      ? (group.allowWrite === true ? 'workspace-write' : 'read-only')
-      : (['workspace-write', 'read-exec'].includes(context.permissionMode)
-        ? context.permissionMode
-        : 'read-only')
+    const nativePermission = projectRoom ? cleanText(context.nativePermission, 80) : ''
+    const nativeWrite = Boolean(nativePermission && nativePermissionAllowsWrite(kind, nativePermission))
+    const nativeExec = Boolean(nativePermission && nativePermissionAllowsExec(kind, nativePermission))
+    const requestedPermission = projectRoom && nativePermission
+      ? (nativeWrite ? 'workspace-write' : (nativeExec ? 'read-exec' : 'read-only'))
+      : (context.permissionMode == null
+        ? (group.allowWrite === true ? 'workspace-write' : 'read-only')
+        : (['workspace-write', 'read-exec'].includes(context.permissionMode)
+          ? context.permissionMode
+          : 'read-only'))
     const writerKind = cleanText(context.singleWriterKind || context.writerKind, 80)
     const writerAllowed = !writerKind || writerKind === kind
     const supportsWorkspaceWrite = agentRuntimeCapabilities(kind, { agent })
       .permissionModes.includes('workspace-write')
     const allowWrite = projectRoom
-      ? requestedPermission === 'workspace-write'
-        && writerAllowed
-        && supportsWorkspaceWrite
-        && !reviewOnly
-        && !isolated
+      ? nativeWrite && writerAllowed && !reviewOnly && !isolated
       : (group.allowWrite === true
         && requestedPermission === 'workspace-write'
         && writerAllowed
@@ -515,7 +520,7 @@ class LocalWorkspaceAgentInvocation {
         && !reviewOnly
         && !isolated)
     const readExec = !allowWrite
-      && requestedPermission === 'read-exec'
+      && (projectRoom ? nativeExec : requestedPermission === 'read-exec')
       && !reviewOnly
       && !isolated
     const skillInputTypes = new Set(['text'])
@@ -1168,6 +1173,7 @@ class LocalWorkspaceAgentInvocation {
           return { prompt: rebuildFreshSession() }
         },
         signal: agentController.signal,
+        nativePermission: nativePermission || undefined,
         sandbox: allowWrite ? 'workspace-write' : (readExec ? 'read-exec' : 'read-only'),
         ...(traceSink ? { traceSink } : {}),
         ...(context.watchdog && Object.hasOwn(context.watchdog, 'hardLimitMs')

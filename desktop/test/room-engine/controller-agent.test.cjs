@@ -50,7 +50,8 @@ test('controller receives explicit role profile attributes for assignment decisi
   const state = setup(t)
   const roleId = state.repository.createAgentRole({
     chatId: state.chatId, displayName: 'Doc Writer', responsibilities: 'Write concise docs',
-    capabilities: ['read', 'write-drafts'], provider: 'codex', isController: true, createdBy: 'user',
+    capabilities: ['read', 'write-drafts'], provider: 'codex', nativePermission: 'workspace-write',
+    isController: true, createdBy: 'user',
   })
   state.repository.createRolePromptRevision({ roleId, prompt: 'Prefer short documents.', createdBy: 'user' })
   let roster = null
@@ -72,6 +73,7 @@ test('controller receives explicit role profile attributes for assignment decisi
     provider: 'codex',
     responsibilities: 'Write concise docs',
     capabilities: ['read', 'write-drafts'],
+    nativePermission: 'workspace-write',
     isController: true,
     skills: [],
     prompt: 'Prefer short documents.',
@@ -113,7 +115,7 @@ test('message queue invokes a read-only native controller and commits its action
   assert.ok(!context.promptOverride.includes('archive_role'))
   assert.ok(context.promptOverride.includes('A request to stop inviting a role does not cancel its existing work'))
   const facts = JSON.parse(context.promptOverride.split('\n').at(-1))
-  assert.deepEqual(facts.workspace, { writeAuthorized: false })
+  assert.deepEqual(facts.workspace, { root: '/tmp/demo' })
   assert.deepEqual(facts.artifacts, [])
   assert.equal(state.roomDb.database.prepare('SELECT objective FROM tasks').get().objective, 'Write requirements')
   assert.equal(state.roomDb.database.prepare('SELECT COUNT(*) AS count FROM controller_decisions').get().count, 1)
@@ -149,10 +151,9 @@ test('native controller forwards cancellation and rejects malformed output', asy
   await assert.rejects(decide(input), /CONTROLLER_CANCELLED/)
 })
 
-test('controller sees persisted write authorization and Room artifacts as facts', async t => {
+test('controller sees the Room workspace and artifacts as facts', async t => {
   const state = setup(t)
   const roomId = state.repository.getChatContext(state.chatId).chat.room_id
-  state.roomDb.database.prepare('UPDATE rooms SET write_authorized_root=? WHERE id=?').run('/tmp/demo', roomId)
   const artifactId = state.repository.createArtifact({ roomId, path: 'docs/requirements.md', kind: 'file', version: 'saved-version' })
   let facts
   const decide = createControllerAgent({ repository: state.repository, resolveGroup: () => ({ id: 'host' }),
@@ -161,7 +162,7 @@ test('controller sees persisted write authorization and Room artifacts as facts'
       return { pendingMessage: { content: '{"actions":[]}' } }
     } })
   await decide({ chatId: state.chatId, batchId: 'facts', contextRevision: 0, roles: [], messages: [] })
-  assert.equal(facts.workspace.writeAuthorized, true)
+  assert.equal(facts.workspace.root, '/tmp/demo')
   assert.equal(facts.artifacts[0].id, artifactId)
   assert.equal(facts.artifacts[0].version, 'saved-version')
 })

@@ -1,3 +1,8 @@
+const {
+  capabilitiesForNativePermission,
+  defaultNativePermission,
+} = require('../agents/native-permission-modes.cjs')
+
 const CONTROLLER_TYPES = new Set([
   'create_task', 'assign', 'request_attention', 'update_context', 'create_role',
   'update_role_prompt', 'note', 'propose_stop', 'propose_retry',
@@ -36,8 +41,8 @@ const FIELDS = Object.freeze({
     archive_chat: ['type', 'chatId'],
     restore_context: ['type', 'chatId', 'contextRevision'],
     update_role_prompt: ['type', 'chatId', 'roleId', 'prompt', 'commandId'],
-    update_role: ['type', 'chatId', 'roleId', 'commandId', 'displayName', 'responsibilities', 'capabilities', 'provider', 'prompt', 'isController'],
-    create_role: ['type', 'chatId', 'commandId', 'displayName', 'responsibilities', 'capabilities', 'provider', 'prompt', 'isController'],
+    create_role: ['type', 'chatId', 'commandId', 'displayName', 'responsibilities', 'capabilities', 'provider', 'prompt', 'isController', 'nativePermission'],
+    update_role: ['type', 'chatId', 'roleId', 'commandId', 'displayName', 'responsibilities', 'capabilities', 'provider', 'prompt', 'isController', 'nativePermission'],
     delete_role: ['type', 'chatId', 'roleId', 'commandId'],
   },
   platform: {
@@ -101,6 +106,11 @@ function normalize(action, kind, expectedChatId = null, expectedContextRevision 
     if (action.isController !== undefined && typeof action.isController !== 'boolean') {
       throw new TypeError('ROOM_ACTION_ROLE_CONTROLLER_INVALID')
     }
+    if (action.nativePermission !== undefined) {
+      if (typeof action.nativePermission !== 'string' || !action.nativePermission || action.nativePermission.length > 80) {
+        throw new TypeError('ROOM_ACTION_NATIVE_PERMISSION_INVALID')
+      }
+    }
   }
   if (kind === 'user' && action.type === 'delete_role') {
     assertId(action.roleId, 'role_id')
@@ -130,9 +140,14 @@ function normalize(action, kind, expectedChatId = null, expectedContextRevision 
     if (action.isController !== undefined && typeof action.isController !== 'boolean') {
       throw new TypeError('ROOM_ACTION_ROLE_CONTROLLER_INVALID')
     }
+    if (action.nativePermission !== undefined) {
+      if (typeof action.nativePermission !== 'string' || !action.nativePermission || action.nativePermission.length > 80) {
+        throw new TypeError('ROOM_ACTION_NATIVE_PERMISSION_INVALID')
+      }
+    }
     if (action.displayName === undefined && action.responsibilities === undefined
         && action.provider === undefined && action.capabilities === undefined && action.prompt === undefined
-        && action.isController === undefined) {
+        && action.isController === undefined && action.nativePermission === undefined) {
       throw new TypeError('ROOM_ACTION_ROLE_UPDATE_EMPTY')
     }
   }
@@ -214,7 +229,13 @@ function createRoomActionService({ roomDb, repository }) {
         if (capabilities.length > 0 && (validated.capabilities || []).some(capability => !capabilities.includes(capability))) {
           throw new Error('ROOM_ROLE_CAPABILITY_NOT_ALLOWED')
         }
-        result = { roleId: repository.createAgentRole({ ...validated, createdBy: actorId }) }
+        const nativePermission = defaultNativePermission(validated.provider)
+        result = { roleId: repository.createAgentRole({
+          ...validated,
+          capabilities: capabilitiesForNativePermission(validated.provider, nativePermission),
+          nativePermission,
+          createdBy: actorId,
+        }) }
       }
       else if (validated.type === 'request_attention') result = { attentionId: repository.createAttention({ ...validated, type: validated.attentionType, requestedBy: actorId }) }
       else if (validated.type === 'update_context') {

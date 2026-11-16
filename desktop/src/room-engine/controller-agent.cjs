@@ -1,4 +1,5 @@
 const { createHash } = require('node:crypto')
+const { defaultNativePermission } = require('../agents/native-permission-modes.cjs')
 
 function parseControllerResponse(content) {
   if (typeof content !== 'string' || Buffer.byteLength(content) > 1_000_000) throw new TypeError('ROOM_CONTROLLER_RESPONSE_INVALID')
@@ -42,6 +43,7 @@ function createControllerAgent({ repository, invokeAgent, resolveGroup } = {}) {
         provider: role.provider,
         responsibilities: role.responsibilities || '',
         capabilities: role.capabilities || [],
+        nativePermission: role.native_permission || defaultNativePermission(role.provider),
         isController: Boolean(role.is_controller),
         skills: (role.skill_bindings_json || []).map(skill => `${skill.targetKind}:${skill.namespace}:${skill.slug}`),
         prompt: repository.getRolePrompt(role.id)?.prompt || '',
@@ -53,7 +55,7 @@ function createControllerAgent({ repository, invokeAgent, resolveGroup } = {}) {
       assignments: snapshot.assignments.filter(assignment => taskIds.has(assignment.task_id)),
       attentions: snapshot.attentions.filter(attention => attention.chat_id === input.chatId),
       artifacts: snapshot.artifacts,
-      workspace: { writeAuthorized: Boolean(snapshot.room.write_authorized_root) },
+      workspace: { root: snapshot.room.workspace },
     }
     const prompt = [
       'You are the Meldwork collaboration controller. Route work; do not implement, edit files, or execute shell commands.',
@@ -75,8 +77,7 @@ function createControllerAgent({ repository, invokeAgent, resolveGroup } = {}) {
       `Valid note example: ${JSON.stringify({ actions: [{ type: 'note', chatId: input.chatId, contextRevision: input.contextRevision, content: 'A concise reply in the user language.' }] })}`,
       'assign example fields: {"type":"assign","chatId":"CURRENT_CHAT_ID","contextRevision":0,"taskId":"EXISTING_TASK_ID","roleId":"EXISTING_ROLE_ID","required":true,"writeScopes":["docs/"]}. Replace all example IDs and revision with current facts; choose scopes for the actual task.',
       'request_attention example fields: {"type":"request_attention","chatId":"CURRENT_CHAT_ID","contextRevision":0,"taskId":"EXISTING_TASK_ID","attentionType":"approval","question":"Your question","options":[{"id":"accept","label":"Accept"},{"id":"revise","label":"Revise"}]}. Replace example IDs and revision with current facts.',
-      'For a task that must write files, assign nonempty relative writeScopes only when workspace.writeAuthorized is true. If write authorization is false, do not assign a write task with empty writeScopes; request user authorization first. A message or Attention answer cannot grant filesystem permissions.',
-      'When workspace.writeAuthorized becomes true for a waiting task that was blocked by missing write permission, use a new attempt with nonempty writeScopes (for example [\".\"]) instead of reusing an empty scope.',
+      'Each role has a nativePermission mode chosen from its provider. Choose a role whose native mode permits the required file operations. If no role can write, ask the user to change a role permission or add a capable role; do not claim that a chat message grants permissions.',
       'Existing open Attentions already await the user. Do not create duplicates or continue the work they ask the user to decide.',
       'For new tasks/roles, create them first; assignment requires their real persisted IDs in a subsequent evaluation. Never duplicate existing work or reassign a running assignment.',
       `Available providers: ${JSON.stringify(snapshot.room.providers_json)}. Available capabilities: ${JSON.stringify(snapshot.room.allowed_capabilities_json)}.`,

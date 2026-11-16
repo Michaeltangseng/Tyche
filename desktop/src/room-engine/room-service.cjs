@@ -13,6 +13,7 @@ const { createEffectPump } = require('./effect-pump.cjs')
 const { createRuntimeRecovery } = require('./runtime-recovery.cjs')
 const { createProcessReconciliation } = require('./process-reconciliation.cjs')
 const { createControllerBacklog } = require('./controller-backlog.cjs')
+const { publicNativePermissionModes } = require('../agents/native-permission-modes.cjs')
 const { createHash } = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -481,6 +482,7 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
   return {
     bootstrap,
     listRooms: () => repository.listRooms(),
+    permissionModes: () => publicNativePermissionModes(),
     createChat,
     deleteChat,
     deleteRoom,

@@ -157,6 +157,7 @@ if (isLocalDocument) Object.assign(desktopApi, {
   }),
   room: Object.freeze({
     listRooms: () => ipcRenderer.invoke('room:list', {}),
+    permissionModes: () => ipcRenderer.invoke('room:permission-modes', {}),
     createChat: input => ipcRenderer.invoke('room:chat-create', input),
     deleteChat: input => ipcRenderer.invoke('room:chat-delete', input),
     deleteRoom: input => ipcRenderer.invoke('room:room-delete', input),

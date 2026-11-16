@@ -13,7 +13,7 @@ const { DatabaseSync } = (() => {
 
 const { ensurePrivateDirectory } = require('../security/private-file.cjs')
 
-const ROOM_SCHEMA_VERSION = 6
+const ROOM_SCHEMA_VERSION = 7
 
 function json(value) {
   return value === undefined || value === null ? null : JSON.stringify(value)
@@ -128,6 +128,7 @@ function migrate(database) {
         provider TEXT NOT NULL,
         prompt_revision INTEGER NOT NULL DEFAULT 0,
         is_controller INTEGER NOT NULL DEFAULT 0,
+        native_permission TEXT,
         skill_bindings_json TEXT,
         created_by TEXT NOT NULL,
         creation_reason TEXT,
@@ -353,6 +354,46 @@ function migrate(database) {
           )
       )`)
       database.exec('PRAGMA user_version = 6; COMMIT;')
+    } catch (error) {
+      database.exec('ROLLBACK')
+      throw error
+    }
+  }
+  if (current > 0 && current < 7) {
+    database.exec('BEGIN IMMEDIATE')
+    try {
+      const hasColumn = (table, column) => database.prepare(`PRAGMA table_info(${table})`).all().some(item => item.name === column)
+      if (!hasColumn('agent_roles', 'native_permission')) {
+        database.exec('ALTER TABLE agent_roles ADD COLUMN native_permission TEXT')
+      }
+      database.exec(`UPDATE agent_roles SET native_permission = CASE
+        WHEN provider = 'claude' AND capabilities_json LIKE '%write-workdir%' THEN 'acceptEdits'
+        WHEN provider = 'claude' THEN 'plan'
+        WHEN provider = 'codex' AND capabilities_json LIKE '%write-workdir%' THEN 'workspace-write'
+        WHEN provider = 'codex' THEN 'read-only'
+        WHEN provider = 'gemini' AND capabilities_json LIKE '%write-workdir%' THEN 'auto_edit'
+        WHEN provider = 'gemini' THEN 'default'
+        WHEN provider = 'pi' AND capabilities_json LIKE '%write-workdir%' THEN 'approve'
+        WHEN provider = 'pi' THEN 'no-approve'
+        WHEN provider = 'workbuddy' AND capabilities_json LIKE '%write-workdir%' THEN 'acceptEdits'
+        WHEN provider = 'workbuddy' THEN 'plan'
+        WHEN provider = 'qwen' AND capabilities_json LIKE '%write-workdir%' THEN 'auto-edit'
+        WHEN provider = 'qwen' THEN 'plan'
+        WHEN provider = 'hermes' AND capabilities_json LIKE '%write-workdir%' THEN 'yolo'
+        WHEN provider = 'hermes' THEN 'default'
+        WHEN provider = 'opencode' AND capabilities_json LIKE '%write-workdir%' THEN 'build'
+        WHEN provider = 'opencode' THEN 'plan'
+        WHEN provider = 'mimo' AND capabilities_json LIKE '%write-workdir%' THEN 'build'
+        WHEN provider = 'mimo' THEN 'plan'
+        WHEN provider = 'zcode' AND capabilities_json LIKE '%write-workdir%' THEN 'edit'
+        WHEN provider = 'zcode' THEN 'plan'
+        WHEN provider = 'deepseek' AND capabilities_json LIKE '%write-workdir%' THEN 'write'
+        WHEN provider = 'deepseek' THEN 'read'
+        WHEN provider IN ('openclaw', 'kimi') THEN 'default'
+        WHEN provider = 'opencodereview' THEN 'review'
+        ELSE 'default'
+      END WHERE native_permission IS NULL`)
+      database.exec('PRAGMA user_version = 7; COMMIT;')
     } catch (error) {
       database.exec('ROLLBACK')
       throw error

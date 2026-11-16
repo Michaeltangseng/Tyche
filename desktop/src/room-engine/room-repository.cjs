@@ -2,6 +2,7 @@ const crypto = require('node:crypto')
 
 const { encode } = require('./room-db.cjs')
 const { normalizeSkillHint } = require('../workspace/local-workspace-message-records.cjs')
+const { defaultNativePermission } = require('../agents/native-permission-modes.cjs')
 
 function now() { return new Date().toISOString() }
 function id(prefix) { return `${prefix}-${crypto.randomUUID()}` }
@@ -161,17 +162,22 @@ function createRoomRepository(roomDb) {
         .run(taskId, chatId, objective, kind, createdBy, encode(sourceMessageIds), parentTaskId, encode(blockedByTaskIds), encode(requiredArtifactIds), optional ? 1 : 0, contextRevision, encode(inputs), timestamp, timestamp)
       return taskId
     },
-    createAgentRole({ roleId = id('role'), chatId, displayName, responsibilities = '', capabilities = [], provider, promptRevision = 0, isController = false, createdBy, creationReason = null, status = 'active', skillBindings = null }) {
+    createAgentRole({ roleId = id('role'), chatId, displayName, responsibilities = '', capabilities = [], provider, promptRevision = 0, isController = false, nativePermission = null, createdBy, creationReason = null, status = 'active', skillBindings = null }) {
       const timestamp = now()
       db.prepare(`INSERT INTO agent_roles
         (id, chat_id, display_name, responsibilities, capabilities_json, provider, prompt_revision, is_controller,
-         skill_bindings_json, created_by, creation_reason, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+         native_permission, skill_bindings_json, created_by, creation_reason, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
         roleId, chatId, displayName, responsibilities, encode(capabilities), provider, promptRevision,
-        isController ? 1 : 0, skillBindings === null ? null : encode(normalizeSkillBindings(skillBindings)),
+        isController ? 1 : 0, nativePermission || defaultNativePermission(provider),
+        skillBindings === null ? null : encode(normalizeSkillBindings(skillBindings)),
         createdBy, creationReason, status, timestamp, timestamp,
       )
       return roleId
+    },
+    getAgentRole(roleId) {
+      const row = db.prepare('SELECT * FROM agent_roles WHERE id = ?').get(roleId)
+      return row ? { ...row, capabilities: decode(row.capabilities_json) } : undefined
     },
     getControllerProvider(chatId) {
       const role = db.prepare(`SELECT provider FROM agent_roles

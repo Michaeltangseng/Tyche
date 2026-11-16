@@ -1,7 +1,7 @@
 const path = require('node:path')
 const { deepseekNativeConfig } = require('./deepseek-native-config.cjs')
 
-const CODEX_SANDBOXES = new Set(['read-only', 'workspace-write'])
+const CODEX_SANDBOXES = new Set(['read-only', 'workspace-write', 'danger-full-access'])
 const IMAGE_ATTACHMENT_LIMITS = Object.freeze({
   codex: 4,
   hermes: 1,
@@ -62,7 +62,7 @@ function invocation(kind, executable, workdir, sessionRef = '', options = {}) {
   }
   const attachments = attachmentPaths(kind, options.attachments)
   if (kind === 'codex') {
-    const sandbox = codexSandbox(options.sandbox)
+    const sandbox = codexSandbox(options.nativePermission || options.sandbox)
     const imageArgs = attachments.flatMap(filename => ['--image', filename])
     if (sessionRef) {
       return {
@@ -89,7 +89,7 @@ function invocation(kind, executable, workdir, sessionRef = '', options = {}) {
       return {
         command: executable,
         args: ['chat', '--format', 'stream-json',
-          ...(options.sandbox === 'workspace-write' ? ['--yolo'] : []),
+          ...((options.nativePermission === 'yolo' || (!options.nativePermission && options.sandbox === 'workspace-write')) ? ['--yolo'] : []),
           ...(sessionRef ? ['--resume', sessionRef] : []),
           ...(attachments[0] ? ['--image', attachments[0]] : []), '--query'],
         promptArg: true,
@@ -171,7 +171,7 @@ function invocation(kind, executable, workdir, sessionRef = '', options = {}) {
         // Workspace write access means accepting file edits in the working
         // directory. Skipping every permission check would also let the CLI
         // run any command anywhere on the machine without confirmation.
-        '--permission-mode', options.sandbox === 'workspace-write' ? 'acceptEdits' : 'plan',
+        '--permission-mode', options.nativePermission || (options.sandbox === 'workspace-write' ? 'acceptEdits' : 'plan'),
         ...(maxTurns ? ['--max-turns', String(maxTurns)] : []),
         ...(options.model ? ['--model', options.model] : []),
         ...(sessionRef ? ['--resume', sessionRef] : []),
@@ -184,17 +184,20 @@ function invocation(kind, executable, workdir, sessionRef = '', options = {}) {
     return {
       command: executable,
       args: ['--json', '--no-color', '--verbose', '--cwd', workdir,
-        '--mode', options.sandbox === 'workspace-write' ? 'edit' : 'plan',
+        '--mode', options.nativePermission || (options.sandbox === 'workspace-write' ? 'edit' : 'plan'),
         ...(sessionRef ? ['--resume', sessionRef] : []), '--prompt'],
       promptArg: true,
     }
   }
   if (kind === 'pi') {
+    const approve = options.nativePermission
+      ? options.nativePermission === 'approve'
+      : options.sandbox === 'workspace-write'
     return {
       command: executable,
       args: [
         '--mode', 'json', '--print',
-        ...(options.sandbox === 'workspace-write'
+        ...(approve
           ? ['--approve']
           : ['--no-approve', '--tools', 'read,grep,find,ls']),
         ...(sessionRef ? ['--session', sessionRef] : []),
@@ -218,7 +221,7 @@ function invocation(kind, executable, workdir, sessionRef = '', options = {}) {
       return {
         command: executable,
         args: ['acp', '--cwd', workdir],
-        acpMode: options.sandbox === 'workspace-write' ? 'build' : 'plan',
+        acpMode: options.nativePermission || (options.sandbox === 'workspace-write' ? 'build' : 'plan'),
         eventTransport: 'acp',
         fallbackTransport: 'json',
         fallbackSessionPolicy: 'preserve',
@@ -227,7 +230,7 @@ function invocation(kind, executable, workdir, sessionRef = '', options = {}) {
     return {
       command: executable,
       args: [
-        'run', '--agent', options.sandbox === 'workspace-write' ? 'build' : 'plan',
+        'run', '--agent', options.nativePermission || (options.sandbox === 'workspace-write' ? 'build' : 'plan'),
         '--format', 'json', '--dir', workdir,
         ...(sessionRef ? ['--session', sessionRef] : []),
       ],
@@ -235,7 +238,7 @@ function invocation(kind, executable, workdir, sessionRef = '', options = {}) {
     }
   }
   if (kind === 'deepseek') {
-    const mode = options.sandbox === 'workspace-write' ? 'write' : 'read'
+    const mode = options.nativePermission || (options.sandbox === 'workspace-write' ? 'write' : 'read')
     // The external dsh process cannot read files inside Electron's ASAR.
     const policyDirectory = __dirname.replace(/app\.asar(?=[\\/])/, 'app.asar.unpacked')
     return {
@@ -254,7 +257,11 @@ function invocation(kind, executable, workdir, sessionRef = '', options = {}) {
       '--include-partial-messages',
       '--verbose',
     ]
-    if (options.sandbox === 'workspace-write') {
+    if (options.nativePermission === 'bypassPermissions') {
+      args.push('--dangerously-skip-permissions')
+    } else if (options.nativePermission) {
+      args.push('--permission-mode', options.nativePermission)
+    } else if (options.sandbox === 'workspace-write') {
       args.push('--permission-mode', 'acceptEdits')
     } else if (options.sandbox === 'read-exec') {
       // Verified in milestone 0 task 0.5: Claude has no `default` mode;
@@ -281,7 +288,7 @@ function invocation(kind, executable, workdir, sessionRef = '', options = {}) {
       args: [
         '--output-format', 'stream-json',
         '--include-partial-messages',
-        '--approval-mode', options.sandbox === 'workspace-write' ? 'auto-edit' : 'plan',
+        '--approval-mode', options.nativePermission || (options.sandbox === 'workspace-write' ? 'auto-edit' : 'plan'),
         ...(sessionRef ? ['--resume', sessionRef] : []),
       ],
       promptArg: true,
@@ -292,7 +299,7 @@ function invocation(kind, executable, workdir, sessionRef = '', options = {}) {
       command: executable,
       args: [
         '--output-format', 'stream-json',
-        '--approval-mode', options.sandbox === 'workspace-write' ? 'auto_edit' : 'plan',
+        '--approval-mode', options.nativePermission || (options.sandbox === 'workspace-write' ? 'auto_edit' : 'plan'),
         ...(sessionRef ? ['--resume', sessionRef] : []),
         '--prompt',
       ],

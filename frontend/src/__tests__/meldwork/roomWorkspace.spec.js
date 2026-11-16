@@ -12,7 +12,26 @@ function data(id = 'room-1') {
 }
 function api(snapshot = data()) {
   let assignmentEvent = null
-  return { listRooms: vi.fn(async () => [{ id: 'room-1', name: 'Demo' }]), snapshot: vi.fn(async () => snapshot),
+  return { listRooms: vi.fn(async () => [{ id: 'room-1', name: 'Demo' }]), permissionModes: vi.fn(async () => ({
+    claude: [
+      { id: 'plan', label: 'Plan', description: 'Read only', write: false, risk: 'low' },
+      { id: 'acceptEdits', label: 'Accept Edits', description: 'Write', write: true, risk: 'medium' },
+      { id: 'bypassPermissions', label: 'Bypass Permissions', description: 'High risk', write: true, risk: 'high' },
+    ],
+    codex: [
+      { id: 'read-only', label: 'Read Only', description: 'Read only', write: false, risk: 'low' },
+      { id: 'workspace-write', label: 'Workspace Write', description: 'Write', write: true, risk: 'medium' },
+    ],
+    gemini: [
+      { id: 'default', label: 'Default', description: 'Read only', write: false, risk: 'low' },
+      { id: 'auto_edit', label: 'Auto Edit', description: 'Write', write: true, risk: 'medium' },
+    ],
+    pi: [
+      { id: 'no-approve', label: 'No Approve', description: 'Read only', write: false, risk: 'low' },
+      { id: 'approve', label: 'Approve', description: 'Write', write: true, risk: 'medium' },
+    ],
+    default: [{ id: 'default', label: 'Native Configuration', description: 'Native', write: true, risk: 'medium' }],
+  })), snapshot: vi.fn(async () => snapshot),
     chatMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
     listStaleAssignments: vi.fn(async () => []),
     bootstrap: vi.fn(async () => ({ roomId: 'room-1', chatId: 'chat-1' })),
@@ -431,59 +450,6 @@ describe('v2 team workspace', () => {
     expect(bridge.applyUserCommand).toHaveBeenCalledWith(expect.objectContaining({ type: 'resume_chat', chatId: 'chat-1' }))
   })
 
-  it('enables workspace writes and retries a waiting read-only attempt', async () => {
-    const snapshot = data()
-    snapshot.room.workspace = '/tmp/project'
-    snapshot.tasks = [{ id: 'task', chat_id: 'chat-1', objective: 'Write snake.html', status: 'active' }]
-    snapshot.assignments = [{ id: 'attempt', task_id: 'task', role_id: 'worker', status: 'waiting', outcome: 'waiting', run_id: 'run-1', write_scopes_json: [] }]
-    const bridge = api(snapshot)
-    const wrapper = mountRoom(bridge)
-    await flushPromises()
-    expect(wrapper.get('.room-write-required').text()).toContain('read-only')
-    await wrapper.get('.room-write-required .secondary-button').trigger('click')
-    await wrapper.get('.room-write-required .primary-button').trigger('click')
-    await flushPromises()
-    expect(bridge.applyUserCommand).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      type: 'set_workspace_write', allowWrite: true, chatId: 'chat-1', commandId: expect.any(String),
-    }))
-    expect(bridge.applyUserCommand).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      type: 'retry_task', taskId: 'task', assignmentId: 'attempt', writeScopes: ['.'], chatId: 'chat-1', commandId: expect.any(String),
-    }))
-  })
-
-  it('adds a write scope when manually retrying after write authorization', async () => {
-    const snapshot = data()
-    snapshot.room.workspace = '/tmp/project'
-    snapshot.room.write_authorized_root = '/tmp/project'
-    snapshot.tasks = [{ id: 'task', chat_id: 'chat-1', objective: 'Write snake.html', status: 'active' }]
-    snapshot.assignments = [{ id: 'attempt', task_id: 'task', role_id: 'worker', status: 'failed', outcome: 'failed', run_id: 'run-1', write_scopes_json: [] }]
-    const bridge = api(snapshot)
-    const wrapper = mountRoom(bridge)
-    await flushPromises()
-    const retry = wrapper.findAll('button').find(button => button.text() === 'Retry')
-    await retry.trigger('click')
-    await flushPromises()
-    expect(bridge.applyUserCommand).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'retry_task', taskId: 'task', assignmentId: 'attempt', writeScopes: ['.'],
-    }))
-  })
-
-  it('requires explicit directory write opt-in and disables permission changes for unknown executions', async () => {
-    const snapshot = data()
-    const bridge = api(snapshot)
-    const wrapper = mountRoom(bridge)
-    await flushPromises()
-    expect(bridge.applyUserCommand).not.toHaveBeenCalled()
-    await wrapper.get('.room-permissions input').setValue(true)
-    await flushPromises()
-    expect(bridge.applyUserCommand).toHaveBeenCalledWith(expect.objectContaining({ type: 'set_workspace_write', allowWrite: true, commandId: expect.any(String) }))
-    snapshot.assignments = [{ id: 'unknown', outcome: 'unknown', status: 'waiting' }]
-    bridge.snapshot.mockResolvedValue({ ...snapshot })
-    await wrapper.get('.room-permissions button').trigger('click')
-    await flushPromises()
-    expect(wrapper.get('.room-permissions input').element.disabled).toBe(true)
-  })
-
   it('shows stale execution warning from platform liveness observations', async () => {
     const snapshot = data()
     snapshot.tasks = [{ id: 'task', chat_id: 'chat-1', objective: 'Build API', status: 'active' }]
@@ -632,7 +598,7 @@ describe('v2 team workspace', () => {
       displayName: 'Reviewer',
       provider: 'codex',
       responsibilities: '',
-      capabilities: [],
+      nativePermission: 'read-only',
       isController: true,
       chatId: 'chat-1',
       commandId: expect.any(String),
@@ -663,7 +629,7 @@ describe('v2 team workspace', () => {
     expect(wrapper.find('.room-role-modal').exists()).toBe(false)
   })
 
-  it('edits role name, responsibilities, agent and capabilities through one command', async () => {
+  it('edits role name, responsibilities, agent and native permission through one command', async () => {
     const snapshot = data()
     snapshot.room.providers_json = ['codex', 'claude']
     snapshot.roles = [{ id: 'worker', chat_id: 'chat-1', display_name: 'Writer', provider: 'codex', status: 'active', responsibilities: 'Write docs.', current_prompt: 'Write clearly.', capabilities_json: ['read'] }]
@@ -677,8 +643,8 @@ describe('v2 team workspace', () => {
     await name.setValue('Editor')
     await wrapper.get('.room-role-v2-intro').setValue('Edit and publish docs.')
     await wrapper.get('.room-role-provider-choice[data-provider="claude"]').trigger('click')
-    const writeDrafts = wrapper.findAll('.room-mini-options .room-mini-option input')[2]
-    await writeDrafts.setValue(true)
+    const acceptEdits = wrapper.findAll('.room-mini-option').find(node => node.text() === 'Accept Edits')
+    await acceptEdits.get('input').setValue(true)
     await wrapper.get('.room-role-controller-toggle').trigger('click')
     await wrapper.get('.room-role-v2-footer .primary-button').trigger('click')
     await flushPromises()
@@ -689,12 +655,30 @@ describe('v2 team workspace', () => {
       displayName: 'Editor',
       responsibilities: 'Edit and publish docs.',
       provider: 'claude',
-      capabilities: ['read', 'write-drafts'],
+      nativePermission: 'acceptEdits',
       isController: true,
       chatId: 'chat-1',
       commandId: expect.any(String),
     }))
     expect(() => structuredClone(bridge.applyUserCommand.mock.calls[0][0])).not.toThrow()
+  })
+
+  it('localizes native permission mode labels and descriptions', async () => {
+    const snapshot = data()
+    snapshot.room.providers_json = ['claude']
+    snapshot.roles = [{ id: 'worker', chat_id: 'chat-1', display_name: 'Writer', provider: 'claude', status: 'active', native_permission: 'acceptEdits' }]
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    await wrapper.get('.room-agent-chip').trigger('click')
+    await flushPromises()
+
+    setLocale('zh')
+    await wrapper.vm.$nextTick()
+    const section = wrapper.findAll('.room-role-v2-section').find(node => node.text().includes('执行权限'))
+    expect(section).toBeTruthy()
+    expect(section.text()).toContain('自动接受编辑')
+    expect(section.text()).toContain('自动接受文件修改。')
   })
 
   it('opens the requested chat and reports active room changes', async () => {

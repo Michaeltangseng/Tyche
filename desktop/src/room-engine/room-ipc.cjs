@@ -6,6 +6,7 @@ const LOCAL_USER = Object.freeze({ type: 'user', id: 'user' })
 
 const CHANNELS = Object.freeze({
   listRooms: 'room:list',
+  permissionModes: 'room:permission-modes',
   createChat: 'room:chat-create',
   deleteChat: 'room:chat-delete',
   deleteRoom: 'room:room-delete',
@@ -74,6 +75,7 @@ function commandInput(input) {
   }
   if (command.displayName !== undefined) text(command.displayName, 120)
   if (command.provider !== undefined) text(command.provider)
+  if (command.nativePermission !== undefined) text(command.nativePermission, 80)
   if (command.responsibilities !== undefined
       && (typeof command.responsibilities !== 'string' || command.responsibilities.length > 4000)) {
     throw new TypeError('ROOM_IPC_ROLE_RESPONSIBILITIES_INVALID')
@@ -107,6 +109,7 @@ function registerRoomIpc({ ipcMain, service, requireRenderer, isShuttingDown = (
   if (!ipcMain || typeof ipcMain.handle !== 'function' || !service || typeof requireRenderer !== 'function') throw new TypeError('ROOM_IPC_DEPENDENCIES_REQUIRED')
   const handlers = new Map([
     [CHANNELS.listRooms, input => { assertInput(input, []); return service.listRooms() }],
+    [CHANNELS.permissionModes, input => { assertInput(input, []); return service.permissionModes() }],
     [CHANNELS.createChat, input => {
       assertInput(input, ['roomId', 'title'])
       text(input.roomId)

@@ -67,7 +67,7 @@ test('internal execution and platform fact channels are not registered', () => {
   const { handlers, service, ipcMain } = setup()
   registerRoomIpc({ ipcMain, service, requireRenderer: () => {} })
   assert.deepEqual([...handlers.keys()].sort(), [
-    'room:list', 'room:chat-create', 'room:chat-delete', 'room:room-delete', 'room:artifact-diff',
+    'room:list', 'room:permission-modes', 'room:chat-create', 'room:chat-delete', 'room:room-delete', 'room:artifact-diff',
     'room:bootstrap', 'room:snapshot', 'room:chat-messages', 'room:message-submit', 'room:user-command', 'room:assignments-stale',
     'room:files-list', 'room:files-read', 'room:assignment-trace', 'room:assignment-trace-blob', 'room:skill-bindings-update',
   ].sort())

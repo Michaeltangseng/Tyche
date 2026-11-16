@@ -14,9 +14,7 @@
             </button>
           </h1>
         </div>
-        <span v-if="snapshot" class="room-subtitle">
-          <template v-if="workdirName">{{ workdirName }} · </template>{{ t(writeAuthorized ? 'room.writable' : 'room.readOnly') }}
-        </span>
+        <span v-if="snapshot && workdirName" class="room-subtitle">{{ workdirName }}</span>
       </div>
 
       <div v-if="snapshot" class="room-agent-strip" :aria-label="t('room.members', { count: roles.length })">
@@ -46,17 +44,6 @@
     </header>
 
     <p v-if="error || pickerError" class="room-error room-banner" role="alert">{{ t('room.error') }} <button class="secondary-button" @click="reload">{{ t('room.refresh') }}</button></p>
-    <article v-if="snapshot && !writeAuthorized" class="room-warning room-write-required room-banner" role="status">
-      <span>{{ t('room.writeRequired') }}</span>
-      <span v-if="!writeConfirmOpen" class="room-actions">
-        <button class="secondary-button" type="button" :disabled="busy" @click="writeConfirmOpen = true">{{ t('room.enableWrite') }}</button>
-      </span>
-      <span v-else class="room-actions">
-        <span class="room-muted">{{ t('room.writeConfirm') }}</span>
-        <button class="primary-button" type="button" :disabled="busy" @click="enableWorkspaceWrite">{{ t('room.confirmWrite') }}</button>
-        <button class="secondary-button" type="button" :disabled="busy" @click="writeConfirmOpen = false">{{ t('common.cancel') }}</button>
-      </span>
-    </article>
     <article v-if="chat?.controller_blocked" class="room-warning room-controller-blocked room-banner" role="alert">
       <span>{{ t('room.controllerBlocked') }}</span>
       <button class="secondary-button" :disabled="busy" @click="command({ type: 'resume_chat' })">{{ t('room.controllerRetry') }}</button>
@@ -235,8 +222,6 @@
               </select>
             </label>
             <div class="room-permissions">
-              <label><input type="checkbox" :checked="Boolean(snapshot?.room?.write_authorized_root)" :disabled="busy || permissionBusy || !snapshot" @change="command({ type: 'set_workspace_write', allowWrite: $event.target.checked })" />{{ t('room.allowWrite') }}</label>
-              <span class="room-muted">{{ t('room.writeHint') }}</span>
               <button class="secondary-button" :disabled="busy || !chat" @click="command({ type: chat?.status === 'paused' ? 'resume_chat' : 'pause_chat' })">{{ t(chat?.status === 'paused' ? 'room.resume' : 'room.pause') }}</button>
             </div>
           </section>
@@ -367,18 +352,21 @@
               </div>
             </section>
             <section class="room-role-v2-section">
-              <h3>{{ t('room.capabilities') }}</h3>
+              <h3>{{ t('room.nativePermission') }}</h3>
               <div class="room-mini-options">
                 <label
-                  v-for="capability in capabilityOptions"
-                  :key="capability"
+                  v-for="mode in nativePermissionModesFor(selectedRoleDraft.provider)"
+                  :key="mode.id"
                   class="room-mini-option"
-                  :class="{ active: selectedRoleDraft.capabilities.includes(capability) }"
+                  :class="{ active: selectedRoleDraft.nativePermission === mode.id }"
                 >
-                  <input type="checkbox" :value="capability" v-model="selectedRoleDraft.capabilities" @change="markCurrentRoleDraftDirty()" />
-                  <span>{{ t(`room.capability.${capability}`) }}</span>
+                  <input type="radio" :value="mode.id" v-model="selectedRoleDraft.nativePermission" @change="markCurrentRoleDraftDirty()" />
+                  <span>{{ permissionModeLabel(mode) }}</span>
                 </label>
               </div>
+              <p v-if="selectedNativePermission" class="room-mini-empty">{{ permissionModeDescription(selectedNativePermission) }}</p>
+              <p v-if="selectedNativePermission?.risk === 'high'" class="room-error">{{ t('room.nativePermissionHighRisk') }}</p>
+              <p class="room-mini-empty">{{ t('room.nativePermissionHint') }}</p>
             </section>
             <section class="room-role-v2-section">
               <h3>{{ t('room.skills') }}</h3>
@@ -452,7 +440,6 @@ const settingsOpen = ref(false)
 const settingsRef = ref(null)
 const chatSettingsOpen = ref(false)
 const chatSettingsRef = ref(null)
-const writeConfirmOpen = ref(false)
 const roleCreateDraft = ref(null)
 const roleDeleteArmed = ref(false)
 const roleSettingsId = ref('')
@@ -469,7 +456,29 @@ const handoffRoles = ref({})
 const roleDrafts = ref({})
 const roleDraftDirty = ref({})
 const roleSaveError = ref('')
-const capabilityOptions = ['read', 'read-exec', 'write-drafts', 'write-workdir']
+const permissionModes = ref({})
+const FALLBACK_PERMISSION_MODES = {
+  claude: [
+    { id: 'plan', label: 'Plan', description: 'Read and analyze without editing files.', write: false, risk: 'low' },
+    { id: 'acceptEdits', label: 'Accept Edits', description: 'Automatically accept file edits.', write: true, risk: 'medium' },
+    { id: 'bypassPermissions', label: 'Bypass Permissions', description: 'Skip native permission checks. Can affect files outside the project.', write: true, risk: 'high' },
+  ],
+  codex: [
+    { id: 'read-only', label: 'Read Only', description: 'Read files without writing.', write: false, risk: 'low' },
+    { id: 'workspace-write', label: 'Workspace Write', description: 'Read and write inside the workspace sandbox.', write: true, risk: 'medium' },
+    { id: 'danger-full-access', label: 'Danger Full Access', description: 'Disable the Codex sandbox. Can affect files outside the project.', write: true, risk: 'high' },
+  ],
+  gemini: [
+    { id: 'default', label: 'Default', description: 'Use the Gemini CLI default approval behavior.', write: false, risk: 'low' },
+    { id: 'auto_edit', label: 'Auto Edit', description: 'Automatically accept file edits.', write: true, risk: 'medium' },
+    { id: 'yolo', label: 'YOLO', description: 'Skip approval checks. Can affect files outside the project.', write: true, risk: 'high' },
+  ],
+  pi: [
+    { id: 'no-approve', label: 'No Approve', description: 'Read-only tools without approval.', write: false, risk: 'low' },
+    { id: 'approve', label: 'Approve', description: 'Allow tool use and file changes.', write: true, risk: 'medium' },
+  ],
+  default: [{ id: 'default', label: 'Native Configuration', description: 'Use the provider native permissions.', write: true, risk: 'medium' }],
+}
 const skillModeOptions = ['inherit', 'override', 'none']
 const skillCatalog = ref([])
 const skillsLoading = ref(false)
@@ -487,12 +496,10 @@ const roleSkillsBusy = ref({})
 const picking = ref(false)
 const pickerError = ref(false)
 const timeline = ref(null)
-const permissionBusy = computed(() => snapshot.value?.assignments.some(item => item.status === 'running' || item.outcome === 'unknown'))
 const staleAssignmentIds = computed(() => new Set(staleAssignments.value
   .filter(item => assignments.value.some(assignment => assignment.id === item.assignmentId))
   .map(item => item.assignmentId)))
 const workdirName = computed(() => (snapshot.value?.room?.workspace || '').split(/[\\/]/).filter(Boolean).at(-1) || '')
-const writeAuthorized = computed(() => Boolean(snapshot.value?.room?.write_authorized_root))
 const projectLabel = computed(() => snapshot.value?.room?.name || t('room.title'))
 const activeChatLabel = computed(() => {
   const item = chat.value
@@ -508,6 +515,47 @@ const selectedRole = computed(() => roles.value.find(role => role.id === roleSet
 const selectedRoleDraft = computed(() => (
   roleCreateDraft.value || (selectedRole.value ? roleDrafts.value[selectedRole.value.id] || null : null)
 ))
+const selectedNativePermission = computed(() => {
+  const draft = selectedRoleDraft.value
+  return draft ? nativePermissionModesFor(draft.provider).find(mode => mode.id === draft.nativePermission) || null : null
+})
+function nativePermissionModesFor(provider) {
+  return permissionModes.value[provider] || FALLBACK_PERMISSION_MODES[provider] || FALLBACK_PERMISSION_MODES.default
+}
+function permissionModeLabel(mode) {
+  const key = `room.nativePermissionMode.${mode.id}`
+  const label = t(key)
+  return label === key ? mode.label : label
+}
+function permissionModeDescription(mode) {
+  const key = `room.nativePermissionMode.${mode.id}.description`
+  const description = t(key)
+  return description === key ? mode.description : description
+}
+function defaultNativePermissionFor(provider) {
+  const modes = nativePermissionModesFor(provider)
+  return (modes.find(mode => !mode.write) || modes[0])?.id || 'default'
+}
+async function loadPermissionModes() {
+  if (typeof props.api.permissionModes !== 'function') return
+  try {
+    const modes = await props.api.permissionModes()
+    if (modes && typeof modes === 'object') {
+      permissionModes.value = modes
+      const draft = roleCreateDraft.value
+      if (draft && !nativePermissionModesFor(draft.provider).some(mode => mode.id === draft.nativePermission)) {
+        draft.nativePermission = defaultNativePermissionFor(draft.provider)
+      }
+      for (const role of roles.value) {
+        if (roleDraftDirty.value[role.id]) continue
+        const roleDraft = roleDrafts.value[role.id]
+        if (roleDraft && !nativePermissionModesFor(role.provider).some(mode => mode.id === roleDraft.nativePermission)) {
+          roleDraft.nativePermission = defaultNativePermissionFor(role.provider)
+        }
+      }
+    }
+  } catch { /* keep the provider fallback */ }
+}
 const providerOptions = computed(() => [...new Set([
   ...(snapshot.value?.room?.providers_json || []),
   ...roles.value.map(role => role.provider),
@@ -628,6 +676,7 @@ function roleDraftFrom(role) {
     responsibilities: role.responsibilities || '',
     provider: role.provider || '',
     capabilities: [...(role.capabilities_json || [])],
+    nativePermission: role.native_permission || defaultNativePermissionFor(role.provider),
     prompt: role.current_prompt || '',
     isController: Boolean(role.is_controller),
   }
@@ -661,6 +710,7 @@ function changeRoleProvider(provider) {
   const followedProvider = draft.displayName.trim() === providerLabel(draft.provider)
     && (!role || String(role.display_name || '') === role.provider)
   draft.provider = provider
+  draft.nativePermission = defaultNativePermissionFor(provider)
   if (followedProvider) draft.displayName = providerLabel(provider)
   roleSaveError.value = ''
   if (role) markRoleDraftDirty(role.id)
@@ -690,6 +740,7 @@ function isRoleDraftDirty(role) {
     || draft.responsibilities !== (role.responsibilities || '')
     || draft.provider !== role.provider
     || !sameCapabilities(draft.capabilities, role.capabilities_json)
+    || draft.nativePermission !== (role.native_permission || defaultNativePermissionFor(role.provider))
     || draft.prompt !== (role.current_prompt || '')
     || Boolean(draft.isController) !== Boolean(role.is_controller)
 }
@@ -723,7 +774,9 @@ async function saveRole(role) {
   }
   if (draft.responsibilities !== (role.responsibilities || '')) payload.responsibilities = draft.responsibilities
   if (providerChanged) payload.provider = draft.provider
-  if (!sameCapabilities(draft.capabilities, role.capabilities_json)) payload.capabilities = [...draft.capabilities]
+  if (draft.nativePermission !== (role.native_permission || defaultNativePermissionFor(role.provider))) {
+    payload.nativePermission = draft.nativePermission
+  }
   if (draft.prompt !== (role.current_prompt || '')) payload.prompt = draft.prompt
   if (Boolean(draft.isController) !== Boolean(role.is_controller)) payload.isController = Boolean(draft.isController)
   if (Object.keys(payload).length === 2) return
@@ -786,6 +839,7 @@ function openNewRole() {
     responsibilities: '',
     provider,
     capabilities: [],
+    nativePermission: defaultNativePermissionFor(provider),
     prompt: '',
     isController: false,
   }
@@ -808,7 +862,7 @@ async function createRoleFromDraft() {
     displayName,
     provider: draft.provider,
     responsibilities: draft.responsibilities || '',
-    capabilities: [...draft.capabilities],
+    nativePermission: draft.nativePermission,
   }
   if (draft.prompt) payload.prompt = draft.prompt
   if (draft.isController) payload.isController = true
@@ -889,35 +943,8 @@ async function answer(attention) {
   await command({ type: 'answer_attention', attentionId: attention.id,
     ...(attention.options_json?.length ? { optionId: answers.value[attention.id] } : { comment: answers.value[attention.id] }) })
 }
-function retryScopesFor(assignment) {
-  return writeAuthorized.value && !(assignment.write_scopes_json || []).length ? ['.'] : undefined
-}
 function retryPayload(assignment) {
-  const writeScopes = retryScopesFor(assignment)
-  return {
-    type: 'retry_task', taskId: assignment.task_id, assignmentId: assignment.id,
-    ...(writeScopes ? { writeScopes } : {}),
-  }
-}
-async function enableWorkspaceWrite() {
-  if (busy.value) return
-  const result = await command({ type: 'set_workspace_write', allowWrite: true })
-  if (!result) return
-  writeConfirmOpen.value = false
-  const candidates = assignments.value.filter(assignment => {
-    const task = tasks.value.find(item => item.id === assignment.task_id)
-    return task && !['cancelled', 'done'].includes(task.status)
-      && ['waiting', 'failed', 'blocked', 'cancelled'].includes(assignment.status)
-      && assignment.outcome !== 'unknown'
-      && assignment.run_id
-      && !(assignment.write_scopes_json || []).length
-      && !assignments.value.some(next => next.previous_assignment_id === assignment.id)
-  })
-  for (const assignment of candidates) {
-    await command({
-      type: 'retry_task', taskId: assignment.task_id, assignmentId: assignment.id, writeScopes: ['.'],
-    })
-  }
+  return { type: 'retry_task', taskId: assignment.task_id, assignmentId: assignment.id }
 }
 function onOverlayKeydown(event) {
   if (event.key !== 'Escape') return
@@ -958,7 +985,6 @@ watch([roomId, chatId], ([room, chat]) => {
   roleSettingsId.value = ''
   roleCreateDraft.value = null
   roleDeleteArmed.value = false
-  writeConfirmOpen.value = false
   handoffRoles.value = {}
   answers.value = {}
   roleDrafts.value = {}
@@ -975,7 +1001,10 @@ watch(roles, () => { syncRoleDrafts() }, { immediate: true })
 watch(skillProviders, () => { void loadSkillCatalog() }, { immediate: true })
 watch([snapshot, roles, chatId], syncSkillDrafts, { immediate: true })
 watch(() => entries.value.length, async () => { await nextTick(); if (timeline.value) timeline.value.scrollTop = timeline.value.scrollHeight })
-onMounted(load)
+onMounted(() => {
+  void loadPermissionModes()
+  void load()
+})
 onBeforeUnmount(() => {
   document.body.classList.remove('room-overlay-open')
   document.removeEventListener('keydown', onOverlayKeydown)

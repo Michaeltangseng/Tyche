@@ -17,7 +17,7 @@ test('v2 migration preserves rooms and defaults existing workspaces to read-only
   first.database.exec('ALTER TABLE rooms DROP COLUMN write_authorized_root; ALTER TABLE assignments DROP COLUMN role_prompt_revision; PRAGMA user_version = 2;')
   first.close()
   const migrated = openRoomDatabase({ directory })
-  assert.equal(migrated.database.prepare('PRAGMA user_version').get().user_version, 6)
+  assert.equal(migrated.database.prepare('PRAGMA user_version').get().user_version, 7)
   assert.equal(migrated.database.prepare('SELECT write_authorized_root FROM rooms WHERE id=?').get(roomId).write_authorized_root, null)
   migrated.database.prepare('UPDATE rooms SET write_authorized_root=? WHERE id=?').run(directory, roomId)
   migrated.close()
@@ -42,7 +42,7 @@ test('room database creates private schema and persists the message/task/effect 
   assert.equal(repository.listMessages(chatId).length, 1)
   assert.equal(repository.getTask(taskId).status, 'open')
   assert.equal(repository.getEffect(effectId).status, 'pending')
-  assert.equal(roomDb.database.prepare('PRAGMA user_version').get().user_version, 6)
+  assert.equal(roomDb.database.prepare('PRAGMA user_version').get().user_version, 7)
   roomDb.close()
 })
 

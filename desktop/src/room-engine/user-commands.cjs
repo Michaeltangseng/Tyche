@@ -3,6 +3,11 @@ const { createHash } = require('node:crypto')
 const fs = require('node:fs')
 const { validateUserCommand } = require('./room-actions.cjs')
 const { normalizeRelativePath } = require('../project-room/workdir-access.cjs')
+const {
+  capabilitiesForNativePermission,
+  defaultNativePermission,
+  nativePermissionDescriptor,
+} = require('../agents/native-permission-modes.cjs')
 
 function parseJson(value, fallback) {
   try { return JSON.parse(value) } catch { return fallback }
@@ -66,12 +71,12 @@ function createUserCommandService({ roomDb, repository }) {
       } else if (action.type === 'create_role') {
         const room = db.prepare('SELECT providers_json, allowed_capabilities_json FROM rooms WHERE id = ?').get(chat.room_id)
         const providers = parseJson(room?.providers_json, [])
-        const allowedCapabilities = parseJson(room?.allowed_capabilities_json, [])
         if (providers.length > 0 && !providers.includes(action.provider)) throw new Error('ROOM_ROLE_PROVIDER_NOT_ALLOWED')
-        const capabilities = [...new Set(action.capabilities || [])]
-        if (allowedCapabilities.length > 0 && capabilities.some(capability => !allowedCapabilities.includes(capability))) {
-          throw new Error('ROOM_ROLE_CAPABILITY_NOT_ALLOWED')
-        }
+        const nativePermission = action.nativePermission || defaultNativePermission(action.provider)
+        if (!nativePermissionDescriptor(action.provider, nativePermission)) throw new Error('ROOM_ROLE_NATIVE_PERMISSION_INVALID')
+        const capabilities = action.capabilities
+          ? [...new Set(action.capabilities)]
+          : capabilitiesForNativePermission(action.provider, nativePermission)
         const displayName = action.displayName.trim()
         const isController = action.isController === true
         if (isController) repository.setControllerRole({ chatId: action.chatId, roleId: null })
@@ -81,6 +86,7 @@ function createUserCommandService({ roomDb, repository }) {
           responsibilities: action.responsibilities || '',
           capabilities,
           provider: action.provider,
+          nativePermission,
           isController,
           createdBy: actorId,
           creationReason: 'user_created',
@@ -89,30 +95,34 @@ function createUserCommandService({ roomDb, repository }) {
         if (action.prompt !== undefined && action.prompt !== '') {
           promptRevision = repository.createRolePromptRevision({ roleId, prompt: action.prompt, createdBy: actorId })
         }
-        result = { roleId, displayName, provider: action.provider, capabilities, isController, promptRevision }
+        result = { roleId, displayName, provider: action.provider, capabilities, nativePermission, isController, promptRevision }
       } else if (action.type === 'update_role') {
         const role = db.prepare('SELECT * FROM agent_roles WHERE id = ? AND chat_id = ?').get(action.roleId, action.chatId)
         if (!role) throw new Error('ROOM_ROLE_NOT_FOUND')
-        const room = db.prepare('SELECT providers_json, allowed_capabilities_json FROM rooms WHERE id = ?').get(chat.room_id)
+        const room = db.prepare('SELECT providers_json FROM rooms WHERE id = ?').get(chat.room_id)
         const providers = parseJson(room?.providers_json, [])
-        const allowedCapabilities = parseJson(room?.allowed_capabilities_json, [])
         if (action.provider !== undefined && action.provider !== role.provider) {
           if (providers.length > 0 && !providers.includes(action.provider)) throw new Error('ROOM_ROLE_PROVIDER_NOT_ALLOWED')
           const running = db.prepare("SELECT id FROM assignments WHERE role_id = ? AND status = 'running' LIMIT 1").get(action.roleId)
           if (running) throw new Error('ROOM_ROLE_BUSY')
         }
-        const capabilities = action.capabilities === undefined
-          ? parseJson(role.capabilities_json, [])
-          : [...new Set(action.capabilities)]
-        if (allowedCapabilities.length > 0 && capabilities.some(capability => !allowedCapabilities.includes(capability))) {
-          throw new Error('ROOM_ROLE_CAPABILITY_NOT_ALLOWED')
-        }
+        const provider = action.provider === undefined ? role.provider : action.provider
+        const nativePermission = action.nativePermission !== undefined
+          ? action.nativePermission
+          : (provider !== role.provider
+              ? defaultNativePermission(provider)
+              : (role.native_permission || defaultNativePermission(provider)))
+        if (!nativePermissionDescriptor(provider, nativePermission)) throw new Error('ROOM_ROLE_NATIVE_PERMISSION_INVALID')
+        const capabilities = action.capabilities !== undefined
+          ? [...new Set(action.capabilities)]
+          : ((action.nativePermission !== undefined || provider !== role.provider)
+              ? capabilitiesForNativePermission(provider, nativePermission)
+              : parseJson(role.capabilities_json, []))
         const displayName = action.displayName === undefined ? role.display_name : action.displayName.trim()
         const responsibilities = action.responsibilities === undefined ? role.responsibilities : action.responsibilities
-        const provider = action.provider === undefined ? role.provider : action.provider
         db.prepare(`UPDATE agent_roles SET display_name = ?, responsibilities = ?, capabilities_json = ?,
-          provider = ?, updated_at = ? WHERE id = ?`)
-          .run(displayName, responsibilities, encode(capabilities), provider, timestamp, action.roleId)
+          provider = ?, native_permission = ?, updated_at = ? WHERE id = ?`)
+          .run(displayName, responsibilities, encode(capabilities), provider, nativePermission, timestamp, action.roleId)
         if (action.isController === true) {
           repository.setControllerRole({ chatId: action.chatId, roleId: action.roleId })
         } else if (action.isController === false && role.is_controller) {
@@ -128,7 +138,7 @@ function createUserCommandService({ roomDb, repository }) {
           }
         }
         const isController = action.isController === undefined ? Boolean(role.is_controller) : action.isController
-        result = { roleId: action.roleId, displayName, responsibilities, capabilities, provider, isController, promptRevision }
+        result = { roleId: action.roleId, displayName, responsibilities, capabilities, provider, nativePermission, isController, promptRevision }
       } else if (action.type === 'delete_role') {
         const role = db.prepare('SELECT id FROM agent_roles WHERE id = ? AND chat_id = ?').get(action.roleId, action.chatId)
         if (!role) throw new Error('ROOM_ROLE_NOT_FOUND')

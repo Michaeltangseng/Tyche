@@ -84,7 +84,7 @@ test('local preload exposes the local-only Meldwork API', async () => {
   assert.equal('cancelConfigure' in api.localWorkspace, false)
   assert.equal(Object.isFrozen(api.room), true)
   assert.deepEqual(Object.keys(api.room).sort(), [
-    'applyUserCommand', 'bootstrap', 'listStaleAssignments', 'submitMessage', 'snapshot', 'listRooms', 'createChat', 'deleteChat', 'deleteRoom', 'chatMessages', 'filesList', 'filesRead', 'artifactDiff', 'assignmentTrace', 'assignmentTraceBlob', 'onChanged', 'onAssignmentEvent', 'skills', 'updateSkillBindings',
+    'applyUserCommand', 'bootstrap', 'listStaleAssignments', 'submitMessage', 'snapshot', 'listRooms', 'permissionModes', 'createChat', 'deleteChat', 'deleteRoom', 'chatMessages', 'filesList', 'filesRead', 'artifactDiff', 'assignmentTrace', 'assignmentTraceBlob', 'onChanged', 'onAssignmentEvent', 'skills', 'updateSkillBindings',
   ].sort())
   assert.equal('localAgentProvider' in api, false)
   await api.localWorkspace.deleteMessage('group-1', 'message-1')
@@ -197,6 +197,7 @@ test('local preload exposes the local-only Meldwork API', async () => {
 test('room preload forwards only user requests and read queries', async () => {
   const { api, invocations } = loadPreload('file:')
   await api.room.listRooms()
+  await api.room.permissionModes()
   await api.room.createChat({ roomId: 'room', title: 'Team' })
   await api.room.deleteChat({ roomId: 'room', chatId: 'chat' })
   await api.room.deleteRoom({ roomId: 'room' })
@@ -210,7 +211,7 @@ test('room preload forwards only user requests and read queries', async () => {
   await api.room.applyUserCommand({ type: 'pause_chat', chatId: 'chat' })
   await api.room.listStaleAssignments({ roomId: 'room', timeoutMs: 1000 })
   assert.deepEqual(invocations.map(item => item.channel), [
-    'room:list', 'room:chat-create', 'room:chat-delete', 'room:room-delete',
+    'room:list', 'room:permission-modes', 'room:chat-create', 'room:chat-delete', 'room:room-delete',
     'room:bootstrap', 'room:snapshot', 'room:chat-messages', 'room:files-list', 'room:files-read', 'room:artifact-diff', 'room:message-submit', 'room:user-command', 'room:assignments-stale',
   ])
 })
