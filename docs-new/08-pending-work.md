@@ -251,7 +251,7 @@ ROOM_USER_COMMAND_UNSUPPORTED
 - 角色复用（相同职责优先复用）；
 - 角色保存为模板、跨 Chat 手动复制。
 
-> 进展（2026-11-16）：团队栏已支持用户主动新增角色；角色配置可通过 `create_role` / `update_role` 用户命令写入名称、职责、Provider 和能力，并保留角色 Prompt/Skill 编辑。仍缺角色草案、复用和模板。
+> 进展（2026-11-16）：团队栏已支持用户主动新增角色，并可通过 `create_role` / `update_role` / `delete_role` 用户命令维护名称、职责、Provider、能力和主控标记；保留角色 Prompt/Skill 编辑。删除仅允许无历史 Assignment 的角色。仍缺角色草案、复用和模板。
 
 **验收**
 

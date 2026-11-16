@@ -24,7 +24,7 @@
           <span v-if="isControllerSeat(role)" class="room-agent-badge">{{ t('room.controller') }}</span>
         </button>
         <span v-if="!roles.length" class="room-agent-idle">{{ t('room.teamIdle') }}</span>
-        <button class="room-agent-add" type="button" :title="t('room.addAgent')" :aria-label="t('room.addAgent')" :disabled="busy || !(snapshot.room.providers_json?.length)" @click="openAddAgent">
+        <button class="room-agent-add" type="button" :title="t('room.addAgent')" :aria-label="t('room.addAgent')" :disabled="busy || !(snapshot.room.providers_json?.length)" @click="openNewRole">
           <AddOutline />
         </button>
       </div>
@@ -201,31 +201,6 @@
       </form>
     </div>
 
-    <div v-if="addAgentOpen" class="room-modal-backdrop" @click.self="cancelAddAgent" @wheel.self.prevent>
-      <form ref="addAgentRef" class="room-modal room-add-agent-modal" tabindex="-1" @submit.prevent="createAgent" @keydown.esc.stop="cancelAddAgent">
-        <header class="room-modal-header">
-          <h2>{{ t('room.addAgent') }}</h2>
-          <button class="secondary-button" type="button" @click="cancelAddAgent">{{ t('common.close') }}</button>
-        </header>
-        <p class="room-muted">{{ t('room.addAgentHint') }}</p>
-        <label class="room-setting-field">
-          <span>{{ t('room.agent') }}</span>
-          <select v-model="agentProvider" @change="syncAddAgentName">
-            <option v-for="provider in addAgentProviders" :key="provider" :value="provider">{{ providerLabel(provider) }}</option>
-          </select>
-        </label>
-        <label class="room-setting-field">
-          <span>{{ t('room.roleName') }}</span>
-          <input v-model="agentName" maxlength="120" :placeholder="providerLabel(agentProvider)" />
-        </label>
-        <p v-if="addAgentError" class="room-error" role="alert">{{ t(addAgentError) }}</p>
-        <div class="room-actions">
-          <button class="secondary-button" type="button" @click="cancelAddAgent">{{ t('common.cancel') }}</button>
-          <button class="primary-button" :disabled="busy || !agentProvider || !agentName.trim()">{{ t('room.createAgent') }}</button>
-        </div>
-      </form>
-    </div>
-
     <div v-show="settingsOpen" class="room-modal-backdrop room-settings-backdrop" @click.self="closeProjectSettings" @wheel.self.prevent>
       <aside ref="settingsRef" class="room-settings-modal room-project-settings-modal" role="dialog" aria-modal="true" :aria-label="t('room.projectSettings')" tabindex="-1" @keydown.esc.stop="closeProjectSettings">
         <header class="room-settings-header">
@@ -308,14 +283,17 @@
       </aside>
     </div>
 
-    <div v-if="selectedRole" class="room-modal-backdrop room-role-backdrop" @click.self="cancelRoleSettings" @wheel.self.prevent>
+    <div v-if="roleSettingsOpen" class="room-modal-backdrop room-role-backdrop" @click.self="cancelRoleSettings" @wheel.self.prevent>
       <section ref="roleSettingsRef" class="room-role-modal room-role-modal-v2" role="dialog" aria-modal="true" :aria-label="t('room.roleSettings')" tabindex="-1" @keydown.esc.stop="cancelRoleSettings">
         <header class="room-role-v2-header">
           <div class="room-role-v2-title">
             <span>{{ t('room.roleSettings') }}</span>
-            <strong>{{ roleLabel(selectedRole) }}<span v-if="selectedRoleDraft?.isController" class="room-agent-badge">{{ t('room.controller') }}</span></strong>
+            <strong>{{ selectedRole ? roleLabel(selectedRole) : (selectedRoleDraft?.displayName || t('room.addAgent')) }}<span v-if="selectedRoleDraft?.isController" class="room-agent-badge">{{ t('room.controller') }}</span></strong>
           </div>
           <div class="room-role-v2-close">
+            <button v-if="selectedRole" class="room-icon-button room-role-delete-button" type="button" :title="t('room.deleteRole', { name: roleLabel(selectedRole) })" :aria-label="t('room.deleteRole', { name: roleLabel(selectedRole) })" @click="roleDeleteArmed = true">
+              <TrashOutline />
+            </button>
             <button class="room-icon-button" type="button" :aria-label="t('common.close')" @click="cancelRoleSettings">
               <CloseOutline />
             </button>
@@ -329,7 +307,7 @@
                 <span v-else>{{ selectedRoleDraft.displayName.slice(0, 1) }}</span>
               </div>
               <label class="room-role-v2-name">
-                <input v-model="selectedRoleDraft.displayName" maxlength="120" :aria-label="t('room.roleName')" @input="markRoleDraftDirty(selectedRole.id)" />
+                <input v-model="selectedRoleDraft.displayName" maxlength="120" :aria-label="t('room.roleName')" @input="markCurrentRoleDraftDirty()" />
                 <PencilOutline aria-hidden="true" />
               </label>
               <span class="room-role-v2-provider-label">{{ providerLabel(selectedRoleDraft.provider) }}</span>
@@ -355,7 +333,7 @@
                 :placeholder="t('room.noResponsibilities')"
                 rows="3"
                 maxlength="4000"
-                @input="markRoleDraftDirty(selectedRole.id)"
+                @input="markCurrentRoleDraftDirty()"
               />
               <button
                 class="room-role-controller-toggle"
@@ -373,7 +351,7 @@
             <section class="room-role-v2-section">
               <h3>{{ t('room.rolePrompt') }}</h3>
               <div class="room-role-prompt-wrap">
-                <textarea v-model="selectedRoleDraft.prompt" class="room-role-prompt" rows="6" maxlength="2000" @input="markRoleDraftDirty(selectedRole.id)" />
+                <textarea v-model="selectedRoleDraft.prompt" class="room-role-prompt" rows="6" maxlength="2000" @input="markCurrentRoleDraftDirty()" />
                 <span class="room-role-prompt-count">{{ selectedRoleDraft.prompt.length }} / 2000</span>
               </div>
             </section>
@@ -386,43 +364,51 @@
                   class="room-mini-option"
                   :class="{ active: selectedRoleDraft.capabilities.includes(capability) }"
                 >
-                  <input type="checkbox" :value="capability" v-model="selectedRoleDraft.capabilities" @change="markRoleDraftDirty(selectedRole.id)" />
+                  <input type="checkbox" :value="capability" v-model="selectedRoleDraft.capabilities" @change="markCurrentRoleDraftDirty()" />
                   <span>{{ t(`room.capability.${capability}`) }}</span>
                 </label>
               </div>
             </section>
             <section class="room-role-v2-section">
               <h3>{{ t('room.skills') }}</h3>
-              <div v-if="skillCatalogFor(selectedRole).length" class="room-mini-options room-role-v2-skills">
-                <button
-                  v-for="mode in skillModeOptions"
-                  :key="mode"
-                  class="room-mini-option"
-                  :class="{ active: roleSkillModes[selectedRole.id] === mode }"
-                  type="button"
-                  @click="setRoleSkillMode(selectedRole, mode)"
-                >
-                  {{ t(mode === 'inherit' ? 'room.skillsInherit' : mode === 'override' ? 'room.skillsOverride' : 'room.skillsNone') }}
-                </button>
-                <template v-if="roleSkillModes[selectedRole.id] === 'override'">
-                  <label v-for="skill in skillCatalogFor(selectedRole)" :key="skillKey(skill)" class="room-mini-option" :class="{ active: hasSkill(roleSkills[selectedRole.id], skill) }">
-                    <input type="checkbox" :checked="hasSkill(roleSkills[selectedRole.id], skill)" :disabled="busy || roleSkillsBusy[selectedRole.id]" @change="toggleRoleSkill(selectedRole, skill, $event.target.checked)" />
-                    <span>{{ skill.name || skill.slug }}</span>
-                  </label>
-                </template>
-                <button class="secondary-button compact" type="button" :disabled="busy || roleSkillsBusy[selectedRole.id] || !roleSkillsDirty[selectedRole.id]" @click="saveRoleSkills(selectedRole)">{{ roleSkillsBusy[selectedRole.id] ? t('room.skillsSaving') : t('room.saveSkills') }}</button>
-              </div>
-              <div v-else class="room-mini-options">
-                <span class="room-mini-empty">{{ t('room.skillsEmpty') }}</span>
-                <button class="room-mini-option" type="button" @click="loadSkillCatalog">{{ t('room.refresh') }}</button>
-              </div>
+              <template v-if="selectedRole">
+                <div v-if="skillCatalogFor(selectedRole).length" class="room-mini-options room-role-v2-skills">
+                  <button
+                    v-for="mode in skillModeOptions"
+                    :key="mode"
+                    class="room-mini-option"
+                    :class="{ active: roleSkillModes[selectedRole.id] === mode }"
+                    type="button"
+                    @click="setRoleSkillMode(selectedRole, mode)"
+                  >
+                    {{ t(mode === 'inherit' ? 'room.skillsInherit' : mode === 'override' ? 'room.skillsOverride' : 'room.skillsNone') }}
+                  </button>
+                  <template v-if="roleSkillModes[selectedRole.id] === 'override'">
+                    <label v-for="skill in skillCatalogFor(selectedRole)" :key="skillKey(skill)" class="room-mini-option" :class="{ active: hasSkill(roleSkills[selectedRole.id], skill) }">
+                      <input type="checkbox" :checked="hasSkill(roleSkills[selectedRole.id], skill)" :disabled="busy || roleSkillsBusy[selectedRole.id]" @change="toggleRoleSkill(selectedRole, skill, $event.target.checked)" />
+                      <span>{{ skill.name || skill.slug }}</span>
+                    </label>
+                  </template>
+                  <button class="secondary-button compact" type="button" :disabled="busy || roleSkillsBusy[selectedRole.id] || !roleSkillsDirty[selectedRole.id]" @click="saveRoleSkills(selectedRole)">{{ roleSkillsBusy[selectedRole.id] ? t('room.skillsSaving') : t('room.saveSkills') }}</button>
+                </div>
+                <div v-else class="room-mini-options">
+                  <span class="room-mini-empty">{{ t('room.skillsEmpty') }}</span>
+                  <button class="room-mini-option" type="button" @click="loadSkillCatalog">{{ t('room.refresh') }}</button>
+                </div>
+              </template>
+              <p v-else class="room-mini-empty">{{ t('room.skillsAfterCreate') }}</p>
             </section>
             <p v-if="roleSaveError" class="room-error room-role-v2-error" role="alert">{{ t(roleSaveError) }}</p>
           </div>
         </div>
+        <div v-if="roleDeleteArmed && selectedRole" class="room-role-delete-confirm" role="alertdialog" :aria-label="t('room.deleteRole', { name: roleLabel(selectedRole) })">
+          <span>{{ t('room.deleteRoleConfirm', { name: roleLabel(selectedRole) }) }}</span>
+          <button class="secondary-button compact" type="button" @click="roleDeleteArmed = false">{{ t('common.cancel') }}</button>
+          <button class="danger-button" type="button" :disabled="busy" @click="deleteSelectedRole">{{ t('room.deleteConfirm') }}</button>
+        </div>
         <footer class="room-role-v2-footer">
           <button class="secondary-button" type="button" @click="cancelRoleSettings">{{ t('common.cancel') }}</button>
-          <button class="primary-button" type="button" :disabled="busy || !isRoleDraftDirty(selectedRole)" @click="saveRole(selectedRole)">{{ t('room.saveRole') }}</button>
+          <button class="primary-button" type="button" :disabled="!canSaveRole" @click="saveRole(selectedRole)">{{ t(roleCreateDraft ? 'room.createRole' : 'room.saveRole') }}</button>
         </footer>
       </section>
     </div>
@@ -437,6 +423,7 @@ import {
   CloseOutline,
   PencilOutline,
   PersonOutline,
+  TrashOutline,
 } from '@vicons/ionicons5'
 import { agentLogo } from '../catalog.js'
 import { t } from '../i18n.js'
@@ -452,12 +439,8 @@ const settingsOpen = ref(false)
 const settingsRef = ref(null)
 const chatSettingsOpen = ref(false)
 const chatSettingsRef = ref(null)
-const addAgentOpen = ref(false)
-const addAgentRef = ref(null)
-const agentProvider = ref('')
-const agentName = ref('')
-const addAgentError = ref('')
-let previousAgentProvider = ''
+const roleCreateDraft = ref(null)
+const roleDeleteArmed = ref(false)
 const roleSettingsId = ref('')
 const roleSettingsRef = ref(null)
 const workPanelOpen = ref(true)
@@ -518,13 +501,14 @@ const showWorkPanel = computed(() => workPanelOpen.value && hasWork.value)
 const workCount = computed(() => tasks.value.length + unlinkedArtifacts.value.length)
 const selectedRole = computed(() => roles.value.find(role => role.id === roleSettingsId.value) || null)
 const selectedRoleDraft = computed(() => (
-  selectedRole.value ? roleDrafts.value[selectedRole.value.id] || null : null
+  roleCreateDraft.value || (selectedRole.value ? roleDrafts.value[selectedRole.value.id] || null : null)
 ))
 const providerOptions = computed(() => [...new Set([
   ...(snapshot.value?.room?.providers_json || []),
   ...roles.value.map(role => role.provider),
 ].filter(Boolean))])
-const addAgentProviders = computed(() => [...new Set((snapshot.value?.room?.providers_json || []).filter(Boolean))])
+const roomProviders = computed(() => [...new Set((snapshot.value?.room?.providers_json || []).filter(Boolean))])
+const roleSettingsOpen = computed(() => Boolean(selectedRole.value || roleCreateDraft.value))
 const liveEntries = computed(() => Object.entries(liveAssignments.value).map(([id, live]) => {
   const assignment = assignments.value.find(item => item.id === id)
   const role = roles.value.find(item => item.id === assignment?.role_id)
@@ -684,22 +668,28 @@ function markRoleDraftDirty(roleId) {
   roleDraftDirty.value = { ...roleDraftDirty.value, [roleId]: true }
   roleSaveError.value = ''
 }
+function markCurrentRoleDraftDirty() {
+  roleSaveError.value = ''
+  if (selectedRole.value) markRoleDraftDirty(selectedRole.value.id)
+}
 function changeRoleProvider(provider) {
   const role = selectedRole.value
   const draft = selectedRoleDraft.value
-  if (!role || !draft || !provider || draft.provider === provider) return
-  const followedProvider = String(role.display_name || '') === role.provider
-    && draft.displayName.trim() === providerLabel(draft.provider)
+  if (!draft || !provider || draft.provider === provider) return
+  const followedProvider = draft.displayName.trim() === providerLabel(draft.provider)
+    && (!role || String(role.display_name || '') === role.provider)
   draft.provider = provider
   if (followedProvider) draft.displayName = providerLabel(provider)
-  markRoleDraftDirty(role.id)
+  roleSaveError.value = ''
+  if (role) markRoleDraftDirty(role.id)
 }
 function toggleRoleController() {
   const role = selectedRole.value
   const draft = selectedRoleDraft.value
-  if (!role || !draft) return
+  if (!draft) return
   draft.isController = !draft.isController
-  markRoleDraftDirty(role.id)
+  roleSaveError.value = ''
+  if (role) markRoleDraftDirty(role.id)
 }
 function setRoleSkillMode(role, mode) {
   if (!role || !mode) return
@@ -733,6 +723,7 @@ function syncRoleDrafts() {
   roleDrafts.value = next
 }
 async function saveRole(role) {
+  if (roleCreateDraft.value) return createRoleFromDraft()
   const draft = roleDrafts.value[role?.id]
   if (!role || !draft || !isRoleDraftDirty(role)) return
   roleSaveError.value = ''
@@ -783,56 +774,102 @@ function openRoleSettings(roleId) {
   ensureRoleDraft(role)
   settingsOpen.value = false
   chatSettingsOpen.value = false
+  roleCreateDraft.value = null
+  roleDeleteArmed.value = false
   roleSaveError.value = ''
   roleSettingsId.value = roleId
 }
 function cancelRoleSettings() {
+  if (roleCreateDraft.value) {
+    roleCreateDraft.value = null
+    roleSettingsId.value = ''
+    roleDeleteArmed.value = false
+    roleSaveError.value = ''
+    return
+  }
   const role = selectedRole.value
   if (role) {
     roleDrafts.value = { ...roleDrafts.value, [role.id]: roleDraftFrom(role) }
     roleDraftDirty.value = { ...roleDraftDirty.value, [role.id]: false }
   }
   roleSettingsId.value = ''
+  roleDeleteArmed.value = false
   roleSaveError.value = ''
 }
-function openAddAgent() {
-  const providers = addAgentProviders.value
-  if (!providers.length) return
-  agentProvider.value = providers[0]
-  previousAgentProvider = providers[0]
-  agentName.value = providerLabel(providers[0])
-  addAgentError.value = ''
-  addAgentOpen.value = true
-}
-function cancelAddAgent() {
-  addAgentOpen.value = false
-  addAgentError.value = ''
-}
-function syncAddAgentName() {
-  const previousLabel = providerLabel(previousAgentProvider)
-  if (!agentName.value.trim() || agentName.value.trim() === previousLabel) {
-    agentName.value = providerLabel(agentProvider.value)
+function openNewRole() {
+  const provider = roomProviders.value[0]
+  if (!provider) return
+  roleCreateDraft.value = {
+    displayName: providerLabel(provider),
+    responsibilities: '',
+    provider,
+    capabilities: [],
+    prompt: '',
+    isController: false,
   }
-  previousAgentProvider = agentProvider.value
+  roleSettingsId.value = ''
+  roleDeleteArmed.value = false
+  roleSaveError.value = ''
 }
-async function createAgent() {
-  const provider = agentProvider.value
-  const displayName = agentName.value.trim()
-  if (!provider || !displayName) return
-  const result = await command({ type: 'create_role', displayName, provider })
-  if (!result) {
-    addAgentError.value = 'room.roleSaveError'
+async function createRoleFromDraft() {
+  const draft = roleCreateDraft.value
+  if (!draft) return
+  const displayName = draft.displayName.trim()
+  if (!displayName) {
+    roleSaveError.value = 'room.roleNameRequired'
     return
   }
-  addAgentOpen.value = false
-  addAgentError.value = ''
+  if (!draft.provider) return
+  roleSaveError.value = ''
+  const payload = {
+    type: 'create_role',
+    displayName,
+    provider: draft.provider,
+    responsibilities: draft.responsibilities || '',
+    capabilities: [...draft.capabilities],
+  }
+  if (draft.prompt) payload.prompt = draft.prompt
+  if (draft.isController) payload.isController = true
+  const result = await command(payload)
+  if (!result) {
+    roleSaveError.value = 'room.roleSaveError'
+    return
+  }
   let role = roles.value.find(item => item.id === result.roleId)
   if (!role && result.roleId) {
     await refresh({ afterCurrent: true })
     role = roles.value.find(item => item.id === result.roleId)
   }
-  if (role) openRoleSettings(role.id)
+  roleCreateDraft.value = null
+  roleDeleteArmed.value = false
+  roleSaveError.value = ''
+  if (role) {
+    ensureRoleDraft(role)
+    roleDraftDirty.value = { ...roleDraftDirty.value, [role.id]: false }
+    roleSettingsId.value = role.id
+  } else {
+    roleSettingsId.value = ''
+  }
 }
+async function deleteSelectedRole() {
+  const role = selectedRole.value
+  if (!role) return
+  roleSaveError.value = ''
+  const result = await command({ type: 'delete_role', roleId: role.id })
+  if (!result) {
+    roleSaveError.value = 'room.roleDeleteError'
+    return
+  }
+  roleDeleteArmed.value = false
+  roleSettingsId.value = ''
+  roleCreateDraft.value = null
+}
+const canSaveRole = computed(() => {
+  const draft = selectedRoleDraft.value
+  if (busy.value || !draft) return false
+  if (roleCreateDraft.value) return Boolean(draft.displayName.trim() && draft.provider)
+  return Boolean(selectedRole.value) && isRoleDraftDirty(selectedRole.value)
+})
 function startCreating() { settingsOpen.value = false; chatSettingsOpen.value = false; creating.value = true }
 async function scrollToAttention() { await nextTick(); if (timeline.value) timeline.value.scrollTop = timeline.value.scrollHeight }
 async function chooseDirectory() {
@@ -873,19 +910,18 @@ async function answer(attention) {
 function onOverlayKeydown(event) {
   if (event.key !== 'Escape') return
   if (creating.value) { event.preventDefault(); creating.value = false }
-  else if (addAgentOpen.value) { event.preventDefault(); cancelAddAgent() }
-  else if (roleSettingsId.value) { event.preventDefault(); cancelRoleSettings() }
+  else if (roleCreateDraft.value || roleSettingsId.value) { event.preventDefault(); cancelRoleSettings() }
   else if (chatSettingsOpen.value) { event.preventDefault(); closeChatSettings() }
   else if (settingsOpen.value) { event.preventDefault(); closeProjectSettings() }
 }
-watch([settingsOpen, chatSettingsOpen, creating, addAgentOpen, roleSettingsId], async ([settings, chatSettings, create, addAgent, roleId]) => {
-  const open = settings || chatSettings || create || addAgent || Boolean(roleId)
+watch([settingsOpen, chatSettingsOpen, creating, roleCreateDraft, roleSettingsId], async ([settings, chatSettings, create, newRole, roleId]) => {
+  const open = settings || chatSettings || create || Boolean(newRole) || Boolean(roleId)
   document.body.classList.toggle('room-overlay-open', open)
   if (open) document.addEventListener('keydown', onOverlayKeydown)
   else document.removeEventListener('keydown', onOverlayKeydown)
   if (settings) { await nextTick(); settingsRef.value?.focus?.() }
   else if (chatSettings) { await nextTick(); chatSettingsRef.value?.focus?.() }
-  else if (addAgent) { await nextTick(); addAgentRef.value?.focus?.() }
+  else if (newRole) { await nextTick(); roleSettingsRef.value?.focus?.() }
   else if (roleId) { await nextTick(); roleSettingsRef.value?.focus?.() }
 })
 watch(() => props.createRequest, requested => {
@@ -908,8 +944,8 @@ watch(roomId, () => { workPanelOpen.value = true })
 watch([roomId, chatId], ([room, chat]) => {
   if (room) emit('active-change', { roomId: room, chatId: chat || '' })
   roleSettingsId.value = ''
-  addAgentOpen.value = false
-  addAgentError.value = ''
+  roleCreateDraft.value = null
+  roleDeleteArmed.value = false
   handoffRoles.value = {}
   answers.value = {}
   roleDrafts.value = {}
@@ -1051,6 +1087,9 @@ onBeforeUnmount(() => {
 .room-role-v2-title > span { color: var(--faint); font-size: var(--text-2xs); }
 .room-role-v2-title > strong { display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; font-size: var(--text-lg); }
 .room-role-v2-close { display: flex; align-items: center; gap: 8px; }
+.room-role-delete-button:hover, .room-role-delete-button:focus-visible { border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); color: var(--danger); }
+.room-role-delete-confirm { display: flex; align-items: center; gap: 8px; padding: 10px 22px; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--danger) 7%, var(--surface-raised)); font-size: var(--text-xs); }
+.room-role-delete-confirm > span { flex: 1; color: var(--text-soft); }
 .room-role-v2-body { display: grid; flex: 1; grid-template-columns: 280px minmax(0, 1fr); min-height: 0; overflow: hidden; }
 .room-role-v2-side { overflow: auto; padding: 18px; border-right: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 72%, var(--surface-raised)); }
 .room-role-v2-profile { display: flex; flex-direction: column; gap: 10px; padding: 18px 16px; border: 1px solid var(--border); border-radius: 16px; background: color-mix(in srgb, var(--surface-raised) 70%, transparent); }
@@ -1092,7 +1131,6 @@ onBeforeUnmount(() => {
 .room-role-v2-skills .secondary-button { min-height: 28px; padding-inline: 9px; font-size: var(--text-2xs); }
 .room-role-v2-footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 88%, var(--surface-raised)); }
 .room-role-v2-error { margin: 0; }
-.room-add-agent-modal { display: grid; gap: 14px; padding: 18px; border: 1px solid var(--border); border-radius: 12px; }
 .room-settings-header { display: flex; gap: 12px; justify-content: space-between; align-items: center; padding: 16px; border-bottom: 1px solid var(--border); }
 .room-settings-header div { display: flex; flex-direction: column; gap: 2px; }
 .room-settings-header span { color: var(--faint); font-size: var(--text-2xs); }

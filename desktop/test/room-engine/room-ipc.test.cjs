@@ -209,6 +209,7 @@ test('room IPC rejects malformed or privileged payloads before service invocatio
     [CHANNELS.userCommand, { type: 'update_role', chatId: 'chat', roleId: 'role', commandId: 'role-1', isController: 'yes' }],
     [CHANNELS.userCommand, { type: 'create_role', chatId: 'chat', commandId: 'role-1', provider: 'codex' }],
     [CHANNELS.userCommand, { type: 'create_role', chatId: 'chat', commandId: 'role-1', displayName: 'Writer' }],
+    [CHANNELS.userCommand, { type: 'delete_role', chatId: 'chat', roleId: 'role-1' }],
     [CHANNELS.listStale, { roomId: 'room', timeoutMs: 0 }],
     [CHANNELS.listStale, { roomId: 'room', timeoutMs: 1000, at: 'forged-time' }],
   ]

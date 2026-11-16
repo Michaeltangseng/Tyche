@@ -44,6 +44,14 @@ test('user role creation requires provider, name and replay identity', () => {
   assert.throws(() => validateUserCommand({ ...base, capabilities: 'read' }), /ROLE_CAPABILITIES_INVALID/)
 })
 
+test('user role deletion requires a role and replay identity', () => {
+  const base = { type: 'delete_role', chatId: 'chat-1', roleId: 'role-1', commandId: 'delete-role-1' }
+  assert.equal(validateUserCommand(base).roleId, 'role-1')
+  assert.throws(() => validateUserCommand({ ...base, roleId: '' }), /ROLE_ID_INVALID/)
+  assert.throws(() => validateUserCommand({ ...base, commandId: '' }), /COMMAND_ID_INVALID/)
+  assert.throws(() => validateUserCommand({ ...base, cascade: true }), /UNKNOWN_FIELD/)
+})
+
 test('user role metadata updates validate editable fields and reject empty updates', () => {
   const base = { type: 'update_role', chatId: 'chat-1', roleId: 'role-1', commandId: 'role-1' }
   assert.equal(validateUserCommand({ ...base, displayName: 'Editor' }).displayName, 'Editor')

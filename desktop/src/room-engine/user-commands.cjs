@@ -72,12 +72,15 @@ function createUserCommandService({ roomDb, repository }) {
           throw new Error('ROOM_ROLE_CAPABILITY_NOT_ALLOWED')
         }
         const displayName = action.displayName.trim()
+        const isController = action.isController === true
+        if (isController) repository.setControllerRole({ chatId: action.chatId, roleId: null })
         const roleId = repository.createAgentRole({
           chatId: action.chatId,
           displayName,
           responsibilities: action.responsibilities || '',
           capabilities,
           provider: action.provider,
+          isController,
           createdBy: actorId,
           creationReason: 'user_created',
         })
@@ -85,7 +88,7 @@ function createUserCommandService({ roomDb, repository }) {
         if (action.prompt !== undefined && action.prompt !== '') {
           promptRevision = repository.createRolePromptRevision({ roleId, prompt: action.prompt, createdBy: actorId })
         }
-        result = { roleId, displayName, provider: action.provider, capabilities, promptRevision }
+        result = { roleId, displayName, provider: action.provider, capabilities, isController, promptRevision }
       } else if (action.type === 'update_role') {
         const role = db.prepare('SELECT * FROM agent_roles WHERE id = ? AND chat_id = ?').get(action.roleId, action.chatId)
         if (!role) throw new Error('ROOM_ROLE_NOT_FOUND')
@@ -125,6 +128,13 @@ function createUserCommandService({ roomDb, repository }) {
         }
         const isController = action.isController === undefined ? Boolean(role.is_controller) : action.isController
         result = { roleId: action.roleId, displayName, responsibilities, capabilities, provider, isController, promptRevision }
+      } else if (action.type === 'delete_role') {
+        const role = db.prepare('SELECT id FROM agent_roles WHERE id = ? AND chat_id = ?').get(action.roleId, action.chatId)
+        if (!role) throw new Error('ROOM_ROLE_NOT_FOUND')
+        const used = db.prepare('SELECT id FROM assignments WHERE role_id = ? LIMIT 1').get(action.roleId)
+        if (used) throw new Error('ROOM_ROLE_IN_USE')
+        db.prepare('DELETE FROM agent_roles WHERE id = ?').run(action.roleId)
+        result = { roleId: action.roleId, deleted: true }
       } else if (action.type === 'retry_task' || action.type === 'handoff_task') {
         const previous = repository.getAssignmentContext(action.assignmentId)
         if (!previous || previous.task_id !== action.taskId || previous.chat_id !== action.chatId) throw new Error('ROOM_ASSIGNMENT_NOT_FOUND')

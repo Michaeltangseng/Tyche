@@ -83,6 +83,7 @@ function commandInput(input) {
   const required = {
     stop_task: ['taskId'], answer_attention: ['attentionId'], update_role_prompt: ['roleId', 'prompt', 'commandId'],
     update_role: ['roleId', 'commandId'], create_role: ['displayName', 'provider', 'commandId'],
+    delete_role: ['roleId', 'commandId'],
     accept_artifact: ['artifactId'], reject_artifact: ['artifactId'],
   }
   for (const field of required[command.type] || []) text(command[field])

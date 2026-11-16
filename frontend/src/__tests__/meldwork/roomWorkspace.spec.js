@@ -567,7 +567,7 @@ describe('v2 team workspace', () => {
     expect(wrapper.find('.room-role-modal').exists()).toBe(false)
   })
 
-  it('removes the header chat select and adds an agent from the roster', async () => {
+  it('opens role settings directly when adding an agent', async () => {
     const snapshot = data()
     snapshot.room.providers_json = ['codex', 'claude']
     const bridge = api(snapshot)
@@ -577,18 +577,50 @@ describe('v2 team workspace', () => {
 
     await wrapper.get('.room-agent-add').trigger('click')
     await flushPromises()
-    expect(wrapper.get('.room-add-agent-modal').isVisible()).toBe(true)
-    await wrapper.get('.room-add-agent-modal input').setValue('Reviewer')
-    await wrapper.get('.room-add-agent-modal').trigger('submit')
+    expect(wrapper.find('.room-add-agent-modal').exists()).toBe(false)
+    expect(wrapper.get('.room-role-modal').isVisible()).toBe(true)
+    expect(wrapper.find('.room-role-delete-button').exists()).toBe(false)
+    expect(wrapper.get('.room-role-v2-name input').element.value).toBe('Codex')
+
+    await wrapper.get('.room-role-v2-name input').setValue('Reviewer')
+    await wrapper.get('.room-role-controller-toggle').trigger('click')
+    await wrapper.get('.room-role-v2-footer .primary-button').trigger('click')
     await flushPromises()
 
     expect(bridge.applyUserCommand).toHaveBeenCalledWith(expect.objectContaining({
       type: 'create_role',
       displayName: 'Reviewer',
       provider: 'codex',
+      responsibilities: '',
+      capabilities: [],
+      isController: true,
       chatId: 'chat-1',
       commandId: expect.any(String),
     }))
+    expect(wrapper.find('.room-role-modal').exists()).toBe(false)
+  })
+
+  it('deletes an existing role from the role settings header', async () => {
+    const snapshot = data()
+    snapshot.roles = [{ id: 'worker', chat_id: 'chat-1', display_name: 'Writer', provider: 'codex', status: 'active', capabilities_json: [], current_prompt: '' }]
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    await wrapper.get('.room-agent-chip').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('.room-role-delete-button').trigger('click')
+    expect(wrapper.get('.room-role-delete-confirm').text()).toContain('Delete role Writer')
+    await wrapper.get('.room-role-delete-confirm .danger-button').trigger('click')
+    await flushPromises()
+
+    expect(bridge.applyUserCommand).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'delete_role',
+      roleId: 'worker',
+      chatId: 'chat-1',
+      commandId: expect.any(String),
+    }))
+    expect(wrapper.find('.room-role-modal').exists()).toBe(false)
   })
 
   it('edits role name, responsibilities, agent and capabilities through one command', async () => {

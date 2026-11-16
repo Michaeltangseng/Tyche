@@ -182,7 +182,7 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
     return mutate(async () => {
       const commandId = crypto.randomUUID()
       const payload = { ...input, chatId: targetChat }
-      if (['set_workspace_write', 'stop_task', 'retry_task', 'handoff_task', 'update_role_prompt', 'update_role', 'create_role'].includes(input.type)) payload.commandId = commandId
+      if (['set_workspace_write', 'stop_task', 'retry_task', 'handoff_task', 'update_role_prompt', 'update_role', 'create_role', 'delete_role'].includes(input.type)) payload.commandId = commandId
       const result = await api.applyUserCommand(payload)
       await refresh({ afterCurrent: true })
       return result

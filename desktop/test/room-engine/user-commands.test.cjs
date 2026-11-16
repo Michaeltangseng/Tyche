@@ -122,14 +122,16 @@ test('user can create a role with a prompt and replay the command safely', () =>
   const command = {
     type: 'create_role', chatId: state.chatId, commandId: 'create-role-1',
     displayName: 'Reviewer', provider: 'codex', responsibilities: 'Review changes',
-    capabilities: ['read'], prompt: 'Review carefully.',
+    capabilities: ['read'], prompt: 'Review carefully.', isController: true,
   }
   const first = state.commands.apply(command, { actorId: 'user-1' })
   assert.ok(first.roleId)
+  assert.equal(first.isController, true)
   const role = state.roomDb.database.prepare('SELECT * FROM agent_roles WHERE id = ?').get(first.roleId)
   assert.equal(role.display_name, 'Reviewer')
   assert.equal(role.created_by, 'user-1')
   assert.equal(role.creation_reason, 'user_created')
+  assert.equal(role.is_controller, 1)
   assert.deepEqual(JSON.parse(role.capabilities_json), ['read'])
   assert.equal(state.repository.getRolePrompt(first.roleId).prompt, 'Review carefully.')
   const second = state.commands.apply(command, { actorId: 'user-1' })
@@ -155,6 +157,23 @@ test('user can move the chat controller flag between roles', () => {
   assert.equal(controllerFlag(second), 1)
   state.commands.apply({ type: 'update_role', chatId: state.chatId, roleId: second, commandId: 'controller-3', isController: false })
   assert.equal(controllerFlag(second), 0)
+  state.roomDb.close()
+})
+
+test('user can delete an unused role but not one with assignment history', () => {
+  const state = setup()
+  const roleId = state.repository.createAgentRole({ chatId: state.chatId, displayName: 'Temporary', provider: 'codex', createdBy: 'user' })
+  const command = { type: 'delete_role', chatId: state.chatId, roleId, commandId: 'delete-role-1' }
+  const first = state.commands.apply(command)
+  assert.equal(first.deleted, true)
+  assert.equal(state.roomDb.database.prepare('SELECT id FROM agent_roles WHERE id = ?').get(roleId), undefined)
+  assert.equal(state.commands.apply(command).duplicate, true)
+  const usedRole = state.repository.createAgentRole({ chatId: state.chatId, displayName: 'Used', provider: 'codex', createdBy: 'user' })
+  const taskId = state.repository.createTask({ chatId: state.chatId, objective: 'Work', createdBy: 'user' })
+  state.repository.createAssignment({ taskId, roleId: usedRole })
+  assert.throws(() => state.commands.apply({
+    type: 'delete_role', chatId: state.chatId, roleId: usedRole, commandId: 'delete-role-2',
+  }), /ROLE_IN_USE/)
   state.roomDb.close()
 })
 
