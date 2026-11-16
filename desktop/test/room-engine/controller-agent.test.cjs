@@ -46,6 +46,38 @@ test('a chat controller role selects its provider over Room provider order', asy
   assert.equal(providerSeen, 'claude')
 })
 
+test('controller receives explicit role profile attributes for assignment decisions', async t => {
+  const state = setup(t)
+  const roleId = state.repository.createAgentRole({
+    chatId: state.chatId, displayName: 'Doc Writer', responsibilities: 'Write concise docs',
+    capabilities: ['read', 'write-drafts'], provider: 'codex', isController: true, createdBy: 'user',
+  })
+  state.repository.createRolePromptRevision({ roleId, prompt: 'Prefer short documents.', createdBy: 'user' })
+  let roster = null
+  const decide = createControllerAgent({
+    repository: state.repository,
+    resolveGroup: () => ({ id: 'native-host' }),
+    invokeAgent: async (...args) => {
+      roster = JSON.parse(args[5].promptOverride.split('\n').at(-1)).teamRoster
+      return { pendingMessage: { content: '{"actions":[]}' } }
+    },
+  })
+  await decide({
+    chatId: state.chatId, batchId: 'roster', contextRevision: 0,
+    roles: state.repository.listAgentRoles(state.chatId), messages: [],
+  })
+  assert.deepEqual(roster, [{
+    roleId,
+    name: 'Doc Writer',
+    provider: 'codex',
+    responsibilities: 'Write concise docs',
+    capabilities: ['read', 'write-drafts'],
+    isController: true,
+    skills: [],
+    prompt: 'Prefer short documents.',
+  }])
+})
+
 test('message queue invokes a read-only native controller and commits its actions', async t => {
   const state = setup(t)
   let invocation

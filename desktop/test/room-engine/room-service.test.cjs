@@ -102,6 +102,21 @@ function state(roomDb, sql) {
   roomDb.database.exec(sql)
 }
 
+test('room file reads stay inside the room workspace', async () => {
+  const { roomDb, service, repository } = setup()
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-files-'))
+  fs.writeFileSync(path.join(directory, 'note.txt'), 'hello from room')
+  const roomId = repository.createRoom({ name: 'Files', workspace: directory })
+  const listing = await service.listRoomFiles({ roomId })
+  assert.equal(listing.entries.some(entry => entry.name === 'note.txt' && entry.kind === 'file'), true)
+  const content = await service.readRoomFile({ roomId, relPath: 'note.txt' })
+  assert.equal(content.kind, 'text')
+  assert.equal(content.text, 'hello from room')
+  await assert.rejects(service.readRoomFile({ roomId, relPath: '../outside.txt' }), /WORKDIR_|PATH|NOT_FOUND/)
+  roomDb.close()
+  fs.rmSync(directory, { recursive: true, force: true })
+})
+
 test('assignment trace resolves a lazily initialized trace reader', () => {
   const { roomDb, service, repository, roomId, roleId, taskId } = setup()
   const assignmentId = repository.createAssignment({ taskId, roleId, runId: 'run-trace' })

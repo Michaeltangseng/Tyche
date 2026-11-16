@@ -12,6 +12,8 @@ const CHANNELS = Object.freeze({
   bootstrap: 'room:bootstrap',
   snapshot: 'room:snapshot',
   chatMessages: 'room:chat-messages',
+  filesList: 'room:files-list',
+  filesRead: 'room:files-read',
   artifactDiff: 'room:artifact-diff',
   submitMessage: 'room:message-submit',
   userCommand: 'room:user-command',
@@ -125,6 +127,25 @@ function registerRoomIpc({ ipcMain, service, requireRenderer, isShuttingDown = (
       if (input.beforeSequence !== undefined && (!Number.isSafeInteger(input.beforeSequence) || input.beforeSequence < 1)) throw new TypeError('ROOM_MESSAGE_CURSOR_INVALID')
       if (input.limit !== undefined && (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 200)) throw new TypeError('ROOM_MESSAGE_LIMIT_INVALID')
       return service.listChatMessages({ ...input, beforeSequence: input.beforeSequence ?? null, limit: input.limit ?? 100 })
+    }],
+    [CHANNELS.filesList, input => {
+      assertInput(input, ['roomId', 'relPath', 'cursor'])
+      text(input.roomId)
+      if (input.relPath !== undefined && (typeof input.relPath !== 'string' || input.relPath.length > 4096 || input.relPath.includes('\u0000'))) {
+        throw new TypeError('ROOM_IPC_RELATIVE_PATH_INVALID')
+      }
+      if (input.cursor !== undefined && (typeof input.cursor !== 'string' || input.cursor.length > 80)) {
+        throw new TypeError('ROOM_IPC_CURSOR_INVALID')
+      }
+      return service.listRoomFiles({ roomId: input.roomId, relPath: input.relPath ?? '', cursor: input.cursor ?? null })
+    }],
+    [CHANNELS.filesRead, input => {
+      assertInput(input, ['roomId', 'relPath', 'offset', 'length'])
+      text(input.roomId)
+      text(input.relPath, 4096)
+      if (input.offset !== undefined && (!Number.isSafeInteger(input.offset) || input.offset < 0)) throw new TypeError('ROOM_IPC_OFFSET_INVALID')
+      if (input.length !== undefined && (!Number.isSafeInteger(input.length) || input.length < 1 || input.length > 512 * 1024)) throw new TypeError('ROOM_IPC_LENGTH_INVALID')
+      return service.readRoomFile({ roomId: input.roomId, relPath: input.relPath, offset: input.offset ?? 0, length: input.length ?? 512 * 1024 })
     }],
     [CHANNELS.submitMessage, input => service.submitMessage(messageInput(input))],
     [CHANNELS.artifactDiff, input => {

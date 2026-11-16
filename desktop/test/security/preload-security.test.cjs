@@ -84,7 +84,7 @@ test('local preload exposes the local-only Meldwork API', async () => {
   assert.equal('cancelConfigure' in api.localWorkspace, false)
   assert.equal(Object.isFrozen(api.room), true)
   assert.deepEqual(Object.keys(api.room).sort(), [
-    'applyUserCommand', 'bootstrap', 'listStaleAssignments', 'submitMessage', 'snapshot', 'listRooms', 'createChat', 'deleteChat', 'deleteRoom', 'chatMessages', 'artifactDiff', 'assignmentTrace', 'assignmentTraceBlob', 'onChanged', 'onAssignmentEvent', 'skills', 'updateSkillBindings',
+    'applyUserCommand', 'bootstrap', 'listStaleAssignments', 'submitMessage', 'snapshot', 'listRooms', 'createChat', 'deleteChat', 'deleteRoom', 'chatMessages', 'filesList', 'filesRead', 'artifactDiff', 'assignmentTrace', 'assignmentTraceBlob', 'onChanged', 'onAssignmentEvent', 'skills', 'updateSkillBindings',
   ].sort())
   assert.equal('localAgentProvider' in api, false)
   await api.localWorkspace.deleteMessage('group-1', 'message-1')
@@ -203,13 +203,15 @@ test('room preload forwards only user requests and read queries', async () => {
   await api.room.bootstrap({ name: 'Room', workspace: '/tmp/work' })
   await api.room.snapshot({ roomId: 'room' })
   await api.room.chatMessages({ roomId: 'room', chatId: 'chat', beforeSequence: 10, limit: 25 })
+  await api.room.filesList({ roomId: 'room', relPath: 'docs' })
+  await api.room.filesRead({ roomId: 'room', relPath: 'docs/README.md' })
   await api.room.artifactDiff({ roomId: 'room', artifactId: 'artifact' })
   await api.room.submitMessage({ chatId: 'chat', content: 'hello' })
   await api.room.applyUserCommand({ type: 'pause_chat', chatId: 'chat' })
   await api.room.listStaleAssignments({ roomId: 'room', timeoutMs: 1000 })
   assert.deepEqual(invocations.map(item => item.channel), [
     'room:list', 'room:chat-create', 'room:chat-delete', 'room:room-delete',
-    'room:bootstrap', 'room:snapshot', 'room:chat-messages', 'room:artifact-diff', 'room:message-submit', 'room:user-command', 'room:assignments-stale',
+    'room:bootstrap', 'room:snapshot', 'room:chat-messages', 'room:files-list', 'room:files-read', 'room:artifact-diff', 'room:message-submit', 'room:user-command', 'room:assignments-stale',
   ])
 })
 

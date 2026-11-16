@@ -164,6 +164,8 @@ if (isLocalDocument) Object.assign(desktopApi, {
     bootstrap: input => ipcRenderer.invoke('room:bootstrap', input),
     snapshot: input => ipcRenderer.invoke('room:snapshot', input),
     chatMessages: input => ipcRenderer.invoke('room:chat-messages', input),
+    filesList: input => ipcRenderer.invoke('room:files-list', input),
+    filesRead: input => ipcRenderer.invoke('room:files-read', input),
     submitMessage: input => ipcRenderer.invoke('room:message-submit', input),
     applyUserCommand: input => ipcRenderer.invoke('room:user-command', input),
     updateSkillBindings: input => ipcRenderer.invoke('room:skill-bindings-update', input),

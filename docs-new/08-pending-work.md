@@ -309,7 +309,7 @@ workdir: writeRoot || current.workdir
 
 ### [ ] P1-05 完整 Trace 面板
 
-当前 `RoomWorkspace` 只有任务卡里的内联 Trace 摘要和 Blob 分页。还缺：
+当前 `RoomWorkspace` 已有任务卡和 Report 卡内联 Trace、Blob 分页，以及 Room 文件抽屉（目录树、文本/图片/二进制预览）。Assignment Trace reader 改为按请求延迟解析，避免服务构造时拿到 null。还缺：
 
 - 独立完整 Trace 面板；
 - Controller 批次 Trace 的只读入口（当前 `assignmentTrace` 只接受 Assignment）；

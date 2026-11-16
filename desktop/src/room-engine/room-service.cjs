@@ -14,6 +14,16 @@ const { createRuntimeRecovery } = require('./runtime-recovery.cjs')
 const { createProcessReconciliation } = require('./process-reconciliation.cjs')
 const { createControllerBacklog } = require('./controller-backlog.cjs')
 const { createHash } = require('node:crypto')
+const fs = require('node:fs')
+const path = require('node:path')
+const { resolveRoot } = require('../runs/path-claims.cjs')
+const {
+  classifyContent,
+  imageMime,
+  listDirectory,
+  resolveForRead,
+  trimUtf8Buffer,
+} = require('../project-room/workdir-access.cjs')
 
 const RETRYABLE_CONTROLLER_ERRORS = new Set([
   'ROOM_CONTROLLER_TIMEOUT', 'ROOM_CONTROLLER_GROUP_NOT_FOUND', 'ROOM_CONTROLLER_CHAT_BUSY',
@@ -61,6 +71,15 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
       fallbackNote: () => (String(locale?.() || '').toLowerCase().startsWith('zh')
         ? '已收到消息；本轮没有需要派发的任务。'
         : 'Message received; no work needed this round.'),
+      dispatchNote: assignments => {
+        const zh = String(locale?.() || '').toLowerCase().startsWith('zh')
+        const items = assignments.map(({ display_name, objective }) => {
+          const text = String(objective || '').replace(/\s+/g, ' ').trim()
+          const short = text.length > 60 ? `${text.slice(0, 60)}…` : text
+          return `@${display_name}${short ? (zh ? `「${short}」` : ` "${short}"`) : ''}`
+        })
+        return `${zh ? '已派发任务：' : 'Assigned: '}${items.join(zh ? '；' : '; ')}`
+      },
     })
     : null
   const controllerQueue = controller
@@ -328,6 +347,57 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     })
   }
 
+  async function listRoomFiles({ roomId, relPath = '', cursor = null } = {}) {
+    const room = repository.getRoom(roomId)
+    if (!room) throw new Error('ROOM_NOT_FOUND')
+    const offset = cursor === null || cursor === undefined ? 0 : Number(cursor)
+    if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('ROOM_FILES_CURSOR_INVALID')
+    const rootInfo = await resolveRoot(room.workspace)
+    const result = await listDirectory(rootInfo, relPath, offset)
+    return { entries: result.entries, cursor: result.cursor, hasMore: result.hasMore }
+  }
+
+  async function readRoomFile({ roomId, relPath, offset = 0, length = 512 * 1024 } = {}) {
+    const room = repository.getRoom(roomId)
+    if (!room) throw new Error('ROOM_NOT_FOUND')
+    if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('ROOM_FILES_OFFSET_INVALID')
+    if (!Number.isSafeInteger(length) || length < 1 || length > 512 * 1024) throw new Error('ROOM_FILES_LENGTH_INVALID')
+    const rootInfo = await resolveRoot(room.workspace)
+    const opened = await resolveForRead(rootInfo, relPath)
+    try {
+      const stat = fs.fstatSync(opened.fd)
+      const totalBytes = stat.size
+      const start = Math.min(Math.max(0, offset), totalBytes)
+      const requested = Math.min(length, 512 * 1024, totalBytes - start)
+      const buffer = Buffer.alloc(requested)
+      const read = requested > 0 ? fs.readSync(opened.fd, buffer, 0, requested, start) : 0
+      const slice = Buffer.isBuffer(read) ? read : buffer.subarray(0, read)
+      const kind = classifyContent(slice, path.basename(opened.relative))
+      if (kind === 'image' && totalBytes <= 5 * 1024 * 1024) {
+        const whole = Buffer.alloc(totalBytes)
+        fs.readSync(opened.fd, whole, 0, totalBytes, 0)
+        return { kind: 'image', mime: imageMime(whole), dataBase64: whole.toString('base64') }
+      }
+      if (kind === 'text') {
+        const textBuffer = trimUtf8Buffer(slice)
+        return {
+          kind: 'text',
+          text: textBuffer.toString('utf8'),
+          totalBytes,
+          eof: start + textBuffer.length >= totalBytes,
+          encoding: 'utf-8',
+        }
+      }
+      return {
+        kind: 'binary',
+        size: totalBytes,
+        ...(kind === 'image' ? { mime: imageMime(slice) } : {}),
+      }
+    } finally {
+      fs.closeSync(opened.fd)
+    }
+  }
+
   function applyControllerAction(input, options) {
     return roomDb.withTransaction(() => {
       const result = actions.applyController(input, options)
@@ -416,6 +486,8 @@ function createRoomService({ roomDb, repository, now, invokeAgent, resolveGroup,
     deleteRoom,
     snapshot,
     listChatMessages,
+    listRoomFiles,
+    readRoomFile,
     artifactDiff: input => {
       if (closed) throw new Error('ROOM_SERVICE_CLOSED')
       if (typeof readArtifactDiff !== 'function') throw new Error('ROOM_ARTIFACT_DIFF_UNAVAILABLE')

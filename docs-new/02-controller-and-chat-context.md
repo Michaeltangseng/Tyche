@@ -15,6 +15,8 @@ Controller 可以：
 
 `note` 动作写入一条 `author_type=controller` 的可见 Chat 消息，用于路由说明、简短答复或“本轮无需派发”的反馈；它不是 Worker 产出，不能承载实现结果或权限变更。包含用户消息的批次不应返回空动作；平台在模型返回空动作时会生成一条兜底主控消息。
 
+Controller 会收到 `teamRoster`，其中包含当前 Chat 每个角色的名称、Provider、职责、能力、技能、角色 Prompt 和主控标记，用于按职责与能力选择执行者。`assign` 成功后，平台会追加一条带 `@角色名` 的派发主控消息，保证用户能看到任务被派给了谁；如果 Controller 自己的 note 已包含该提及，则不重复追加。
+
 Controller 不可以：
 
 - 编写业务代码或替代 Worker 做技术判断；

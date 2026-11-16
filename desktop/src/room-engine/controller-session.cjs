@@ -9,7 +9,7 @@ function decode(value, fallback = []) {
   try { return value == null ? fallback : JSON.parse(value) } catch { return fallback }
 }
 
-function createControllerSession({ roomDb, repository, applyAction, decide, now = () => Date.now(), timeoutMs = 60_000, fallbackNote = null } = {}) {
+function createControllerSession({ roomDb, repository, applyAction, decide, now = () => Date.now(), timeoutMs = 60_000, fallbackNote = null, dispatchNote = null } = {}) {
   if (!roomDb || !repository || typeof applyAction !== 'function' || typeof decide !== 'function') {
     throw new TypeError('ROOM_CONTROLLER_SESSION_DEPENDENCIES_REQUIRED')
   }
@@ -93,9 +93,31 @@ function createControllerSession({ roomDb, repository, applyAction, decide, now 
         }
       }
       const results = []
+      const dispatchedAssignments = []
       for (const action of orderedActions) {
         const effectiveRevision = repository.getChatContext(chatId).revision
-        results.push(applyAction({ ...action, contextRevision: effectiveRevision }, { actorId: 'controller', contextRevision: effectiveRevision, userMessageIds }))
+        const result = applyAction({ ...action, contextRevision: effectiveRevision }, { actorId: 'controller', contextRevision: effectiveRevision, userMessageIds })
+        results.push(result)
+        if (action.type === 'assign' && result?.assignmentId) {
+          const assignment = repository.getAssignmentContext(result.assignmentId)
+          if (assignment) dispatchedAssignments.push(assignment)
+        }
+      }
+      if (dispatchedAssignments.length && typeof dispatchNote === 'function') {
+        const existingNotes = orderedActions.filter(action => action.type === 'note').map(action => action.content).join('\n')
+        const missingMention = dispatchedAssignments.some(assignment => !existingNotes.includes(`@${assignment.display_name}`))
+        if (missingMention) {
+          const content = String(dispatchNote(dispatchedAssignments) || '').trim()
+          if (content) {
+            const effectiveRevision = repository.getChatContext(chatId).revision
+            const noteAction = validateControllerAction({
+              type: 'note', chatId, contextRevision: effectiveRevision, content,
+            }, { chatId, contextRevision: effectiveRevision })
+            results.push(applyAction({ ...noteAction, contextRevision: effectiveRevision }, {
+              actorId: 'controller', contextRevision: effectiveRevision, userMessageIds,
+            }))
+          }
+        }
       }
       const actionIds = results.map(result => result?.event?.eventId).filter(Boolean)
       const decisionId = repository.createControllerDecision({

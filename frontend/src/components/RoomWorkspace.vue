@@ -33,6 +33,9 @@
         <button v-if="attentions.length" class="room-notice-pill" type="button" @click="scrollToAttention">
           {{ t('room.attentions', { count: attentions.length }) }}
         </button>
+        <button v-if="snapshot" class="room-icon-button room-files-toggle" type="button" :aria-pressed="filesOpen" :title="t('room.files')" :aria-label="t('room.files')" @click="filesOpen = !filesOpen">
+          <FolderOutline />
+        </button>
         <button v-if="hasWork" class="secondary-button room-work-toggle" type="button" :aria-pressed="workPanelOpen" @click="workPanelOpen = !workPanelOpen">
           {{ t('room.workPanel') }} · {{ workCount }}
         </button>
@@ -88,6 +91,31 @@
                     <RoomArtifactDiff v-if="diffArtifactId === artifact.id" :key="`${roomId}:${artifact.id}`" :api="api" :room-id="roomId" :artifact="artifact" @close="diffArtifactId = ''" />
                   </article>
                 </div>
+                <details v-if="entry.assignment" class="room-message-trace" @toggle="onTraceToggle(entry.assignment, $event)">
+                  <summary>
+                    {{ t('room.trace') }}
+                    <span v-if="traceSteps[entry.assignment.id]?.length"> · {{ traceSteps[entry.assignment.id].length }}</span>
+                  </summary>
+                  <p v-if="traceBusy[entry.assignment.id]" class="room-muted">{{ t('room.loadingTrace') }}</p>
+                  <p v-if="traceErrors[entry.assignment.id]" class="room-error">
+                    {{ t('room.error') }}
+                    <button class="secondary-button" type="button" @click="loadTrace(entry.assignment)">{{ t('room.refresh') }}</button>
+                  </p>
+                  <ol v-if="traceSteps[entry.assignment.id]?.length" class="room-trace-list">
+                    <li v-for="(step, index) in traceSteps[entry.assignment.id]" :key="`report:${entry.assignment.id}:${index}:${step.seq || ''}`">
+                      <strong>{{ step.title || step.kind || t('room.trace') }}</strong>
+                      <span v-if="step.detail || step.message">{{ step.detail || step.message }}</span>
+                      <div v-for="(blob, field) in step.blobs || {}" :key="`report:${entry.assignment.id}:${step.seq}:${field}`" class="room-trace-blob">
+                        <button v-if="!traceBlobEof[`${entry.assignment.id}:${step.seq}:${field}`]" class="secondary-button" type="button" :disabled="traceBlobBusy[`${entry.assignment.id}:${step.seq}:${field}`]" @click="loadTraceBlob(entry.assignment, step, field)">
+                          {{ traceBlobOffsets[`${entry.assignment.id}:${step.seq}:${field}`] ? t('room.moreTraceOutput') : t('room.showTraceOutput', { field }) }}
+                        </button>
+                        <pre v-if="traceBlobTexts[`${entry.assignment.id}:${step.seq}:${field}`]">{{ traceBlobTexts[`${entry.assignment.id}:${step.seq}:${field}`] }}</pre>
+                      </div>
+                    </li>
+                  </ol>
+                  <button v-if="traceHasMore[entry.assignment.id]" class="secondary-button" type="button" :disabled="traceBusy[entry.assignment.id]" @click="loadTrace(entry.assignment, true)">{{ t('room.moreTrace') }}</button>
+                  <p v-else-if="traceLoaded[entry.assignment.id] && !traceSteps[entry.assignment.id]?.length" class="room-muted">{{ t('room.traceEmpty') }}</p>
+                </details>
               </div>
               <span v-if="entry.isUser" class="room-message-avatar room-user-avatar" :aria-label="t('room.you')"><PersonOutline /></span>
             </article>
@@ -179,6 +207,14 @@
         </template>
       </aside>
     </div>
+
+    <RoomFilesDrawer
+      v-if="filesOpen && snapshot"
+      :key="roomId"
+      :api="api"
+      :room-id="roomId"
+      @close="filesOpen = false"
+    />
 
     <div v-if="creating" class="room-modal-backdrop" @click.self="creating = false" @wheel.self.prevent>
       <form class="room-create room-modal" @submit.prevent="create" @keydown.esc.stop="creating = false">
@@ -421,6 +457,7 @@ import {
   AddOutline,
   ChevronDownOutline,
   CloseOutline,
+  FolderOutline,
   PencilOutline,
   PersonOutline,
   TrashOutline,
@@ -429,6 +466,7 @@ import { agentLogo } from '../catalog.js'
 import { t } from '../i18n.js'
 import { useRoomWorkspace } from '../composables/useRoomWorkspace.js'
 import RoomArtifactDiff from './RoomArtifactDiff.vue'
+import RoomFilesDrawer from './RoomFilesDrawer.vue'
 
 const props = defineProps({ api: { type: Object, required: true }, pickDirectory: { type: Function, required: true }, agents: { type: Array, default: () => [] }, createRequest: { type: Boolean, default: false }, openRequest: { type: Object, default: null } })
 const emit = defineEmits(['create-request-consumed', 'active-change'])
@@ -439,6 +477,7 @@ const settingsOpen = ref(false)
 const settingsRef = ref(null)
 const chatSettingsOpen = ref(false)
 const chatSettingsRef = ref(null)
+const filesOpen = ref(false)
 const roleCreateDraft = ref(null)
 const roleDeleteArmed = ref(false)
 const roleSettingsId = ref('')
@@ -529,7 +568,8 @@ const entries = computed(() => [
       .map(id => (snapshot.value?.artifacts || []).find(artifact => artifact.id === id))
       .filter(Boolean)
     return { key: report.id, author: `${roleLabel(role)} · ${t('room.report')}`, content: report.summary,
-      evidence: report.evidence_json, artifacts, report: true, isUser: false, provider: role?.provider || '', createdAt: report.created_at }
+      evidence: report.evidence_json, artifacts, assignment, report: true, isUser: false,
+      provider: role?.provider || '', createdAt: report.created_at }
   }),
 ].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))))
 
@@ -616,6 +656,10 @@ function canRetry(item) { return ['failed', 'waiting', 'blocked', 'cancelled'].i
 function statusLabel(status) { const key = `room.status.${status}`; return t(key) === key ? t('room.status.waiting') : t(key) }
 function optionId(option) { return typeof option === 'string' ? option : option.id || option.optionId }
 function formatTime(value) { return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+function onTraceToggle(assignment, event) {
+  if (!assignment || !event?.target?.open) return
+  if (!traceLoaded.value[assignment.id] && !traceBusy.value[assignment.id]) void loadTrace(assignment)
+}
 async function loadTrace(assignment, older = false) {
   traceBusy.value = { ...traceBusy.value, [assignment.id]: true }
   traceErrors.value = { ...traceErrors.value, [assignment.id]: false }
@@ -1039,6 +1083,9 @@ onBeforeUnmount(() => {
 .room-message ul { margin: 8px 0 0; padding-left: 18px; color: var(--text-soft); font-size: var(--text-xs); line-height: 1.55; }
 .room-report .room-message-body { padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); }
 .room-message-controller .room-message-body { padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--accent-soft) 34%, var(--surface-raised)); }
+.room-message-trace { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); font-size: var(--text-xs); }
+.room-message-trace summary { cursor: pointer; color: var(--text-soft); }
+.room-message-trace .room-trace-list { margin: 8px 0 0; }
 .room-message-artifacts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .room-artifact-card { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--surface) 80%, var(--surface-raised)); }
 .room-artifact-head { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; }

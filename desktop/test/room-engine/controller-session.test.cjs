@@ -161,6 +161,28 @@ test('empty user-message decisions produce a visible fallback controller note', 
   state.roomDb.close()
 })
 
+test('assignment actions add a visible dispatch note with the assignee mention', async () => {
+  const state = setup()
+  const taskId = state.repository.createTask({ chatId: state.chatId, objective: 'Write docs', createdBy: 'controller' })
+  const actions = createRoomActionService(state)
+  const session = createControllerSession({
+    ...state,
+    applyAction: actions.applyController,
+    decide: async () => ({ actions: [{
+      type: 'assign', chatId: state.chatId, contextRevision: 0, taskId, roleId: state.roleId, required: true, writeScopes: [],
+    }] }),
+    dispatchNote: assignments => `Assigned: ${assignments.map(assignment => `@${assignment.display_name}`).join(', ')}`,
+  })
+  const result = await session.process({ chatId: state.chatId, batchId: 'dispatch-note', contextRevision: 0 })
+  assert.equal(result.decision.results.some(item => item.assignmentId), true)
+  const noteResult = result.decision.results.find(item => item.messageId)
+  assert.ok(noteResult)
+  const message = state.repository.getMessage(noteResult.messageId)
+  assert.equal(message.author_type, 'controller')
+  assert.ok(message.content.includes('@Backend'))
+  state.roomDb.close()
+})
+
 test('context revisions are persisted and supplied to controller decisions', async () => {
   const state = setup()
   const context = state.repository.createChatContextRevision({ chatId: state.chatId, instructions: 'Prefer concise reports', changes: { reviewRequired: true }, createdBy: 'user-1' })

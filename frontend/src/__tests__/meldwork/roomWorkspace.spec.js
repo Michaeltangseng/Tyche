@@ -20,6 +20,8 @@ function api(snapshot = data()) {
     artifactDiff: vi.fn(async () => ({ text: '+saved change', truncated: false })),
     assignmentTrace: vi.fn(async () => ({ steps: [{ seq: 1, title: 'Read source', detail: 'Opened package.json' }], cursor: 'cursor-1', hasMore: false })),
     assignmentTraceBlob: vi.fn(async () => ({ text: 'trace output', totalBytes: 12, eof: true })),
+    filesList: vi.fn(async () => ({ entries: [{ name: 'README.md', kind: 'file', size: 5, mtime: '2026-11-16T00:00:00Z' }], hasMore: false })),
+    filesRead: vi.fn(async () => ({ kind: 'text', text: 'hello', totalBytes: 5, eof: true, encoding: 'utf-8' })),
     submitMessage: vi.fn(async () => ({ ok: true })), applyUserCommand: vi.fn(async () => ({ ok: true })),
     skills: vi.fn(async kind => ({ supported: true, skills: [{ targetKind: kind, namespace: 'local', slug: 'review', name: 'Review' }] })),
     updateSkillBindings: vi.fn(async input => ({ ...input, skillBindings: input.selections || null })),
@@ -146,6 +148,39 @@ describe('v2 team workspace', () => {
     const note = wrapper.get('.room-message-controller')
     expect(note.text()).toContain('Controller')
     expect(note.text()).toContain('Message received; no work needed this round.')
+  })
+
+  it('loads an inline assignment trace from a report card', async () => {
+    const snapshot = data()
+    snapshot.roles = [{ id: 'worker', chat_id: 'chat-1', display_name: 'Writer', provider: 'codex', status: 'active' }]
+    snapshot.tasks = [{ id: 'task', chat_id: 'chat-1', objective: 'Write docs', status: 'done' }]
+    snapshot.assignments = [{ id: 'attempt', task_id: 'task', role_id: 'worker', status: 'completed', run_id: 'run-private' }]
+    snapshot.reports = [{ id: 'report', task_id: 'task', assignment_id: 'attempt', summary: 'Document ready', evidence_json: [], artifact_ids_json: [], created_at: '2026-11-15T00:00:00Z' }]
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    const trace = wrapper.get('.room-message-trace')
+    trace.element.open = true
+    await trace.trigger('toggle')
+    await flushPromises()
+    expect(bridge.assignmentTrace).toHaveBeenCalledWith({ roomId: 'room-1', assignmentId: 'attempt', direction: 'backward', limit: 100 })
+    expect(trace.text()).toContain('Read source')
+  })
+
+  it('opens the room files drawer and previews a file', async () => {
+    const snapshot = data()
+    snapshot.room.workspace = '/tmp/current-project'
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    await wrapper.get('.room-files-toggle').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.room-files-drawer').text()).toContain('Files')
+    expect(bridge.filesList).toHaveBeenCalledWith({ roomId: 'room-1', relPath: '' })
+    await wrapper.get('.workdir-tree-file').trigger('click')
+    await flushPromises()
+    expect(bridge.filesRead).toHaveBeenCalledWith({ roomId: 'room-1', relPath: 'README.md' })
+    expect(wrapper.get('.file-preview').text()).toContain('hello')
   })
 
   it('renders and appends live output for a running assignment', async () => {

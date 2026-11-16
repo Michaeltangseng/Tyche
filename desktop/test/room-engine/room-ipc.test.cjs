@@ -69,7 +69,7 @@ test('internal execution and platform fact channels are not registered', () => {
   assert.deepEqual([...handlers.keys()].sort(), [
     'room:list', 'room:chat-create', 'room:chat-delete', 'room:room-delete', 'room:artifact-diff',
     'room:bootstrap', 'room:snapshot', 'room:chat-messages', 'room:message-submit', 'room:user-command', 'room:assignments-stale',
-    'room:assignment-trace', 'room:assignment-trace-blob', 'room:skill-bindings-update',
+    'room:files-list', 'room:files-read', 'room:assignment-trace', 'room:assignment-trace-blob', 'room:skill-bindings-update',
   ].sort())
   for (const channel of ['room:assignment-start', 'room:controller-action', 'room:report-import', 'room:session-liveness', 'room:effect-enqueue']) {
     assert.equal(handlers.has(channel), false)
@@ -85,6 +85,19 @@ test('chat message paging IPC validates bounded cursors and forwards only allowe
   await assert.rejects(handlers.get(CHANNELS.chatMessages)({}, { ...input, beforeSequence: 0 }), /CURSOR_INVALID/)
   await assert.rejects(handlers.get(CHANNELS.chatMessages)({}, { ...input, limit: 201 }), /LIMIT_INVALID/)
   await assert.rejects(handlers.get(CHANNELS.chatMessages)({}, { ...input, filePath: '/tmp/messages' }), /UNKNOWN_FIELD/)
+})
+
+test('room file IPC accepts only room-scoped relative paths and bounded reads', async () => {
+  const { handlers, calls, service, ipcMain } = setup()
+  registerRoomIpc({ ipcMain, service, requireRenderer: () => {} })
+  await handlers.get(CHANNELS.filesList)({}, { roomId: 'room', relPath: 'docs', cursor: '10' })
+  assert.deepEqual(calls[0], ['listRoomFiles', { roomId: 'room', relPath: 'docs', cursor: '10' }, undefined])
+  await handlers.get(CHANNELS.filesRead)({}, { roomId: 'room', relPath: 'docs/a.md', offset: 0, length: 1024 })
+  assert.deepEqual(calls[1], ['readRoomFile', { roomId: 'room', relPath: 'docs/a.md', offset: 0, length: 1024 }, undefined])
+  await assert.rejects(handlers.get(CHANNELS.filesRead)({}, { roomId: 'room', relPath: '', offset: 0 }), /TEXT_INVALID/)
+  await assert.rejects(handlers.get(CHANNELS.filesRead)({}, { roomId: 'room', relPath: 'a', length: 512 * 1024 + 1 }), /LENGTH_INVALID/)
+  await assert.rejects(handlers.get(CHANNELS.filesList)({}, { roomId: 'room', root: '/tmp' }), /UNKNOWN_FIELD/)
+  assert.equal(calls.length, 2)
 })
 
 test('assignment trace Blob IPC accepts bounded ledger identifiers and forwards pagination', async () => {
