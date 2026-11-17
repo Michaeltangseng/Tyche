@@ -95,6 +95,19 @@ const LOCAL_IPC_CHANNELS = Object.freeze([
   'trace:status',
   'trace:diskUsage',
   'trace:prune',
+  'team-room:list',
+  'team-room:bootstrap',
+  'team-room:snapshot',
+  'team-room:chat-messages',
+  'team-room:chat-create',
+  'team-room:chat-delete',
+  'team-room:message-submit',
+  'team-room:accept-task',
+  'team-room:stop-reply',
+  'team-room:files-list',
+  'team-room:files-read',
+  'team-room:write-authorized',
+  'team-room:runtime-events',
 ])
 
 let nextRoutingId = 1

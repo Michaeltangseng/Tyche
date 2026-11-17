@@ -108,6 +108,26 @@ if (isLocalDocument) Object.assign(desktopApi, {
       return () => ipcRenderer.removeListener('local-workspace:open-group', listener)
     },
   }),
+  teamRoom: Object.freeze({
+    listRooms: () => ipcRenderer.invoke('team-room:list'),
+    bootstrap: input => ipcRenderer.invoke('team-room:bootstrap', input),
+    snapshot: input => ipcRenderer.invoke('team-room:snapshot', input),
+    chatMessages: input => ipcRenderer.invoke('team-room:chat-messages', input),
+    createChat: input => ipcRenderer.invoke('team-room:chat-create', input),
+    deleteChat: input => ipcRenderer.invoke('team-room:chat-delete', input),
+    submitMessage: input => ipcRenderer.invoke('team-room:message-submit', input),
+    acceptTask: input => ipcRenderer.invoke('team-room:accept-task', input),
+    stopReply: input => ipcRenderer.invoke('team-room:stop-reply', input),
+    filesList: input => ipcRenderer.invoke('team-room:files-list', input),
+    filesRead: input => ipcRenderer.invoke('team-room:files-read', input),
+    setWriteAuthorized: input => ipcRenderer.invoke('team-room:write-authorized', input),
+    runtimeEvents: input => ipcRenderer.invoke('team-room:runtime-events', input),
+    onChanged: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('team-room:changed', listener)
+      return () => ipcRenderer.removeListener('team-room:changed', listener)
+    },
+  }),
   room: Object.freeze({
     listRooms: () => ipcRenderer.invoke('room:list', {}),
     permissionModes: () => ipcRenderer.invoke('room:permission-modes', {}),

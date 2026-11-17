@@ -95,6 +95,8 @@ const {
   resolveKnowledgeBaseSources,
 } = require('./knowledge/local-knowledge-base.cjs')
 const { LocalKnowledgeConnectors } = require('./knowledge/local-knowledge-connectors.cjs')
+const { createRoomHost } = require('./room/room-host.cjs')
+const { registerTeamRoomIpc } = require('./shell/team-room-ipc.cjs')
 const { openRoomDatabase } = require('./room-engine/room-db.cjs')
 const { createRoomRepository } = require('./room-engine/room-repository.cjs')
 const { createRoomService } = require('./room-engine/room-service.cjs')
@@ -162,6 +164,7 @@ let shutdownStarted = false
 let roomEngineDb = null
 let roomEngineService = null
 let disposeRoomIpc = null
+let teamRoomHost = null
 const knowledgeInstallShutdown = new AbortController()
 let quitCleanup = null
 let cachedAppIcon
@@ -1076,6 +1079,10 @@ function registerIpc() {
     requireRenderer: requireDesktopRenderer,
     isShuttingDown: () => shutdownStarted,
   })
+  registerTeamRoomIpc({
+    registerTrustedHandle,
+    getHost: () => teamRoomHost,
+  })
 }
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
@@ -1265,6 +1272,27 @@ if (!hasSingleInstanceLock) {
         console.warn('[meldwork] managed process recovery failed',
           recoveryError?.message || recoveryError)
       }
+      try {
+        const shell = await nativeShellEnvironment()
+        const roomEnv = { ...process.env, ...shell.env }
+        for (const key of shell.unsetKeys || []) delete roomEnv[key]
+        teamRoomHost = createRoomHost({
+          privateRoot,
+          env: roomEnv,
+          onChanged: () => {
+            if (mainWindow && !mainWindow.isDestroyed()
+                && isTrustedLocalWebContents(mainWindow.webContents)) {
+              mainWindow.webContents.send('team-room:changed', {})
+            }
+          },
+        })
+        await teamRoomHost.start()
+      } catch (error) {
+        console.warn('[meldwork] team room startup failed',
+          error?.code || error?.message || error)
+        try { await teamRoomHost?.close() } catch { /* host may be partially assembled */ }
+        teamRoomHost = null
+      }
     } finally {
       scheduler.exitRecoveryMode()
       roomEngineService?.recoverRuntime()
@@ -1329,6 +1357,10 @@ if (!hasSingleInstanceLock) {
         }
       },
       () => installer?.waitForIdle(),
+      async () => {
+        await teamRoomHost?.close()
+        teamRoomHost = null
+      },
       async () => {
         await roomEngineService?.close()
         roomEngineDb?.close()

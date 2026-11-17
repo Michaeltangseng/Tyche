@@ -82,6 +82,18 @@ test('local preload exposes the local-only Meldwork API', async () => {
   )
   assert.equal('configure' in api.localWorkspace, false)
   assert.equal('cancelConfigure' in api.localWorkspace, false)
+  assert.equal(Object.isFrozen(api.teamRoom), true)
+  assert.deepEqual(Object.keys(api.teamRoom).sort(), [
+    'acceptTask', 'bootstrap', 'chatMessages', 'createChat', 'deleteChat', 'filesList',
+    'filesRead', 'listRooms', 'onChanged', 'runtimeEvents', 'setWriteAuthorized',
+    'snapshot', 'stopReply', 'submitMessage',
+  ].sort())
+  await api.teamRoom.snapshot({ roomId: 'room-1' })
+  assert.deepEqual(invocations, [{
+    channel: 'team-room:snapshot',
+    args: [{ roomId: 'room-1' }],
+  }])
+  invocations.length = 0
   assert.equal(Object.isFrozen(api.room), true)
   assert.deepEqual(Object.keys(api.room).sort(), [
     'applyUserCommand', 'bootstrap', 'listStaleAssignments', 'submitMessage', 'snapshot', 'listRooms', 'permissionModes', 'createChat', 'deleteChat', 'deleteRoom', 'chatMessages', 'filesList', 'filesRead', 'artifactDiff', 'assignmentTrace', 'assignmentTraceBlob', 'onChanged', 'onAssignmentEvent', 'skills', 'updateSkillBindings',
