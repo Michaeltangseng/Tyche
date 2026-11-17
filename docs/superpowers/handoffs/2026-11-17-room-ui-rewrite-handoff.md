@@ -8,7 +8,7 @@
 
 ## 0. 一句话
 
-**后端已经闭环；旧 Project Room preview 与旧 `room-engine` 均已删除；`RoomWorkspace` 已直接跑在新 room domain 上。下一步补 eta 借鉴的流式/trace/usage/Task 板/Artifact 账本（Slice 3），然后做硬化（Slice 5）。保留视觉外壳，不保留旧 contract。**
+**后端已经闭环；旧 Project Room preview 与旧 `room-engine` 均已删除；`RoomWorkspace` 已直接跑在新 room domain 上，并接好流式事件、tool trace、usage、artifact 账本与乐观 outbox。下一步做硬化（Slice 5）：Electron 43/Node 24、pack、真实窗口验收、Windows 崩溃治理、POC YOLO 复核。保留视觉外壳，不保留旧 contract。**
 
 ## 1. 当前状态
 
@@ -58,7 +58,8 @@ UI 现状：
 - `RoomWorkspace`（`frontend/src/components/RoomWorkspace.vue`）保留视觉外壳，数据已来自 `teamRoom` preload / 新 room host。
 - 角色配置、任务/run/report/Captain review/Captain assignment、Attention、文件、写授权、新建/删除 Room/Chat 已接通。
 - 旧 Project Room preview 与旧 `room-engine` 已删除；当前只剩一套 Room UI、一套数据源。
-- 尚未接：流式 process/tool trace、token/context、Task 瀑布图、Artifact 账本、乐观 outbox（Slice 3）。
+- 已接：流式文本/thinking、tool cards、per-run trace、context usage chip、artifact 账本、乐观 outbox。
+- 仍缺：Task 瀑布图/时间条、Role/TaskRun/Room 三层 cost、Session prompt/tools 检查器（Slice 5 / 后续）。
 
 ## 2. UI 审计结论（详见 `docs-new2/09-ui-direction.md`）
 
@@ -190,7 +191,7 @@ eta 的缺口 / 不照搬：
 - 不出现 checkpoint/gate/seat/round/controller/pending decision 词汇。
 - frontend tests + build + build:desktop；desktop 相关测试。
 
-### Slice 3：补 eta 借鉴的 UI 能力（下一步）
+### Slice 3：补 eta 借鉴的 UI 能力（核心已完成，`28a439d`）
 
 - 流式：RuntimeEvent → process box + tool cards + answer；30–60ms 批量；首 token skeleton；重连/interrupted 状态。
 - Tool trace：按 command/diff/write/plan/JSON/图片/子步骤渲染；默认折叠；Transcript 抽屉；失败/权限节点。
@@ -255,8 +256,8 @@ frontend/src/__tests__/meldwork/projectRoom*.spec.js
 - **assignments vs runs**：`read-model.assignments` 是 Captain assignment；执行记录是 `runs`。旧 UI 的 `assignments` 概念必须改名。
 - **文件面板**：新 `teamRoom.filesList/filesRead` 按 `roomId` 解析 workspace，只读且不下发绝对路径；旧的 `SCHEDULER_CLAIM_ROOT_INVALID` 路径已删除。
 - **写授权**：Room 级 `write_authorized` 开关已接到 host / UI；POC 下运行时仍是 YOLO，生产前需把该开关接到执行租约。
-- **usage/context**：OAR 有 usage 事件，但 adapter 目前只收集活动，未持久化 usage；Slice 3 需要定义 Session/Run usage contract。
-- **artifacts**：schema 有表，read model 未返回；没有 producer/diff/accept 命令，Slice 3 补。
+- **usage/context**：usage 事件已持久化到 `runtime_events` 并在 UI 显示 chat context chip / per-run trace；尚无 Role/TaskRun/Room 三层 cost 聚合。
+- **artifacts**：read model 已返回 room artifact 账本，UI 已渲染；仍缺 producer/diff/accept 命令。
 - **Captain review**：read model 返回 `reviews`，新 UI 已在工作台渲染。
 - **旧数据迁移**：本阶段不做；旧数据归档/只读；不要双读双写。
 - **Windows**：wrapper/sweep 仅 POSIX；Windows 需另做 taskkill/process tree。
@@ -295,12 +296,12 @@ npm --prefix desktop run pack
 ## 8. 压缩后恢复清单
 
 - [ ] 读本文 + `docs-new2/09-ui-direction.md` + `2026-11-17-meldwork-room-v2-handoff.md`。
-- [ ] `git log -12 --oneline` 确认 `5c81260` 及之前 commit；分支 `project-room`。
-- [ ] 跑 focused desktop 测试确认 **250/250**（room + shell + security + trace）。
+- [ ] `git log -16 --oneline` 确认 `28a439d` 及之前 commit；分支 `project-room`。
+- [ ] 跑 focused desktop 测试确认 **269/269**（room + shell + security + trace）。
 - [x] Slice 0：删除旧 Project Room preview（`dfe4c09`）。
 - [x] Slice 1：Room host + IPC + preload（`24f14ed`）。
 - [x] Slice 2：RoomWorkspace 新数据层（核心，`5c81260`）。
-- [x] Slice 4：删除旧 `room-engine`。
-- [ ] 下一步：**Slice 3：流式/trace/usage/Task 板/Artifact 账本/乐观 outbox**。
-- [ ] Slice 5：Electron 43/Node 24、pack、真实 Electron 手工验收、Windows 崩溃治理、POC YOLO 复核。
+- [x] Slice 4：删除旧 `room-engine`（`09b3191`）。
+- [x] Slice 3：流式/trace/usage/Artifact 账本/乐观 outbox（核心，`28a439d`）。
+- [ ] 下一步：**Slice 5：Electron 43/Node 24、pack、真实 Electron 手工验收、Windows 崩溃治理、POC YOLO 复核**。
 - [ ] 不要恢复旧 `project:*` / `room:*` contract；不要双引擎。
