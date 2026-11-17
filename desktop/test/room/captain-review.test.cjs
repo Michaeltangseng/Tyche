@@ -1,0 +1,96 @@
+const assert = require('node:assert/strict')
+const crypto = require('node:crypto')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const test = require('node:test')
+const { openRoomDatabase } = require('../../src/room/db.cjs')
+const { createRoomRepository } = require('../../src/room/repository.cjs')
+const { createTimeline } = require('../../src/room/timeline.cjs')
+const { createCaptainReview } = require('../../src/room/captain-review.cjs')
+const { createCaptainAssignment } = require('../../src/room/tools/captain.cjs')
+
+function seedTaskInProgress(roomDb, chatId, roleId) {
+  const { database } = roomDb
+  const taskId = crypto.randomUUID()
+  const laneId = crypto.randomUUID()
+  const runId = crypto.randomUUID()
+  const at = new Date().toISOString()
+  const number = database.prepare('SELECT COALESCE(MAX(number), 0) + 1 AS number FROM tasks WHERE chat_id = ?').get(chatId).number
+  database.prepare(`
+    INSERT INTO tasks (id, chat_id, number, title, status, assignee_role_id, created_at, updated_at)
+    VALUES (?, ?, ?, 'T', 'in_progress', ?, ?, ?)
+  `).run(taskId, chatId, number, roleId, at, at)
+  database.prepare(`
+    INSERT INTO task_lanes (id, task_id, role_id, kind, last_seq, active, created_at)
+    VALUES (?, ?, ?, 'executor', 0, 1, ?)
+  `).run(laneId, taskId, roleId, at)
+  database.prepare(`
+    INSERT INTO task_runs (id, task_id, lane_id, role_id, status, outcome, snapshot_state, queued_at, ended_at)
+    VALUES (?, ?, ?, ?, 'completed', 'known', 'not_applicable', ?, ?)
+  `).run(runId, taskId, laneId, roleId, at, at)
+  return taskId
+}
+
+test('captain review waits for settlement and review traffic does not advance activity', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const roomDb = openRoomDatabase({ directory })
+  const repo = createRoomRepository(roomDb)
+  const roomId = repo.createRoom({ name: 'R', workspace: directory })
+  const chatId = repo.createChat({ roomId, title: 'C' })
+  const captainRoleId = repo.createRole({ chatId, displayName: 'Captain', provider: 'claude', prompt: 'route', isCaptain: true })
+  const a = repo.createRole({ chatId, displayName: 'A', provider: 'claude', prompt: 'work' })
+  repo.addParticipant({ chatId, roleId: captainRoleId }); repo.addParticipant({ chatId, roleId: a })
+  const timeline = createTimeline({ roomDb, repository: repo })
+  const assignmentMessage = timeline.append({ chatId, authorType: 'agent', authorId: captainRoleId,
+    content: '@A do it', mentions: [a], status: 'done' })
+  const reply = timeline.append({ chatId, authorType: 'agent', authorId: a, content: '' })
+  timeline.finish(reply.id, { status: 'done', text: 'done' })
+  const taskId = seedTaskInProgress(roomDb, chatId, a)
+  const review = createCaptainReview({ roomDb, repository: repo, timeline })
+  review.recordAssignment({ chatId, messageId: assignmentMessage.id, rootMessageId: assignmentMessage.id,
+    targetRoleIds: [a], targetReplyIds: [reply.id] })
+  assert.equal(review.review({ chatId }).length, 0)
+  roomDb.database.prepare("UPDATE tasks SET status='in_review' WHERE id=?").run(taskId)
+  const pending = review.review({ chatId })
+  assert.equal(pending.length, 1)
+  assert.equal(pending[0].kind, 'assignment_settled')
+  const activityBefore = timeline.activitySeq(chatId)
+  review.deliver({ chatId })
+  assert.equal(timeline.activitySeq(chatId), activityBefore)
+  const reviewRow = timeline.latest(chatId)
+  assert.equal(reviewRow.audience, 'captain')
+  const captainReply = timeline.after(chatId, activityBefore).find(row => row.authorId === captainRoleId)
+  assert.equal(captainReply.audience, 'captain')
+  assert.equal(captainReply.data.reviewReply, true)
+  timeline.append({ chatId, authorType: 'agent', authorId: captainRoleId, content: 'public notice' })
+  assert.equal(timeline.activitySeq(chatId) > activityBefore, true)
+  roomDb.close()
+})
+
+test('assign_in_group writes one message, one assignment, and target queued replies; rejects self', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const roomDb = openRoomDatabase({ directory })
+  const repo = createRoomRepository(roomDb)
+  const roomId = repo.createRoom({ name: 'R', workspace: directory })
+  const chatId = repo.createChat({ roomId, title: 'C' })
+  const captainRoleId = repo.createRole({ chatId, displayName: 'Captain', provider: 'claude', prompt: 'route', isCaptain: true })
+  const a = repo.createRole({ chatId, displayName: 'A', provider: 'claude', prompt: 'work' })
+  repo.addParticipant({ chatId, roleId: captainRoleId }); repo.addParticipant({ chatId, roleId: a })
+  const timeline = createTimeline({ roomDb, repository: repo })
+  const review = createCaptainReview({ roomDb, repository: repo, timeline })
+  const queued = []
+  const assign = createCaptainAssignment({ roomDb, repository: repo, timeline, review,
+    queueReply: input => { queued.push(input); return timeline.append({ chatId, authorType: 'agent', authorId: input.roleId, content: '' }) },
+    requestTick: () => {} })
+  const result = assign.assign({ chatId, captainRoleId, text: '@A do it', roleIds: [a] })
+  assert.equal(result.message.authorId, captainRoleId)
+  assert.deepEqual(result.message.mentions, [a])
+  assert.equal(result.replies.length, 1)
+  assert.equal(queued.length, 1)
+  assert.equal(roomDb.database.prepare('SELECT COUNT(*) AS n FROM captain_assignments').get().n, 1)
+  assert.throws(() => assign.assign({ chatId, captainRoleId, text: 'self', roleIds: [captainRoleId] }), /ROOM_CAPTAIN_SELF_TARGET/)
+  roomDb.close()
+})

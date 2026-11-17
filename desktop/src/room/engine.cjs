@@ -21,6 +21,29 @@ function createEngine({ roomDb, repository, timeline, sessions, outbox, runtime,
   }
 
   const engine = {
+    queueReply({ chatId, roleId, trigger, rootMessageId = null, captainAssignmentId = null, clientId = null }) {
+      return roomDb.withTransaction(() => {
+        const reply = timeline.append({
+          chatId,
+          authorType: 'agent',
+          authorId: roleId,
+          content: '',
+          replyTo: trigger.id,
+          rootMessageId: rootMessageId ?? trigger.id,
+          captainAssignmentId,
+          status: 'queued',
+          clientId: clientId ?? `reply:${trigger.id}:${roleId}:${captainAssignmentId ?? ''}`,
+        })
+        outbox.enqueue({
+          chatId,
+          kind: 'start_reply',
+          payload: { replyId: reply.id, roleId, triggerId: trigger.id },
+          idempotencyKey: `start_reply:${reply.id}`,
+        })
+        return reply
+      })
+    },
+
     submitUserMessage({ chatId, authorId = 'user', content, clientId = null }) {
       if (clientId !== null && clientId !== undefined) {
         const existing = database.prepare('SELECT id FROM messages WHERE chat_id = ? AND client_id = ?').get(chatId, clientId)
@@ -47,23 +70,7 @@ function createEngine({ roomDb, repository, timeline, sessions, outbox, runtime,
         })
         const replies = []
         for (const roleId of route.targets) {
-          const reply = timeline.append({
-            chatId,
-            authorType: 'agent',
-            authorId: roleId,
-            content: '',
-            replyTo: message.id,
-            rootMessageId: message.id,
-            status: 'queued',
-            clientId: `reply:${message.id}:${roleId}`,
-          })
-          outbox.enqueue({
-            chatId,
-            kind: 'start_reply',
-            payload: { replyId: reply.id, roleId, triggerId: message.id },
-            idempotencyKey: `start_reply:${reply.id}`,
-          })
-          replies.push(reply)
+          replies.push(engine.queueReply({ chatId, roleId, trigger: message, rootMessageId: message.id }))
         }
         return { message, replies }
       })
