@@ -8,7 +8,7 @@ function mentionNames(content) {
   return names
 }
 
-function createEngine({ roomDb, repository, timeline, sessions, outbox, runtime, now = () => Date.now() }) {
+function createEngine({ roomDb, repository, timeline, sessions, outbox, runtime, now = () => Date.now(), onEvent = () => {} }) {
   const { database } = roomDb
   const activeReplies = new Map()
 
@@ -143,7 +143,7 @@ function createEngine({ roomDb, repository, timeline, sessions, outbox, runtime,
             prompt,
             nativeSessionRef: sessionRow?.native_session_ref ?? null,
             signal: controller.signal,
-            onEvent: () => {},
+            onEvent,
           })
           const launchResult = await handle.launch
           if (launchResult?.nativeSessionRef) {
@@ -206,9 +206,17 @@ function createEngine({ roomDb, repository, timeline, sessions, outbox, runtime,
         if (!byRole.has(reply.authorId)) byRole.set(reply.authorId, [])
         byRole.get(reply.authorId).push(reply)
       }
+      // One participant session answers one thing at a time. A queued reply
+      // for a role that is still working/stopping waits for the next tick.
+      const busyRoles = new Set(database.prepare(`
+        SELECT DISTINCT author_id FROM messages
+        WHERE chat_id = ? AND author_type = 'agent'
+          AND status IN ('working', 'waiting_for_input', 'stopping')
+      `).all(chatId).map(row => row.author_id))
       const launches = []
       const errors = []
       for (const list of byRole.values()) {
+        if (busyRoles.has(list[0].authorId)) continue
         const chain = (async () => {
           for (const reply of list) {
             const pending = engine.startReply(reply.id)

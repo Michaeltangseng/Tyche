@@ -1,28 +1,18 @@
-// OAR-driven room smoke: the real engine drives real Claude/Codex over OAR,
-// host tools come back over the per-run MCP server, and the task reaches
-// in_review before the Captain's review reply.
+// OAR-driven room smoke through the production room service.
 //
-// This is the engine-driven counterpart of room-seam-smoke.cjs (which is a
-// module-level marker fallback). It intentionally runs Chat and Task with
-// OAR's default YOLO permissions per the 2026-11-17 POC decision.
+// The real engine, room service liveness, supervisor and OAR adapter drive
+// real Claude/Codex: Captain assign_in_group -> Worker create_task -> Task
+// finish_task -> settlement -> in_review -> Captain review reply.
+//
+// Chat and Task intentionally use OAR's default YOLO permissions per the
+// 2026-11-17 POC decision.
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 
 const { openRoomDatabase } = require('../src/room/db.cjs')
 const { createRoomRepository } = require('../src/room/repository.cjs')
-const { createTimeline } = require('../src/room/timeline.cjs')
-const { createSessionStore } = require('../src/room/session-store.cjs')
-const { createOutbox } = require('../src/room/effects.cjs')
-const { createEngine } = require('../src/room/engine.cjs')
-const { createTaskQueue } = require('../src/room/task-queue.cjs')
-const { createSettlement, registerFinishTaskTool } = require('../src/room/settlement.cjs')
-const { createCaptainReview } = require('../src/room/captain-review.cjs')
-const { createToolDispatcher } = require('../src/room/tools/dispatcher.cjs')
-const { registerMentionTool } = require('../src/room/tools/mention.cjs')
-const { registerReadChatTool } = require('../src/room/tools/read.cjs')
-const { registerTaskTools } = require('../src/room/tools/tasks.cjs')
-const { createCaptainAssignment, registerCaptainTools } = require('../src/room/tools/captain.cjs')
+const { createRoomService } = require('../src/room/room-service.cjs')
 const { createOarRuntimeAdapter } = require('../src/room/runtime-adapter.cjs')
 const { resolveExecutable } = require('../src/agents/cli/cli-adapters.cjs')
 
@@ -51,6 +41,8 @@ function withTimeout(promise, ms, code) {
   ]).finally(() => clearTimeout(timer))
 }
 
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
 async function main() {
   const userData = userDataDirectory()
   fs.mkdirSync(userData, { recursive: true, mode: 0o700 })
@@ -63,10 +55,11 @@ async function main() {
     ok: false,
     integrationMode: 'oar-engine',
     engineDriven: true,
+    serviceDriven: true,
     error: null,
   }
   let roomDb = null
-  let adapter = null
+  let service = null
   try {
     const env = {
       ...process.env,
@@ -105,101 +98,29 @@ async function main() {
     repository.addParticipant({ chatId, roleId: captainRoleId })
     repository.addParticipant({ chatId, roleId: workerRoleId })
 
-    const timeline = createTimeline({ roomDb, repository })
-    const sessions = createSessionStore({ roomDb, repository })
-    const outbox = createOutbox({ roomDb, repository })
-    const settlement = createSettlement({ roomDb, repository, timeline })
-    const review = createCaptainReview({ roomDb, repository, timeline, outbox })
-    const dispatcher = createToolDispatcher({ roomDb, repository })
-
-    let adapterReady = null
-    const runtime = { start: input => {
-      if (!adapterReady) throw new Error('OAR_SMOKE_ADAPTER_NOT_READY')
-      return adapterReady.start(input)
-    } }
-    const engine = createEngine({ roomDb, repository, timeline, sessions, outbox, runtime })
-    const queue = createTaskQueue({
-      roomDb,
-      repository,
-      timeline,
-      outbox,
-      startRun: (run, task) => {
-        if (!adapterReady) throw new Error('OAR_SMOKE_ADAPTER_NOT_READY')
-        return adapterReady.startTaskRun(run, task)
-      },
-    })
-    const captainAssignment = createCaptainAssignment({
-      roomDb,
-      repository,
-      timeline,
-      review,
-      queueReply: input => engine.queueReply(input),
-      requestTick: () => {},
-    })
-    registerMentionTool({ dispatcher, roomDb, repository, timeline, queueReply: input => engine.queueReply(input) })
-    registerReadChatTool({ dispatcher, timeline, repository })
-    registerTaskTools({ dispatcher, roomDb, repository, timeline, queueRun: queue })
-    registerFinishTaskTool({ dispatcher, settlement })
-    registerCaptainTools({ dispatcher, repository, captainAssignment, timeline })
-
     let resolveTaskSettled
     const taskSettled = new Promise(resolve => { resolveTaskSettled = resolve })
-    adapter = createOarRuntimeAdapter({
+    service = createRoomService({
       roomDb,
       repository,
-      timeline,
-      sessions,
-      dispatcher,
-      settlement,
-      env,
-      executables: { [provider]: executable },
+      adapterFactory: deps => createOarRuntimeAdapter({
+        ...deps,
+        env,
+        executables: { [provider]: executable },
+        turnTimeoutMs: 8 * 60 * 1000,
+      }),
+      livenessDebounceMs: 150,
       onTaskSettled: info => {
         result.taskSettlement = info
         resolveTaskSettled(info)
       },
-      turnTimeoutMs: 8 * 60 * 1000,
     })
-    adapterReady = adapter
-
-    async function waitForWorkingIdle(timeoutMs = 6 * 60 * 1000) {
-      const deadline = Date.now() + timeoutMs
-      while (Date.now() < deadline) {
-        const busy = roomDb.database.prepare(`
-          SELECT COUNT(*) AS n FROM messages
-          WHERE chat_id = ? AND author_type = 'agent'
-            AND status IN ('working', 'waiting_for_input', 'stopping')
-        `).get(chatId).n
-        if (busy === 0) return
-        await new Promise(resolve => setTimeout(resolve, 250))
-      }
-      throw new Error('OAR_SMOKE_REPLY_TIMEOUT')
-    }
-
-    // startQueuedReplies confirms launches, not completions: each round starts
-    // what is queued, then waits for the working replies to reach a terminal
-    // status. Tools (assign_in_group / mention) may queue the next round.
-    async function drainReplies(rounds = 8) {
-      for (let round = 0; round < rounds; round += 1) {
-        const queued = roomDb.database.prepare(`
-          SELECT COUNT(*) AS n FROM messages
-          WHERE chat_id = ? AND author_type = 'agent' AND status = 'queued'
-        `).get(chatId).n
-        if (queued > 0) await engine.startQueuedReplies({ chatId })
-        await waitForWorkingIdle()
-        const queuedAfter = roomDb.database.prepare(`
-          SELECT COUNT(*) AS n FROM messages
-          WHERE chat_id = ? AND author_type = 'agent' AND status = 'queued'
-        `).get(chatId).n
-        if (queuedAfter === 0) return
-      }
-      throw new Error('OAR_SMOKE_QUEUE_NOT_DRAINED')
-    }
 
     const userMessage = `@Captain Assign Worker (role id ${workerRoleId}) to create a task. `
       + `Call assign_in_group with text: "Create a task with title OAR smoke task, description Confirm the OAR engine loop, acceptance finish_task called. Use the create_task tool." `
       + `and roleIds: ["${workerRoleId}"]. Then reply with a short confirmation.`
-    engine.submitUserMessage({ chatId, content: userMessage })
-    await drainReplies()
+    service.submitUserMessage({ chatId, content: userMessage })
+    await service.waitForChatIdle({ chatId, timeoutMs: 8 * 60 * 1000 })
 
     const taskRow = roomDb.database.prepare(`
       SELECT * FROM tasks WHERE chat_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1
@@ -207,7 +128,7 @@ async function main() {
     if (!taskRow) throw new Error('OAR_SMOKE_TASK_NOT_CREATED')
     result.taskId = taskRow.id
     result.taskTitle = taskRow.title
-    const runs = queue.listRuns(taskRow.id)
+    const runs = service.queue.listRuns(taskRow.id)
     result.runId = runs[0]?.id ?? null
 
     const captainRefBeforeReview = roomDb.database.prepare(`
@@ -215,7 +136,9 @@ async function main() {
       WHERE scope_type = 'chat' AND scope_id = ? AND role_id = ? AND state = 'active'
     `).get(chatId, captainRoleId)?.native_session_ref ?? null
 
-    const started = await queue.pump({ roomId })
+    // The service liveness normally starts the task run on its start_run
+    // commit; pump once as a deterministic nudge.
+    const started = await service.pump({ roomId })
     result.startedRuns = started.length
     const runAfterPump = result.runId
       ? roomDb.database.prepare('SELECT status, reason FROM task_runs WHERE id = ?').get(result.runId)
@@ -226,21 +149,34 @@ async function main() {
     const settlementInfo = await withTimeout(taskSettled, 8 * 60 * 1000, 'OAR_SMOKE_TASK_TIMEOUT')
     if (settlementInfo?.error) throw new Error(`OAR_SMOKE_TASK_SETTLEMENT_FAILED: ${settlementInfo.error}`)
 
-    const reviews = review.review({ chatId })
-    result.reviewKinds = reviews.map(item => item.kind)
-    const activityBefore = timeline.activitySeq(chatId)
-    const delivered = review.deliver({ chatId })
-    result.deliveredReviews = delivered.length
-    const activityAfter = timeline.activitySeq(chatId)
+    const activityBefore = service.timeline.activitySeq(chatId)
+    const reviewDeadline = Date.now() + 20_000
+    let sawReview = false
+    while (Date.now() < reviewDeadline) {
+      const row = roomDb.database.prepare('SELECT 1 AS found FROM captain_reviews WHERE chat_id = ? LIMIT 1').get(chatId)
+      if (row) {
+        sawReview = true
+        break
+      }
+      await sleep(100)
+    }
+    result.sawReview = sawReview
+    result.reviewKinds = roomDb.database.prepare('SELECT kind FROM captain_reviews WHERE chat_id = ?').all(chatId)
+      .map(row => row.kind)
+    result.deliveredReviews = roomDb.database.prepare(`
+      SELECT COUNT(*) AS n FROM captain_reviews WHERE chat_id = ? AND status = 'completed'
+    `).get(chatId).n
+
+    await service.waitForChatIdle({ chatId, timeoutMs: 8 * 60 * 1000 })
+    const activityAfter = service.timeline.activitySeq(chatId)
     result.activityStable = activityBefore === activityAfter
-    await drainReplies(3)
 
     const task = roomDb.database.prepare('SELECT * FROM tasks WHERE id = ?').get(taskRow.id)
     const run = roomDb.database.prepare('SELECT * FROM task_runs WHERE id = ?').get(result.runId)
     const report = roomDb.database.prepare(`
       SELECT * FROM reports WHERE task_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1
     `).get(taskRow.id)
-    const latest = timeline.latest(chatId)
+    const latest = service.timeline.latest(chatId)
     const reviewReplyRow = roomDb.database.prepare(`
       SELECT * FROM messages
       WHERE chat_id = ? AND data_json LIKE '%"reviewReply":true%'
@@ -285,6 +221,8 @@ async function main() {
     result.taskSessionSeparate = Boolean(workerChatRef && taskSessionRef && workerChatRef !== taskSessionRef)
 
     result.ok = result.engineDriven === true
+      && result.serviceDriven === true
+      && result.sawReview === true
       && result.taskStatus === 'in_review'
       && result.runStatus === 'completed'
       && result.reportKind === 'ready'
@@ -301,7 +239,7 @@ async function main() {
   } catch (error) {
     result.error = String(error?.code || error?.message || error)
   } finally {
-    try { await adapter?.disposeAll() } catch { /* best effort */ }
+    try { await service?.close() } catch { /* best effort */ }
     try { roomDb?.close() } catch { /* best effort */ }
   }
   fs.writeFileSync(resultPath, JSON.stringify(result, null, 2), { mode: 0o600 })

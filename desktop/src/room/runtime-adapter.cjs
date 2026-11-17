@@ -68,6 +68,7 @@ function createOarRuntimeAdapter({
   mcpFactory = createMcpHttpServer,
   loadOar = () => import('@botiverse/oar'),
   onTaskSettled = () => {},
+  onEvent: onTaskEvent = null,
   now = () => Date.now(),
   turnTimeoutMs = 10 * 60 * 1000,
   debug = (...args) => {
@@ -475,7 +476,7 @@ function createOarRuntimeAdapter({
         appendSystemPrompt: rolePrompt(run.roleId),
       })
       tracked = trackSignal(run.id, null)
-      const turn = startTurn({ session, prompt: taskPrompt(task), signal: tracked.signal, onEvent: null })
+      const turn = startTurn({ session, prompt: taskPrompt(task), signal: tracked.signal, onEvent: onTaskEvent })
       turn.launch.then(({ nativeSessionRef }) => {
         if (nativeSessionRef) {
           try {

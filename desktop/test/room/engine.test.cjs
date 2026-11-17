@@ -164,3 +164,22 @@ test('finishing a reply preserves existing data flags such as reviewReply', asyn
   assert.deepEqual(finished.data.activity, [{ name: 'read_chat', status: 'completed' }])
   roomDb.close()
 })
+
+test('startQueuedReplies keeps a participant session serial', async t => {
+  const { roomDb, chatId, timeline, runtime, engine } = setup(t)
+  const first = engine.submitUserMessage({ chatId, content: '@A one', clientId: 'm1' })
+  const second = engine.submitUserMessage({ chatId, content: '@A two', clientId: 'm2' })
+  const pending = engine.startReply(first.replies[0].id)
+  await pending.launched
+  await engine.startQueuedReplies({ chatId })
+  assert.equal(timeline.get(second.replies[0].id).status, 'queued')
+
+  runtime.finish({ status: 'done', text: 'ok' }, first.replies[0].id)
+  await pending.done
+  await engine.startQueuedReplies({ chatId })
+  assert.equal(timeline.get(second.replies[0].id).status, 'working')
+
+  runtime.finish({ status: 'done', text: 'ok' }, second.replies[0].id)
+  await new Promise(resolve => setImmediate(resolve))
+  roomDb.close()
+})

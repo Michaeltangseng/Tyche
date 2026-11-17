@@ -638,6 +638,13 @@ eta 是三层，不是一层：
   - `engine.startReply` 完成时合并既有 `data`，保留 `reviewReply` 等标记。
 - **未完成**：OAR 进程治理（`managed-spawn`/`process-registry`/硬崩孤儿）、OAR Event → room Trace/activity 的完整映射、Electron 43/Node 24、asar/打包、全量测试。
 
+### 10.8 Room service / liveness（2026-11-17）
+
+- `desktop/src/room/room-service.cjs` 装配 domain、tools、adapter、supervisor、recovery；domain commit 150ms debounce 启动 queued replies + pump task runs；`startQueuedReplies` 按角色串行；`close()` 停 timer、`disposeAll` adapter。
+- OAR smoke 现在走 room service：Claude/Codex 均 `ok: true`、`engineDriven: true`、`serviceDriven: true`；`startedRuns: 0` 表示 liveness 已经自动 pump 了 Task。
+- 测试：17 个 room 测试文件，**52/52 pass**。
+- 剩余：OAR 硬崩孤儿、事件 Trace 持久化、Electron 43/打包、非 OAR provider。
+
 ## 9. 参考文件
 
 - eta runtime seam：`eta/packages/eta-server/src/runtimes.ts`

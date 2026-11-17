@@ -18,14 +18,14 @@
 
 | 项目 | 结果 |
 | --- | --- |
-| `desktop/test/room` 16 个测试文件 | **48 tests / 48 pass / 0 fail** |
+| `desktop/test/room` 17 个测试文件 | **52 tests / 52 pass / 0 fail** |
 | Claude Code resume proof | `resumed: true`, `remembered: true`, session ref 稳定 |
 | Codex resume proof | `resumed: true`, `remembered: true`, session ref 稳定 |
 | MCP tool loop proof | `create_task` / `finish_task` / `mention` list + call 成功，`ok: true` |
 | Seam smoke Claude | `ok: true`，持久 Chat session、独立 Task session、finish→settlement→in_review、Captain review 全链路 |
 | Seam smoke Codex | `ok: true`，同上 |
-| OAR engine smoke Claude（2026-11-17） | `ok: true`, `engineDriven: true`；assign_in_group/create_task/finish_task 成功，Task `in_review`，Captain review reply |
-| OAR engine smoke Codex（2026-11-17） | `ok: true`, `engineDriven: true`；同上 |
+| OAR service smoke Claude（2026-11-17） | `ok: true`, `engineDriven: true`, `serviceDriven: true`；liveness 自动 pump Task；assign_in_group/create_task/finish_task、in_review、review reply |
+| OAR service smoke Codex（2026-11-17） | `ok: true`, `engineDriven: true`, `serviceDriven: true`；同上 |
 
 按仓库所有者要求，没有跑全量测试；最终集成阶段由人工验证。不要声称跑过全量。
 
@@ -59,6 +59,7 @@ desktop/src/room/
   supervisor.cjs               150ms debounce + 60s tick 兜底
   recovery.cjs                 restart 恢复、lane 挂起/激活、process 对账
   runtime-adapter.cjs          OAR runtime adapter：per-run MCP、dispatcher 绑定、YOLO、NO_PROXY、Task 结算
+  room-service.cjs             domain/tools/adapter/supervisor/recovery 装配、liveness、disposeAll
   tools/
     dispatcher.cjs             register/bindRun/invoke、callId 幂等、args_hash 校验、readOnly 审计
     mcp-server.cjs             Streamable HTTP MCP server、per-run bearer token、callId metadata
@@ -90,6 +91,7 @@ desktop/scripts/
 12. **Recovery**：queued 保留；working/waiting → interrupted；starting/running → interrupted/unknown；running effect → unknown；有写 scope 的 run 建 Attention；被中断的 lane `active=0`，`pump` 不启动，必须 `activateLane` 释放。
 13. **真实 CLI 证明**：resume、MCP、模块级 seam 都已跑通（见上表）。
 14. **领域幂等**：`domain_idempotency` 表（schema v2）；`create_task` 唯一 per assignment+source；无 assignment 时按 run+args；`comment_task` 支持调用方 `idempotency_key`，缺省按 source+text。
+15. **Room service / liveness**：`room-service.cjs` 装配 domain、tools、adapter、supervisor、recovery；domain commit 150ms debounce 启动 queued replies + pump runs；`startQueuedReplies` 按角色串行；`close()` 停 timer、`disposeAll` adapter。
 
 ## 必须守住的语义
 
@@ -111,7 +113,7 @@ desktop/scripts/
 
 ### Ruling 1：engine 工具循环（OAR POC 已接通，生产化未完成）
 
-> **2026-11-17 POC 更新**：`desktop/src/room/runtime-adapter.cjs` + `desktop/scripts/room-oar-smoke.cjs` 已把 `engine.startReply` / Task `pump` → OAR → per-run MCP → 真实 Claude/Codex 接通；两个 provider 都是 `ok: true`、`engineDriven: true`，走完 assign_in_group → create_task → finish_task → settlement → Captain review。下面的“没有”是原始缺口，保留作背景；生产化剩余项见本节末尾。
+> **2026-11-17 POC 更新**：`desktop/src/room/runtime-adapter.cjs` + `desktop/src/room/room-service.cjs` + `desktop/scripts/room-oar-smoke.cjs` 已把 `engine.startReply` / Task `pump` → OAR → per-run MCP → 真实 Claude/Codex 接通；两个 provider 都是 `ok: true`、`engineDriven: true`、`serviceDriven: true`，走完 assign_in_group → create_task → finish_task → settlement → Captain review。smoke 现在走 room-service 的 liveness/supervisor；下面的“没有”是原始缺口，保留作背景；生产化剩余项见本节末尾。
 
 `engine.startReply` 目前只调用 runtime 的 `start/launch/completion`，没有：
 
@@ -133,7 +135,7 @@ desktop/scripts/
 3. `engine.startReply` 与 Task `pump` 通过 adapter 调用真实 CLI；
 4. 用真实 CLI 重跑 engine 驱动的 seam，替换 marker fallback。
 
-**POC 结果与剩余项（2026-11-17）**：真实 Claude/Codex 均通过；关键配置为 OAR 默认 YOLO、role prompt 通过 `appendSystemPrompt`、per-run MCP server、`NO_PROXY=127.0.0.1,localhost,::1`。仍未生产化：OAR 进程不经过 `managed-spawn`/`process-registry`（硬崩孤儿、重启对账）；OAR Event → room Trace/activity 只是 POC 级映射；非 OAR provider 仍走旧层；Electron 43/Node 24、asar/打包、全量测试未验证。
+**POC 结果与剩余项（2026-11-17）**：真实 Claude/Codex 均通过（service-driven）；`room-service` 负责 liveness（domain commit 150ms debounce 启动 queued replies + pump runs）、supervisor review、recovery 和 `close()` disposeAll；`startQueuedReplies` 按角色串行。仍未生产化：OAR 进程硬崩孤儿（不经过 `managed-spawn`/`process-registry`）；OAR Event → Trace 持久化；非 OAR provider 仍走旧层；Electron 43/Node 24、asar/打包、全量测试未验证。
 
 ### Ruling 2：领域幂等仍不完整
 
@@ -167,13 +169,13 @@ dispatcher 的 `callId` 幂等只覆盖“客户端复用 callId”的情况。`
 ```bash
 cd desktop
 
-# 小范围 room 测试（当前 48/48）
+# 小范围 room 测试（当前 52/52）
 node --test test/room/db.test.cjs test/room/repository.test.cjs test/room/timeline.test.cjs \
   test/room/session-store.test.cjs test/room/routing.test.cjs test/room/briefing.test.cjs \
   test/room/effects.test.cjs test/room/engine.test.cjs test/room/dispatcher.test.cjs \
   test/room/mcp-server.test.cjs test/room/mention.test.cjs test/room/read.test.cjs \
   test/room/task-queue.test.cjs test/room/settlement.test.cjs \
-  test/room/captain-review.test.cjs test/room/recovery.test.cjs
+  test/room/captain-review.test.cjs test/room/recovery.test.cjs test/room/room-service.test.cjs
 ```
 
 真实证明（需要本机已安装并登录对应 CLI）：
@@ -216,7 +218,7 @@ npm --prefix desktop run pack
 
 1. **人工集成验证**：按上面的真实证明命令重跑，确认本机 CLI 行为。
 2. **runtime adapter + MCP 注入（POC 已完成）**：`runtime-adapter.cjs` 使用 OAR，`engine.startReply` 和 Task `pump` 已走真实 Claude/Codex；`room-oar-smoke.cjs` 明确 `engineDriven: true`（Claude/Codex 均通过）。下一步是进程治理、事件/Trace 对齐、Electron 43/Node 24 与全量验证。
-3. **领域幂等（已完成）**：`domain_idempotency`（schema v2）；`create_task` per assignment+source，`comment_task` 调用方 key/缺省 source+text；room 测试 48/48。下一步建议先补 OAR 进程治理/事件映射，再进 deferred minors。
+3. **领域幂等（已完成）**：`domain_idempotency`（schema v2）；`create_task` per assignment+source，`comment_task` 调用方 key/缺省 source+text；room 测试 52/52。下一步建议先补 OAR 硬崩进程清理/事件 Trace 持久化，再进 deferred minors。
 4. **Deferred minors**：按业务优先级补。
 5. **UI/preload/renderer**：在 engine 真实闭环通过后再接。
 6. **旧数据迁移/旧引擎退场**：单独计划；当前切片不碰。
