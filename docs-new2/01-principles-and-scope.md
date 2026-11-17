@@ -11,7 +11,7 @@ Meldwork 的目标不是造一个新的 Agent，而是让用户已经在用的�
 - 工作结果如何被记录、验收和追问；
 - 平台在什么边界内可以替 Agent 做决定。
 
-eta 的答案更接近我们的原则：平台提供时间线、唤醒、会话、任务和报告；Agent 自己决定是否建任务、如何执行；Captain 只发可见的工作授权。Meldwork v2 的答案更偏向平台调度器，需要纠正。
+eta 的答案更接近我们的原则：平台提供时间线、唤醒、会话、任务和报告；Agent 自己决定是否建任务、如何执行；Captain 只发可见的工作授权。Meldwork v2 的 Controller 本身也是 Agent，但被隐藏并约束为 JSON 动作生成器，替目标 Agent 建 Task/Assignment；需要纠正的是工作所有权和会话边界，不是“平台算法换成 Agent”。
 
 ## 2. 目标
 
@@ -88,6 +88,10 @@ eta 的答案更接近我们的原则：平台提供时间线、唤醒、会话�
 - **`last_seq` 是投递水位，不是模型记忆保证。** CLI 自己的压缩可能丢掉已经投递的内容；重要事实必须落在 Task/Report/Artifact/文件里。
 - **一次性 CLI 不支持 mid-turn steer。** 评论和 Attention 回答默认排队为 continuation run，不能假装能送入当前 run。
 - **Chat 回复默认只读。** 写入只在获得用户授权和写入 scope 的 TaskRun 中发生。
+- **Effect 成功 = 启动确认，不是运行结束。** pump 不能 await 整段 run；并发由 lane、机器槽位和租约控制。
+- **MCP 是完整工具循环。** 文本标记只支持单一终止动作，不能声称与 MCP 等价；Captain 工具需要 MCP。
+- **`finish_task` 是完成声明，不是结算。** 退出确认、快照和 Artifact 合并后，Task 才进入 `in_review`/`blocked`。
+- **Captain 不得自我派发。** 授权消息、assignment、目标 queued reply 同事务；reply/run/tool 绑定 assignment id，改派只走用户命令。
 
 ### 6.3 技术栈
 

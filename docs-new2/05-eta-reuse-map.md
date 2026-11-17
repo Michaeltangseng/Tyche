@@ -1,6 +1,6 @@
 # 05 eta 复用映射
 
-> eta 源码位于本仓库的同级目录 `eta/eta/`。下表中的路径均相对 eta 源码根（例如 `apps/eta/src/...`、`packages/eta-core/...`），不是 Tyche 仓库内的路径。
+> eta 源码位于本仓库的同级目录 `eta/eta/`，本映射固定参考本地快照 commit `03197d88`。下表中的路径均相对 eta 源码根（例如 `apps/eta/src/...`、`packages/eta-core/...`），不是 Tyche 仓库内的路径。该快照中 `apps/eta/src/tasks/session-key.ts` 存在；如换用其他 eta 版本，需要重新核对路径。
 
 本文档回答两个问题：
 
@@ -41,9 +41,10 @@
 | Agent mention 工具 | `engine.ts:811-899` | `room/tools/mention.cjs` | **Adapt** | MCP 优先，严格标记兜底；身份由 run/session 绑定 |
 | 5 次 wake budget | `routing.ts:13,57-67`、`timeline.ts:450-457` | `room/routing.cjs` | **Port** | 只统计 `kind=mention`；`assign_in_group` 和 Captain review 都不占这个预算 |
 | mention 正文就是交接内容 | `tasks.md:99`、`engine.ts:853-884` | `mention` 工具参数 | **Port 语义** | 对方读不到尚未完成的回复，所以正文必须自带 |
+| 当前会话分页补读 | `captain/tools.ts` 的 `read_conversation` | `read_chat(beforeSeq, limit)` | **Adapt** | 只限当前 Chat；返回省略区间/truncation；不能跨 Chat |
 | `assign_in_group` 是一条带 @ 的可见消息 | `captain/service.ts:322` | `room/captain-review.cjs` / `room/tools` | **Adapt** | 不要写成“回复一行 + mention 一行”；两行是 `mention` 工具的行为 |
 | steer 并入当前 turn | `engine.ts:774-807` | `room/engine.cjs` | **Adapt** | runtime 能力决定 queue/steer；Claude/Codex 默认 queue |
-| 停止/重启恢复 | `engine.ts:925-1006`、`data.md` | `room/engine.cjs`、`room/recovery.cjs` | **Adapt** | working → interrupted/unknown；进程对账后再启动 |
+| 停止/重启恢复 | `engine.ts:925-1006`、`data.md` | `room/engine.cjs`、`room/recovery.cjs` | **Adapt** | 消息 working → interrupted；TaskRun status=interrupted, outcome=unknown；进程对账后再启动 |
 | 聊天回复也走 effect | （Meldwork 约束，不是 eta 机制） | `room/effects.cjs` | **Adapt** | 所有进程启动先写 effect |
 
 ### 2.3 Task、Captain 与 review
@@ -55,10 +56,10 @@
 | TaskRun 表就是队列 | `tasks/runner.ts:22-53` | `room/task-queue.cjs` + `task_runs` | **Port 语义** | 按 lane + `queued_at` + 机器槽位 |
 | Task lane（执行者/mention） | `tasks/runner.ts:187-196`、`tasks/runs.ts:214-222` | `task_lanes` + `task_runs.lane_id` | **Adapt** | 执行者 lane 与 mention lane 可并行；每个 lane 同时一个 run |
 | 每机器并发上限 | `tasks.md:53` | Room/机器配置 | **Adapt** | 默认 2；隔离前写入型 run 每 Room 1 |
-| finish_task → in_review/blocked | `tasks.md:55` | `room/tools/tasks.cjs`、`room/reports.cjs` | **Adapt** | 接 Meldwork Report/Attention；用户 `accept_task` 才 done |
+| finish_task → 完成声明 → 结算 → in_review/blocked | `tasks.md:55` | `room/tools/tasks.cjs`、`room/reports.cjs` | **Adapt** | 退出确认 + 快照后才 in_review；用户 `accept_task` 才 done |
 | 评论唤醒续跑 | `tasks.md:56-62` | `room/task-queue.cjs` | **Adapt** | 无 run 时建 continuation run；一次性 CLI 不能 steer |
 | Captain `assign_in_group` 只发可见授权 | `captain/tools.ts:348-376`、`tasks.md:9` | `room/tools/captain.cjs` | **Adapt** | 目标 Agent 自己 create_task |
-| Captain review supervisor | `captain/supervisor.ts:28,59,77,122-127`、`captain/service.ts:863-870,946-1050,1152-1215` | `room/captain-review.cjs` + `captain_reviews` 表 | **Port/Adapt** | 150ms debounce 快路径 + 60 秒兜底；已结算 assignment；无 Task 也可 review；system 消息唤醒；review 流量不计入 activity_seq；不占 5 次 |
+| Captain review supervisor | `captain/supervisor.ts:28,59,77,122-127`、`captain/service.ts:863-870,946-1050,1152-1215` | `room/captain-review.cjs` + `captain_reviews` 表 | **Port/Adapt** | 任何领域变化的 150ms debounce 快路径 + 60 秒兜底；`hasNew` 基线含 assignment 消息 seq；无 Task 也可 review；只合并同 Chat review；system 消息唤醒；review 流量不计入 activity_seq；不占 5 次 |
 | Captain 提案（新 Role/群） | `captain/propose-*.ts` | `room/tools/captain.cjs` 的 propose_role | **Reference** | Meldwork Role 是 Chat 级；Captain 不能直接创建 |
 | Captain 审查队列 | `captain/store.ts`、migrations 0047 | `captain_reviews` | **Adapt** | 借 checkpoint/dedupe/retry/backoff，不照搬全局 Captain |
 | Inbox/ask | `inbox/*` | Attention/Inbox | **Adapt** | 一次性 CLI 的回答排队 continuation run |
@@ -126,14 +127,15 @@
 3. **存储**：eta 的 SQLite schema 不照搬；只复用字段语义和约束（例如 `seq`、`last_seq`、`session_key`、`checkpoint`）。
 4. **权限**：eta 的 ACP 权限默认全允许；Meldwork 必须保留 per-seat 权限、写入租约和 main-process 校验。
 5. **Prompt**：eta 的 Prompt 是产品文本，可以借鉴结构，但要按 Meldwork 的 Role/Captain/Report 语境重写；不要把 eta 的内部词汇原样暴露给用户。
-6. **Captain review**：eta 的 review 发到 Captain 的 direct chat，不推进群 `lastSeq`；Meldwork 没有同样的 direct chat，可发到 Chat 的 `system` 消息并标记 `audience=captain`。必须同时维护 `chat.activity_seq`，只统计 public 消息，排除 `audience=captain` 的 review 行和 Captain review 回复；否则 review 会自己推进水位并形成循环。review 正文是观察，不是上一环全文；Captain 通过增量简报读实际消息。
+6. **Captain review**：eta 的 review 发到 Captain 的 direct chat，不推进群 `lastSeq`；Meldwork 没有同样的 direct chat，可发到 Chat 的 `system` 消息并标记 `audience=captain`。必须同时维护 `chat.activity_seq`，只统计 public 消息，排除 `audience=captain` 的 review 行和**平台为 review 投递创建的那条 reply**（`reviewReply=true`）；`assign_in_group` / `post_in_chat` 不继承这个标记，且 `post_in_chat` 是 public，可能再次触发 review。`hasNew` 的基线还必须包含 assignment 消息 seq，否则刚发出的指派会被当成新活动。review 正文是观察，不是上一环全文；Captain 通过增量简报读实际消息。只合并同一个 Chat 的 pending review。
 7. **许可**：eta 是 MIT；Meldwork 是 Apache-2.0。移植纯逻辑时保留 eta 的版权/许可声明，并在 `NOTICE` / `THIRD_PARTY_NOTICES` 中记录。
 
 ## 6. 复用的优先级
 
 ```text
 第一优先（直接决定正确性）
-  routing / briefing / participant watermark / reply-row queue / task session key
+  routing / briefing / participant watermark / reply-row queue / task session key /
+  MCP tool bridge（工具注入、结果回传、身份绑定）
 
 第二优先（决定可用性）
   task run queue + lanes / finish_task / report / attention /

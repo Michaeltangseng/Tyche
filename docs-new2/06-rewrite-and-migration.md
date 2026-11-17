@@ -86,20 +86,33 @@
 | artifactVersions | `artifacts` | 保留 path/version/commit；接受状态映射 |
 | attentions / gates | `attentions` | 保留问题/选项/回答；内部 gate 细节丢弃 |
 | checkpoint/gate/seat/round state | 归档 | 不迁移为运行时状态；需要时作为只读 JSON 附件 |
+| v2 rooms | `rooms` | 保留 workspace/providers/capabilities；写授权按当前 realpath 重验 |
+| v2 chats | `chats` | 保留 title/status；legacy 标记只读，不进入新运行路径 |
+| v2 agent_roles | `chat_roles` + `role_prompt_revisions` | 保留 Provider/Prompt/能力/native_permission；is_captain 映射 |
+| v2 chat_context_revisions | `chat_context_revisions` | 保留 revision/instructions；来源 ID 保留 |
+| v2 messages | `messages` | 映射 author_type/status/mentions/data；Controller note 作为历史消息 |
+| v2 tasks / reports / attentions / artifacts | 同名新表 | 按 assignment/run 归属映射；Artifact 保留 commit/version |
+| v2 assignments | `task_runs` | 按 assignment id 映射；report 按 assignment 关联；不重建旧 Assignment 模型 |
+| v2 controller_decisions | `events` / 归档 | 不再保留 decisions 表；决策作为历史审计事件 |
+| v2 effects | 新 effects | pending 可重试；running/unknown 转 unknown + Attention；不自动重放 |
+| Trace JSONL | 原文件保留 | 新库只存引用；按新 Room/TaskRun 重新授权，不重写历史 Trace |
+| shadow Git | 原仓库保留 | Artifact commit/diff 引用保留；不重写历史；按新 Artifact 授权读取 |
 
-- 旧 sessionRef：能识别且 Provider 匹配时写入 `sessions`；无法可靠恢复时不伪造，Task 下次执行从新 session 开始。
+- 旧 sessionRef：不能只因 Provider 匹配就恢复；必须同时校验 scope、工作目录 realpath、权限模式和 Role，全部匹配才写入 `sessions`；否则从新 session 开始。
 - Task 编号：保留原编号；冲突记录映射表。
+- 迁移前先停止启动新 run；活跃 run 标 `status=interrupted, outcome=unknown`，活跃 effect 标 `unknown`；完成进程对账后才允许 retry/handoff；迁移窗口内不双写。
 - 迁移工具必须 dry-run、幂等、可回滚；迁移报告写入私有区。
 
 ### 2.3 一次性迁移步骤
 
-1. 备份旧账本（复制到带时间戳的目录）。
-2. 读取旧结构，生成迁移计划（dry-run）。
-3. 写入新 Room/Chat/Role/Participant/Message/Task/TaskRun/Report/Artifact/Attention。
-4. 写入 `legacy_imported` 标记和迁移报告。
-5. 校验数量、编号、Report 归属、Artifact 引用。
-6. 迁移失败回滚新库；旧库不动。
-7. 迁移成功后旧库只读；UI 只显示新库。
+1. 停止启动新 run；等待当前写入/租约收口；迁移窗口内不双写。
+2. 备份旧 checkpoint 账本和 v2 SQLite（复制到带时间戳的目录）。
+3. 读取两种旧结构，生成迁移计划（dry-run）。
+4. 写入新 Room/Chat/Role/Participant/Message/Task/TaskRun/Report/Artifact/Attention；活跃 run 标 `status=interrupted, outcome=unknown`，effect 标 `unknown`。
+5. 写入 `legacy_imported` 标记和迁移报告。
+6. 校验数量、编号、Report 归属、Artifact/Trace 引用；进程对账完成后再允许 retry/handoff。
+7. 迁移失败回滚新库；旧库不动。
+8. 迁移成功后旧库只读；UI 只显示新库。
 
 ### 2.4 不做的事
 
@@ -132,22 +145,24 @@
 
 ### Phase 1：新账本 + 时间线 + 路由 + 简报
 
-- 新建 `room.sqlite` 与 schema/migration。
+- 新建 `room.sqlite` 与 schema/migration；**先建最小表**（Room/Chat/Role/Participant/Message/Session/TaskLane/Event/Effect），Task/Report/Artifact 表按 Phase 3/4 增量迁移，不要一次铺完。
 - 实现 Room/Chat/Role/Participant/Message/Session/TaskLane 的 repository。
 - 实现 Message 追加、seq、revision、client_id、status、编辑/删除事件。
-- 实现 routing 和 briefing 的纯函数 + 定向测试。
+- 实现 routing 和 briefing 的纯函数 + 定向测试；简报返回 `omittedSeqs`/`truncatedIds`，实现当前 Chat 的 `read_chat` 分页。
 - 实现 SessionStore 的 key/baseline/水位；先不接真实 CLI。
+- 冻结 Task、TaskRun、Effect 的状态枚举与 outcome 定义，确保全文一致。
 
-**退出条件**：给定一组消息和 participant 水位，能生成正确的增量简报；同一消息不会重复投递；未完成行阻塞水位；session 轮换不丢 participant 水位。
+**退出条件**：给定一组消息和 participant 水位，能生成正确的增量简报；同一消息不会重复投递；未完成行阻塞水位；session 轮换不丢 participant 水位；状态枚举无 `failed/interrupted/waiting/unknown` 混用。
 
 ### Phase 2：Engine + RuntimeAdapter + resume proof
 
 - 把 queued reply 行变成运行。
 - 接 Meldwork 现有 `invokeAgent` 和 `InvocationSession`；通过 SessionStore port 写 SQLite。
 - 实现 resume/create/rotate。
-- 实现 `mention` 工具与 wake budget，MCP 优先 + 标记兜底。
+- 实现 `mention` 工具与 wake budget；MCP 是完整工具循环，标记只支持单一终止动作。
 - 实现 stop/steer/restart 恢复（`interrupted/unknown`）。
-- 所有进程启动走 `start_reply` effect。
+- 所有进程启动走 `start_reply` effect；effect 成功 = 进程已启动/登记，pump 不 await 整段 run。
+- 实现当前 Chat 的 `read_chat` 分页补读；编辑追加事件并推进 `activity_seq`。
 
 **Resume proof（硬门槛）**：
 - Claude Code：第一次 prompt 让 Agent 记住一个事实；第二次用同一 native session resume，问它这个事实；确认它接着上次上下文；测一次 CLI 重启后、一次长对话/压缩后。
@@ -155,27 +170,49 @@
 - 记录 token 使用、resume 成功/失败、压缩后是否丢上下文。
 - **如果 resume 失败，停止 Phase 2，不进入 Phase 3；要么改回无记忆模式，要么先做平台 handoff。**
 
-**退出条件**：两个角色可以并发回答；一个角色 mention 另一个；重启后 queued 继续、working 转 interrupted、session 指针保留；两个 CLI 的 resume proof 通过。
+**退出条件**：两个角色可以并发回答；一个角色 mention 另一个；重启后 queued 继续、working 转 interrupted、session 指针保留；两个 CLI 的 resume proof 通过；工具结果能回传给运行中的 session。
+
+### Phase 2.5：架构接缝纵向验证（先于完整 UI/schema）
+
+只验证最难的外部 CLI 接缝，不做完整 UI：
+
+```text
+持久 Session
+→ 真实 MCP 工具调用与结果回传
+→ 创建独立 Task session
+→ finish_task 完成声明
+→ 进程退出确认
+→ Artifact 快照/结算
+→ Captain review
+```
+
+- 不允许用替身模拟全部模型返回；至少一个真实 CLI 跑通这条链。
+- 如果 MCP 不可用，验证受限标记的终止动作，并明确它不能替代完整工具循环。
+- 这条链跑通前，不铺完所有 UI 和旧数据迁移。
+
+**退出条件**：真实 CLI 能完成“会话 → 工具 → Task → 结算 → review”的接缝；effect 不串行化并发；finish_task 不会在退出/快照前进入 in_review。
 
 ### Phase 3：Task + TaskRun + lane + Report
 
-- Agent 工具：`create_task`、`draft_task`、`list_tasks`、`get_task`、`comment_task`、`finish_task`。
-- TaskRun 队列、lane、writeScopes、并发、pump、评论续跑、rerun。
+- Agent 工具：`create_task`、`draft_task`、`list_tasks`、`get_task`、`read_task`、`comment_task`、`finish_task`。
+- TaskRun 队列、lane、writeScopes、并发、pump、评论续跑、rerun；`start_run` effect 成功 = 进程启动，不是运行结束。
 - Report 导入与 Task 状态推导；`accept_task` / `reject_task`。
+- `finish_task` 完成声明与结算分离：退出确认 + after 快照 + Artifact 合并后才 `in_review`/`blocked`。
 - Task 卡/Report 卡的最小 UI 读模型。
 - 一次性 CLI 的评论/回答排队 continuation run。
 
-**退出条件**：Agent 默认直接 `create_task`；Task 在自己的 lane session 里执行；评论续跑同一 lane；finish_task 回到 Chat；没有 Report 不能 done；用户 accept_task 才 done；writeScopes 校验通过。
+**退出条件**：Agent 默认直接 `create_task`；Task 在自己的 lane session 里执行；评论续跑同一 lane；finish_task 回到 Chat；没有 Report 不能 done；退出/快照完成前不能 in_review/accept_task；writeScopes 校验通过；TaskRun outcome 能表达 known/unknown。
 
 ### Phase 4：Captain + Captain review supervisor + Attention
 
 - Captain Role、Prompt revision、工具面（限定 Chat）。
-- `assign_in_group` 只发一条可见授权；目标 Agent 自己建 Task。
-- `captain_assignments` / `captain_reviews`；150ms 领域变化 debounce（快路径）+ 60 秒兜底 tick；批量 system review；checkpoint/dedupe/backoff。
+- `assign_in_group` 只发一条可见授权；不得以 Captain 自己为目标；无合法目标就报错。
+- 授权消息 + `captain_assignments` + 目标 queued reply 同一事务；reply 存 `captain_assignment_id`；目标自己建 Task，不能改派 assignee。
+- `captain_assignments` / `captain_reviews`；150ms 任意领域变化 debounce（快路径）+ 60 秒兜底 tick；只合并同 Chat pending review；checkpoint/dedupe/backoff。
 - Attention/Inbox 聚合、回答回流、通知合并。
 - 用户命令：pause/resume/stop/retry/handoff/accept_task/reject_task/answer_attention。
 
-**退出条件**：用户不 @ 时消息进入 Captain；Captain 授权后目标 Agent 自己建 Task；Task 完成后 review supervisor 唤醒 Captain；没有 Task 的 assignment 回复也能生成 `assignment_settled`；review 流量不推进 `activity_seq`；三阶段 Prompt 工作流可以跑通；`assign_in_group` 和 review 都不占 5 次 mention 预算；没有 completion wake/独立预算。
+**退出条件**：用户不 @ 时消息进入 Captain；Captain 授权后目标 Agent 自己建 Task；Task 结算后 review supervisor 唤醒 Captain；`hasNew` 使用 `max(checkpoint, assignment 消息 seq)` 基线；没有 Task 的 assignment 回复也能生成 `assignment_settled`；只合并同一 Chat 的 review；review 流量不推进 `activity_seq`；三阶段 Prompt 工作流可以跑通；`assign_in_group` 和 review 都不占 5 次 mention 预算；没有 completion wake/独立预算。
 
 ### Phase 5：UI 重写
 
@@ -222,9 +259,9 @@ npm --prefix desktop run pack
 - 角色自己 create Task → task lane session 执行 → finish_task → Chat 看到结果。
 - 用户评论 Task → 同一 lane session 续跑，不重读任务简报；一次性 CLI 排队 continuation run。
 - rerun → 新 lane session，从零开始。
-- 重启 → 消息、任务、报告、session 指针、未完成 run 可恢复；working → interrupted/unknown，不伪造退出。
+- 重启 → 消息、任务、报告、session 指针、未完成 run 可恢复；消息 `working` → `interrupted`；TaskRun `status=interrupted, outcome=unknown`；不伪造退出。
 - 上下文过长 → 简报有界；session 轮换时有一次性 handoff；不无限重试。
-- Captain 三阶段 Prompt → review supervisor 逐阶段唤醒 Captain；3 次 `assign_in_group` 是普通消息，不占 5 次 mention；3 次 review 是 system 消息，也不占；5 次只约束 Agent 的 `mention` 工具调用。review 行和 Captain review 回复不推进 `activity_seq`。
+- Captain 三阶段 Prompt → review supervisor 逐阶段唤醒 Captain；`hasNew` 用 `max(checkpoint, assignment 消息 seq)` 基线；3 次 `assign_in_group` 是普通消息，不占 5 次 mention；3 次 review 是 system 消息，也不占；5 次只约束 Agent 的 `mention` 工具调用。只合并同一 Chat 的 pending review；review 行和 review reply 不推进 `activity_seq`，`post_in_chat` 例外。
 
 ### 4.2 治理
 
@@ -250,15 +287,19 @@ npm --prefix desktop run pack
 | --- | --- |
 | 外部 CLI resume 不可靠 | Phase 2 resume proof；失败则停止并改设计 |
 | CLI 压缩后丢失平台已投递内容 | `last_seq` 只保证投递；重要事实落 Task/Report/Artifact；轮换 handoff |
-| 工具通道不可用 | MCP 优先，严格标记覆盖全部工具；不支持的 CLI 只作只读参与者 |
-| 简报裁掉关键信息 | 100×2000 上限 + Session Handoff + Task/Artifact |
+| 工具通道不可用 | MCP 完整循环优先；标记只支持单一终止动作，无结果回传；不支持的 CLI 只作只读参与者 |
+| 简报裁掉关键信息 | 100×2000 上限 + `omittedSeqs`/`truncatedIds` + `read_chat` 补读 + Session Handoff + Task/Artifact |
 | Report 解析不可靠 | MCP 工具优先；标记严格校验；无报告不猜完成 |
-| 迁移丢数据 | 备份、dry-run、source→target 矩阵、迁移报告、失败回滚 |
+| Effect pump 串行化并发 | ADR-N20：启动成功 = 进程已启动/登记，pump 不 await 整段 run；并发由 lane/机器/租约控制 |
+| finish_task 提前结算 | 完成声明与结算分离：退出确认 + 快照 + Artifact 合并后才 in_review；accept_task 只能在结算后 |
+| 迁移丢数据 | 备份、dry-run、source→target 矩阵、迁移报告、失败回滚；v2/active/unknown 单独处理 |
 | 权限/租约回归 | 保留现有安全测试；新 domain 只能调用既有权限层 |
 | 重新长回 Controller | ADR 明确禁止平台拆任务；`create_task` 只能由 Agent 工具触发 |
 | 删除旧代码误伤 | 依赖顺序表；先解耦 LocalWorkspace/ProjectService；每阶段可回滚 |
 | Chat 回复写文件 | Chat 默认只读；写入只在 TaskRun；隔离前写入并发 1 |
-| Captain review 循环 | checkpoint/dedupe/idle 检查；不新增 completion wake 预算 |
+| Captain 自我派发 | 不得以 Captain 为目标；无合法目标报错；assignment 因果链持久化 |
+| Captain review 循环 | assignment 消息基线 + checkpoint/dedupe/idle + `activity_seq` 排除 review 流量；`post_in_chat` 例外由 Prompt 约束 |
+| 状态含义不一致 | Task/TaskRun/Effect 分开定义；TaskRun 用 outcome 表达 unknown；无 Report 的已知退出和未知退出分开 |
 
 ## 6. 不做什么
 
@@ -268,4 +309,5 @@ npm --prefix desktop run pack
 - 不做 Assignment 与 TaskRun 的双模型。
 - 不做旧 sessionRef 的伪造恢复。
 - 不做自创 Captain completion wake / 独立 completion 预算 / `stage_complete` 工具。
+- 不把文本标记当成完整工具循环；不把 `finish_task` 当成结算完成。
 - 不在第一阶段做隔离 worktree、跨 Chat 依赖、内置模型 runtime、memory sidecar。

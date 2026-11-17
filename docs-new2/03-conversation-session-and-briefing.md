@@ -241,7 +241,7 @@ text = "[chat: <title>]" +
        "---" +
        "<trigger author> says:" + trigger.text + trigger.attachments
 
-return { text, seen }
+return { text, seen, omittedSeqs, truncatedIds }
 ```
 
 关键点：
@@ -249,6 +249,8 @@ return { text, seen }
 - **未完成的行会阻塞水位**：如果一条回复还在写，水位不能越过它；它后面的已完成消息会先展示，但下次还会再展示，直到它完成。
 - **自己的发言不重复**：即使水位没推进，也不会把自己的话再发给自己。
 - **最多 100 条、每条最多 2000 字**：超出部分保留最新，旧消息省略并标注。
+- **省略可补读**：简报返回被省略的消息 ID/seq 区间和 truncation 标记；Agent 可以调用 `read_chat(beforeSeq, limit)` 读取当前 Chat 的历史。`read_chat` 只允许当前 Chat，不能跨 Chat。
+- **编辑要重新进入投递**：消息编辑追加 `message_edited` 事件/消息并推进 `activity_seq`；只更新旧行 `revision` 不会被 `seq > last_seq` 发现。
 - **不生成总结**：简报是原文摘录；总结只发生在 Session Handoff 和平台自管运行时的压缩。
 
 ### 4.3 附件
@@ -342,7 +344,7 @@ Agent 在回复中调用 `mention` 工具：
   - 确认工作目录和权限；
   - 获取 session（resume 或 create）；
   - 生成简报；
-  - 写 `start_reply` effect；由 effect pump 启动进程。
+  - 写 `start_reply` effect；由 effect pump 启动进程。**effect 成功 = 进程已启动/已登记，不是回复完成**；pump 启动后即释放，不 await 整段 run；reply 行单独记录最终状态。
 - 执行中：
   - 流式文本写入 reply 行，`revision` 增加；
   - 工具调用产生 Trace；
@@ -367,7 +369,7 @@ Agent 在回复中调用 `mention` 工具：
 - `working` / `waiting_for_input`：转 `stopping`，向 runtime 发 abort；最终 `stopped` 或 `interrupted`。
 - 停止 Role：只停止该 Role 在**当前 Chat** 的活动回复；Role 是 Chat 级的，不跨 Chat。
 - 停止不撤销已写文件；需要补偿动作。
-- Task 停止：Task 标记 `cancelled`（用户意图），运行中的 TaskRun 只有确认退出后才 `cancelled`；无法确认时 `interrupted/unknown` + Attention。
+- Task 停止：Task 标记 `cancelled`（用户意图），运行中的 TaskRun 只有确认退出后才 `cancelled`；无法确认时 `status=interrupted, outcome=unknown` + Attention。
 
 ### 6.4 重启恢复
 
@@ -377,7 +379,7 @@ Agent 在回复中调用 `mention` 工具：
   - 已经提交的最终 Report 保留；可以按 Report 推导 Task 状态。
 - Session：CLI 侧保留；平台按 `native_session_ref` 尝试 resume；不可恢复则轮换 + handoff。
 - TaskRun：
-  - `starting/running` 标记 `interrupted/unknown`；
+  - `starting/running` 标记 `status=interrupted, outcome=unknown`；
   - `queued` 继续等待；
   - 在进程对账确认退出之前，不允许为该 lane 启动新的 run。
 - Effects：`running` 转 `unknown`，创建 Attention；不自动重放。
@@ -410,22 +412,33 @@ Agent 在回复中调用 `mention` 工具：
 
 eta 没有“每个 Task 完成就单独唤醒 Captain”的机制。它用 **Captain review supervisor**：
 
-- `captain/supervisor.ts` 每 60 秒 tick 是兜底；领域变化（task board/report/run）会触发 `requestTick()` 的 150ms debounce，通常很快唤醒 Captain，不需要等一分钟。
+- `captain/supervisor.ts` 每 60 秒 tick 是兜底；**任何领域变化**（消息追加、Task、run、inbox、conversation state）都会经由 `changed()` 触发 `requestTick()` 的 150ms debounce。不要只挂 task board；没有 Task 的聊天阶段也要走快路径。
 - `captain/service.ts` 的 `observeReviews()` 检查已结算的 Captain assignment：
   - 目标成员没有 queued/working/stopping；waiting_for_input 归入 blocked 条件；
   - 关联 Task 不能还是 todo/in_progress，也不能还有未结束的 run；
-  - `chat.activity_seq` 是否超过上次 checkpoint（有新活动）；
+  - `hasNew`，但比较基线必须包含指派消息水位（见下）；
   - 是否 blocked / stalled。
-- **没有 Task 也会 review**：目标角色回复结束并空闲、且 Chat 有 public 新活动，就生成 `assignment_settled`，不要求它建 Task。挡住的是还在 queued/working/stopping 的回复，以及关联 Task 仍 todo/in_progress 或还有未结束 run。
-- **review 流量不能推进 activity 水位**：`chat.activity_seq` 只统计 public 消息，排除 `audience=captain` 的 review 行和 Captain 为 review 写的回复（`data_json.reviewReply=true`）。否则 review 自己会推进水位，下一轮 tick 又看到“新活动”，形成循环。`assign_in_group` / `post_in_chat` 是 public，计入 `activity_seq`。
+- **`hasNew` 的比较**（对齐 eta `captain/service.ts:965-973`）：
+
+```text
+activityBaseline = max(checkpoint, 各未取消 assignment 的 public 消息 seq)
+hasNew = chat.activity_seq > activityBaseline
+```
+
+  指派消息本身不是“指派之后的新活动”。`assign_in_group` 的可见消息、`captain_assignments` 记录、目标的 queued reply 行必须在**同一事务**写入，然后再 `requestTick()`；这样目标立刻处于 queued，会被“目标仍忙”挡住，不会把刚发出的指派当成 `assignment_settled`。
+
+- **没有 Task 也会 review**：目标角色回复结束并空闲、且 Chat 有 public 新活动，就生成 `assignment_settled`，不要求它建 Task。挡住的是还在 queued/working/stopping 的回复，以及关联 Task 仍 todo/in_progress 或还有未结束 run。未指派角色的回复不触发。
+- **有 Task 时等结算**：`finish_task` 的 Chat 消息先推进 `activity_seq`，但 Task 在结算完成前仍是 `in_progress`；review 等到 Task 进入 `in_review`/`blocked` 后才触发。结算引起的 Task 状态变化也必须 `requestTick()`。
+- **review 流量不能推进 activity 水位**：`chat.activity_seq` 只统计 public 消息，排除 `audience=captain` 的 review 行和平台为这次 review 投递创建的那条 reply（`data_json.reviewReply=true`）。`reviewReply=true` **只打在 review 投递的 reply 上**；`assign_in_group` / `post_in_chat` 是另外的消息，不继承这个标记，且是 public，计入 `activity_seq`。
+- `post_in_chat` 是 public；目标已空闲时，它仍可能再开一轮 `assignment_settled`。Captain 的普通总结应放在 review reply（`audience=captain`）；`post_in_chat` 只用于确需公开的通知。
 - `chat.activity_seq` 只供 supervisor 判断 public 活动；Captain 的 `chat_participants.last_seq` 仍是它的投递水位。review 行不推进 `activity_seq`，但会进入 Captain 的简报。
 - `stalled` 判断的 `silentFor` 也只看最新 public 消息的更新时间；review 行和 Captain review 回复不算。
-- 满足条件时创建 `captain_review`；checkpoint 用 `activity_seq`，dedupe key 用 conversation + kind + checkpoint，不会对同一段活动反复唤醒。
-- 只在 Captain 空闲时批量投递（最多 20 条 / 12k 字符）。
+- 满足条件时创建 `captain_review`；`checkpoint_seq` 用 `activity_seq`，dedupe key 用 conversation + kind + checkpoint，不会对同一段活动反复唤醒。
+- 只在 Captain 空闲时批量投递**同一个 Chat** 的 pending review（最多 20 条 / 12k 字符）；不要跨 Chat 合并。
 - review 以 `system` 消息进入 Captain 的会话，并创建 queued reply；`mentions: []`，不占 5 次 agent-to-agent 预算。
 - review 正文是**观察**：assignment/task id、checkpoint、目标状态；不是上一环全文。Captain 通过正常增量简报读取水位之后、别人已经写完的 public 原文，再按 Prompt 决定下一步。
 
-**触发来源**：`finish_task` 在来源 Chat 追加 Agent 消息，推进 `activity_seq`；目标空闲后 supervisor 生成 review。不是每个 `finish_task` 立刻唤醒，也不是每个聊天回复都唤醒。
+**触发来源**：`finish_task` 在来源 Chat 追加 Agent 消息，推进 `activity_seq`；目标空闲后 supervisor 生成 review。已指派角色的 public 回复结束并空闲就会 review；不唤醒的是未指派的回复、仍在 queued/working/stopping 的回复，以及关联 Task 仍 todo/in_progress 或还有未结束 run。
 
 **Captain 仍然不建 Task**：review 只是让它看到“上一环结算了”；它按自己的 Prompt 发可见授权，目标 Agent 自己 `create_task`。
 
@@ -444,7 +457,7 @@ Chat-1 的 Captain Prompt：
 流程：
 
 1. 用户只 @ Captain（或不 @，Captain 是默认接收者）。
-2. Captain `assign_in_group` 效果图 → 效果图角色被唤醒，自己 `create_task`。
+2. Captain `assign_in_group` 效果图 → 消息、`captain_assignments`、目标 queued reply 同一事务写入 → 效果图角色被唤醒，自己 `create_task`。
 3. 效果图 `finish_task` → 来源 Chat 追加 Agent 消息 → `activity_seq` 前进。
 4. supervisor review → `captain_review` → system 消息唤醒 Captain；Captain 的简报包含效果图的完整发言。
 5. Captain 按 Prompt 派架构 → 同理派实施。

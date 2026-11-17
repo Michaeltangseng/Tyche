@@ -19,9 +19,12 @@ draft_task(title, description, acceptance, workspace?, parent_task_id?,
            blocked_by?, optional?, assignee_role_id?)
 list_tasks(filter?)
 get_task(taskId)
+read_task(taskId, beforeSeq?, limit?)
+read_chat(beforeSeq?, limit?)
 update_task(taskId, title?, description?, ...)
 comment_task(taskId, text)
 finish_task(taskId, summary, status, evidence?, artifact_ids?)
+            // status=ready|blocked；ready 是完成声明，不是 in_review
 ```
 
 ### 1.2 create_task 与 draft_task
@@ -35,6 +38,8 @@ finish_task(taskId, summary, status, evidence?, artifact_ids?)
 
 - 默认执行者是创建者。
 - `assignee_role_id` 可选；如果指定，必须是当前 Chat 的 active Role，且 Provider/能力满足任务要求。
+- **Captain 授权触发时**：执行者就是被授权的接收角色；`create_task` 不能把 assignee 改成另一个角色。改派只能走用户 `handoff_task`。
+- `create_task` 的 `captain_assignment_id` 从当前 reply 行/run 继承，不按“该角色最近一次 assignment”推测；同一角色多个排队授权时，每个 reply 保留自己的 assignment id。
 - 平台校验 Task、Role、Chat 的归属；跨 Chat 分配一律拒绝。
 - 用户可以 `handoff_task` 把已结束的失败/等待尝试交给另一个 Role；这是用户命令，不是 Agent 自由改派。
 - Agent 可以在 Report 里建议 `handoff`，但那只创建一次确认/Attention，不自动改派。
@@ -55,8 +60,8 @@ create_task ─────────────────────▶ t
 draft_task ──(用户确认)──────────▶ todo
 backlog（可选，不立即运行）──────▶ todo
                                     │
-                                    ├─ finish_task(ready) ──▶ in_review ──(用户 accept_task)──▶ done
-                                    ├─ finish_task(blocked) ─▶ blocked ──(用户回答/评论)──▶ todo
+                                    ├─ finish_task(ready) ──▶ 完成声明（仍 in_progress）──▶ 结算：退出确认 + 快照 ──▶ in_review ──(用户 accept_task)──▶ done
+                                    ├─ finish_task(blocked) ─▶ 结算完成 ──▶ blocked ──(用户回答/评论)──▶ todo
                                     ├─ required run failed ──▶ blocked + Attention（或 todo，若已排队重试）
                                     └─(用户 stop_task)──▶ cancelled
                                     │
@@ -64,7 +69,7 @@ backlog（可选，不立即运行）──────▶ todo
 ```
 
 - Task 状态由平台根据 Report、TaskRun 事实和用户命令推导；Agent 不能直接设置 `done/cancelled`。
-- `in_review` 表示 Agent 认为工作完成，等待用户验收；`done` 需要用户 `accept_task`。
+- `in_review` 表示平台已完成结算（退出确认 + 快照 + Report/Artifact 校验），等待用户验收；`done` 需要用户 `accept_task`。
 - `blocked` 表示 Agent 需要用户输入；用户的评论或回答会把它推回队列。
 - `cancelled` 表示用户不再要求执行；运行中的 run 要先停止并确认退出。
 - Task 没有独立的 `failed` 状态；失败是 TaskRun 的事实。required run 失败后，Task 可以 `blocked` + Attention，或在已排队重试时保持 `todo`。
@@ -75,15 +80,18 @@ backlog（可选，不立即运行）──────▶ todo
 | --- | --- | --- | --- |
 | — | `create_task` | todo | 默认；可选 backlog |
 | — | `draft_task` + 用户确认 | todo | 用户确认 |
-| todo | TaskRun start | in_progress | effect 成功启动 |
-| in_progress | `finish_task(ready)` | in_review | 执行者 lane 的 active run |
-| in_progress | `finish_task(blocked)` | blocked | 执行者 lane 的 active run |
-| in_progress | required run failed | blocked | 创建失败 Attention；若有排队重试则 todo |
-| in_review | `accept_task` | done | 最新 required run 有 ready Report；required Artifact 已接受/发布 |
+| todo | TaskRun start | in_progress | effect 成功 = 进程已启动/登记，不是 run 完成 |
+| in_progress | `finish_task(ready)` | in_progress | 执行者 lane 的 active run；完成声明，等待退出与快照 |
+| in_progress | 结算完成：退出确认 + 快照 + Report 校验 | in_review | ready Report；Artifact IDs 已合并 |
+| in_progress | `finish_task(blocked)` | in_progress | 完成声明，等待退出与快照 |
+| in_progress | 结算完成：blocked Report | blocked | 退出确认 + 快照完成 |
+| in_progress | required run failed（known） | blocked | 创建失败 Attention；若有排队重试则 todo |
+| in_progress | 进程退出未知 | blocked | TaskRun interrupted/outcome=unknown + Attention |
+| in_review | `accept_task` | done | 结算已完成；最新 required run 有 ready Report；required Artifact 已接受/发布 |
 | in_review | `reject_task` | todo | 创建 revision 评论；可排队 continuation run |
 | blocked | 用户评论/回答 | todo | 平台把评论送入 task session 或排队 continuation run |
 | todo/in_progress/in_review/blocked | `stop_task` | cancelled | 用户命令；TaskRun 停止另行确认 |
-| blocked/failed/interrupted | `handoff_task` | todo | 目标 Role 属于同一 Chat；原 run 已结束 |
+| blocked | `handoff_task` | todo | 目标 Role 属于同一 Chat；原 run 已结束（TaskRun failed/interrupted 是事实，不是 Task 状态） |
 | cancelled | — | — | 终态；用户需显式重开 |
 
 - Artifact 状态与 Task 状态独立：`draft | published | accepted | rejected | superseded`。接受 Artifact 不自动把 Task 置 `done`；`accept_task` 是 Task 级命令。
@@ -106,6 +114,7 @@ TaskRun
   lane_id
   role_id
   status          // queued | starting | running | completed | failed | interrupted | cancelled
+  outcome         // pending | known | unknown
   session_id
   required        // 该 run 是否阻塞 Task 完成
   continues_run_id
@@ -123,7 +132,9 @@ TaskRun
 - 启动条件：该 lane 的上一个 run 已结束；目标机器在线；该机器有空闲槽位；Room 的写入租约可用（写入型 run）。
 - 每台机器默认最多 2 个并发 run；**但隔离 workspace 之前，每个 Room 同时最多 1 个写入型 run**。只读 run 可以并行。
 - `pump()` 在以下时刻调用：新 run 入队、run 结束、机器上线、并发上限改变、Task 状态/依赖改变。
-- TaskRun 是业务队列；启动原生进程是 effect。queued TaskRun 先写 `start_run` effect，effect 成功后才进入 running；effect 结果未知时保留 run 为 unknown，不自动重放。
+- TaskRun 是业务队列；启动原生进程是 effect。queued TaskRun 先写 `start_run` effect；**effect 成功 = 进程已启动/已登记，不是整次 run 完成**。effect pump 启动进程后即标记 succeeded 并释放，不能 await 整段 run；run 的 outcome 由 TaskRun 单独记录。
+- 并发由 lane、机器槽位和写入租约控制，不是由 effect pump 串行控制。同一 lane 的 run 串行；不同 lane 可以并行启动。
+- effect 结果未知时保留 run 为 `interrupted/outcome=unknown`，进程对账后再决定；不自动重放。
 
 ### 3.2 Task Session 与 lane
 
@@ -167,15 +178,26 @@ Do not merge into the main branch unless the task says so.
 - 旧 run 和旧 session 保留在历史中；不删除证据。
 - `rerun` 是用户命令；Captain 的 `control_task` 只能 continue/pause，不能 rerun/stop/delete。
 
-### 3.6 结束
+### 3.6 完成声明与结算
 
-- Agent 调用 `finish_task(taskId, summary, status)`：
-  - `status=in_review`（默认）→ Report(kind=ready)，Task → `in_review`；
-  - `status=blocked` → Report(kind=blocked)，Task → `blocked`；
-  - 摘要成为 TaskActivity 评论；
-  - 平台以 Agent 身份把“#编号 标题 + 摘要”发回来源 Chat；这会推进 `chat.activity_seq`，供 Captain review 看到。
-- 如果 run 安静结束但没有 `finish_task`：平台提醒一次；仍然没有报告则 run failed，Task 按 2.1 推导。
-- 进程退出但未确认结果：run → `interrupted/unknown`；创建 Attention；不自动重试，不伪造退出。
+`finish_task` 是**完成声明**，不是结算完成。
+
+1. Agent 调用 `finish_task(taskId, summary, status)`，`status=ready|blocked`：
+   - 写 Report(kind=ready/blocked)；
+   - 摘要成为 TaskActivity 评论；
+   - 平台以 Agent 身份把“#编号 标题 + 摘要”发回来源 Chat，推进 `chat.activity_seq`；
+   - Task 仍保持 `in_progress`（或等待状态），**不立即进入 `in_review`**。
+2. 平台等待进程退出确认。
+3. 退出确认后，在租约内完成 after 快照，生成 Artifact IDs，并合并进 Report。
+4. 校验 Report 归属、Artifact 范围和快照结果后，Task 才进入 `in_review`（ready）或 `blocked`，并释放 lane、机器槽位和写入租约。
+5. `accept_task` 只允许在结算完成后调用；用户不能在进程仍在运行或快照未完成时接受。
+
+边界：
+
+- Agent 不能引用本次 run 尚未生成的 Artifact ID；平台在快照后补入。
+- 进程在 `finish_task` 后失败或退出未知：run → `interrupted/outcome=unknown`；Task → `blocked` + Attention；Report 保留但不能验收。
+- run 安静结束但没有 `finish_task`：平台提醒一次；仍然没有报告则 run failed（known），Task → `blocked` + Attention。
+- 进程退出未确认：run → `interrupted/outcome=unknown`；创建 Attention；不自动重试，不伪造退出。
 
 ## 4. Report
 
@@ -201,6 +223,7 @@ Report
 - 没有 Report 不能把 Task 推导为 `done`。
 - `next_request` 只是建议，不自动派发；需要 Agent 自己 `mention`、Captain 发可见授权，或用户命令。
 - `handoff` Report 只记录“建议交接”；实际交接是用户 `handoff_task`（或 Captain 提议后由用户确认）。
+- Agent 提供的 `artifact_ids` 只能引用同一 Room 已存在的 Artifact；本次 run 的 Artifact 由平台在 after 快照后生成并合并，Agent 不能引用尚不存在的 ID。
 
 ### 4.2 Report 通道
 
@@ -214,19 +237,22 @@ Report
 - 只接受最后一个标记；字段、kind、摘要、Artifact 归属严格校验。
 - 标记后的自然语言可以作为补充说明，但不能覆盖结构化字段。
 - 标记从可见正文和简报中剥离，避免二次进入上下文。
-- 没有结构化报告时，平台不猜测完成状态；run 保持 waiting/interrupted，交给用户或 Captain 处理。
+- 没有结构化报告时，平台不猜测完成状态：进程仍在运行则 run 保持 `running`；进程已退出则 `failed`（known）；退出未知则 `interrupted/outcome=unknown`，交给用户或 Captain 处理。
 
 ### 4.3 Task 状态推导
 
 ```text
 最新 required run 的 Report:
-  progress  → in_progress / waiting
-  ready     → in_review
-  waiting   → waiting
-  blocked   → blocked
+  progress  → in_progress
+  ready     → in_progress（完成声明）→ 结算完成后 in_review
+  waiting   → blocked（run 仍 active 时可保持 in_progress）
+  blocked   → blocked（结算完成后）
   failed    → blocked / todo（视重试）
-  handoff   → blocked / waiting（等待用户或 Captain 决定）
+  handoff   → blocked（等待用户或 Captain 决定）
 ```
+
+- `waiting` 不是 Task 状态；它映射到 `blocked`（需要用户）或 `in_progress`（run 仍在进行）。
+- `ready` 在退出确认、快照完成、Report/Artifact 校验完成之前不能进入 `in_review`。
 
 - 可选 run 失败不阻塞 required 工作。
 - 替代 run（retry/handoff）链上只计算最新的 required run；旧失败和迟到 Report 不覆盖新结果。
@@ -240,26 +266,28 @@ Agent 工具不能只存在于文档里；必须有明确通道。
 ### 5.1 首选：本地 MCP server
 
 - main 为每次 run/session 起一个本地 MCP server，绑定 `runId`、`sessionId`、`chatId`/`taskId`、`roleId` 和允许的工具集合。
-- 工具：`mention`、`create_task`、`draft_task`、`comment_task`、`finish_task`、`list_tasks`、`get_task`、`request_attention`。
+- 工具：`mention`、`create_task`、`draft_task`、`comment_task`、`finish_task`、`list_tasks`、`get_task`、`read_task`、`read_chat`、`request_attention`。
 - 身份由 server 绑定，不接受工具参数里的 author/actor/runId。
 - 只有执行者 lane 的 active run 能调用 `finish_task`；mention lane 只有读/评论/mention/ask 工具。
-- 工具调用带 `toolCallId`；平台按 `(runId, toolCallId)` 幂等，重复调用返回原结果。
+- 工具结果必须回传给运行中的 session（`create_task` 返回 taskId、`list_tasks` 返回列表等）；MCP server 是完整工具循环，不是一次性标记。
+- 调用 ID 由 MCP server/平台生成并记录；不要假设 CLI 或模型提供稳定的 `toolCallId`。幂等键用 `(runId, toolName, canonical args)` 或 server 记录的调用 ID，跨重试保持不变。
 - MCP server 只监听 loopback，生命周期跟随 run；不把 token/凭据暴露给 CLI。
 
-### 5.2 兜底：严格文本标记
+### 5.2 兜底：严格文本标记（受限降级）
 
 ```text
 [[MELDWORK_TOOL:{"name":"mention","callId":"...","args":{"names":["reviewer"],"text":"..."}}]]
 ```
 
-- 每个回复只应用最后一个完整标记；标记从可见正文和简报中剥离。
+- **标记不是 MCP 等价物。** 每个回复只应用最后一个完整标记；没有工具结果回传，不能先 `create_task` 再 `comment_task`，也不能 `list_tasks`/`get_task` 后继续决策。
+- 标记只适合一次**终止动作**：`mention`、`create_task`、`comment_task` 或 `finish_task` 中的一个；`finish_task` 与 Report 标记共用严格校验。
 - 身份仍然由平台从 run/session 绑定；标记里的字段不能指定作者。
-- 标记协议必须覆盖 `mention`、`create_task`、`comment_task`、`finish_task`，不能只覆盖 Report。
-- 不支持标记的 CLI 无法参与 Agent 间交接和建 Task；该 CLI 只能作为只读讨论参与者，或由用户手动触发。
+- Captain 工具（`assign_in_group`、`post_in_chat`、`proposal`、`control_task`）需要 MCP；标记协议没有闭环的授权/结果返回，不支持 Captain 自治。
+- 不支持 MCP、也不支持标记的 CLI 只能作为只读讨论参与者；不能建 Task、mention 或 finish_task。
 
 ### 5.3 能力矩阵
 
-Phase 2 必须为每个 CLI 记录并验证 resume、mid-turn steer、wait-for-input、MCP、压缩、cancel、并发 session。没有 mid-turn steer 的 CLI，评论和 Attention 回答一律排队为 continuation run。
+Phase 2 必须为每个 CLI 记录并验证 resume、mid-turn steer、wait-for-input、MCP、tool result return / multi-call loop、压缩、cancel、并发 session。没有 mid-turn steer 的 CLI，评论和 Attention 回答一律排队为 continuation run。
 
 ## 6. Captain
 
@@ -280,6 +308,7 @@ list_roles()
 read_role(roleId)
 list_tasks(filter?)
 read_task(taskId)
+read_chat(beforeSeq?, limit?)     // 只限当前 Chat 的历史分页
 read_inbox(pendingOnly?)
 request_attention(taskId?, type, question, options?)
 control_task(taskId, action, text?)   // 仅 continue/pause；stop/rerun/delete 需用户命令
@@ -288,7 +317,8 @@ set_role_prompt(...)                  // 通常需要用户确认
 ```
 
 - `chatId` 必须等于 Captain 自己的 Chat；跨 Chat 调用一律拒绝。
-- 不提供 `list_chats` / `read_chat` 的跨 Chat 读取；Captain 只能看自己的 Chat。
+- `list_roles` / `read_role` / `list_tasks` / `read_task` / `read_chat` / `read_inbox` 只能访问所属 Chat 的对象；跨 Chat 的 roleId/taskId/messageId 一律拒绝。
+- 不提供跨 Chat 的 `list_chats` / `read_chat`；Captain 只能看自己的 Chat。
 - 不能读取其他 Chat 的任务、消息、Report、Trace 或 Attention。
 - 不能授予新的 Provider、能力、写入范围或凭据。
 - 不能直接设置 Task `done/cancelled`；不能 rerun/delete Task。
@@ -299,7 +329,8 @@ set_role_prompt(...)                  // 通常需要用户确认
 - **一条可见消息**，带 @mentions；这条消息就是 assignment。它是普通 message，不是 `kind=mention`，不消耗 5 次 mention 预算。
 - 被点名的 Agent 被唤醒；它们自己决定是否 `create_task`、如何执行。
 - Captain 不创建 Task，也不替目标 Agent 指定执行者或 TaskRun。
-- 如果没有 `roleIds`，消息交给 Chat 的默认接收者（Captain 自己或 steward）。
+- **不得把 Captain 自己作为目标**。如果没有 `roleIds`，只有恰好一个非 Captain active 角色时才默认给它；零个或多个都返回错误，不回落到 Captain，也不猜。
+- **同一事务写入**：assignment 消息、`captain_assignments` 记录（含 `target_reply_ids`）、目标的 queued reply 行一起提交，然后 `requestTick()`。不要先写消息再异步排队，否则 150ms 快路径可能把刚发出的指派当成 `assignment_settled`。
 - 被唤醒的 Agent 读到的是这条 assignment 消息的正文，而不是 Captain 还没写完的回复。
 
 **注意**：`assign_in_group` 不是“回复一行 + mention 一行”。eta 的 `captain/service.ts:322` 只调用一次 `engine.send`，写一条带 @ 的消息。两行现象来自 `mention` 工具，不是 assign。
@@ -308,23 +339,34 @@ set_role_prompt(...)                  // 通常需要用户确认
 
 eta 没有“每个 Task 完成就单独唤醒 Captain”的机制。它用 supervisor：
 
-- `captain/supervisor.ts` 每 60 秒 tick 是兜底；领域变化（task board/report/run）触发 150ms debounce，通常很快唤醒 Captain，不需要等一分钟。
+- `captain/supervisor.ts` 每 60 秒 tick 是兜底；**任何领域变化**（消息追加、Task、run、inbox、conversation state）都会经由 `changed()` 触发 `requestTick()` 的 150ms debounce。不要只挂 task board；没有 Task 的聊天阶段也要走快路径。
 - `captain/service.ts` 的 `observeReviews()` 检查已结算的 Captain assignment：
   - 目标成员没有 queued/working/stopping；waiting_for_input 归入 blocked 条件；
   - 关联 Task 不能还是 todo/in_progress，也不能还有未结束的 run；
-  - `chat.activity_seq` 超过上次 checkpoint（有新活动）；
+  - `hasNew`，比较基线必须包含指派消息水位（见下）；
   - 或者 blocked / stalled。
+- **`hasNew` 的比较**（对齐 eta `captain/service.ts:965-973`）：
+
+```text
+activityBaseline = max(checkpoint, 各未取消 assignment 的 public 消息 seq)
+hasNew = chat.activity_seq > activityBaseline
+```
+
+  指派消息本身不是“指派之后的新活动”。`assign_in_group` 的可见消息、`captain_assignments` 记录、目标的 queued reply 行在同一事务写入，然后 `requestTick()`；目标立刻 queued，会被“目标仍忙”挡住。
+
 - **没有 Task 也会 review**：目标角色回复结束并空闲、且 Chat 有 public 新活动，就生成 `assignment_settled`，不要求它建 Task。挡住的是还在 queued/working/stopping 的回复，以及关联 Task 仍 todo/in_progress 或还有未结束 run。
-- **review 流量不推进 activity 水位**：`chat.activity_seq` 只统计 public 消息，排除 `audience=captain` 的 review 行和 Captain 为 review 写的回复（`data_json.reviewReply=true`）。`assign_in_group` / `post_in_chat` 是 public，计入 `activity_seq`。否则 review 自己会推进水位，下一轮 tick 又看到“新活动”，形成循环。
+- **有 Task 时等结算**：`finish_task` 的 Chat 消息先推进 `activity_seq`，但 Task 在结算完成前仍是 `in_progress`；review 等到 Task 进入 `in_review`/`blocked` 后才触发。结算引起的 Task 状态变化也必须 `requestTick()`。
+- **review 流量不推进 activity 水位**：`chat.activity_seq` 只统计 public 消息，排除 `audience=captain` 的 review 行和平台为这次 review 投递创建的那条 reply（`data_json.reviewReply=true`）。`reviewReply=true` **只打在 review 投递的 reply 上**；`assign_in_group` / `post_in_chat` 是另外的消息，不继承这个标记，且是 public，计入 `activity_seq`。
+- `post_in_chat` 是 public；目标已空闲时，它仍可能再开一轮 `assignment_settled`。Captain 的普通总结应放在 review reply（`audience=captain`）；`post_in_chat` 只用于确需公开的通知。
 - `chat.activity_seq` 只供 supervisor 判断 public 活动；Captain 的 `chat_participants.last_seq` 仍是它的投递水位。review 行不推进 `activity_seq`，但会进入 Captain 的简报。
 - `stalled` 判断的 `silentFor` 也只看最新 public 消息的更新时间；review 行和 Captain review 回复不算。
-- 满足条件时创建 `captain_review`；checkpoint 用 `activity_seq`，dedupe key 用 conversation + kind + checkpoint。
-- 只在 Captain 空闲时批量投递（最多 20 条 / 12k 字符）。
+- 满足条件时创建 `captain_review`；`checkpoint_seq` 用 `activity_seq`，dedupe key 用 conversation + kind + checkpoint。
+- 只在 Captain 空闲时批量投递**同一个 Chat** 的 pending review（最多 20 条 / 12k 字符）；不要跨 Chat 合并。
 - review 以 `system` 消息进入 Captain 的会话，并创建一条 queued reply；`mentions: []`，不占 5 次 agent-to-agent 预算。
 - review 正文是**观察**：assignment/task id、checkpoint、目标状态；不是上一环全文。Captain 通过正常增量简报读取水位之后、别人已经写完的 public 原文，再按 Prompt 决定下一步。
 - Captain 的总结放在 review reply（`audience=captain`）；`post_in_chat` 是 public，会计入 `activity_seq`，可能触发下一次 review，只用于确需公开的通知。
 
-触发来源：`finish_task` 在来源 Chat 追加 Agent 消息，推进 `activity_seq`；supervisor 看到新活动，在目标空闲后生成 review。不是每个 `finish_task` 立刻唤醒，也不是每个聊天回复都唤醒。
+触发来源：`finish_task` 在来源 Chat 追加 Agent 消息，推进 `activity_seq`；supervisor 看到新活动，在目标空闲后生成 review。已指派角色的 public 回复结束并空闲就会 review；不触发的是未指派的回复、仍在 queued/working/stopping 的回复，以及关联 Task 仍 todo/in_progress 或还有未结束 run。
 
 **不要**新增“Captain completion wake”或独立 completion budget；review supervisor 的 checkpoint + idle 检查已经覆盖循环保护。**不要**要求每个阶段调用 `stage_complete`；纯聊天阶段只要有 Captain assignment 且产生新活动，review 就能看到。
 
@@ -349,7 +391,7 @@ eta 没有“每个 Task 完成就单独唤醒 Captain”的机制。它用 supe
 
 | v2 Controller | 目标 Captain |
 | --- | --- |
-| 隐藏批次；有角色徽章/`note`，但不是可自由对话的协作角色 | Chat 内 Agent 角色，所有发言可见 |
+| 本身也是 Agent，但被隐藏并约束为 JSON 动作生成器；有角色徽章/`note`，不是可自由对话的协作角色 | Chat 内 Agent 角色，所有发言可见 |
 | 可以 `create_task` / `assign` | 只发可见授权；Task 由目标 Agent 创建 |
 | 每批动作绑定 `controller_decisions` | 工具调用写 events/trace；review 队列单独 |
 | 失败后自动 fallback 建任务 | 失败后只保留显式 @mention 路由，不猜任务 |
@@ -404,7 +446,7 @@ Attention 是需要用户处理的事项：
 - 写入型 run 在租约内做 shadow Git 快照；产生 commit/diff 引用。
 - Artifact 状态：`draft | published | accepted | rejected | superseded`；与 Task 状态独立。
 - Report 可以引用已存在的 Artifact；Agent 不能凭路径或伪造 ID 创建版本。
-- `accept_task` 可以要求 required Artifact 已接受/发布；接受 Artifact 本身不自动完成 Task。
+- `accept_task` 只能在结算完成后调用：进程退出已确认、after 快照已完成、Artifact ID 已合并并校验；它可以要求 required Artifact 已接受/发布。接受 Artifact 本身不自动完成 Task。
 - 接受是否恢复工作目录，后续单独定义；第一阶段只更新账本状态。
 
 ## 9. 不变量

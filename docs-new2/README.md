@@ -10,7 +10,7 @@ Meldwork 已经有一套能跑通的 v2 引擎：SQLite 账本、Message 入口�
 
 但它同时暴露了一个结构性问题：
 
-- v2 让 **Controller 在平台内部拆任务、建 Assignment**，而 Worker 只负责执行。这与项目室的核心原则冲突：单个 Agent 在自己的生态里完成大任务，平台不应该替它分解工作，也不应该追踪 Agent 内部步骤。
+- v2 的 Controller 本身也是 Agent，但被隐藏并约束为 JSON 动作生成器；它替目标 Agent 建 Task/Assignment，而 Worker 只负责执行。这与项目室的核心原则冲突：单个 Agent 在自己的生态里完成大任务，平台不应该替它分解工作，也不应该追踪 Agent 内部步骤。
 - v2 把 **一次 Assignment 当成一次会话**，每次重试或交接都新建原生调用，`saveSession: false`。Agent 不记得上次做过什么，平台只能把上一次 Report 重新喂进去。
 - v2 没有 **participant 水位**，没有群聊增量简报，没有 Agent 之间的 `mention` 交接；所有唤醒都必须经过 Controller 或显式 @mention fallback。
 - v2 没有自己的 Agent 工具通道：`mention` / `create_task` / `finish_task` 目前只有 Report 标记或内部动作，不能作为真实 CLI 的工具面。
@@ -87,7 +87,7 @@ eta 已经提供这些机制：每个 (agent × conversation) 一个持久 sessi
 直接运行 eta 的 Bun host，Meldwork 只做壳和 UI。
 
 - 优点：代码复用最多。
-- 缺点：引入必需的服务端进程，破坏 local-first Electron 边界；eta 的 Captain/权限模型不包含 Meldwork 的 per-seat 权限、写入租约、Artifact 账本；两套产品模型需要长期映射。
+- 缺点：引入必需的 Bun host、数据/权限双模型和打包成本；本地 sidecar 本身不违反 local-first，但它不是本产品的边界。eta 的 Captain/权限模型也不包含 Meldwork 的 per-seat 权限、写入租约、Artifact 账本；两套产品模型需要长期映射。
 - 结论：不选。
 
 ## 架构一句话
@@ -144,6 +144,11 @@ eta 已经提供这些机制：每个 (agent × conversation) 一个持久 sessi
 - review 流量（`audience=captain` 行和 Captain review 回复）不计入 `activity_seq`，避免 review 自己触发下一轮；150ms 领域变化 debounce 是快路径，60 秒 tick 只是兜底。
 - 没有 Task 的 assignment 回复也会触发 `assignment_settled`；挡住的是还在 queued/working/stopping 的回复，以及关联 Task 仍 todo/in_progress 或还有未结束 run。
 - review 正文是观察，不是上一环全文；Captain 通过增量简报读取实际 public 消息。
+- `hasNew` 基线包含 assignment 消息 seq；150ms 触发源是任何领域变化，不只 task board；review 只合并同一个 Chat；`reviewReply=true` 只打在 review 投递的 reply 上，`post_in_chat` 可能再次触发。
+- Effect 成功 = 启动确认，不是运行结束；MCP 是完整工具循环，标记只支持单一终止动作；`finish_task` 是完成声明，退出确认 + 快照后才结算。
+- Captain 不得自我派发；授权消息 + assignment + queued reply 同事务；reply/run/tool 绑定 assignment id；Captain 授权任务不得改派 assignee。
+- 简报提供当前 Chat 的补读入口；Task/TaskRun/Effect 状态闭合；迁移覆盖 v2 数据、活跃执行/unknown、Trace/shadow Git。
+- 修正：v2 Controller 本身也是 Agent；本地 sidecar 本身不违反 local-first，仍有运行时/数据/权限/打包成本。
 
 ## 文档索引
 
