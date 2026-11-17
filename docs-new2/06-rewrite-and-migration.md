@@ -10,7 +10,7 @@
 | --- | --- |
 | Electron main / preload / renderer 信任边界 | 保留 |
 | `workspace/local-workspace-agent-invocation.cjs` | 保留，作为 RuntimeAdapter 底层 |
-| `workspace/invocation-session.cjs` | 保留，作为原生 session resume/adopt 的底层 |
+| `workspace/invocation-session.cjs` | 保留原语；通过 SessionStore port 适配到 SQLite |
 | `agents/cli/*` | 保留，按 runtime adapter 接口适配 |
 | `runs/run-ledger.cjs`、`runs/run-journal.cjs` | 保留 |
 | `runs/path-claims.cjs` | 保留 |
@@ -23,21 +23,31 @@
 
 | 新模块 | 取代 |
 | --- | --- |
-| `collaboration/timeline.cjs` | `room-engine/message-ingress.cjs` + messages 表重写 |
-| `collaboration/routing.cjs` | Controller 路由 + `mention-fallback.cjs` |
-| `collaboration/briefing.cjs` | v2 的 `promptOverride` 全量文本 |
-| `collaboration/session-registry.cjs` | v2 `assignment-runner` 的一次性 session |
-| `collaboration/engine.cjs` | v2 Controller 批次 + assignment runner |
-| `collaboration/task-queue.cjs` | v2 的 Assignment/effect 派发 |
-| `collaboration/reports.cjs` | `room-engine/report-importer.cjs` / `report-state.cjs` 的思路重写 |
-| `collaboration/attentions.cjs` | v2 Attention 的读写重写 |
-| `collaboration/captain/*` | `room-engine/controller-*.cjs` |
-| `collaboration/commands.cjs` | `room-engine/user-commands.cjs` 的语义重写 |
-| `collaboration/effects.cjs` | `room-engine/room-outbox.cjs` / `effect-pump.cjs` 的思路重写 |
-| `collaboration/supervisor.cjs` | `room-engine/session-supervisor.cjs` 的思路重写 |
-| `collaboration/recovery.cjs` | `room-engine/runtime-recovery.cjs` / `process-reconciliation.cjs` |
+| `room/timeline.cjs` | `room-engine/message-ingress.cjs` + messages 表重写 |
+| `room/routing.cjs` | Controller 路由 + `mention-fallback.cjs` |
+| `room/briefing.cjs` | v2 的 `promptOverride` 全量文本 |
+| `room/session-store.cjs` | v2 `assignment-runner` 的一次性 session；旧 workspace JSON 的 session 映射 |
+| `room/engine.cjs` | v2 Controller 批次 + assignment runner |
+| `room/task-queue.cjs` | v2 的 Assignment/effect 派发 |
+| `room/captain-review.cjs` | 无（新机制，复用 eta review supervisor） |
+| `room/reports.cjs` | `room-engine/report-importer.cjs` / `report-state.cjs` 的思路重写 |
+| `room/attentions.cjs` | v2 Attention 的读写重写 |
+| `room/commands.cjs` | `room-engine/user-commands.cjs` 的语义重写 |
+| `room/effects.cjs` | `room-engine/room-outbox.cjs` / `effect-pump.cjs` 的思路重写 |
+| `room/supervisor.cjs` | `room-engine/session-supervisor.cjs` 的思路重写 + Captain review tick |
+| `room/recovery.cjs` | `room-engine/runtime-recovery.cjs` / `process-reconciliation.cjs` |
 
-### 1.3 删除（旧领域）
+### 1.3 退役（按依赖顺序）
+
+**不要一次性删除。** 先解耦，再删除：
+
+1. **新 domain 使用新目录 `desktop/src/room/`**，不要复用 `desktop/src/collaboration/`。现有 `collaboration/` 存放 context-pack/outcome/answer-marker 等模块；`InvocationSession` 仍依赖 `collaboration/context-pack-records.cjs`，不能删。
+2. **解耦 `LocalWorkspace` 与 `LocalWorkspaceAutoRunner`**：`local-workspace.cjs:21` 仍 require auto-runner；`local-workspace-auto-runner.cjs:8-22` 又 require V4 文件。先把 invocation/session/trace/run-ledger 原语抽到 `runtime/`，让新 domain 不依赖 auto-runner；再删除 V2/V3/V4。
+3. **解耦 `ProjectService` 与 checkpoint engine**：`project-service.cjs:18,39` 仍 require `checkpoint-engine.cjs` / `checkpoint-transitions.cjs`；`project-projection.cjs:2` 也 require transition。先移除旧 UI 入口/旧 service 使用，再删除。
+4. **改写 `artifact-snapshots.cjs` / Trace 授权**：它们目前按 Assignment 键控（`artifact-snapshots.cjs:15-24,63-67`、`room-service.cjs:282-287`）；改成按 TaskRun/runId + Room 归属键控，再接入新 domain。
+5. **删除旧 UI 入口**：`ProjectRoomGatePanel.vue`、`ProjectRoomSeatSettings.vue`、`ProjectRoomProgress.vue`、`ProjectRoomOverlay.vue` 从导航移除后，再删组件。
+
+删除清单：
 
 - `desktop/src/project-room/checkpoint-engine.cjs`
 - `desktop/src/project-room/checkpoint-transitions.cjs`
@@ -54,40 +64,53 @@
 - `desktop/src/room-engine/room-actions.cjs` 的 ControllerAction 部分（UserCommand/PlatformTransition 的校验可保留/重写）
 - 旧 `ProjectRoomGatePanel.vue`、`ProjectRoomSeatSettings.vue`、`ProjectRoomProgress.vue`、`ProjectRoomOverlay.vue` 的新 Chat 入口
 
-> 删除前先用 `rg` 确认调用点；不要保留“以防万一”的兼容层。
-
 ## 2. 数据迁移
 
 ### 2.1 新数据库
 
-- 新账本：`userData/meldwork-private/collaboration/collaboration.sqlite`
+- 新账本：`userData/meldwork-private/room/room.sqlite`
 - 旧账本：`userData/meldwork-private/room-engine/` 与 `meldwork-workspace.json`
 - 新架构只读写新账本；旧账本在迁移完成后只读归档，不再参与运行时。
+- 新代码目录：`desktop/src/room/`；旧 `room-engine/` 只作为历史实现参考。
 
-### 2.2 一次性迁移
+### 2.2 Source → Target 矩阵
 
-迁移工具只做一次：
+| 旧来源 | 新目标 | 规则 |
+| --- | --- | --- |
+| checkpoint project | `rooms` + primary `chats` | 一个 project 至少一个 Room；需要时建一个 primary Chat |
+| project messages / rounds | `messages` | 按原顺序生成 `seq`；保留原始 id 引用 |
+| seats / roles | `chat_roles` | 保留名称、Provider、能力；Prompt 进 `role_prompt_revisions` |
+| checkpoint tasks | `tasks` | 保留编号；冲突时新增编号并记录映射 |
+| old assignments | `task_runs` | 按 assignment id 映射，不按 task id 折叠；保留 attempt/status |
+| old reports | `reports` | 按 assignment id 关联；多个 attempt 不合并 |
+| artifactVersions | `artifacts` | 保留 path/version/commit；接受状态映射 |
+| attentions / gates | `attentions` | 保留问题/选项/回答；内部 gate 细节丢弃 |
+| checkpoint/gate/seat/round state | 归档 | 不迁移为运行时状态；需要时作为只读 JSON 附件 |
+
+- 旧 sessionRef：能识别且 Provider 匹配时写入 `sessions`；无法可靠恢复时不伪造，Task 下次执行从新 session 开始。
+- Task 编号：保留原编号；冲突记录映射表。
+- 迁移工具必须 dry-run、幂等、可回滚；迁移报告写入私有区。
+
+### 2.3 一次性迁移步骤
 
 1. 备份旧账本（复制到带时间戳的目录）。
-2. 读取旧 Room/Chat/Task/Report/Attention/Artifact，写入新表。
-3. 能识别的消息按原 `sequence` 导入；不能识别的保留原始引用。
-4. 旧 `assignments` 映射为 `task_runs`：
-   - `status` 映射到新状态；
-   - `native_session_id`/`session_ref` 无法可靠恢复时，不创建新 session，任务下次执行时重新开始；
-   - 旧 Report 按 `task_id` 关联到新运行。
-5. 旧 checkpoint/gate/seat/round 状态不迁移为运行状态；只作为只读历史备注或丢弃。
-6. 写入 `legacy_imported` 标记和迁移报告。
-7. 迁移失败时回滚新库；旧库不动。
+2. 读取旧结构，生成迁移计划（dry-run）。
+3. 写入新 Room/Chat/Role/Participant/Message/Task/TaskRun/Report/Artifact/Attention。
+4. 写入 `legacy_imported` 标记和迁移报告。
+5. 校验数量、编号、Report 归属、Artifact 引用。
+6. 迁移失败回滚新库；旧库不动。
+7. 迁移成功后旧库只读；UI 只显示新库。
 
-### 2.3 不做的事
+### 2.4 不做的事
 
 - 不做旧 JSON + 新 SQLite 双读。
 - 不做旧 checkpoint engine 与新 engine 双跑。
 - 不做旧 Chat 的长期“legacy 模式”。
 - 不为了兼容旧消息格式而在新表里加旧字段。
 - 不为旧 session 伪造原生 session 恢复；恢复不了就从新 session 开始。
+- 不把 checkpoint/gate/seat/round 迁移成新状态机。
 
-### 2.4 迁移后的 UI
+### 2.5 迁移后的 UI
 
 - 只显示新账本。
 - 旧数据如果需要展示，标记为“已归档/导入”，只读。
@@ -95,81 +118,89 @@
 
 ## 3. 实施阶段
 
-> 这是方向性阶段，不是详细计划；详细文件级计划在批准后由 `writing-plans` 产出。
+> 这是方向性阶段，不是详细计划；详细文件级计划在评审通过后由 `writing-plans` 产出。
 
 ### Phase 0：冻结目标与清理边界
 
 - 批准 `docs-new2`。
 - 明确被取代的旧 ADR/文档。
-- 列出保留/重写/删除清单。
-- 为纯函数建立测试骨架：routing、briefing、session key、task state。
+- 列出保留/重写/删除清单，以及依赖顺序。
+- 为纯函数建立测试骨架：routing、briefing、session key、task state、captain review checkpoint。
 - 不写产品代码。
 
-**退出条件**：目标模型、数据表、模块边界、删除清单都无歧义。
+**退出条件**：目标模型、数据表、模块边界、删除顺序、测试骨架都无歧义。
 
 ### Phase 1：新账本 + 时间线 + 路由 + 简报
 
-- 新建 `collaboration.sqlite` 与 schema/migration。
-- 实现 Room/Chat/Role/Participant/Message/Session 的 repository。
-- 实现 Message 追加、seq、status、编辑/删除事件。
+- 新建 `room.sqlite` 与 schema/migration。
+- 实现 Room/Chat/Role/Participant/Message/Session/TaskLane 的 repository。
+- 实现 Message 追加、seq、revision、client_id、status、编辑/删除事件。
 - 实现 routing 和 briefing 的纯函数 + 定向测试。
-- 实现 SessionRegistry 的 key/baseline/last_seq；先不接真实 CLI。
+- 实现 SessionStore 的 key/baseline/水位；先不接真实 CLI。
 
-**退出条件**：给定一组消息和 participant 水位，能生成正确的增量简报；同一消息不会重复投递；未完成行阻塞水位。
+**退出条件**：给定一组消息和 participant 水位，能生成正确的增量简报；同一消息不会重复投递；未完成行阻塞水位；session 轮换不丢 participant 水位。
 
-### Phase 2：Engine + RuntimeAdapter
+### Phase 2：Engine + RuntimeAdapter + resume proof
 
 - 把 queued reply 行变成运行。
-- 接 Meldwork 现有 `invokeAgent` 和 `InvocationSession`。
+- 接 Meldwork 现有 `invokeAgent` 和 `InvocationSession`；通过 SessionStore port 写 SQLite。
 - 实现 resume/create/rotate。
-- 实现 `mention` 工具与 wake budget。
-- 实现 stop/steer/restart 恢复。
-- 用 fake CLI 做集成测试。
+- 实现 `mention` 工具与 wake budget，MCP 优先 + 标记兜底。
+- 实现 stop/steer/restart 恢复（`interrupted/unknown`）。
+- 所有进程启动走 `start_reply` effect。
 
-**退出条件**：两个角色可以并发回答；一个角色 mention 另一个；重启后 queued 继续、working 失败、session 指针保留。
+**Resume proof（硬门槛）**：
+- Claude Code：第一次 prompt 让 Agent 记住一个事实；第二次用同一 native session resume，问它这个事实；确认它接着上次上下文；测一次 CLI 重启后、一次长对话/压缩后。
+- Codex：同样。
+- 记录 token 使用、resume 成功/失败、压缩后是否丢上下文。
+- **如果 resume 失败，停止 Phase 2，不进入 Phase 3；要么改回无记忆模式，要么先做平台 handoff。**
 
-### Phase 3：Task + TaskRun + Report
+**退出条件**：两个角色可以并发回答；一个角色 mention 另一个；重启后 queued 继续、working 转 interrupted、session 指针保留；两个 CLI 的 resume proof 通过。
+
+### Phase 3：Task + TaskRun + lane + Report
 
 - Agent 工具：`create_task`、`draft_task`、`list_tasks`、`get_task`、`comment_task`、`finish_task`。
-- TaskRun 队列、并发、pump、评论续跑、rerun。
-- Report 导入与 Task 状态推导。
+- TaskRun 队列、lane、writeScopes、并发、pump、评论续跑、rerun。
+- Report 导入与 Task 状态推导；`accept_task` / `reject_task`。
 - Task 卡/Report 卡的最小 UI 读模型。
+- 一次性 CLI 的评论/回答排队 continuation run。
 
-**退出条件**：Agent 自己建 Task（默认直接 `create_task`，`draft_task` 可选）；Task 在自己的 session 里执行；评论续跑同一 session；finish_task 回到 Chat；没有 Report 不能 done。
+**退出条件**：Agent 默认直接 `create_task`；Task 在自己的 lane session 里执行；评论续跑同一 lane；finish_task 回到 Chat；没有 Report 不能 done；用户 accept_task 才 done；writeScopes 校验通过。
 
-### Phase 4：Captain + Attention
+### Phase 4：Captain + Captain review supervisor + Attention
 
-- Captain Role、Prompt、工具面。
-- `assign_in_group` 只发可见授权；目标 Agent 自己建 Task。
-- Role 提案/创建的用户确认。
+- Captain Role、Prompt revision、工具面（限定 Chat）。
+- `assign_in_group` 只发一条可见授权；目标 Agent 自己建 Task。
+- `captain_assignments` / `captain_reviews`；150ms 领域变化 debounce（快路径）+ 60 秒兜底 tick；批量 system review；checkpoint/dedupe/backoff。
 - Attention/Inbox 聚合、回答回流、通知合并。
-- 用户命令：pause/resume/stop/retry/handoff/accept artifact/answer attention。
+- 用户命令：pause/resume/stop/retry/handoff/accept_task/reject_task/answer_attention。
 
-**退出条件**：用户不 @ 时消息进入 Captain；Captain 授权后目标 Agent 自己建 Task；用户能在 Inbox 回答并回到原 session。
+**退出条件**：用户不 @ 时消息进入 Captain；Captain 授权后目标 Agent 自己建 Task；Task 完成后 review supervisor 唤醒 Captain；没有 Task 的 assignment 回复也能生成 `assignment_settled`；review 流量不推进 `activity_seq`；三阶段 Prompt 工作流可以跑通；`assign_in_group` 和 review 都不占 5 次 mention 预算；没有 completion wake/独立预算。
 
 ### Phase 5：UI 重写
 
-- 新 `RoomWorkspace`：Chat 时间线、角色栏、Task/Report/Attention/Artifact 卡、Trace 入口。
+- 新 `RoomWorkspace`：Chat 时间线、角色栏、Captain Prompt 编辑、Captain review 卡、Task/Report/Attention/Artifact 卡、Trace 入口。
 - 移除并发/顺序/自动讨论模式选择器。
 - 移除 checkpoint/gate/seat/round 入口。
+- Chat 回复只读提示；Task 写入授权与 writeScopes 展示。
 - 中英文文案、Escape/back、响应式。
 - Electron 桌面模式验证。
 
-**退出条件**：用户只通过消息、角色、Task、Report、Attention、Artifact 完成协作；不出现旧内部词汇。
+**退出条件**：用户只通过消息、角色、Task、Report、Attention、Artifact 完成协作；不出现旧内部词汇；renderer 不接收原生 session 引用/绝对路径/进程句柄。
 
 ### Phase 6：旧数据迁移 + 删除旧引擎
 
-- 运行迁移工具，备份、导入、生成报告。
+- 运行迁移工具，备份、dry-run、导入、校验、生成报告。
 - 新 UI 只读新账本。
-- 删除旧 engine、旧 runner、旧 UI 入口、旧 schema 代码。
+- 按依赖顺序解耦/删除旧 engine、旧 runner、旧 UI 入口、旧 schema 代码。
 - 删除不再使用的测试/样例。
 
-**退出条件**：`rg` 不再有旧引擎调用点；全量测试/构建通过；旧数据可只读查看。
+**退出条件**：`rg` 不再有旧引擎调用点；全量测试/构建通过；旧数据可只读查看；`desktop/src/collaboration/` 未被新 domain 覆盖。
 
 ### Phase 7：真实 Provider 验收
 
-- Claude Code：多角色群聊、mention 链、Task 创建/finish、评论续跑、重启恢复。
-- Codex：至少一条同样的闭环。
+- Claude Code：多角色群聊、mention 链、Captain review、Task 创建/finish、评论续跑、重启恢复、resume proof。
+- Codex：至少一条同样的闭环；如果工具通道不可用，验证标记 fallback。
 - 全量检查按 `AGENTS.md`：
 
 ```bash
@@ -180,7 +211,7 @@ npm --prefix desktop test
 npm --prefix desktop run pack
 ```
 
-**退出条件**：每个目标 Provider 至少一条真实闭环；恢复和权限边界通过；无旧引擎参与。
+**退出条件**：每个目标 Provider 至少一条真实闭环；恢复和权限边界通过；无旧引擎参与；无 completion wake。
 
 ## 4. 验收标准
 
@@ -188,19 +219,21 @@ npm --prefix desktop run pack
 
 - 用户 @ 多个角色 → 并发唤醒，各自在自己的 session 回答。
 - 角色 A mention 角色 B → B 收到 A 的正文和上次之后的新消息。
-- 角色自己 create Task → task session 执行 → finish_task → Chat 看到结果。
-- 用户评论 Task → 同一 task session 续跑，不重读任务简报。
-- rerun → 新 task session，从零开始。
-- 重启 → 消息、任务、报告、session 指针、未完成 run 可恢复。
+- 角色自己 create Task → task lane session 执行 → finish_task → Chat 看到结果。
+- 用户评论 Task → 同一 lane session 续跑，不重读任务简报；一次性 CLI 排队 continuation run。
+- rerun → 新 lane session，从零开始。
+- 重启 → 消息、任务、报告、session 指针、未完成 run 可恢复；working → interrupted/unknown，不伪造退出。
 - 上下文过长 → 简报有界；session 轮换时有一次性 handoff；不无限重试。
+- Captain 三阶段 Prompt → review supervisor 逐阶段唤醒 Captain；3 次 `assign_in_group` 是普通消息，不占 5 次 mention；3 次 review 是 system 消息，也不占；5 次只约束 Agent 的 `mention` 工具调用。review 行和 Captain review 回复不推进 `activity_seq`。
 
 ### 4.2 治理
 
 - Task/Role/Chat 归属校验通过；跨 Chat 引用拒绝。
-- 用户命令幂等；重复点击不重复写。
-- 权限不能由 Prompt 改写；写入需要授权和租约。
-- Report 是唯一完成依据；自由文本不能把 Task 置 done。
-- Attention 不重复；回答回到原 session。
+- 用户命令幂等；重复点击不重复写；所有改变状态的命令带 `commandId`。
+- 权限不能由 Prompt 改写；写入需要授权、writeScopes 和租约。
+- Report 是唯一完成依据；自由文本不能把 Task 置 done；Artifact 状态不单独完成 Task。
+- Attention 不重复；回答回到原 session 或 continuation run。
+- Captain 工具限定所属 Chat；不能跨 Chat 读取/写入。
 
 ### 4.3 架构
 
@@ -209,19 +242,23 @@ npm --prefix desktop run pack
 - 新 Chat 不读写旧 workspace JSON。
 - 旧引擎不在新 Chat 的运行路径上。
 - 只有一套 session 语义、一套消息真源、一套 UI 入口。
+- 没有自创 completion wake、独立 completion 预算或 `stage_complete`。
 
 ## 5. 风险与应对
 
 | 风险 | 应对 |
 | --- | --- |
-| 外部 CLI 的 session resume/steer 能力不一致 | 建立 adapter capability matrix；不支持 steer 就 queue；resume 失败就轮换 + handoff |
-| 简报裁掉关键信息 | 100×2000 上限 + Session Handoff + 重要内容由 Agent 写进 Task/Artifact |
-| 长 Chat 上下文仍然太大 | 简报有界；session 轮换；未来自管 runtime 才接压缩 |
-| Report 解析不可靠 | 优先 MCP 工具；fallback 标记严格校验；无报告不猜完成 |
-| 迁移丢数据 | 先备份、dry-run、迁移报告、失败回滚；旧库只读保留 |
-| 权限/租约回归 | 保留现有安全测试；新 domain 只能调用既有权限层，不能绕过 |
-| 重新长回 Controller | ADR 明确禁止平台拆任务；代码评审检查 `create_task` 只能由 Agent 工具触发 |
-| 删除旧代码误伤 | 先 `rg` 调用点，再分阶段删除；每阶段可回滚 |
+| 外部 CLI resume 不可靠 | Phase 2 resume proof；失败则停止并改设计 |
+| CLI 压缩后丢失平台已投递内容 | `last_seq` 只保证投递；重要事实落 Task/Report/Artifact；轮换 handoff |
+| 工具通道不可用 | MCP 优先，严格标记覆盖全部工具；不支持的 CLI 只作只读参与者 |
+| 简报裁掉关键信息 | 100×2000 上限 + Session Handoff + Task/Artifact |
+| Report 解析不可靠 | MCP 工具优先；标记严格校验；无报告不猜完成 |
+| 迁移丢数据 | 备份、dry-run、source→target 矩阵、迁移报告、失败回滚 |
+| 权限/租约回归 | 保留现有安全测试；新 domain 只能调用既有权限层 |
+| 重新长回 Controller | ADR 明确禁止平台拆任务；`create_task` 只能由 Agent 工具触发 |
+| 删除旧代码误伤 | 依赖顺序表；先解耦 LocalWorkspace/ProjectService；每阶段可回滚 |
+| Chat 回复写文件 | Chat 默认只读；写入只在 TaskRun；隔离前写入并发 1 |
+| Captain review 循环 | checkpoint/dedupe/idle 检查；不新增 completion wake 预算 |
 
 ## 6. 不做什么
 
@@ -230,4 +267,5 @@ npm --prefix desktop run pack
 - 不做 Controller 的隐藏批次兼容层。
 - 不做 Assignment 与 TaskRun 的双模型。
 - 不做旧 sessionRef 的伪造恢复。
+- 不做自创 Captain completion wake / 独立 completion 预算 / `stage_complete` 工具。
 - 不在第一阶段做隔离 worktree、跨 Chat 依赖、内置模型 runtime、memory sidecar。

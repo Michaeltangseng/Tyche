@@ -18,10 +18,14 @@ eta 的答案更接近我们的原则：平台提供时间线、唤醒、会话�
 1. **一个 Chat 就是一个可持续的团队工作空间。** 用户和 Agent 的消息进入同一条时间线；Agent 在 Chat 内有持续记忆。
 2. **Agent 自己拥有工作。** Agent 自己创建 Task、自己执行、自己调用 `finish_task`；平台不替它分解大任务。
 3. **上下文增量投递。** 每个 Agent 只收到自己上次看过之后的新消息，而不是每次重放整段群聊。
-4. **Task 有持续记忆。** 一个 Task 一个 session；评论续跑；rerun 才丢弃记忆。
+4. **Task 有持续记忆。** 一个 Task 的每个 lane（执行者/mention 角色）一个 session；执行者 lane 跨 run 复用；评论续跑；rerun 才丢弃记忆。
 5. **可见的协作。** 用户能看到谁被唤醒、谁在做什么、任务是什么、报告是什么、哪里需要自己。
 6. **平台治理不后退。** 权限、写入范围、进程、凭据、产物版本、恢复和审计仍由平台掌握。
 7. **可以重写。** 早期阶段允许删除旧引擎和旧 UI；不为了兼容旧 Chat 保留两套语义。
+8. **唤醒是异步的。** 一条消息里的多个 @ 同时开工；`mention` 不等待对方；平台不做隐式串行。
+9. **Captain 通过 review supervisor 协调。** 平台只检查已结算的 Captain assignment 并投递 review；不维护 workflow 状态机。
+10. **Agent 工具有真实通道。** `mention` / `create_task` / `finish_task` 等必须有 MCP 或严格标记通道，不能只写在文档里。
+11. **聊天不写文件。** Chat 回复默认只读；写入只发生在获得授权的 TaskRun；隔离 workspace 之前，每个 Room 同时最多一个写入型 run。
 
 ## 3. 非目标
 
@@ -42,6 +46,10 @@ eta 的答案更接近我们的原则：平台提供时间线、唤醒、会话�
 - 权限、写入范围和凭据被 Prompt 或聊天内容改写。
 - 恢复时猜测进程已退出，或重放一个结果未知的写操作。
 - 用户需要理解 checkpoint、gate、seat、round、Controller batch 等内部词汇才能使用项目室。
+- 平台维护一个隐藏的 workflow 状态机，替 Agent 决定阶段顺序。
+- 每个聊天回复结束都唤醒 Captain，造成噪音和循环。
+- 把 Captain 协作做成独立的 completion wake 预算、独立阶段工具或新的调度器。
+- Chat 回复默认可写，多个 Task 同时改同一个 Room 目录。
 
 ## 5. 新增原则：早期阶段允许推倒重写
 
@@ -76,6 +84,10 @@ eta 的答案更接近我们的原则：平台提供时间线、唤醒、会话�
 - 平台只保存原生 session 引用、水位和必要的元数据；不能假设自己拥有 CLI 的上下文。
 - 平台的增量简报必须有界；不能把无限增长的群聊直接塞进 prompt。
 - 平台不承诺跨崩溃“只执行一次模型调用”；只保证已提交的账本、effects 和恢复事实一致。
+- **resume 必须先证明。** Claude Code / Codex 的 resume 是否真的接着上次上下文，未验证前不能把“持久 session”当成产品承诺；Phase 2 必须有 proof。
+- **`last_seq` 是投递水位，不是模型记忆保证。** CLI 自己的压缩可能丢掉已经投递的内容；重要事实必须落在 Task/Report/Artifact/文件里。
+- **一次性 CLI 不支持 mid-turn steer。** 评论和 Attention 回答默认排队为 continuation run，不能假装能送入当前 run。
+- **Chat 回复默认只读。** 写入只在获得用户授权和写入 scope 的 TaskRun 中发生。
 
 ### 6.3 技术栈
 
@@ -111,6 +123,8 @@ eta 的答案更接近我们的原则：平台提供时间线、唤醒、会话�
 4. 用户对 Task 追加评论，Agent 在同一个 task session 里继续，而不是从零开始。
 5. 应用重启后，消息、任务、报告、session 指针和未完成 run 都能恢复；不会重复建 Task。
 6. 用户能在界面上看到角色、消息、任务、报告、Attention 和 Artifact，而不需要理解内部状态机。
+7. 用户在一个 Chat 的 Captain Prompt 里写“效果图 → 架构 → 实施”，只 @ Captain，Captain 能按阶段发可见授权；每阶段完成后由 review supervisor 唤醒 Captain，不需要用户逐段转发。
+8. Chat 回复默认只读；写入只在获得授权的 Task 中发生；隔离前同一 Room 不会有两个写入型 run 并发。
 
 ## 9. 与旧文档的关系
 

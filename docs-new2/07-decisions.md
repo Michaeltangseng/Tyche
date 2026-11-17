@@ -33,19 +33,19 @@
 
 **取代：** `docs-new/06` ADR-003 中 Controller 创建/派发 Task 的部分。
 
-## ADR-N3：每个 Chat × Role 一个持久 Session；每个 Task 一个 Session
+## ADR-N3：每个 Chat × Role 一个持久 Session；每个 Task lane 一个 Session
 
 **背景：** v2 每次 Assignment 新建原生调用，`saveSession: false`；Agent 不记得上次做过什么。
 
 **决定：**
 - Chat Session：`chat:<chatId>:role:<roleId>`，首次唤醒创建，之后复用。
-- Task Session：`task:<taskId>`，首次 run 创建；评论续跑复用；rerun 新建 generation。
-- Task 上被 mention 的其他角色使用 `task:<taskId>:role:<roleId>`。
-- Session 的正文由 Agent runtime 拥有；平台只存 `native_session_ref`、`baseline_seq`、`last_seq`。
+- Task Session：`task:<taskId>:role:<roleId>`，按 lane 区分；执行者 lane 跨 run 复用，mention lane 独立；rerun 新建 generation。
+- Session 的正文由 Agent runtime 拥有；平台只存 `native_session_ref`、`baseline_seq`、`prompt_revision`、`permission_mode`、`workspace_ref`、`skill_bindings`。
+- **`last_seq` 属于 Participant / TaskLane，不属于 Session。** 轮换 session 时水位留在 participant/lane。
 
 **后果：**
-- 重试/交接不再靠复制 Report 续命；同一 Task 的后续 run 能看到自己做过什么。
-- Provider/Prompt/工作目录变化时轮换 session；轮换时生成一次性 handoff。
+- 重试/交接不再靠复制 Report 续命；同一 Task lane 的后续 run 能看到自己做过什么。
+- Provider/Prompt/权限/工作目录/Skill 变化时轮换 session；轮换时生成一次性 handoff。
 - 外部 CLI 的 journal 不被平台读取或改写。
 
 **取代：** `docs-new/06` ADR-005（v2 一次性原生调用、不持久化 sessionRef）。
@@ -55,16 +55,18 @@
 **背景：** v2 每次把任务/角色/协作约定重新拼成完整 prompt；旧 V4 已经有 delivery watermark，但 v2 没有。eta 证明“只发上次之后的新消息”足够，而且省 token。
 
 **决定：**
-- 每个 participant 有 `last_seq`。
+- 每个 participant/lane 有 `last_seq`。
 - 唤醒时只发 `last_seq` 之后、已经完成的、别人的消息；触发消息必带。
 - 未完成的行阻塞水位；最多 100 条、每条 2000 字。
 - 简报是原文摘录，不是总结。
 - 只有新建/轮换 session 时，生成一次 Session Handoff。
+- **`last_seq` 是投递水位，不是模型记忆保证。** 外部 CLI 的压缩可能丢掉已投递内容；平台无法可靠观测。
 
 **后果：**
 - 需要维护水位和“进行中”状态。
 - 长 Chat 需要简报上限和 handoff。
 - 平台不拥有外部 CLI 的完整上下文，不能承诺“模型看到了全部历史”。
+- 重要事实应落在 Task/Report/Artifact/文件里，方便重新读取。
 
 ## ADR-N5：回复行就是唤醒和队列
 
@@ -72,9 +74,10 @@
 
 **决定：**
 - Message 表中的一种回复行同时是唤醒、队列和结果载体。
-- 入队即分配 `seq`，`status=queued`；运行时 `working`；结束 `done/failed/stopped`。
-- 同一 participant session 串行；不同 session 并行。
-- 重启时 queued 继续、working 失败。
+- 入队即分配 `seq`，`status=queued`；运行时 `working`；结束 `done/failed/stopped/interrupted`。
+- `revision` 随流式输出增加，`seq` 不变。
+- 同一 participant/lane 串行；不同 participant/lane 并行。
+- 重启时 queued 继续；working/waiting_for_input 转 `interrupted`，等待进程对账，不直接 failed。
 
 **后果：**
 - 消息表承担队列职责；需要仔细处理 seq、状态迁移和并发。
@@ -86,27 +89,30 @@
 **背景：** v2 Controller 是不可见的平台批次，拥有 `create_task/assign/create_role` 等动作。用户看不到它如何拆任务，也不符合 agent-for-agent。
 
 **决定：**
-- Captain 是 Chat 内的 Role，`is_captain=1`，有自己的 Participant Session。
-- 它的工具是：`assign_in_group`、`post_in_chat`、读工具、`request_attention`、`control_task`、提案工具。
+- Captain 是 Chat 内的 Role，`is_captain=1`，有自己的 Participant Session；`author_type=agent`，用徽章标识。
+- 它的工具是：`assign_in_group`、`post_in_chat`、读工具、`request_attention`、`control_task`（continue/pause）、`propose_role`、`set_role_prompt`。
 - `assign_in_group` 只写一条可见消息并 @ 目标；目标 Agent 自己建 Task。
-- Captain 不能授予权限、改工作区、直接设置 Task done/cancelled。
+- Captain 工具限定在所属 Chat；不能跨 Chat 读取/写入；不提供 `list_chats` / `read_chat`。
+- Captain 不能授予权限、改工作区、直接设置 Task done/cancelled、rerun/delete Task。
 - 没有 Captain 时，路由退回显式 @mention / 唯一参与者。
 
 **后果：**
 - v2 的 `controller_decisions` 批次模型退役。
 - 保留平台校验/审计/幂等/effects，但绑定到可见的 Agent 工具和用户命令。
 - Captain 的失败不会触发“平台自动建任务”的 fallback。
+- 每个 Chat 一个 Captain 是 Meldwork 适配；eta 的全局 Captain 不能照搬。
 
 ## ADR-N7：SQLite 存事实与指针，Session 正文归 Runtime
 
 **背景：** v2 把产品事实放 SQLite，但没有 session；旧引擎把 sessionRef 放 workspace JSON；eta 用 SQLite + 文件 journal。三种做法混在一起。
 
 **决定：**
-- SQLite 存 Room/Chat/Role/Participant/Message/Task/TaskRun/Report/Attention/Artifact/Session 指针/Event/Effect。
+- SQLite 存 Room/Chat/Role/Participant/Message/Task/TaskLane/TaskRun/Report/Attention/Artifact/Session 指针/Event/Effect/UserCommand。
 - 外部 CLI 的 session 正文留在 CLI 自己的存储；平台不复制。
 - Trace 存应用私有区 JSONL，DB 只存引用。
 - Artifact 内容存应用私有区 Git/快照，DB 只存版本元数据。
-- 不做 workspace JSON 与 SQLite 的双写。
+- 新 Chat 路径使用 **SessionStore port** 写 SQLite；不再写旧 workspace JSON 的 session 映射。
+- `InvocationSession` 保留为原生 session 原语，由 SessionStore 适配。
 
 **后果：**
 - 备份/迁移需要同时处理 SQLite、Trace、Artifact 和 CLI 自己的 session。
@@ -119,59 +125,65 @@
 
 **决定：**
 - 保留 Electron main/preload/renderer 信任边界。
-- 保留原生权限模式、写入授权、Room 根目录租约。
+- 保留原生权限模式、写入授权、Room 根目录租约、writeScopes 校验。
 - 保留 Artifact 快照/diff、Report/Attention、effects/outbox、Supervisor、进程对账。
 - 新 domain 只能调用这些基础设施，不能绕过。
+- Renderer 只接收 display-safe DTO；不暴露原生 session 引用、绝对路径、进程句柄、凭据。
 
 **后果：**
 - 新架构不是 eta 的翻版，而是“eta 会话语义 + Meldwork 治理”。
 - 权限/租约/进程相关的测试继续有效。
-- UI 仍然不暴露路径、凭据、原生 session 引用或进程句柄。
+- UI 仍然不暴露敏感执行细节；Room 根目录如需显示，作为显式只读例外。
 
 ## ADR-N9：外部 CLI 的 Session 和压缩由 Runtime 拥有
 
 **背景：** Meldwork 的 Worker 是 Claude Code/Codex 等外部 CLI，不是 eta 的内置 kernel。平台无法读取或改写它们的上下文。
 
 **决定：**
-- 平台只保存 `native_session_ref`、Provider、水位。
+- 平台只保存 `native_session_ref`、Provider、baseline 和水位。
 - resume 由 runtime adapter 调用 CLI 自己的恢复机制。
 - 压缩由 CLI 自己做；平台只做有界简报、session 轮换和一次性 handoff。
 - 上下文溢出时轮换 session，不无限重试。
+- **Phase 2 必须做 resume proof**：Claude Code/Codex 各自验证“resume 后接着上次上下文”；失败则停止并改设计。
 - 只有在未来引入平台自管 runtime 时，才移植 eta-compaction。
 
 **后果：**
 - 不同 CLI 的 session/steer/压缩能力不同，需要 capability matrix。
 - 平台不能保证“所有 Agent 看到同样的完整历史”；它保证“每个 Agent 收到自己没看过的新消息”。
+- `last_seq` 只是投递水位，不是记忆保证。
 
 ## ADR-N10：一次性迁移，旧引擎退役
 
 **背景：** 旧 workspace JSON、旧 room DB、旧 checkpoint 状态都包含与目标模型不兼容的字段。
 
 **决定：**
-- 新账本使用干净 schema。
+- 新账本使用干净 schema，目录 `desktop/src/room/`。
 - 旧数据由一次性迁移工具导入或归档；迁移后旧库只读。
 - 旧引擎、旧 runner、旧 UI 入口在迁移完成后删除。
 - 迁移失败回滚新库，旧库不动。
+- 迁移必须 dry-run、幂等、可回滚，并有 source→target 矩阵。
 
 **后果：**
 - 需要备份和迁移报告。
 - 旧 session 无法恢复时，新 Task 从新 session 开始。
 - 不再维护旧数据格式的兼容代码。
 
-## ADR-N11：Report 是任务结果的领域真源
+## ADR-N11：Report 是任务结果的领域真源；验收是用户命令
 
-**背景：** v2 已经有 Report/状态推导；eta 用 `finish_task`。两者可以对齐。
+**背景：** v2 已经有 Report/状态推导；eta 用 `finish_task`。两者可以对齐，但必须解决“accept Artifact 是否等于 done”和 `handoff` 谁创建下一次 run。
 
 **决定：**
 - Report 的 kind 至少包含 `progress/ready/waiting/blocked/failed/handoff`。
 - Task 状态由最新 required run 的 Report、TaskRun 事实和用户命令推导。
 - 没有 Report 不能把 Task 置 `done`。
 - 自由文本不能作为完成依据；工具优先，严格标记作为 fallback。
-- Task `ready` 进入 `in_review`，用户接受后 `done`。
+- Task `ready` 进入 `in_review`；用户 `accept_task` 后才 `done`；`reject_task` 回到 `todo`。
+- Artifact 状态（draft/published/accepted/rejected/superseded）与 Task 状态独立；accept Artifact 不自动 done。
+- `handoff` Report 只记录建议；实际 `handoff_task` 是用户命令。
 
 **后果：**
 - 需要稳定的 Report 解析和归属校验。
-- Agent 必须学会 `finish_task`；Prompt 和工具描述要明确。
+- 需要新增 `accept_task` / `reject_task` 用户命令，并带 `commandId`。
 - 用户仍然是最终验收者。
 
 ## ADR-N12：Attention/Inbox 是唯一的用户打断通道
@@ -180,27 +192,29 @@
 
 **决定：**
 - 所有需要用户处理的事项（blocked、in_review、提问、unknown、权限/成本请求、Artifact 接受）进入统一的 Attention/Inbox。
-- 同一问题确定性去重；回答回到原 session。
+- 同一问题确定性去重；回答回到原 session，或按 runtime 能力排队 continuation run。
 - 通知可合并，不逐条弹窗。
 - Attention 正文不包含敏感路径、Prompt 或凭据。
+- 所有改变状态的回答/命令带 `commandId`。
 
 **后果：**
 - UI 只需要一个收件箱/Attention 面板。
 - 需要定义 Attention 生命周期和幂等回答。
 - 用户离开当前 Chat 时仍能看到待处理事项。
 
-## ADR-N13：Room 主目录是默认工作区，隔离 workspace 后置
+## ADR-N13：Room 主目录是默认工作区，Chat 回复只读
 
 **背景：** 用户的原则是“并行思考可以各自草稿，lead 合并；绝不两个 writer 写同一文档”。默认复制 worktree 会把环境准备、合并和发布的复杂度转移给平台。
 
 **决定：**
 - 默认所有 Agent 在 Room 主目录工作，写入用独占租约串行化。
-- per-seat 权限决定谁能写。
+- **Chat 回复默认只读**（`read-only` 或 `read-exec`）；写入只发生在获得用户授权和 writeScopes 的 TaskRun。
+- per-seat 权限决定谁能写；`task_runs.write_scopes_json` 在创建时冻结。
 - 隔离 worktree/临时 workspace 作为后续可选能力，只用于探索或高风险任务。
 - Artifact 用 shadow Git commit/diff 记录版本。
 
 **后果：**
-- 共享目录下不同 Chat 的写入仍可能竞争；平台只保证同一 Room 的写入租约。
+- 共享目录下不同 Chat 的写入仍可能竞争；平台保证同一 Room 的写入租约。
 - 需要清晰的 Artifact 发布/接受语义。
 - 不在第一阶段实现 worktree 自动化。
 
@@ -209,7 +223,7 @@
 **背景：** eta 是 TypeScript/Bun + cordis + WebSocket + daemon；Meldwork 是 CJS/Electron + preload + 本地 CLI。
 
 **决定：**
-- 只移植纯逻辑或按语义重写：routing、briefing、session keys、task queue、report 推导。
+- 只移植纯逻辑或按语义重写：routing、briefing、session keys、task queue、report 推导、Captain review supervisor。
 - 不引入 eta 的 server、wire protocol、web UI、daemon、memory sidecar、cordis 插件体系。
 - 不把 eta 作为子进程或 sidecar 运行。
 - 移植代码保留 MIT 许可声明，并在 NOTICE 中记录。
@@ -233,6 +247,79 @@
 - Agent 有完整自主能力，可能创建用户不需要的任务；用户用 stop/cancel/评论纠正。
 - 不以“防误建”为理由增加平台审批；如果后续出现滥用，再通过 Prompt、并发/成本上限或可选 draft 策略处理。
 
+## ADR-N16：Captain review 复用 eta 的 supervisor，不做 completion wake
+
+**背景：** 需要让“Captain Prompt 定义 workflow”在多阶段场景下稳定推进。外部讨论提出“每个阶段完成唤醒 Captain 一次”，但 eta 已有更简单、更成熟的机制。
+
+**决定：**
+- 不新增 “Captain completion wake”、独立 completion 预算或 `stage_complete` 工具。
+- 复用 eta 的 Captain review supervisor：
+  - 60 秒 tick 是兜底；领域变化（task board/report/run）触发 150ms debounce，通常很快唤醒 Captain；
+  - 检查已结算的 Captain assignment：目标没有 queued/working/stopping；关联 Task 不能还是 todo/in_progress 或还有未结束 run；`chat.activity_seq` 超过 checkpoint；或者 blocked/stalled；
+  - 没有 Task 的 assignment 回复也能生成 `assignment_settled`；
+  - review 行和 Captain review 回复标 `audience=captain`，**不计入 `chat.activity_seq`**；`assign_in_group` / `post_in_chat` 是 public，计入；
+  - 批量、checkpoint、dedupe、attempts/backoff；
+  - review 以 `system` 消息进入 Captain 会话，并创建一条 queued reply；`mentions: []`，不占 5 次 agent-to-agent 预算；
+  - 只在 Captain 空闲时投递。
+- `finish_task` 在来源 Chat 追加 Agent 消息，推进 `chat.activity_seq`；supervisor 由此看到新活动。
+- review 正文是观察，不是上一环全文；Captain 通过增量简报读取实际 public 消息。
+- Captain Prompt 按 Chat 保存 revision；review 附带当前 revision，平台不解析 Prompt、不做状态机。
+
+**后果：**
+- 三阶段 workflow：3 次 `assign_in_group` 是普通消息 + @，不写 `kind=mention`，**不占 5 次**；3 次 system review 也不占。5 次只约束 Agent 的 `mention` 工具调用，不限制 `assign_in_group` 的阶段数；平台仍校验并发/成本。
+- review 流量不推进 `activity_seq`，因此不会因为 review 或 Captain review 回复而再次触发 `assignment_settled`。
+- 不会因为每个聊天回复结束就唤醒 Captain；review 只针对已结算 assignment + public 新活动。
+- 不需要自创 loop guard；checkpoint/dedupe/idle 检查已经覆盖。
+
+## ADR-N17：Agent 间唤醒异步，平台不做隐式串行
+
+**背景：** 用户测试的“Captain 做完再叫 Claude，Claude 做完再叫 Codex”不是 eta 的行为；一条消息里的多个 @ 同时开工，`mention` 也不等待。
+
+**决定：**
+- 多个 @ 并发唤醒；同一 participant/lane 串行，不同 participant/lane 并行。
+- `mention` / `assign_in_group` 不等待对方；调用方继续完成当前回复。
+- 平台不提供隐式串行链；串行来自每一环自己 `mention`，或 Captain review supervisor 在 assignment 结算后唤醒 Captain。
+- 5 次 wake budget 只统计 `kind=mention`，按 root user message 计数；`assign_in_group` 和 Captain review 都不占这个预算。
+- Review supervisor 不是同步等待；它只是事件驱动的通知。
+
+**后果：**
+- 用户不能期待“Captain 自动等上一环完成”而不写 Prompt/mention。
+- 需要 Captain review 来处理多阶段 workflow。
+- 需要用户理解：直接 @ 执行角色会绕过 Captain workflow。
+
+## ADR-N18：隔离前，写入型 run 每个 Room 同时一个
+
+**背景：** 群聊 session 带着完整工具；外部 CLI 有 Bash 和写文件；多个 Task 并行可能改同一个目录。仅靠“写入租约”不够直观，也不适合早期。
+
+**决定：**
+- 隔离 workspace 之前，每个 Room 同时最多一个写入型 TaskRun。
+- 只读 run 可以并行（默认最多 2）。
+- Chat 回复默认只读；不参与写入并发。
+- Write scopes 在 run 创建时冻结；必须位于 Room 根目录 realpath 内；Role 权限必须允许写；用户必须已授权 Room 写。
+- Room 写授权在运行中或 outcome=unknown 时不能变更。
+
+**后果：**
+- 早期不会出现两个 Agent 同时改同一目录。
+- 并行探索仍可通过只读 run 进行。
+- 未来引入隔离 workspace 后，再放宽写入并发。
+
+## ADR-N19：Agent 工具必须 MCP 优先、严格标记兜底
+
+**背景：** 方案把 `mention` / `create_task` / `finish_task` 当工具用，但当前代码没有 MCP server；唯一的结构化协议是 v2 Report 标记。只有 Report 有通道，交接和建 Task 会断。
+
+**决定：**
+- main 为每次 run/session 起一个本地 MCP server；工具包括 `mention`、`create_task`、`comment_task`、`finish_task`、`list_tasks`、`get_task`、`request_attention`。
+- 身份由 MCP server 绑定，不接受工具参数里的 author/actor/runId。
+- 工具调用带 `toolCallId`；平台按 `(runId, toolCallId)` 幂等。
+- 只有执行者 lane 的 active run 能调用 `finish_task`；mention lane 只有读/评论/mention/ask 工具。
+- 不支持 MCP 的 CLI 用严格文本标记覆盖全部工具；标记从可见正文和简报剥离。
+- 不支持工具通道的 CLI 只能作只读讨论参与者，或由用户手动触发下一步。
+
+**后果：**
+- 需要实现 MCP server 和工具身份绑定；这是 Phase 2/3 的硬依赖。
+- Codex/Claude Code 的 MCP 支持需要验证；失败时用标记 fallback。
+- 工具调用幂等和作者绑定成为平台不变量。
+
 ## 首轮实施选择（2026-11-17）
 
 | 问题 | 选择 | 对应 ADR |
@@ -241,8 +328,33 @@
 | 2. Captain 粒度 | 每个 Chat 一个 Captain Role | ADR-N6 |
 | 3. Task 创建 | 默认直接 `create_task`；`draft_task` 可选；不增加用户审批 | ADR-N2 / ADR-N15 |
 | 4. 平台 Controller | 不保留隐藏 Controller | ADR-N2 / ADR-N6 |
-| 5. Report 通道 | MCP `finish_task` 优先，文本标记 fallback | ADR-N11 |
+| 5. Report 通道 | MCP `finish_task` 优先，文本标记 fallback | ADR-N11 / ADR-N19 |
 | 6. Task 验收 | `ready` → `in_review` → 用户接受 → `done` | ADR-N11 / ADR-N12 |
+| 7. Captain 协调 | eta review supervisor；不做 completion wake | ADR-N16 / ADR-N17 |
+| 8. 水位归属 | participant/lane，不在 session | ADR-N3 / ADR-N4 |
+| 9. Chat 权限 | 默认只读；写入只在 TaskRun | ADR-N13 / ADR-N18 |
+| 10. 工具通道 | MCP 优先，严格标记兜底 | ADR-N19 |
+
+## 评审吸收
+
+| 评审问题 | 处理 |
+| --- | --- |
+| Agent 工具没有传输通道 | ADR-N19；02/04 增加 MCP + 标记章节 |
+| 重启恢复与反目标冲突 | 03 6.4 改为 interrupted/unknown + Attention；进程对账后再启动 |
+| Task 验收状态机矛盾 | ADR-N11；04 加状态转移表、accept_task/reject_task、Artifact 独立 |
+| Session 指针所有权分裂 | ADR-N7；SessionStore port 写 SQLite；新路径不写 workspace JSON |
+| Schema 缺 TaskActivity/revision/client_id/lane/required/writeScopes | 02 schema 补齐 |
+| 外部 CLI 不支持 same-turn 评论/回答 | 03/04 明确 queue continuation run；能力矩阵 |
+| Captain 跨 Chat 风险 | ADR-N6；工具限定所属 Chat |
+| 删除计划不闭合 | 06 增加依赖顺序、目录改名、LocalWorkspace/ProjectService 解耦 |
+| 工具/Report 幂等与作者绑定 | ADR-N19；04 工具传输；05 说明 |
+| 迁移只是草图 | 06 增加 source→target 矩阵、dry-run、回滚 |
+| Renderer 路径不变量 | ADR-N8；02/07 定义 display-safe DTO |
+| `assign_in_group` 两行描述错误 | 03/04/05 修正为一条带 @ 消息 |
+| `last_seq` 表位置不一致 | ADR-N3/N4；统一到 participant/lane |
+| 聊天回复直接 invokeAgent | 02/03 改为 start_reply effect |
+| completion wake 过度设计 | ADR-N16；改为 eta review supervisor |
+| resume 未证明 | ADR-N9；Phase 2 proof gate |
 
 ## 被取代的旧决策
 
@@ -253,4 +365,5 @@
 | `docs-new/README.md`：新旧引擎并存一段时间 | ADR-N1 / ADR-N10 | 早期阶段，避免双轨 |
 | `docs-new/07`：旧 Chat 保留 legacy 行为 | ADR-N1 / ADR-N10 | 单一目标架构 |
 | `docs-new/06` ADR-007：首版不做跨 Chat 依赖等 | 保留 | 本文件不改变该范围 |
-| `docs-new/06` ADR-001：Room 主目录 + 隐藏辅助目录 | ADR-N13 | 保留主目录，但隐藏目录不是目标语义 |
+| `docs-new/06` ADR-001：Room 主目录 + 隐藏辅助目录 | ADR-N13 / ADR-N18 | 保留主目录，增加 Chat 只读和写入并发 1 |
+| 自创 Captain completion wake | ADR-N16 | 复用 eta review supervisor，避免过度设计 |
