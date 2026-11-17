@@ -1,7 +1,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { createHash } = require('node:crypto')
-const { ShadowRepo } = require('../project-room/shadow-git.cjs')
+const { ShadowRepo } = require('./shadow-git.cjs')
 
 function createArtifactReader({ roomDb, directory }) {
   if (!roomDb || !path.isAbsolute(directory || '')) throw new TypeError('ROOM_ARTIFACT_READER_DEPENDENCIES_REQUIRED')

@@ -3,7 +3,7 @@
 const crypto = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
-const { encodeId } = require('../../project-room/shadow-git.cjs')
+const { encodeId } = require('./trace-ids.cjs')
 
 const ID = /^[A-Za-z0-9._:-]{1,120}$/
 const PAGE_LIMIT_BYTES = 512 * 1024

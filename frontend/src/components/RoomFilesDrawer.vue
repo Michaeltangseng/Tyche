@@ -57,7 +57,7 @@
         class="project-room-drawer-resize"
         role="separator"
         aria-orientation="vertical"
-        :aria-label="t('projectRoom.drawer.resize')"
+        :aria-label="t('room.drawerResize')"
         @pointerdown.prevent="startResize"
       />
     </aside>

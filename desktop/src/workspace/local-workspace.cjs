@@ -158,7 +158,6 @@ class LocalWorkspace extends EventEmitter {
     this.processRegistry = options.processRegistry || null
     this.managedSupervisorPath = options.managedSupervisorPath || ''
     this.platform = options.platform || process.platform
-    this.projectRoom = options.projectRoom || null
     this.onTraceAppended = typeof options.onTraceAppended === 'function'
       ? options.onTraceAppended
       : null
@@ -307,7 +306,6 @@ class LocalWorkspace extends EventEmitter {
       recordAgentOutcomes: (...args) => this.recordAgentOutcomes(...args),
       sessionKey: (...args) => this.sessionKey(...args),
       sessionState: (...args) => this.sessionState(...args),
-      getProjectRoom: () => this.projectRoom,
       openClawSessionRef: (...args) => this.openClawSessionRef(...args),
       save: () => this.save(),
       packedPromptContext: (...args) => this.packedPromptContext(...args),
@@ -846,10 +844,6 @@ class LocalWorkspace extends EventEmitter {
       controller.orchestration?.candidateCommit?.messageId,
     ].filter(Boolean))
     return this.runLedgerCoordinator.finish(groupId, controller, status)
-  }
-
-  setProjectRoom(projectRoom) {
-    this.projectRoom = projectRoom || null
   }
 
   snapshot() {
@@ -2555,10 +2549,6 @@ class LocalWorkspace extends EventEmitter {
 
   createGroup(input) {
     return this.conversations.createGroup(input)
-  }
-
-  insertProjectRoomMessage(input) {
-    return this.conversations.insertProjectRoomMessage(input)
   }
 
   updateGroup(groupId, input) {

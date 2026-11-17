@@ -222,9 +222,6 @@ class LocalWorkspaceAgentInvocation {
     this.recordAgentOutcomes = options.recordAgentOutcomes
     this.sessionKey = options.sessionKey
     this.sessionState = options.sessionState
-    this.getProjectRoom = typeof options.getProjectRoom === 'function'
-      ? options.getProjectRoom
-      : () => null
     this.openClawSessionRef = options.openClawSessionRef
     this.save = options.save
     this.packedPromptContext = options.packedPromptContext
@@ -373,45 +370,21 @@ class LocalWorkspaceAgentInvocation {
           signal.removeEventListener('abort', queuedAbortHandler)
           queuedAbortHandler = null
         }
-        const projectRoomService = this.getProjectRoom()
-        const projectChatWrite = Boolean(
-          !projectRoomInvocation
-            && group.projectId
-            && group.projectRole !== 'main'
-            && permissionMode === 'workspace-write'
-            && typeof projectRoomService?.beginProjectChatWrite === 'function',
+        const result = await this.invokeLeased(
+          group,
+          kind,
+          mode,
+          signal,
+          threadRootId,
+          context,
+          { agentController, registration, lease },
         )
-        const chatWriteId = `${group.id}:${activeRun?.runId || Date.now()}:${kind}`
-        if (projectChatWrite) {
-          await projectRoomService.beginProjectChatWrite(group.id, chatWriteId)
+        // v2 captures output versions while this invocation still owns its
+        // directory lease, before another writer can change those files.
+        if (context.sessionPolicy === 'room' && typeof context.onInvocationCompleted === 'function') {
+          await context.onInvocationCompleted(result)
         }
-        try {
-          const result = await this.invokeLeased(
-            group,
-            kind,
-            mode,
-            signal,
-            threadRootId,
-            context,
-            { agentController, registration, lease },
-          )
-          // v2 captures output versions while this invocation still owns its
-          // directory lease, before another writer can change those files.
-          if (context.sessionPolicy === 'room' && typeof context.onInvocationCompleted === 'function') {
-            await context.onInvocationCompleted(result)
-          }
-          if (projectChatWrite) {
-            await projectRoomService.endProjectChatWrite(group.id, chatWriteId)
-              .catch(() => {})
-          }
-          return result
-        } catch (error) {
-          if (projectChatWrite) {
-            await projectRoomService.endProjectChatWrite(group.id, chatWriteId)
-              .catch(() => {})
-          }
-          throw error
-        }
+        return result
       })
     } catch (error) {
       if (permissionMode === 'workspace-write'
@@ -992,41 +965,26 @@ class LocalWorkspaceAgentInvocation {
       const preferencesText = isolated || projectRoom
         ? ''
         : workPreferencesPrompt(this.state().workPreferences)
-      const projectChat = isolated || frozen || context.sessionPolicy === 'room'
-        ? null
-        : (this.getProjectRoom()?.projectChatContext?.(group.id) || null)
-      let projectChatRecorded = false
-      const buildPrompt = (afterKind, contextPackage) => {
-        const base = [assembleInvocationPrompt({
-          group,
-          kind,
-          mode,
-          threadRootId,
-          context,
-          activeRun,
-          isolated,
-          frozen,
-          projectRoom,
-          v4Prompt: projectRoom ? projectRoomContext.promptOverride : v4Prompt,
-          promptMode,
-          afterKind,
-          packed: contextPackage,
-          session,
-          stagedInputs,
-          promptFor: (...args) => this.promptFor(...args),
-          agentLabel: label => this.agentLabel(label),
-        }), preferencesText].filter(Boolean).join('\n\n')
-        return projectChat?.text ? `${projectChat.text}\n\n${base}` : base
-      }
+      const buildPrompt = (afterKind, contextPackage) => [assembleInvocationPrompt({
+        group,
+        kind,
+        mode,
+        threadRootId,
+        context,
+        activeRun,
+        isolated,
+        frozen,
+        projectRoom,
+        v4Prompt: projectRoom ? projectRoomContext.promptOverride : v4Prompt,
+        promptMode,
+        afterKind,
+        packed: contextPackage,
+        session,
+        stagedInputs,
+        promptFor: (...args) => this.promptFor(...args),
+        agentLabel: label => this.agentLabel(label),
+      }), preferencesText].filter(Boolean).join('\n\n')
       let prompt = buildPrompt(transcriptAfterKind, packedContext)
-      if (projectChat && !projectChatRecorded) {
-        projectChatRecorded = true
-        try {
-          await this.getProjectRoom()?.recordChatReads?.(
-            group.projectId, group.id, projectChat.versions,
-          )
-        } catch { /* chat read tracking is best effort for the call */ }
-      }
       const recordOutboundPayload = (outbound = {}) => {
         watchdog.progress()
         recordOutboundUsage(activeRun?.budget, outbound)

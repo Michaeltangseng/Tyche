@@ -108,53 +108,6 @@ if (isLocalDocument) Object.assign(desktopApi, {
       return () => ipcRenderer.removeListener('local-workspace:open-group', listener)
     },
   }),
-  projectRoom: Object.freeze({
-    getPreferences: () => ipcRenderer.invoke('project:getPreferences'),
-    setPreferences: input => ipcRenderer.invoke('project:setPreferences', input),
-    templates: () => ipcRenderer.invoke('project:templates'),
-    capabilities: input => ipcRenderer.invoke('project:capabilities', input),
-    chooseWorkdir: () => ipcRenderer.invoke('project:chooseWorkdir'),
-    create: input => ipcRenderer.invoke('project:create', input),
-    rename: input => ipcRenderer.invoke('project:rename', input),
-    delete: input => ipcRenderer.invoke('project:delete', input),
-    retryDeletion: input => ipcRenderer.invoke('project:retryDeletion', input),
-    snapshot: input => ipcRenderer.invoke('project:snapshot', input),
-    updateSeat: input => ipcRenderer.invoke('project:updateSeat', input),
-    addSeat: input => ipcRenderer.invoke('project:addSeat', input),
-    removeSeat: input => ipcRenderer.invoke('project:removeSeat', input),
-    updateProfile: input => ipcRenderer.invoke('project:updateProfile', input),
-    rollbackProfile: input => ipcRenderer.invoke('project:rollbackProfile', input),
-    updatePlaybook: input => ipcRenderer.invoke('project:updatePlaybook', input),
-    saveAsTemplate: input => ipcRenderer.invoke('project:saveAsTemplate', input),
-    compact: input => ipcRenderer.invoke('project:compact', input),
-    updatePreferences: input => ipcRenderer.invoke('project:updatePreferences', input),
-    diagnostics: input => ipcRenderer.invoke('project:diagnostics', input),
-    gateDetail: input => ipcRenderer.invoke('project:gateDetail', input),
-    timelineHistory: input => ipcRenderer.invoke('project:timelineHistory', input),
-    start: input => ipcRenderer.invoke('project:start', input),
-    interject: input => ipcRenderer.invoke('project:interject', input),
-    stopAndDeliver: input => ipcRenderer.invoke('project:stopAndDeliver', input),
-    decideGate: input => ipcRenderer.invoke('project:decideGate', input),
-    previewReject: input => ipcRenderer.invoke('project:previewReject', input),
-    previewReopen: input => ipcRenderer.invoke('project:previewReopen', input),
-    reopen: input => ipcRenderer.invoke('project:reopen', input),
-    resolveDrift: input => ipcRenderer.invoke('project:resolveDrift', input),
-    cancelDriftResolution: input => ipcRenderer.invoke('project:cancelDriftResolution', input),
-    resolveOutOfScope: input => ipcRenderer.invoke('project:resolveOutOfScope', input),
-    retryEffect: input => ipcRenderer.invoke('project:retryEffect', input),
-    residual: input => ipcRenderer.invoke('project:residual', input),
-    unlockDirectory: input => ipcRenderer.invoke('project:unlockDirectory', input),
-    onChanged: callback => {
-      const listener = (_event, payload) => callback(payload)
-      ipcRenderer.on('project:changed', listener)
-      return () => ipcRenderer.removeListener('project:changed', listener)
-    },
-    onOpen: callback => {
-      const listener = (_event, payload) => callback(payload)
-      ipcRenderer.on('project:open', listener)
-      return () => ipcRenderer.removeListener('project:open', listener)
-    },
-  }),
   room: Object.freeze({
     listRooms: () => ipcRenderer.invoke('room:list', {}),
     permissionModes: () => ipcRenderer.invoke('room:permission-modes', {}),
@@ -184,12 +137,6 @@ if (isLocalDocument) Object.assign(desktopApi, {
       ipcRenderer.on('room:assignment-event', listener)
       return () => ipcRenderer.removeListener('room:assignment-event', listener)
     },
-  }),
-  workdir: Object.freeze({
-    list: input => ipcRenderer.invoke('workdir:list', input),
-    read: input => ipcRenderer.invoke('workdir:read', input),
-    diff: input => ipcRenderer.invoke('workdir:diff', input),
-    acceptedDocuments: input => ipcRenderer.invoke('workdir:acceptedDocuments', input),
   }),
   trace: Object.freeze({
     page: input => ipcRenderer.invoke('trace:page', input),

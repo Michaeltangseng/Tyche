@@ -140,18 +140,7 @@
   flex: 0 0 34px;
 }
 
-.sidebar.collapsed .brand-button span,
-.sidebar.collapsed .new-group-button span,
-.sidebar.collapsed .nav-heading,
-.sidebar.collapsed .sidebar-agent-location-heading,
-.sidebar.collapsed .sidebar-agent-main > span,
-.sidebar.collapsed .sidebar-agent-new,
-.sidebar.collapsed .direct-session-list,
-.sidebar.collapsed .group-nav-section,
-.sidebar.collapsed .pending-decisions-section,
-.sidebar.collapsed .project-room-nav-section,
-.sidebar.collapsed .nav-empty,
-.sidebar.collapsed .sidebar-footer button > span {
+.sidebar.collapsed .brand-button span, .sidebar.collapsed .new-group-button span, .sidebar.collapsed .nav-heading, .sidebar.collapsed .sidebar-agent-location-heading, .sidebar.collapsed .sidebar-agent-main > span, .sidebar.collapsed .sidebar-agent-new, .sidebar.collapsed .direct-session-list, .sidebar.collapsed .group-nav-section, .sidebar.collapsed .nav-empty, .sidebar.collapsed .sidebar-footer button > span{
   display: none;
 }
 
@@ -295,15 +284,9 @@
   line-height: 1;
 }
 
-.sidebar-rail-attention {
-  color: var(--accent);
-}
 
-.sidebar-rail-project .project-room-avatar {
-  width: 30px;
-  height: 30px;
-  font-size: 12px;
-}
+
+
 
 .sidebar-rail-item > .attention-dot {
   position: absolute;
@@ -951,110 +934,33 @@
   margin-left: auto;
 }
 
-.pending-decisions-heading {
-  color: var(--text-soft);
-}
 
-.pending-decisions-count {
-  margin-left: auto;
-  background: var(--accent-soft);
-  color: var(--accent-text);
-}
 
-.pending-decisions-list {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-  margin-top: 2px;
-  padding-left: 8px;
-}
 
-.pending-decision-row {
-  width: 100%;
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 8px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-soft);
-  text-align: left;
-  cursor: pointer;
-}
 
-.pending-decision-row:hover,
-.pending-decision-row:focus-visible {
-  outline: none;
-  background: var(--surface-hover);
-  color: var(--text);
-}
 
-.pending-decision-copy {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
 
-.pending-decision-copy strong,
-.pending-decision-copy small {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
-.pending-decision-copy strong {
-  font-size: var(--text-sm);
-}
 
-.pending-decision-copy small {
-  color: var(--muted);
-  font-size: var(--text-xs);
-}
 
-.pending-decision-row time {
-  color: var(--muted);
-  font-size: var(--text-2xs);
-  white-space: nowrap;
-}
 
-.pending-decisions-more {
-  margin: 4px 8px;
-  color: var(--muted);
-  font-size: var(--text-xs);
-}
 
-.project-room-create {
-  width: 100%;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 2px 0;
-  padding: 0 8px;
-  border: 1px dashed color-mix(in srgb, var(--border) 86%, transparent);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted);
-  font-size: var(--text-xs);
-  cursor: pointer;
-}
 
-.project-room-create:hover,
-.project-room-create:focus-visible {
-  outline: none;
-  border-color: var(--accent);
-  color: var(--accent);
-}
 
-.project-room-create svg {
-  width: 14px;
-  height: 14px;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 .project-room-list {
   min-width: 0;
@@ -1145,34 +1051,13 @@
   color: var(--warning);
 }
 
-.project-room-attention {
-  align-self: center;
-}
 
-.project-room-toggle {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-}
 
-.project-room-toggle:hover,
-.project-room-toggle:focus-visible {
-  outline: none;
-  background: var(--surface-active);
-  color: var(--text);
-}
 
-.project-room-toggle svg,
-.project-room-add svg,
-.project-room-delete svg {
+
+
+
+.project-room-add svg, .project-room-delete svg{
   width: 14px;
   height: 14px;
 }

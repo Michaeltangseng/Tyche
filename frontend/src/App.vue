@@ -3,10 +3,10 @@
     class="app-shell"
     :class="{
       'sidebar-collapsed': sidebarCollapsed,
-      'trace-panel-open': tracePanelOpen || projectDrawerOpen,
-      'project-drawer-open': projectDrawerOpen || roomFilesOpen,
+      'trace-panel-open': tracePanelOpen,
+      'project-drawer-open': roomFilesOpen,
     }"
-    :style="{ '--project-room-drawer-width': `${projectDrawerOpen ? projectDrawerWidth : roomFilesWidth}px` }"
+    :style="{ '--project-room-drawer-width': `${roomFilesWidth}px` }"
     :data-theme="theme"
     :data-platform="desktopPlatform"
     :aria-busy="agentDiscoveryPending ? 'true' : undefined"
@@ -95,21 +95,12 @@
           @toggle-files="roomFilesOpen = !roomFilesOpen"
         />
 
-        <section v-else class="conversation-pane" :class="{ 'project-room-pane': isProjectMainGroup }">
+        <section v-else class="conversation-pane">
           <ConversationHeader ref="conversationHeader" :controller="conversationHeaderController" />
-
-          <div v-if="isProjectMainGroup" class="project-room-top">
-            <ProjectRoomStatus :controller="projectRoomStatusController" />
-            <ProjectRoomProgress :controller="projectRoomProgressController" />
-          </div>
 
           <ConversationTimelineView :controller="timelineController" />
 
-          <div v-if="isProjectMainGroup" class="project-room-bottom">
-            <ProjectRoomGatePanel :controller="projectRoomGateController" />
-            <ProjectRoomComposer :controller="projectRoomComposerController" />
-          </div>
-          <ConversationComposer v-else :controller="composerController" />
+          <ConversationComposer :controller="composerController" />
         </section>
       </section>
 
@@ -129,13 +120,6 @@
           @decide-human-gate="decideHumanGate"
           @select="selectTraceAgentRun"
           @jump-source="jumpToTraceSource"
-        />
-      </transition>
-
-      <transition name="project-drawer">
-        <ProjectRoomDrawer
-          v-if="projectDrawerOpen && isProjectMainGroup"
-          :controller="projectRoomDrawerController"
         />
       </transition>
 
@@ -167,15 +151,9 @@
               ref="modalDialog"
               class="modal"
               :class="{
-                medium: [
-                  'new-group', 'settings', 'custom-agent', 'project-room-overlay',
-                  'project-room-create', 'project-room-seats',
-                ].includes(modal),
+                medium: ['new-group', 'settings', 'custom-agent'].includes(modal),
                 'agent-detail-modal': modal === 'agent-detail',
                 'unlimited-confirm-modal': modal === 'unlimited-confirm',
-                'project-room-overlay-modal': modal === 'project-room-overlay',
-                'project-room-setup-modal': ['project-room-create', 'project-room-seats'].includes(modal),
-                'seat-persona-modal': modal === 'project-room-seats',
               }"
               role="dialog"
               aria-modal="true"
@@ -192,20 +170,7 @@
                 </button>
               </header>
 
-              <ProjectRoomCreateDialog
-                v-if="modal === 'project-room-create'"
-                :controller="projectRoomCreateController"
-              />
-              <ProjectRoomSeatSettings
-                v-else-if="modal === 'project-room-seats'"
-                :controller="projectRoomSeatSettingsController"
-              />
-              <ProjectRoomOverlay
-                v-else-if="modal === 'project-room-overlay'"
-                :controller="projectRoomOverlayController"
-              />
               <WorkspaceModalContent
-                v-else
                 ref="workspaceModalContent"
                 :controller="workspaceModalController"
               />
@@ -253,7 +218,7 @@
 <script setup>
 import PixelBlast from './components/PixelBlast.vue'
 import WavePhysicsLoader from './components/WavePhysicsLoader.vue'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   AlertCircleOutline,
   CheckmarkCircleOutline,
@@ -267,15 +232,7 @@ import ConversationHeader from './components/ConversationHeader.vue'
 import ConversationTimelineView from './components/ConversationTimelineView.vue'
 import HomeDashboard from './components/HomeDashboard.vue'
 import OnboardingDialog from './components/OnboardingDialog.vue'
-import ProjectRoomComposer from './components/ProjectRoomComposer.vue'
-import ProjectRoomCreateDialog from './components/ProjectRoomCreateDialog.vue'
-import ProjectRoomDrawer from './components/ProjectRoomDrawer.vue'
 import RoomFilesDrawer from './components/RoomFilesDrawer.vue'
-import ProjectRoomGatePanel from './components/ProjectRoomGatePanel.vue'
-import ProjectRoomOverlay from './components/ProjectRoomOverlay.vue'
-import ProjectRoomProgress from './components/ProjectRoomProgress.vue'
-import ProjectRoomSeatSettings from './components/ProjectRoomSeatSettings.vue'
-import ProjectRoomStatus from './components/ProjectRoomStatus.vue'
 import RunTracePanel from './components/RunTracePanel.vue'
 import SystemSettingsView from './components/SystemSettingsView.vue'
 import WorkspaceModalContent from './components/WorkspaceModalContent.vue'
@@ -307,7 +264,6 @@ import { useKnowledgeBaseSettings } from './composables/useKnowledgeBaseSettings
 import { useMessageActions } from './composables/useMessageActions.js'
 import { useOnboarding } from './composables/useOnboarding.js'
 import { useOverlayLifecycle } from './composables/useOverlayLifecycle.js'
-import { useProjectRoomView } from './composables/useProjectRoomView.js'
 import { useRunFinishedNotifications } from './composables/useRunFinishedNotifications.js'
 import { useSystemSettingsNavigation } from './composables/useSystemSettingsNavigation.js'
 import { useTeamRoomNavigation } from './composables/useTeamRoomNavigation.js'
@@ -339,8 +295,6 @@ const sendingGroupIds = ref(new Set())
 const saving = ref(false)
 const humanGateDecisionPendingIds = ref([])
 const modal = ref('')
-const projectOverlay = ref(null)
-const projectRoomPreviewEnabled = ref(false)
 const composerContextVersion = ref(0)
 const DEFAULT_MAX_ROUNDS = 6
 const maxRounds = ref(DEFAULT_MAX_ROUNDS)
@@ -435,7 +389,6 @@ const {
 const conversationNavigation = useConversationNavigation({ agentLabel, locale, snapshot, t })
 const {
   directGroupsFor,
-  formatNavTime,
   groupName,
   isDirectCreationPending,
   recentGroupMeta,
@@ -459,35 +412,19 @@ const workspaceNavigationState = useWorkspaceNavigationState({
   setSidebarAgentExpanded,
   sidebarCollapsed,
   snapshot,
-  sortByUpdated,
-  t,
   toggleSidebarAgentExpanded,
 })
 const {
   activeGroup,
   activeGroupMemberSignature,
   activeView,
-  formatWaiting,
   goHome,
   handleAgentPrimary,
   handleOpenGroup,
   handleSidebarAgentMain,
   isGroupRunning,
-  isProjectRoomExpanded,
-  isProjectRoomSelected,
-  pendingDecisionCount,
-  pendingDecisionItems,
-  pendingDecisionLabel,
-  pendingDecisionsExpanded,
-  projectRoomEntries,
-  projectRoomStatusLabel,
-  projectTarget,
   selectGroup,
-  selectPendingDecision,
-  selectProjectRoom,
   selectedGroupId,
-  togglePendingDecisions,
-  toggleProjectRoomExpanded,
 } = workspaceNavigationState
 const teamRoomNavigation = useTeamRoomNavigation({
   roomApi: computed(() => api.value?.room || null),
@@ -502,295 +439,12 @@ const {
 } = teamRoomNavigation
 const roomCreateRequest = ref(false)
 const PROJECT_DRAWER_DEFAULT_WIDTH = 420
-const PROJECT_DRAWER_MIN_WIDTH = 280
-const PROJECT_DRAWER_MAX_WIDTH = 760
-const projectDrawerOpen = ref(false)
-const projectDrawerWidthOverride = ref(null)
 const roomFilesOpen = ref(false)
 const roomFilesWidth = ref(PROJECT_DRAWER_DEFAULT_WIDTH)
-const projectDrawerFileRequest = ref(null)
-const projectDrawerNarrow = ref(false)
-let projectDrawerMediaQuery = null
-
-function syncProjectDrawerNarrow() {
-  projectDrawerNarrow.value = projectDrawerMediaQuery?.matches === true
-}
-
-function detachProjectDrawerMediaQuery() {
-  if (projectDrawerMediaQuery) {
-    projectDrawerMediaQuery.removeEventListener?.('change', syncProjectDrawerNarrow)
-  }
-  projectDrawerMediaQuery = null
-  projectDrawerNarrow.value = false
-}
 
 watch(activeView, (view) => {
   if (view !== 'rooms') roomFilesOpen.value = false
 })
-
-watch(projectDrawerOpen, (open) => {
-  if (!open) {
-    detachProjectDrawerMediaQuery()
-    return
-  }
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
-  projectDrawerMediaQuery = window.matchMedia('(max-width: 1179px)')
-  projectDrawerMediaQuery.addEventListener?.('change', syncProjectDrawerNarrow)
-  syncProjectDrawerNarrow()
-})
-
-const projectRoomView = useProjectRoomView({
-  activeGroup,
-  formatNavTime,
-  normalizeSnapshot,
-  projectTarget,
-  selectGroup,
-  showError,
-  snapshot,
-  sortByUpdated,
-  t,
-  workspace,
-})
-const isProjectMainGroup = projectRoomView.isMainGroup
-const projectSeats = computed(() => projectRoomView.project.value?.config?.seats || [])
-const projectSeatFocusId = ref('')
-const projectDrawerWidth = computed(() => {
-  const stored = projectDrawerWidthOverride.value
-    ?? projectRoomView.project.value?.preferences?.drawerWidth
-  const numeric = Number(stored)
-  if (!Number.isFinite(numeric)) return PROJECT_DRAWER_DEFAULT_WIDTH
-  return Math.min(
-    PROJECT_DRAWER_MAX_WIDTH,
-    Math.max(PROJECT_DRAWER_MIN_WIDTH, Math.round(numeric)),
-  )
-})
-const projectDrawerBlocking = computed(() => projectDrawerOpen.value && projectDrawerNarrow.value)
-
-function toggleProjectDrawer() {
-  if (!isProjectMainGroup.value) return
-  projectDrawerOpen.value = !projectDrawerOpen.value
-  if (projectDrawerOpen.value) closeTracePanel()
-  else projectDrawerFileRequest.value = null
-}
-
-function openWorkdirFile(path) {
-  if (!isProjectMainGroup.value) return
-  const value = String(path || '')
-  if (!value) return
-  projectDrawerFileRequest.value = { path: value, token: Date.now() }
-  projectDrawerOpen.value = true
-  closeTracePanel()
-}
-
-async function saveProjectPreferences(preferences) {
-  if (!projectRoomPreviewEnabled.value) return null
-  try {
-    const result = await api.value?.projectRoom?.updatePreferences?.({
-      projectId: activeGroup.value?.projectId,
-      ...preferences,
-    })
-    await projectRoomView.refresh()
-    return result
-  } catch (error) {
-    showError(error)
-    return null
-  }
-}
-
-watch(() => activeGroup.value?.projectId, () => {
-  projectDrawerOpen.value = false
-  projectDrawerWidthOverride.value = null
-  projectDrawerFileRequest.value = null
-})
-watch(isProjectMainGroup, (isMain) => {
-  if (!isMain) {
-    projectDrawerOpen.value = false
-    projectDrawerFileRequest.value = null
-  }
-})
-
-onBeforeUnmount(() => {
-  detachProjectDrawerMediaQuery()
-})
-
-onMounted(async () => {
-  try {
-    const preferences = await api.value?.projectRoom?.getPreferences?.()
-    projectRoomPreviewEnabled.value = preferences?.projectRoomPreview === true
-  } catch { /* the preview stays hidden when preferences cannot be read */ }
-})
-
-function openProjectCreate() {
-  projectRoomPreviewEnabled.value = true
-  modal.value = 'project-room-create'
-}
-
-async function setProjectRoomPreview(enabled) {
-  try {
-    const preferences = await api.value?.projectRoom?.setPreferences?.({
-      projectRoomPreview: enabled === true,
-    })
-    projectRoomPreviewEnabled.value = preferences?.projectRoomPreview === true
-  } catch (error) {
-    showError(error)
-  }
-}
-
-function openProjectSeatSettings(seatId = '') {
-  if (!activeGroup.value?.projectId) return
-  projectSeatFocusId.value = String(seatId || '')
-  modal.value = 'project-room-seats'
-}
-
-function openProjectRoom(projectId) {
-  const project = projectRoomEntries.value.find(entry => entry.projectId === projectId)
-  if (project) selectProjectRoom(project.projectId)
-}
-
-function openProjectOverlay(payload) {
-  projectOverlay.value = payload
-  modal.value = 'project-room-overlay'
-}
-
-function closeProjectOverlay() {
-  projectRoomView.reopenRequest.value = null
-  projectOverlay.value = null
-  closeModal()
-}
-
-function requestProjectDelete(projectId) {
-  const project = projectRoomEntries.value.find(entry => entry.projectId === projectId)
-  openProjectOverlay({
-    kind: 'delete',
-    projectId,
-    projectName: project?.name || '',
-  })
-}
-
-watch(() => projectRoomView.rejectRequested.value, (requested) => {
-  if (!requested) return
-  projectRoomView.rejectRequested.value = false
-  openProjectOverlay({
-    kind: 'reject',
-    projectId: activeGroup.value?.projectId || '',
-  })
-})
-
-watch(() => projectRoomView.reopenRequest.value, (request) => {
-  if (!request) return
-  openProjectOverlay({
-    kind: 'reopen',
-    projectId: request.projectId,
-    checkpointId: request.checkpointId,
-    projectName: projectRoomView.projectName.value,
-    preview: request,
-  })
-})
-
-watch(modal, (value) => {
-  if (value !== 'project-room-overlay') projectOverlay.value = null
-})
-
-const projectRoomStatusController = {
-  cancelDriftResolution: projectRoomView.cancelDriftResolution,
-  compactProject: projectRoomView.compactProject,
-  diagnostics: projectRoomView.diagnostics,
-  driftItems: projectRoomView.driftItems,
-  errorBar: projectRoomView.errorBar,
-  formatNavTime,
-  loadDiagnostics: projectRoomView.loadDiagnostics,
-  openDriftDiff: projectRoomView.openDriftDiff,
-  outOfScopeItems: projectRoomView.outOfScopeItems,
-  progressItems: projectRoomView.progressItems,
-  resolveDriftItems: projectRoomView.resolveDriftItems,
-  resolveOutOfScopeItems: projectRoomView.resolveOutOfScopeItems,
-  resolveResidual: projectRoomView.resolveResidual,
-  residuals: projectRoomView.residuals,
-  retryProjectError: projectRoomView.retryProjectError,
-  statusErrorKey: projectRoomView.statusErrorKey,
-  t,
-}
-
-const projectRoomAgentOptions = computed(() => (
-  (snapshot.value.agents || []).map(agent => ({
-    ...agent,
-    label: agentLabel(agent.kind) || agent.kind,
-  }))
-))
-
-const projectRoomCreateController = {
-  agentOptions: projectRoomAgentOptions,
-  api: desktopApi()?.projectRoom || null,
-  close: (...args) => closeModal(...args),
-  onCreated: async (projectId) => {
-    closeModal()
-    try {
-      snapshot.value = normalizeSnapshot(await workspace.value?.get?.())
-    } catch { /* the workspace change event will refresh it */ }
-    const mainGroup = snapshot.value.groups.find(group => (
-      group.projectId === projectId && group.projectRole === 'main'
-    ))
-    if (mainGroup) selectGroup(mainGroup.id)
-  },
-  onOpenExisting: (projectId) => {
-    closeModal()
-    openProjectRoom(projectId)
-  },
-  t,
-}
-
-const projectRoomSeatSettingsController = {
-  agentOptions: projectRoomAgentOptions,
-  api: desktopApi()?.projectRoom || null,
-  close: (...args) => closeModal(...args),
-  focusedSeatId: projectSeatFocusId,
-  projectId: computed(() => activeGroup.value?.projectId || ''),
-  projectSnapshot: projectRoomView.project,
-  refreshProject: projectRoomView.refresh,
-  t,
-}
-
-const projectRoomDrawerController = {
-  close: () => {
-    projectDrawerOpen.value = false
-    projectDrawerFileRequest.value = null
-  },
-  drawer: projectDrawerNarrow,
-  fileRequest: projectDrawerFileRequest,
-  onResize: (width) => { projectDrawerWidthOverride.value = width },
-  open: projectDrawerOpen,
-  projectId: computed(() => activeGroup.value?.projectId || ''),
-  projectSnapshot: projectRoomView.project,
-  savePreferences: saveProjectPreferences,
-  t,
-  theme,
-  width: projectDrawerWidth,
-  workdir: computed(() => api.value?.workdir || null),
-}
-
-const projectRoomOverlayController = {
-  checkpointDefs: computed(() => (
-    projectRoomView.project.value?.config?.playbook?.checkpointDefs || []
-  )),
-  close: closeProjectOverlay,
-  deleteProjectRoom: projectRoomView.deleteProjectRoom,
-  onDeleted: () => {
-    closeProjectOverlay()
-    goHome()
-  },
-  overlay: projectOverlay,
-  previewRejectUpstream: projectRoomView.previewRejectUpstream,
-  previewReopenCheckpoint: projectRoomView.previewReopenCheckpoint,
-  progressItems: projectRoomView.progressItems,
-  projectName: projectRoomView.projectName,
-  rejectPreview: projectRoomView.rejectPreview,
-  submitReject: projectRoomView.submitReject,
-  submitReopen: projectRoomView.submitReopen,
-  t,
-  unlockProjectDirectory: projectRoomView.unlockProjectDirectory,
-  upstreamCheckpoints: projectRoomView.upstreamCheckpoints,
-  workdirName: projectRoomView.workdirName,
-}
 
 const sending = computed(() => (
   Boolean(selectedGroupId.value && sendingGroupIds.value.has(selectedGroupId.value))
@@ -912,9 +566,6 @@ const {
   tracePanelOpen,
   tracePanelRunId,
 } = conversationTimeline
-watch(tracePanelOpen, (open) => {
-  if (open) projectDrawerOpen.value = false
-})
 const pendingHumanGates = computed(() => (
   snapshot.value.humanGates.filter(gate => gate.status === 'pending')
 ))
@@ -1008,7 +659,6 @@ const { messageDeleteArmedId } = messageActions
 const contentInteractionBlocked = computed(() => (
   blockingOverlayOpen.value
     || traceDrawerBlocking.value
-    || projectDrawerBlocking.value
     || agentDiscoveryPending.value
 ))
 const composerContext = useComposerContext({
@@ -1199,9 +849,6 @@ const {
 const {
   composerController,
   conversationHeaderController,
-  projectRoomComposerController,
-  projectRoomGateController,
-  projectRoomProgressController,
   timelineController,
 } = createConversationControllers({
   agentCatalog,
@@ -1215,64 +862,9 @@ const {
     emptyShowcaseIndex,
     groupName,
     handleMessageScroll,
-    openSeatSettings: openProjectSeatSettings,
-    projectSeats,
-    projectDrawerOpen,
-    toggleProjectDrawer,
     maxRounds,
     messageScroller,
     productWordmark,
-    activeTargetId: projectRoomView.activeTargetId,
-    canSend: projectRoomView.canSend,
-    projectRoomArchivedLabel: projectRoomView.archivedGenerationLabel,
-    projectRoomCardMessages: projectRoomView.projectRoomCardMessages,
-    projectRoomFormatNavTime: formatNavTime,
-    projectRoomHasMoreTimeline: computed(() => Boolean(projectRoomView.timelineHistory.value.nextCursor)),
-    projectRoomIsArchived: projectRoomView.isArchivedProjectMessage,
-    projectRoomLoadMoreTimeline: projectRoomView.loadMoreTimeline,
-    projectRoomTimelineLoading: projectRoomView.timelineLoading,
-    projectRoomSelectGate: projectRoomView.selectTarget,
-    projectRoomStopDelivery: projectRoomView.stopAndDeliver,
-    currentItem: projectRoomView.currentItem,
-    draft: projectRoomView.draft,
-    lastActivityLabel: projectRoomView.lastActivityLabel,
-    openProjectChat: projectRoomView.openProjectChat,
-    otherGateCount: projectRoomView.otherGateCount,
-    progressItems: projectRoomView.progressItems,
-    requestReopen: projectRoomView.requestReopen,
-    selectNextGateTarget: projectRoomView.selectNextGateTarget,
-    selectTarget: projectRoomView.selectTarget,
-    sendErrorLabel: projectRoomView.sendErrorLabel,
-    sendLabel: projectRoomView.sendLabel,
-    sendTargetText: projectRoomView.sendTargetText,
-    targetAvailable: projectRoomView.targetAvailable,
-    targetHint: projectRoomView.targetHint,
-    targetLabel: projectRoomView.targetLabel,
-    targetPurposeLabel: projectRoomView.targetPurposeLabel,
-    acceptCandidateVersion: projectRoomView.acceptCandidateVersion,
-    activeGate: projectRoomView.activeGate,
-    allReviewersPass: projectRoomView.allReviewersPass,
-    cancelAcceptConfirm: projectRoomView.cancelAcceptConfirm,
-    candidateDiverged: projectRoomView.candidateDiverged,
-    commitToGit: projectRoomView.commitToGit,
-    confirmAcceptAsIs: projectRoomView.confirmAcceptAsIs,
-    confirmAcceptNow: projectRoomView.confirmAcceptNow,
-    driftGate: projectRoomView.driftGate,
-    gateAcceptBlockers: projectRoomView.gateAcceptBlockers,
-    gateAllowedOutcomes: projectRoomView.gateAllowedOutcomes,
-    gateCheckpointName: projectRoomView.gateCheckpointName,
-    gateCommitToGit: projectRoomView.gateCommitToGit,
-    gateErrorLabel: projectRoomView.gateErrorLabel,
-    gateLoading: projectRoomView.gateLoading,
-    gateScreen: projectRoomView.gateScreen,
-    gateStale: projectRoomView.gateStale,
-    seats: computed(() => projectRoomView.project.value?.config?.seats || []),
-    questionGate: projectRoomView.questionGate,
-    reloadGate: projectRoomView.reloadGate,
-    requestAccept: projectRoomView.requestAccept,
-    requestReject: projectRoomView.requestReject,
-    resolveGateDrift: projectRoomView.resolveGateDrift,
-    submitGateContinue: projectRoomView.submitGateContinue,
     requestUnlimitedRounds,
     roundProgressPercent,
     roundSettingsControl,
@@ -1302,7 +894,6 @@ Object.assign(timelineController, {
   directHumanGates,
   directRunBudget,
   humanGateDecisionPendingIds,
-  openWorkdirFile,
 })
 
 const modalTitle = computed(() => ({
@@ -1313,16 +904,11 @@ const modalTitle = computed(() => ({
   'custom-agent': t('customAgent.title'),
   'unlimited-confirm': t('composer.unlimitedConfirmTitle'),
   'agent-detail': selectedAgentDetail.value?.label || t('systemSettings.openAgentDetailDefault'),
-  'project-room-overlay': t(`projectRoom.overlay.title.${projectOverlay.value?.kind || 'reject'}`),
-  'project-room-create': t('projectRoom.setup.title'),
-  'project-room-seats': t('projectRoom.seats.title'),
 })[modal.value] || '')
 const modalSubtitle = computed(() => ({
   settings: groupName(activeGroup.value),
   'custom-agent': t('customAgent.subtitle'),
   'agent-detail': agentDetailSkillSummary.value,
-  'project-room-overlay': projectOverlay.value?.projectName || projectRoomView.projectName.value,
-  'project-room-seats': projectRoomView.projectName.value,
 })[modal.value] || '')
 
 const {
@@ -1341,13 +927,10 @@ const {
     cloudAgentBridges,
     confirmUnlimitedRounds,
     contentInteractionBlocked,
-    addProjectChat: projectRoomView.addProjectChat,
     customAgentDeleteArmed,
-    deleteProjectRoom: requestProjectDelete,
     discoveringAgents: agentDiscoveryPending,
     focusedAgentKind,
     formError,
-    formatWaiting,
     goHome,
     groupName,
     handleSidebarAgentMain,
@@ -1355,21 +938,10 @@ const {
     installerState,
     isGroupAwaitingDecision,
     isGroupRunning,
-    isProjectRoomExpanded,
-    isProjectRoomSelected,
     modal,
     openAgentManager,
-    openSeatSettings: openProjectSeatSettings,
     openSystemSettings,
-    pendingDecisionCount,
-    pendingDecisionItems,
-    pendingDecisionLabel,
-    pendingDecisionsExpanded,
     productMark,
-    projectRoomEntries,
-    projectRoomPreviewEnabled,
-    projectRoomStatusLabel,
-    openProjectCreate,
     addTeamChat: teamRoomNavigation.addChat,
     deleteTeamChat: teamRoomNavigation.deleteChat,
     deleteTeamRoom: teamRoomNavigation.deleteRoom,
@@ -1387,12 +959,9 @@ const {
     },
     selectTeamChat: teamRoomNavigation.selectChat,
     teamRooms,
-    setProjectRoomPreview,
     refreshing,
     saving,
     selectGroup,
-    selectPendingDecision,
-    selectProjectRoom,
     selectedGroupId,
     selectSystemSettingsSection,
     setThemePreference,
@@ -1406,8 +975,6 @@ const {
     theme,
     themePreference,
     toggleLocale,
-    togglePendingDecisions,
-    toggleProjectRoomExpanded,
     toggleTheme,
   },
   collapsedGroupMenu: collapsedGroupMenuController,

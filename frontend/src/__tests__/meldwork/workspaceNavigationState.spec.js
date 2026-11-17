@@ -90,65 +90,6 @@ describe('workspace navigation state', () => {
     expect(navigation.selectedGroupId.value).toBe('')
   })
 
-  it('opens a project room main chat and records a pending decision target', () => {
-    const { navigation, snapshot } = createNavigation()
-    snapshot.value = {
-      ...snapshot.value,
-      groups: [
-        group('main-1', {
-          projectId: 'project-1', projectRole: 'main', name: 'Main chat',
-          updatedAt: '2026-07-29T08:00:00Z',
-        }),
-        group('chat-1', {
-          projectId: 'project-1', name: 'Tech talk', updatedAt: '2026-07-29T09:00:00Z',
-        }),
-        group('ordinary-1', { name: 'Ordinary' }),
-      ],
-      projectRooms: [{
-        projectId: 'project-1',
-        name: 'Project One',
-        displayName: 'repo',
-        pendingGateCount: 1,
-      }],
-      pendingDecisions: {
-        items: [{
-          type: 'gate',
-          projectId: 'project-1',
-          projectName: 'Project One',
-          checkpointId: 'checkpoint-1',
-          checkpointName: 'Requirements',
-          reason: 'needs-human',
-          itemId: 'gate-1',
-          waitingSince: '2026-07-29T08:00:00Z',
-          waitingMs: 60000,
-        }],
-        total: 1,
-      },
-    }
-
-    expect(navigation.projectRoomEntries.value).toHaveLength(1)
-    expect(navigation.projectRoomEntries.value[0].groups.map(item => item.id))
-      .toEqual(['main-1', 'chat-1'])
-    expect(navigation.isProjectRoomExpanded('project-1')).toBe(false)
-
-    expect(navigation.selectPendingDecision(navigation.pendingDecisionItems.value[0])).toBe(true)
-    expect(navigation.activeView.value).toBe('conversation')
-    expect(navigation.selectedGroupId.value).toBe('main-1')
-    expect(navigation.isProjectRoomExpanded('project-1')).toBe(true)
-    expect(navigation.projectTarget.value).toEqual({
-      projectId: 'project-1',
-      type: 'gate',
-      checkpointId: 'checkpoint-1',
-      itemId: 'gate-1',
-      reason: 'needs-human',
-      waitingSince: '2026-07-29T08:00:00Z',
-    })
-
-    navigation.selectGroup('ordinary-1')
-    expect(navigation.projectTarget.value).toBe(null)
-    expect(navigation.selectedGroupId.value).toBe('ordinary-1')
-  })
-
   it('ignores stale running ids for empty groups without a live run', () => {
     const { navigation, snapshot } = createNavigation()
     snapshot.value = {

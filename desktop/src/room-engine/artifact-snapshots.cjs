@@ -1,7 +1,7 @@
 const path = require('node:path')
 const fs = require('node:fs')
 const { createHash } = require('node:crypto')
-const { ShadowRepo } = require('../project-room/shadow-git.cjs')
+const { ShadowRepo } = require('./shadow-git.cjs')
 const { ensurePrivateDirectory } = require('../security/private-file.cjs')
 
 const hash = value => createHash('sha256').update(value).digest('hex')

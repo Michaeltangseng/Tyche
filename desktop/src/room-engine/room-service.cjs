@@ -24,7 +24,7 @@ const {
   listDirectory,
   resolveForRead,
   trimUtf8Buffer,
-} = require('../project-room/workdir-access.cjs')
+} = require('./workdir-access.cjs')
 
 const RETRYABLE_CONTROLLER_ERRORS = new Set([
   'ROOM_CONTROLLER_TIMEOUT', 'ROOM_CONTROLLER_GROUP_NOT_FOUND', 'ROOM_CONTROLLER_CHAT_BUSY',

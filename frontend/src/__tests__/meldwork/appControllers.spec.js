@@ -3,9 +3,6 @@ import { describe, expect, it } from 'vitest'
 import conversationComposerSource from '../../components/ConversationComposer.vue?raw'
 import conversationHeaderSource from '../../components/ConversationHeader.vue?raw'
 import conversationTimelineSource from '../../components/ConversationTimelineView.vue?raw'
-import projectRoomComposerSource from '../../components/ProjectRoomComposer.vue?raw'
-import projectRoomGateSource from '../../components/ProjectRoomGatePanel.vue?raw'
-import projectRoomProgressSource from '../../components/ProjectRoomProgress.vue?raw'
 import systemSettingsSource from '../../components/SystemSettingsView.vue?raw'
 import workspaceModalSource from '../../components/WorkspaceModalContent.vue?raw'
 import workspaceSidebarSource from '../../components/WorkspaceSidebar.vue?raw'
@@ -91,15 +88,6 @@ describe('App controller contracts', () => {
     )
     expect(Object.keys(conversation.composerController).sort()).toEqual(
       controllerKeys(conversationComposerSource),
-    )
-    expect(Object.keys(conversation.projectRoomComposerController).sort()).toEqual(
-      controllerKeys(projectRoomComposerSource),
-    )
-    expect(Object.keys(conversation.projectRoomGateController).sort()).toEqual(
-      controllerKeys(projectRoomGateSource),
-    )
-    expect(Object.keys(conversation.projectRoomProgressController).sort()).toEqual(
-      controllerKeys(projectRoomProgressSource),
     )
     expect(Object.keys(workspace.workspaceSidebarController).sort()).toEqual(
       controllerKeys(workspaceSidebarSource),

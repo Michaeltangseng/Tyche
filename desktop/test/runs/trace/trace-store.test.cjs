@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
-const { encodeId } = require('../../../src/project-room/shadow-git.cjs')
+const { encodeId } = require('../../../src/runs/trace/trace-ids.cjs')
 const { RunLedger } = require('../../../src/runs/run-ledger.cjs')
 const {
   cleanupOrphanTraces,

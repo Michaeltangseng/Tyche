@@ -240,7 +240,6 @@ test('worker reaches the native invocation pipeline without a legacy group or Co
   const assignmentId = s.repository.createAssignment({ taskId, roleId })
   s.workspace.packedPromptContext = () => assert.fail('legacy conversation context read')
   s.workspace.contextPackStore.get = () => assert.fail('legacy ContextPack read')
-  s.workspace.agentInvocation.getProjectRoom = () => ({ projectChatContext: () => assert.fail('legacy project context read') })
   const service = createRoomService({ roomDb: s.roomDb, repository: s.repository,
     invokeAgent: s.runtime.invokeAgent, resolveGroup: s.runtime.resolveTarget })
   try {

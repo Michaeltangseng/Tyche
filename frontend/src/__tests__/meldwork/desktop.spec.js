@@ -1,7 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
-  PROJECT_ROOM_METHODS,
-  createProjectRoomApi,
   desktopApi,
   mergeRunEvent,
   normalizeCapsuleEvent,
@@ -9,8 +7,6 @@ import {
   normalizeRunAgent,
   normalizeRunEvent,
   normalizeSnapshot,
-  projectRoomApi,
-  projectRoomErrorKey,
 } from '../../desktop.js'
 import { normalizeOrchestration } from '../../desktop-normalization.js'
 import * as desktop from '../../desktop.js'
@@ -38,8 +34,6 @@ it('validates minimal run outcomes against their visible group and task', () => 
 describe('desktop bridge access', () => {
   it('keeps the public desktop facade stable', () => {
     expect(Object.keys(desktop).sort()).toEqual([
-      'PROJECT_ROOM_METHODS',
-      'createProjectRoomApi',
       'desktopApi',
       'emptySnapshot',
       'errorCode',
@@ -49,8 +43,6 @@ describe('desktop bridge access', () => {
       'normalizeRunAgent',
       'normalizeRunEvent',
       'normalizeSnapshot',
-      'projectRoomApi',
-      'projectRoomErrorKey',
     ])
   })
 
@@ -64,57 +56,7 @@ describe('desktop bridge access', () => {
     expect(desktopApi()).toBe(bridge)
   })
 
-  it('wraps every project room bridge method and event subscription', () => {
-    const bridge = {}
-    for (const method of PROJECT_ROOM_METHODS) {
-      bridge[method] = vi.fn(input => ({ method, input }))
-    }
-    bridge.onChanged = vi.fn(() => 'stop-changed')
-    bridge.onOpen = vi.fn(() => 'stop-open')
 
-    const api = createProjectRoomApi(bridge)
-    expect(Object.isFrozen(api)).toBe(true)
-    for (const method of PROJECT_ROOM_METHODS) {
-      expect(api[method]({ method })).toEqual({ method, input: { method } })
-      expect(bridge[method]).toHaveBeenCalledWith({ method })
-    }
-    expect(api.onChanged(() => {})).toBe('stop-changed')
-    expect(api.onOpen(() => {})).toBe('stop-open')
-  })
-
-  it('reads the project room facade from the preload bridge', () => {
-    const projectRoom = { snapshot: vi.fn() }
-    window.meldworkDesktop = { projectRoom }
-    expect(projectRoomApi().snapshot).toEqual(expect.any(Function))
-  })
-
-  it('maps project error codes to localization keys', () => {
-    expect(projectRoomErrorKey('PROJECT_GATE_STALE')).toBe('errors.PROJECT_GATE_STALE')
-    expect(projectRoomErrorKey({ code: 'PROJECT_ACCEPT_BLOCKED' }))
-      .toBe('errors.PROJECT_ACCEPT_BLOCKED')
-    expect(projectRoomErrorKey('LOCAL_SOMETHING_ELSE')).toBe('error.generic')
-    expect(projectRoomErrorKey('')).toBe('error.generic')
-  })
-
-  it('keeps project room sidebar entries and pending decisions in the snapshot', () => {
-    const projectRooms = [{
-      projectId: 'project-1',
-      name: 'Project One',
-      displayName: 'work',
-      readOnly: false,
-      deleting: null,
-      pendingGateCount: 1,
-      unresolvedDriftCount: 0,
-      residualCount: 0,
-    }]
-    const pendingDecisions = {
-      items: [{ type: 'gate', projectId: 'project-1', itemId: 'gate-1' }],
-      total: 1,
-    }
-    const normalized = normalizeSnapshot({ projectRooms, pendingDecisions })
-    expect(normalized.projectRooms).toEqual(projectRooms)
-    expect(normalized.pendingDecisions).toEqual(pendingDecisions)
-  })
 })
 
 describe('run event normalization', () => {

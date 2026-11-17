@@ -67,20 +67,8 @@ const {
   resolveNativeShellEnvironment,
 } = require('./agents/local-agent-readiness.cjs')
 const { LocalWorkspace } = require('./workspace/local-workspace.cjs')
-const { ProjectService } = require('./project-room/project-service.cjs')
-const {
-  userRepoCheckTrailer,
-  userRepoCommit,
-  userRepoPreflight,
-} = require('./project-room/user-git.cjs')
-const { TemplatesStore } = require('./project-room/templates-store.cjs')
-const { ProjectDeletion } = require('./project-room/project-deletion.cjs')
-const { AppPreferencesStore } = require('./project-room/app-preferences.cjs')
-const { createProjectNotificationCoordinator } = require('./project-room/project-notifications.cjs')
-const { registerProjectIpc } = require('./shell/project-ipc.cjs')
-const { registerWorkdirIpc } = require('./shell/workdir-ipc.cjs')
 const { createTraceReader } = require('./runs/trace/trace-reader.cjs')
-const { cleanupOrphanTraces, createTraceStore, removeTracesForGroup } = require('./runs/trace/trace-store.cjs')
+const { cleanupOrphanTraces, createTraceStore } = require('./runs/trace/trace-store.cjs')
 const { createTraceAppendedNotifier, registerTraceIpc } = require('./shell/trace-ipc.cjs')
 const { ProcessRegistry } = require('./agents/process/process-registry.cjs')
 const { processRunScheduler } = require('./runs/run-scheduler.cjs')
@@ -149,10 +137,6 @@ function recordMainProcessFault(kind, detail) {
 process.on('unhandledRejection', reason => recordMainProcessFault('unhandledRejection', reason))
 process.on('uncaughtException', error => recordMainProcessFault('uncaughtException', error))
 let workspace = null
-let projectService = null
-let projectDeletion = null
-let appPreferences = null
-let projectNotifications = null
 let workspaceStartupError = ''
 let workspaceChangedListener = null
 let workspaceRunFinishedListener = null
@@ -486,23 +470,6 @@ function notifyWorkspaceChanged(snapshot) {
   if (mainWindow && !mainWindow.isDestroyed()
       && isTrustedLocalWebContents(mainWindow.webContents)) {
     mainWindow.webContents.send('local-workspace:changed', snapshot)
-  }
-}
-
-function refreshProjectNotifications() {
-  if (!projectService || !projectNotifications) return
-  try {
-    const items = projectService.isPreviewEnabled?.() === false
-      ? []
-      : projectService.pendingDecisions().items
-    projectNotifications.update(items)
-  } catch { /* notifications are best effort */ }
-}
-
-function notifyProjectChanged(payload) {
-  if (mainWindow && !mainWindow.isDestroyed()
-      && isTrustedLocalWebContents(mainWindow.webContents)) {
-    mainWindow.webContents.send('project:changed', payload)
   }
 }
 
@@ -1103,20 +1070,6 @@ function registerIpc() {
   })
   const traceStore = createTraceStore({ tracesRoot })
   registerTraceIpc({ registerTrustedHandle, reader: roomTraceReader, store: traceStore })
-  registerWorkdirIpc({
-    registerTrustedHandle,
-    getProjectService: () => projectService,
-  })
-  registerProjectIpc({
-    registerTrustedHandle,
-    getProjectService: () => projectService,
-    getDeletion: () => projectDeletion,
-    getPreferences: () => appPreferences?.get() || { projectRoomPreview: false },
-    setPreferences: input => appPreferences?.set(input) || Promise.resolve({ projectRoomPreview: false }),
-    onPreferencesChanged: () => workspace?.emitChanged(),
-    dialog,
-    getMainWindow: () => mainWindow,
-  })
   disposeRoomIpc = registerRoomIpc({
     ipcMain,
     service: roomEngineService,
@@ -1284,91 +1237,6 @@ if (!hasSingleInstanceLock) {
         getInvocationRecords: runId => startupWorkspace.processRegistry.getInvocationRecords(runId),
         decideController: createControllerAgent({ repository: roomRepository, invokeAgent: roomNativeRuntime.invokeAgent, resolveGroup: roomNativeRuntime.resolveTarget }),
       })
-      const templatesStore = new TemplatesStore({
-        storagePath: path.join(privateRoot, 'templates.json'),
-      })
-      appPreferences = new AppPreferencesStore({
-        storagePath: path.join(privateRoot, 'app-preferences.json'),
-      })
-      await appPreferences.load()
-      projectService = new ProjectService({
-        workspace: startupWorkspace,
-        privateRoot,
-        scheduler,
-        templatesStore,
-        isPreviewEnabled: () => appPreferences?.isProjectRoomEnabled() === true,
-        userGit: { userRepoCheckTrailer, userRepoCommit, userRepoPreflight },
-      })
-      const projectGroupIds = projectId => new Set(
-        (startupWorkspace.state.groups || [])
-          .filter(group => group.projectId === projectId)
-          .map(group => group.id),
-      )
-      const activeProjectChatRuns = (projectId) => {
-        const ids = projectGroupIds(projectId)
-        let count = 0
-        for (const groupId of startupWorkspace.activeRuns.keys()) {
-          if (ids.has(groupId)) count += 1
-        }
-        return count
-      }
-      const cancelProjectChatRuns = (projectId) => {
-        const ids = projectGroupIds(projectId)
-        for (const [groupId, controller] of startupWorkspace.activeRuns) {
-          if (!ids.has(groupId)) continue
-          try { void startupWorkspace.stop(groupId, controller.runId) } catch { /* best effort */ }
-        }
-      }
-      projectDeletion = new ProjectDeletion({
-        workspace: startupWorkspace,
-        privateRoot,
-        scheduler,
-        getContext: projectId => projectService?.contextFor(projectId) || null,
-        engine: {
-          beginDraining: state => state,
-          isDrained: () => true,
-        },
-        engineFor: projectId => projectService?.engineFor(projectId) || null,
-        effects: {
-          isIdle: () => true,
-          onIdle: () => {},
-          removeIdleListener: () => {},
-        },
-        invocations: {
-          activeInvocations: activeProjectChatRuns,
-          onInvocationEnded: () => {},
-          removeInvocationEndedListener: () => {},
-          cancelAll: cancelProjectChatRuns,
-        },
-        onDeleted: projectId => projectService?.removeContext(projectId),
-        removeTracesForGroup: groupId => removeTracesForGroup(
-          path.join(app.getPath('userData'), 'meldwork-private', 'traces'),
-          groupId,
-        ),
-      })
-      startupWorkspace.setProjectRoom(projectService)
-      projectNotifications = createProjectNotificationCoordinator({
-        send: ({ projectId, title, body }) => {
-          try {
-            const notification = new Notification({
-              title,
-              body,
-              ...(appIconImage() ? { icon: appIconImage() } : (appIconPath() ? { icon: appIconPath() } : {})),
-            })
-            notification.on('click', () => {
-              if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('project:open', { projectId })
-              }
-            })
-            notification.show()
-          } catch { /* notifications are best effort */ }
-        },
-        locale: () => app.getLocale?.() || 'zh',
-      })
-      projectService.onChanged((payload) => {
-        notifyProjectChanged(payload)
-        refreshProjectNotifications()
-      })
       try {
         const recovery = await startupWorkspace.processRegistry.recover()
         for (const result of recovery) {
@@ -1396,14 +1264,6 @@ if (!hasSingleInstanceLock) {
       } catch (recoveryError) {
         console.warn('[meldwork] managed process recovery failed',
           recoveryError?.message || recoveryError)
-      }
-      try {
-        await projectService.start()
-        await projectDeletion.start()
-        refreshProjectNotifications()
-      } catch (error) {
-        console.warn('[meldwork] project room startup failed',
-          error?.code || error?.message || error)
       }
     } finally {
       scheduler.exitRecoveryMode()

@@ -42,38 +42,7 @@ const V4_PRIVATE_GATE_RESUME_KINDS = new Set([
   'v4_human_gate', 'v4_synthesis_recovery',
 ])
 const PUBLIC_AGENT_KIND = /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/
-const PROJECT_ID = /^[A-Za-z0-9._:-]{1,120}$/
 const WORKSPACE_V3_BACKUP = 'meldwork-workspace.v3.backup.json'
-
-function realWorkdir(workdir) {
-  const resolved = path.resolve(workdir)
-  try {
-    return fs.realpathSync.native(resolved)
-  } catch {
-    return resolved
-  }
-}
-
-function pathContains(parent, child) {
-  if (parent === child) return true
-  const base = parent.endsWith(path.sep) ? parent : `${parent}${path.sep}`
-  return child.startsWith(base)
-}
-
-function projectWorkdirsOverlap(first, second) {
-  const left = realWorkdir(first)
-  const right = realWorkdir(second)
-  if (process.platform === 'win32') {
-    const lowerLeft = left.toLowerCase()
-    const lowerRight = right.toLowerCase()
-    return pathContains(lowerLeft, lowerRight) || pathContains(lowerRight, lowerLeft)
-  }
-  return pathContains(left, right) || pathContains(right, left)
-}
-
-function projectIssue(projectId, code, details = {}) {
-  return { projectId, code, ...details }
-}
 
 function publicOrchestrationSnapshot(orchestration) {
   if (!orchestration || orchestration.version !== 4) return null
@@ -254,87 +223,9 @@ function loadWorkspaceState(storagePath) {
         if (SESSION_KEY.test(key) && sessionRef) sessions[key] = sessionRef
       }
     }
-    const projects = []
-    const projectIssues = []
-    if (Array.isArray(parsed.projects)) {
-      for (const candidate of parsed.projects.slice(0, 256)) {
-        const projectId = String(candidate?.id || '')
-        const name = cleanText(candidate?.name, 80)
-        const workdir = cleanText(candidate?.workdir, 1000)
-        if (!PROJECT_ID.test(projectId) || !workdir || !path.isAbsolute(workdir)) {
-          projectIssues.push(projectIssue(projectId, 'PROJECT_INVALID'))
-          continue
-        }
-        const project = {
-          id: projectId,
-          name,
-          workdir: path.resolve(workdir),
-          createdAt: cleanText(candidate.createdAt, 80),
-          updatedAt: cleanText(candidate.updatedAt, 80),
-        }
-        if (candidate.deleting && typeof candidate.deleting === 'object'
-            && !Array.isArray(candidate.deleting)) {
-          project.deleting = {
-            requestedAt: cleanText(candidate.deleting.requestedAt, 80),
-            keepChats: candidate.deleting.keepChats === true,
-          }
-        }
-        projects.push(project)
-      }
-    }
-    const projectIds = new Set(projects.map(project => project.id))
-    groups = groups.map(group => {
-      if (!group.projectId) {
-        if (group.projectRole === 'main') {
-          projectIssues.push(projectIssue('', 'PROJECT_MAIN_CHAT_DANGLING', { groupId: group.id }))
-          const { projectRole, ...rest } = group
-          return rest
-        }
-        return group
-      }
-      if (!projectIds.has(group.projectId)) {
-        projectIssues.push(projectIssue(group.projectId, 'PROJECT_GROUP_DANGLING', {
-          groupId: group.id,
-        }))
-        const { projectId, projectRole, ...rest } = group
-        return rest
-      }
-      return group
-    })
-    for (const project of projects) {
-      const mains = groups.filter(group => (
-        group.projectId === project.id && group.projectRole === 'main'
-      ))
-      if (mains.length !== 1) {
-        projectIssues.push(projectIssue(project.id, 'PROJECT_MAIN_CHAT_INVALID', {
-          readOnly: true,
-        }))
-      }
-    }
-    for (let second = 0; second < projects.length; second += 1) {
-      for (let first = 0; first < second; first += 1) {
-        if (projectWorkdirsOverlap(projects[first].workdir, projects[second].workdir)) {
-          projectIssues.push(projectIssue(projects[second].id, 'PROJECT_WORKDIR_OVERLAP', {
-            readOnly: true,
-            conflictsWith: projects[first].id,
-          }))
-        }
-      }
-    }
-    const projectStateRoot = path.join(
-      path.dirname(storagePath), 'meldwork-private', 'projects',
-    )
-    for (const project of projects) {
-      if (!fs.existsSync(path.join(projectStateRoot, project.id, 'state.json'))) {
-        projectIssues.push(projectIssue(project.id, 'PROJECT_STATE_MISSING', {
-          readOnly: true,
-        }))
-      }
-    }
     return {
       state: {
         version: 4,
-        projects,
         ...(parsed.workPreferences ? { workPreferences: loadedWorkPreferences(parsed.workPreferences) } : {}),
         ...(parsed.deliveryTasks ? {
           deliveryTasks: parseDeliveryTasks(parsed.deliveryTasks).filter(task => groupIds.has(task.groupId)),
@@ -356,7 +247,6 @@ function loadWorkspaceState(storagePath) {
       status: 'ready',
       trusted: true,
       diagnostic: '',
-      projectIssues,
     }
   } catch {
     return {
@@ -476,7 +366,7 @@ function durableWaitingRunSnapshots({ state, records, pendingGates, liveRunIds, 
 
 function workspaceSnapshot({
   detectedAgents, state, preparingRuns, activeRuns, humanGateCoordinator, runLedger,
-  workspaceRecovery, projectRoom,
+  workspaceRecovery,
 }) {
   let records = []
   try { records = runLedger?.list?.() || [] } catch { /* retain the visible workspace on ledger read failure */ }
@@ -566,8 +456,6 @@ function workspaceSnapshot({
   const deliveryMessages = new Map((state.deliveryTasks || []).flatMap(task => (
     task.attempts.map(attempt => [attempt.messageId, { task, attempt }])
   )))
-  const projectRoomVisible = projectRoom
-    && (typeof projectRoom.isPreviewEnabled !== 'function' || projectRoom.isPreviewEnabled())
   return {
     agents: detectedAgents.map(({ executable, ...agent }) => agent),
     groups: state.groups,
@@ -596,10 +484,6 @@ function workspaceSnapshot({
     humanGates: publicGates,
     runs: publicRuns,
     runOutcomes: [...latestOutcomes.values()],
-    ...(projectRoomVisible ? {
-      projectRooms: projectRoom.list(),
-      pendingDecisions: projectRoom.pendingDecisions(),
-    } : {}),
   }
 }
 

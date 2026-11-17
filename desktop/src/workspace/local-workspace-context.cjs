@@ -370,24 +370,6 @@ function sessionKey(groupId, kind, taskId = '') {
   return `session:${digest}`
 }
 
-function projectRoomSessionKey({
-  projectId, checkpointId, seatId, kind, generation = 0,
-} = {}) {
-  const raw = `project:${projectId}:cp:${checkpointId}:seat:${seatId}:${kind}:g${generation}`
-  if (SESSION_KEY.test(raw)) return raw
-  const digest = createHash('sha256')
-    .update(JSON.stringify([
-      'project-room',
-      String(projectId || ''),
-      String(checkpointId || ''),
-      String(seatId || ''),
-      String(kind || ''),
-      Number(generation) || 0,
-    ]))
-    .digest('hex')
-  return `session:${digest}`
-}
-
 function clearSessionState(state, groupId) {
   const existingPrefix = `${groupId}:`
   const group = state.groups.find(item => item.id === groupId)
@@ -942,7 +924,6 @@ module.exports = {
   clearSessionState,
   openClawSessionRef,
   packedPromptContext,
-  projectRoomSessionKey,
   promptFor,
   unlimitedReviewContract,
   promptMessageText,

@@ -2,7 +2,7 @@ const { encode } = require('./room-db.cjs')
 const { createHash } = require('node:crypto')
 const fs = require('node:fs')
 const { validateUserCommand } = require('./room-actions.cjs')
-const { normalizeRelativePath } = require('../project-room/workdir-access.cjs')
+const { normalizeRelativePath } = require('./workdir-access.cjs')
 const {
   capabilitiesForNativePermission,
   defaultNativePermission,

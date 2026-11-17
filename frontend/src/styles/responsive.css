@@ -222,26 +222,15 @@
    strip and decision area visible; give it the bottom area and let the
    progress bar and the duplicate composer step aside. */
 @media (max-height: 560px) {
-  .conversation-pane.project-room-pane:has(.project-room-gate-panel:not(.collapsed)) {
-    grid-template-rows: 48px 0 minmax(0, 1fr) auto;
-  }
+  
 
-  .conversation-pane.project-room-pane:has(.project-room-gate-panel:not(.collapsed)) .project-room-progress {
-    display: none;
-  }
+  
 
-  .project-room-bottom:has(.project-room-gate-panel:not(.collapsed)) {
-    gap: 4px;
-  }
+  
 
-  .project-room-bottom:has(.project-room-gate-panel:not(.collapsed)) .project-room-composer-zone {
-    display: none;
-  }
+  
 
-  .project-room-gate-panel:not(.collapsed) {
-    min-height: 200px;
-    max-height: none;
-  }
+  
 }
 
 @media (prefers-reduced-motion: reduce) {
