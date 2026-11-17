@@ -83,8 +83,8 @@
         />
 
         <RoomWorkspace
-          v-else-if="activeView === 'rooms' && api?.room"
-          :api="api.room"
+          v-else-if="activeView === 'rooms' && api?.teamRoom"
+          :api="api.teamRoom"
           :pick-directory="() => workspace.pickDirectory()"
           :agents="readyAgents"
           :create-request="roomCreateRequest"
@@ -125,9 +125,9 @@
 
       <transition name="project-drawer">
         <RoomFilesDrawer
-          v-if="roomFilesOpen && activeView === 'rooms' && api?.room && activeTeamRoomId"
+          v-if="roomFilesOpen && activeView === 'rooms' && api?.teamRoom && activeTeamRoomId"
           :key="activeTeamRoomId"
-          :api="api.room"
+          :api="api.teamRoom"
           :room-id="activeTeamRoomId"
           :width="roomFilesWidth"
           @close="roomFilesOpen = false"
@@ -427,7 +427,7 @@ const {
   selectedGroupId,
 } = workspaceNavigationState
 const teamRoomNavigation = useTeamRoomNavigation({
-  roomApi: computed(() => api.value?.room || null),
+  roomApi: computed(() => api.value?.teamRoom || null),
   activeView,
   t,
   showError,
@@ -949,7 +949,7 @@ const {
     isTeamChatSelected: teamRoomNavigation.isChatSelected,
     isTeamRoomExpanded: teamRoomNavigation.isExpanded,
     isTeamRoomSelected: teamRoomNavigation.isRoomSelected,
-    roomWorkspaceAvailable: computed(() => Boolean(api.value?.room)),
+    roomWorkspaceAvailable: computed(() => Boolean(api.value?.teamRoom)),
     openRoomWorkspace: (options = {}) => {
       closeTracePanel(); closeCollapsedGroupMenu(); teamRoomNavigation.openWorkspace()
       if (options?.create) roomCreateRequest.value = true

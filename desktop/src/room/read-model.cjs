@@ -275,6 +275,7 @@ function createRoomReadModel({ roomDb } = {}) {
       return {
         ...roomView(row, chats),
         chat_count: chats.length,
+        chats: chats.map(chatView),
       }
     })
   }

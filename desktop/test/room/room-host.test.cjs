@@ -200,6 +200,96 @@ test('files are read from the room workspace without renderer paths', async (t) 
   })
 })
 
+test('roles can be created, updated, and deleted while unused', (t) => {
+  const { workspace, host } = createHost(t)
+  const created = host.bootstrap({ name: 'Roles', workspace, providers: ['codex', 'claude'] })
+
+  const worker = host.createRole({
+    roomId: created.roomId,
+    chatId: created.chatId,
+    displayName: 'Writer',
+    provider: 'codex',
+    prompt: 'Write the document.',
+    isCaptain: false,
+    nativePermission: 'workspace-write',
+  })
+  let snapshot = host.snapshot({ roomId: created.roomId })
+  assert.deepEqual(snapshot.roles.map(role => role.display_name), ['Captain', 'Writer'])
+
+  assert.throws(() => host.createRole({
+    roomId: created.roomId,
+    chatId: created.chatId,
+    displayName: 'Second Captain',
+    provider: 'claude',
+    prompt: 'route',
+    isCaptain: true,
+  }), /ROOM_ROLE_CAPTAIN_CONFLICT/)
+
+  host.updateRole({
+    roomId: created.roomId,
+    roleId: worker.roleId,
+    displayName: 'Reviewer',
+    prompt: 'Review the document.',
+  })
+  snapshot = host.snapshot({ roomId: created.roomId })
+  const updated = snapshot.roles.find(role => role.id === worker.roleId)
+  assert.equal(updated.display_name, 'Reviewer')
+  assert.equal(updated.prompt, 'Review the document.')
+  assert.equal(updated.prompt_revision, 2)
+
+  assert.deepEqual(host.deleteRole({ roomId: created.roomId, roleId: worker.roleId }), {
+    deleted: true,
+    roomId: created.roomId,
+    roleId: worker.roleId,
+  })
+  assert.equal(host.snapshot({ roomId: created.roomId }).roles.length, 1)
+})
+
+test('attention answers are idempotent and append a system message', (t) => {
+  const { workspace, host } = createHost(t)
+  const created = host.bootstrap({ name: 'Attention', workspace, providers: ['codex'] })
+  const attentionId = 'attention-1'
+  host.roomDb.database.prepare(`
+    INSERT INTO attentions (id, chat_id, task_id, type, question, options_json, status, requested_by, created_at)
+    VALUES (?, ?, NULL, 'effect_unknown', 'Check the write', '[]', 'open', 'system', ?)
+  `).run(attentionId, created.chatId, new Date().toISOString())
+
+  assert.deepEqual(host.answerAttention({
+    roomId: created.roomId,
+    chatId: created.chatId,
+    attentionId,
+    resolution: 'The write did not land.',
+    commandId: 'command-1',
+  }), { attentionId, status: 'answered' })
+  assert.deepEqual(host.answerAttention({
+    roomId: created.roomId,
+    chatId: created.chatId,
+    attentionId,
+    resolution: 'The write did not land.',
+    commandId: 'command-1',
+  }), { attentionId, status: 'answered' })
+
+  const snapshot = host.snapshot({ roomId: created.roomId })
+  assert.equal(snapshot.attentions.find(item => item.id === attentionId).status, 'answered')
+  assert.ok(snapshot.messages.some(message => message.kind === 'attention_resolution'))
+})
+
+test('a room with running work cannot be deleted', (t) => {
+  const { workspace, host } = createHost(t)
+  const created = host.bootstrap({ name: 'Busy', workspace, providers: ['codex'] })
+  host.submitMessage({
+    roomId: created.roomId,
+    chatId: created.chatId,
+    content: 'Run this',
+  })
+  assert.throws(() => host.deleteRoom({ roomId: created.roomId }), /ROOM_ROOM_BUSY/)
+  host.roomDb.database.prepare("UPDATE messages SET status = 'done' WHERE chat_id = ?").run(created.chatId)
+  assert.deepEqual(host.deleteRoom({ roomId: created.roomId }), {
+    deleted: true,
+    roomId: created.roomId,
+  })
+})
+
 test('runtime events are scoped to a chat in the room', (t) => {
   const { workspace, host } = createHost(t)
   const created = host.bootstrap({ name: 'Trace', workspace, providers: ['codex'] })

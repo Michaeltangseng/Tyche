@@ -14,17 +14,38 @@
             </button>
           </h1>
         </div>
-        <span v-if="snapshot && workdirName" class="room-subtitle">{{ workdirName }}</span>
+        <span v-if="snapshot && workdirName" class="room-subtitle">
+          {{ workdirName }}
+          <span class="room-subtitle-divider">·</span>
+          <span :data-tone="writeAuthorized ? 'ready' : 'neutral'">
+            {{ writeAuthorized ? t('room.writeEnabled') : t('room.readOnly') }}
+          </span>
+        </span>
       </div>
 
       <div v-if="snapshot" class="room-agent-strip" :aria-label="t('room.members', { count: roles.length })">
-        <button v-for="role in roles" :key="role.id" class="room-agent-chip" type="button" :title="`${roleLabel(role)} · ${providerLabel(role.provider)}`" :aria-label="`${t('room.configureRole')}: ${roleLabel(role)}`" @click="openRoleSettings(role.id)">
+        <button
+          v-for="role in roles"
+          :key="role.id"
+          class="room-agent-chip"
+          type="button"
+          :title="`${roleLabel(role)} · ${providerLabel(role.provider)}`"
+          :aria-label="`${t('room.configureRole')}: ${roleLabel(role)}`"
+          @click="openRoleSettings(role.id)"
+        >
           <img v-if="role.provider" :src="agentLogo(role.provider)" alt="" />
           <span>{{ roleLabel(role) }}</span>
-          <span v-if="isControllerSeat(role)" class="room-agent-badge">{{ t('room.controller') }}</span>
+          <span v-if="role.is_captain" class="room-agent-badge">{{ t('room.captain') }}</span>
         </button>
         <span v-if="!roles.length" class="room-agent-idle">{{ t('room.teamIdle') }}</span>
-        <button class="room-agent-add" type="button" :title="t('room.addAgent')" :aria-label="t('room.addAgent')" :disabled="busy || !(snapshot.room.providers_json?.length)" @click="openNewRole">
+        <button
+          class="room-agent-add"
+          type="button"
+          :title="t('room.addAgent')"
+          :aria-label="t('room.addAgent')"
+          :disabled="busy || !(snapshot.room.providers?.length)"
+          @click="openNewRole"
+        >
           <AddOutline />
         </button>
       </div>
@@ -43,18 +64,16 @@
       </div>
     </header>
 
-    <p v-if="error || pickerError" class="room-error room-banner" role="alert">{{ t('room.error') }} <button class="secondary-button" @click="reload">{{ t('room.refresh') }}</button></p>
-    <article v-if="chat?.controller_blocked" class="room-warning room-controller-blocked room-banner" role="alert">
-      <span>{{ t('room.controllerBlocked') }}</span>
-      <button class="secondary-button" :disabled="busy" @click="command({ type: 'resume_chat' })">{{ t('room.controllerRetry') }}</button>
-    </article>
-    <p v-if="staleAssignmentIds.size" class="room-warning room-stale-warning room-banner" role="alert">{{ t('room.staleWarning', { count: staleAssignmentIds.size }) }}</p>
+    <p v-if="error || pickerError" class="room-error room-banner" role="alert">
+      {{ t('room.error') }}
+      <button class="secondary-button" type="button" @click="reload">{{ t('room.refresh') }}</button>
+    </p>
 
     <div v-if="!snapshot" class="room-landing">
       <div class="room-landing-inner">
-        <h2>{{ t('room.emptyProjects') }}</h2>
-        <!-- <p class="room-muted">{{ t('room.createHint') }}</p> -->
-        <button class="primary-button" type="button" :disabled="busy" @click="startCreating">{{ t('room.create') }}</button>
+        <h2>{{ rooms.length ? t('room.loading') : t('room.emptyProjects') }}</h2>
+        <p v-if="!rooms.length" class="room-muted">{{ t('room.createHint') }}</p>
+        <button v-if="!rooms.length" class="primary-button" type="button" :disabled="busy" @click="startCreating">{{ t('room.create') }}</button>
       </div>
     </div>
 
@@ -70,62 +89,93 @@
               <p class="room-muted">{{ t('room.emptyHint') }}</p>
               <p v-if="!roles.length" class="room-muted">{{ t('room.teamHint') }}</p>
             </div>
-            <article v-for="entry in entries" :key="entry.key" class="room-message" :class="{ 'room-message-user': entry.isUser, 'room-message-agent': !entry.isUser, 'room-message-controller': entry.isController, 'room-report': entry.report }">
-              <span v-if="!entry.isUser" class="room-message-avatar">
-                <img v-if="entry.provider" :src="agentLogo(entry.provider)" alt="" />
-                <span v-else>{{ entry.author.slice(0, 1) }}</span>
-              </span>
-              <div class="room-message-body">
-                <header><strong>{{ entry.author }}</strong><time>{{ formatTime(entry.createdAt) }}</time></header>
-                <p>{{ entry.content }}</p>
-                <ul v-if="entry.evidence?.length"><li v-for="(evidence, index) in entry.evidence" :key="index">{{ evidence }}</li></ul>
-                <div v-if="entry.artifacts?.length" class="room-message-artifacts">
-                  <article v-for="artifact in entry.artifacts" :key="artifact.id" class="room-artifact-card">
-                    <div class="room-artifact-head"><strong>{{ artifact.path }}</strong><span>{{ statusLabel(artifact.status) }}</span></div>
-                    <p class="room-muted">{{ artifact.version }}</p>
-                    <div class="room-actions">
-                      <button class="secondary-button room-show-diff" type="button" @click="diffArtifactId = artifact.id">{{ t('room.diff') }}</button>
-                      <button v-if="artifact.status === 'published'" class="secondary-button" :disabled="busy" @click="command({ type: 'accept_artifact', artifactId: artifact.id })">{{ t('room.accept') }}</button>
-                      <button v-if="artifact.status === 'published'" class="secondary-button" :disabled="busy" @click="command({ type: 'reject_artifact', artifactId: artifact.id })">{{ t('room.reject') }}</button>
-                    </div>
-                    <RoomArtifactDiff v-if="diffArtifactId === artifact.id" :key="`${roomId}:${artifact.id}`" :api="api" :room-id="roomId" :artifact="artifact" @close="diffArtifactId = ''" />
-                  </article>
+
+            <template v-for="entry in entries" :key="entry.key">
+              <article
+                v-if="entry.kind === 'message'"
+                class="room-message"
+                :class="{
+                  'room-message-user': entry.isUser,
+                  'room-message-agent': !entry.isUser,
+                  'room-message-system': entry.isSystem,
+                  'room-message-captain': entry.isCaptain,
+                }"
+              >
+                <span v-if="!entry.isUser && !entry.isSystem" class="room-message-avatar">
+                  <img v-if="entry.provider" :src="agentLogo(entry.provider)" alt="" />
+                  <span v-else>{{ entry.author.slice(0, 1) }}</span>
+                </span>
+                <div class="room-message-body">
+                  <header>
+                    <strong>{{ entry.author }}</strong>
+                    <span v-if="entry.isCaptain" class="room-agent-badge">{{ t('room.captain') }}</span>
+                    <span v-if="entry.isReviewReply" class="room-agent-badge">{{ t('room.reviewReply') }}</span>
+                    <time>{{ formatTime(entry.createdAt) }}</time>
+                    <span class="room-message-status" :data-status="entry.message.status">{{ statusLabel(entry.message.status) }}</span>
+                  </header>
+                  <p v-if="entry.message.content">{{ entry.message.content }}</p>
+                  <p v-else-if="isWorking(entry.message)" class="room-live-output" aria-live="polite">{{ t('room.liveOutput') }}</p>
+                  <div v-if="entry.mentions.length" class="room-mention-row">
+                    <span v-for="name in entry.mentions" :key="name" class="room-mention-chip">@{{ name }}</span>
+                  </div>
+                  <div v-if="entry.message.status === 'waiting_for_input'" class="room-actions">
+                    <span class="room-muted">{{ t('room.waitingForInput') }}</span>
+                  </div>
+                  <div v-if="canStop(entry.message)" class="room-actions">
+                    <button class="secondary-button" type="button" :disabled="busy" @click="stopReply(entry.message.id)">{{ t('room.stop') }}</button>
+                  </div>
                 </div>
-                <RoomAssignmentTrace
-                  v-if="entry.assignment"
-                  :api="api"
-                  :room-id="roomId"
-                  :assignment="entry.assignment"
-                  :workdir="snapshot?.room?.workspace || ''"
-                />
-              </div>
-              <span v-if="entry.isUser" class="room-message-avatar room-user-avatar" :aria-label="t('room.you')"><PersonOutline /></span>
-            </article>
-            <article v-for="live in liveEntries" :key="`live:${live.id}`" class="room-message room-message-agent room-live-message">
-              <span class="room-message-avatar">
-                <img v-if="live.provider" :src="agentLogo(live.provider)" alt="" />
-                <span v-else>{{ live.author.slice(0, 1) }}</span>
-              </span>
-              <div class="room-message-body">
-                <header><strong>{{ live.author }}</strong><span class="room-running-label">{{ t('room.status.running') }}</span></header>
-                <p class="room-live-output" aria-live="polite">{{ live.content }}</p>
-              </div>
-            </article>
+                <span v-if="entry.isUser" class="room-message-avatar room-user-avatar" :aria-label="t('room.you')"><PersonOutline /></span>
+              </article>
+
+              <article v-else-if="entry.kind === 'report'" class="room-message room-report-card">
+                <div class="room-message-body">
+                  <header>
+                    <strong>{{ t('room.report') }} · {{ reportKindLabel(entry.report.kind) }}</strong>
+                    <time>{{ formatTime(entry.report.created_at) }}</time>
+                  </header>
+                  <p class="room-report-task">{{ taskLabel(taskForReport(entry.report)) }}</p>
+                  <p>{{ entry.report.summary }}</p>
+                  <ul v-if="entry.report.evidence.length">
+                    <li v-for="(evidence, index) in entry.report.evidence" :key="index">{{ evidence }}</li>
+                  </ul>
+                  <p v-if="entry.report.artifact_ids.length" class="room-muted">
+                    {{ t('room.artifacts') }}: {{ entry.report.artifact_ids.join(' · ') }}
+                  </p>
+                  <div v-if="canAcceptTask(taskForReport(entry.report))" class="room-actions">
+                    <button class="primary-button" type="button" :disabled="busy" @click="acceptTask(entry.report.task_id)">{{ t('room.acceptTask') }}</button>
+                  </div>
+                </div>
+              </article>
+            </template>
+
             <article v-for="attention in attentions" :key="attention.id" class="room-attention-card">
               <header><strong>{{ t('room.needsYou') }}</strong><span>{{ attention.type }}</span></header>
               <p>{{ attention.question }}</p>
               <form @submit.prevent="answer(attention)">
-                <select v-if="attention.options_json?.length" v-model="answers[attention.id]" :aria-label="attention.question" required>
+                <select v-if="attention.options?.length" v-model="answers[attention.id]" :aria-label="attention.question" required>
                   <option disabled value="">{{ t('room.chooseAnswer') }}</option>
-                  <option v-for="option in attention.options_json" :key="optionId(option)" :value="optionId(option)">{{ typeof option === 'string' ? option : option.label }}</option>
+                  <option v-for="option in attention.options" :key="optionValue(option)" :value="optionValue(option)">{{ optionLabel(option) }}</option>
                 </select>
                 <input v-else v-model="answers[attention.id]" :aria-label="attention.question" :placeholder="t('room.answer')" required />
-                <button class="secondary-button" :disabled="busy || !answers[attention.id]">{{ t('room.submit') }}</button>
+                <button class="secondary-button" type="submit" :disabled="busy || !answers[attention.id]">{{ t('room.submit') }}</button>
               </form>
             </article>
           </div>
         </div>
         <div class="room-composer-wrap">
+          <div v-if="roles.length" class="room-composer-mentions">
+            <span class="room-muted">{{ t('room.mentionHint') }}</span>
+            <button
+              v-for="role in roles"
+              :key="role.id"
+              class="room-mention-chip"
+              type="button"
+              @click="insertMention(role)"
+            >
+              @{{ roleLabel(role) }}
+            </button>
+          </div>
           <form class="room-composer" @submit.prevent="sendMessage">
             <textarea v-model="draft" :placeholder="t('room.messageHint')" :aria-label="t('room.message')" rows="3" maxlength="100000" :disabled="busy || !chat" @keydown.enter.exact.prevent="sendMessage" />
             <button class="primary-button" :disabled="busy || !draft.trim() || !chat">{{ t('room.send') }}</button>
@@ -138,41 +188,58 @@
           <h2>{{ t('room.workPanel') }}</h2>
           <button class="secondary-button" type="button" @click="workPanelOpen = false">{{ t('common.close') }}</button>
         </header>
+
         <h2>{{ t('room.tasks') }}</h2>
         <p v-if="!tasks.length" class="room-muted">{{ t('room.noTasks') }}</p>
         <article v-for="task in tasks" :key="task.id" class="room-card">
-          <header><strong>{{ task.objective }}</strong><span>{{ statusLabel(task.status) }}</span></header>
-          <button v-if="!['cancelled', 'done'].includes(task.status)" class="secondary-button" :disabled="busy" @click="command({ type: 'stop_task', taskId: task.id })">{{ t('room.stop') }}</button>
-          <div v-for="assignment in taskAssignments(task.id)" :key="assignment.id" class="room-assignment">
-            <p>{{ roleName(assignment.role_id) }} · {{ statusLabel(assignment.status) }}<span v-if="assignment.outcome === 'unknown'"> · {{ t('room.exitUnknown') }}</span><span v-if="staleAssignmentIds.has(assignment.id)"> · {{ t('room.stale') }}</span></p>
-            <p v-if="assignment.ended_reason" class="room-muted">{{ t('room.attemptEnded') }}</p>
-            <RoomAssignmentTrace
-              v-if="assignment.run_id"
-              :api="api"
-              :room-id="roomId"
-              :assignment="assignment"
-              :workdir="snapshot?.room?.workspace || ''"
-            />
-            <div v-if="canRetry(assignment)" class="room-actions">
-              <button class="secondary-button" :disabled="busy" @click="command(retryPayload(assignment))">{{ t('room.retry') }}</button>
-              <select v-model="handoffRoles[assignment.id]" :aria-label="t('room.handoffTo')">
-                <option value="">{{ t('room.handoffTo') }}</option>
-                <option v-for="role in roles.filter(item => item.status === 'active')" :key="role.id" :value="role.id">{{ roleLabel(role) }}</option>
-              </select>
-              <button class="secondary-button" :disabled="busy || !handoffRoles[assignment.id]" @click="command({ type: 'handoff_task', taskId: task.id, assignmentId: assignment.id, roleId: handoffRoles[assignment.id] })">{{ t('room.handoff') }}</button>
-            </div>
+          <header>
+            <strong>{{ taskLabel(task) }}</strong>
+            <span>{{ statusLabel(task.status) }}</span>
+          </header>
+          <p v-if="task.description" class="room-muted">{{ task.description }}</p>
+          <p v-if="task.acceptance" class="room-muted">{{ t('room.acceptance') }}: {{ task.acceptance }}</p>
+          <div v-if="canAcceptTask(task)" class="room-actions">
+            <button class="primary-button" type="button" :disabled="busy" @click="acceptTask(task.id)">{{ t('room.acceptTask') }}</button>
+          </div>
+          <div class="room-runs">
+            <p class="room-runs-title">{{ t('room.runs') }}</p>
+            <p v-if="!taskRuns(task.id).length" class="room-muted">{{ t('room.noRuns') }}</p>
+            <p v-for="run in taskRuns(task.id)" :key="run.id" class="room-run-row">
+              <span>{{ roleName(run.role_id) }}</span>
+              <span>{{ run.lane_kind === 'mention' ? t('room.mentionLane') : t('room.executorLane') }}</span>
+              <span :data-status="run.status">{{ statusLabel(run.status) }}</span>
+              <span v-if="run.outcome !== 'pending'" class="room-muted">{{ run.outcome }}</span>
+            </p>
+          </div>
+          <div v-if="taskReports(task.id).length" class="room-reports">
+            <p v-for="report in taskReports(task.id)" :key="report.id" class="room-report-row">
+              <strong>{{ reportKindLabel(report.kind) }}</strong>
+              <span>{{ report.summary }}</span>
+            </p>
           </div>
         </article>
-        <template v-if="unlinkedArtifacts.length">
-          <h2>{{ t('room.artifacts') }}</h2>
-          <article v-for="artifact in unlinkedArtifacts" :key="artifact.id" class="room-card">
-            <strong>{{ artifact.path }}</strong><p>{{ artifact.version }} · {{ statusLabel(artifact.status) }}</p>
-            <button class="secondary-button room-show-diff" type="button" @click="diffArtifactId = artifact.id">{{ t('room.diff') }}</button>
-            <RoomArtifactDiff v-if="diffArtifactId === artifact.id" :key="`${roomId}:${artifact.id}`" :api="api" :room-id="roomId" :artifact="artifact" @close="diffArtifactId = ''" />
-            <div v-if="artifact.status === 'published'" class="room-actions">
-              <button class="secondary-button" :disabled="busy" @click="command({ type: 'accept_artifact', artifactId: artifact.id })">{{ t('room.accept') }}</button>
-              <button class="secondary-button" :disabled="busy" @click="command({ type: 'reject_artifact', artifactId: artifact.id })">{{ t('room.reject') }}</button>
-            </div>
+
+        <template v-if="reviews.length">
+          <h2>{{ t('room.captainReviews') }}</h2>
+          <article v-for="review in reviews" :key="review.id" class="room-card room-review-card">
+            <header>
+              <strong>{{ reviewKindLabel(review.kind) }}</strong>
+              <span :data-status="review.status">{{ statusLabel(review.status) }}</span>
+            </header>
+            <p>{{ review.body }}</p>
+            <time class="room-muted">{{ formatTime(review.created_at) }}</time>
+          </article>
+        </template>
+
+        <template v-if="captainAssignments.length">
+          <h2>{{ t('room.captainAssignments') }}</h2>
+          <article v-for="assignment in captainAssignments" :key="assignment.id" class="room-card">
+            <header>
+              <strong>{{ t('room.captainAssignment') }}</strong>
+              <span :data-status="assignment.status">{{ statusLabel(assignment.status) }}</span>
+            </header>
+            <p class="room-muted">{{ assignmentTargetNames(assignment) }}</p>
+            <time class="room-muted">{{ formatTime(assignment.created_at) }}</time>
           </article>
         </template>
       </aside>
@@ -184,17 +251,24 @@
           <h2>{{ t('room.create') }}</h2>
           <button class="secondary-button" type="button" @click="creating = false">{{ t('common.close') }}</button>
         </header>
-        <p v-if="error || pickerError" class="room-error" role="alert">{{ t('room.error') }} <button class="secondary-button" type="button" @click="reload">{{ t('room.refresh') }}</button></p>
+        <p v-if="error || pickerError" class="room-error" role="alert">{{ t('room.error') }}</p>
         <label>{{ t('room.name') }}<input v-model="name" maxlength="256" required /></label>
         <div class="room-directory">
           <button class="secondary-button" type="button" :disabled="busy || picking" @click="chooseDirectory">{{ t('room.chooseDirectory') }}</button>
           <span>{{ directory || t('room.noDirectory') }}</span>
         </div>
-        <p v-if="!agents.length" class="room-error">{{ t('room.noProviders') }}</p>
-        <!-- <p class="room-muted">{{ t('room.createHint') }}</p> -->
+        <p v-if="!availableAgents.length" class="room-error">{{ t('room.noProviders') }}</p>
+        <div v-else class="room-provider-picker">
+          <span>{{ t('room.availableAgents') }}</span>
+          <label v-for="agent in availableAgents" :key="agent.kind" class="room-provider-option">
+            <input v-model="selectedProviders" type="checkbox" :value="agent.kind" />
+            <img :src="agentLogo(agent.kind)" alt="" />
+            <span>{{ agent.label || providerLabel(agent.kind) }}</span>
+          </label>
+        </div>
         <div class="room-actions">
           <button class="secondary-button" type="button" :disabled="busy" @click="creating = false">{{ t('common.cancel') }}</button>
-          <button class="primary-button" :disabled="busy || picking || !name.trim() || !directory || !agents.length">{{ t('room.create') }}</button>
+          <button class="primary-button" :disabled="busy || picking || !canCreate">{{ t('room.create') }}</button>
         </div>
       </form>
     </div>
@@ -211,18 +285,15 @@
         <div class="room-settings-body">
           <section class="room-settings-section">
             <div v-if="snapshot" class="room-overview" :aria-label="t('room.overview')">
-              <div><strong>{{ t('room.directory') }}</strong><span class="room-workspace-path">{{ snapshot.room.workspace || t('room.noDirectory') }}</span></div>
-              <div><strong>{{ t('room.controller') }}</strong><span>{{ providerLabel(snapshot.room.providers_json?.[0]) }}</span><span class="room-status">{{ t(chat?.controller_blocked ? 'room.routingBlocked' : chat?.status === 'paused' ? 'room.routingPaused' : 'room.routingEnabled') }}</span></div>
-              <div><strong>{{ t('room.availableAgents') }}</strong><span>{{ (snapshot.room.providers_json || []).map(providerLabel).join(' · ') || t('room.noProviders') }}</span></div>
-            </div>
-            <label v-if="snapshot && rooms.length > 1" class="room-setting-field">
-              <span>{{ t('room.project') }}</span>
-              <select :value="roomId" :disabled="busy" @change="selectRoom($event.target.value)">
-                <option v-for="item in rooms" :key="item.id" :value="item.id">{{ item.name }}</option>
-              </select>
-            </label>
-            <div class="room-permissions">
-              <button class="secondary-button" :disabled="busy || !chat" @click="command({ type: chat?.status === 'paused' ? 'resume_chat' : 'pause_chat' })">{{ t(chat?.status === 'paused' ? 'room.resume' : 'room.pause') }}</button>
+              <div><strong>{{ t('room.directory') }}</strong><span class="room-workspace-path">{{ snapshot.room.workspace_label || t('room.noDirectory') }}</span></div>
+              <div><strong>{{ t('room.availableAgents') }}</strong><span>{{ (snapshot.room.providers || []).map(providerLabel).join(' · ') || t('room.noProviders') }}</span></div>
+              <div>
+                <strong>{{ t('room.writeAccess') }}</strong>
+                <button class="secondary-button" type="button" :disabled="busy" @click="toggleWriteAuthorization">
+                  {{ writeAuthorized ? t('room.disableWrite') : t('room.enableWrite') }}
+                </button>
+                <span class="room-muted">{{ writeAuthorized ? t('room.writeEnabledHint') : t('room.writeDisabledHint') }}</span>
+              </div>
             </div>
           </section>
         </div>
@@ -251,68 +322,55 @@
                 <input v-model="chatTitle" :placeholder="t('room.chatName')" :aria-label="t('room.chatName')" maxlength="256" />
                 <button class="secondary-button" :disabled="busy || !chatTitle.trim()">{{ t('room.newChat') }}</button>
               </form>
+              <button
+                v-if="snapshot && snapshot.chats.length > 1 && chatId !== snapshot.room.primary_chat_id"
+                class="danger-button"
+                type="button"
+                :disabled="busy"
+                @click="removeCurrentChat"
+              >
+                {{ t('room.deleteChat') }}
+              </button>
             </div>
-            <details class="room-context room-settings" open>
-              <summary>{{ t('room.context') }}<span v-if="chat?.current_context"> · v{{ chat.current_context.revision }}</span></summary>
-              <p class="room-context-content">{{ chat?.current_context?.instructions || t('room.noContext') }}</p>
-              <p class="room-muted">{{ t('room.contextHint') }}</p>
-              <form class="room-context-editor" @submit.prevent="sendContext">
-                <textarea v-model="contextDraft" :aria-label="t('room.contextInput')" :placeholder="t('room.contextInput')" rows="2" maxlength="100000" />
-                <button class="secondary-button" :disabled="busy || !chat || !contextDraft.trim()">{{ t('room.sendContext') }}</button>
-              </form>
-            </details>
-            <details class="room-skill-settings room-settings" :aria-label="t('room.skills')" open>
-              <summary>{{ t('room.skills') }} · {{ chat?.skill_bindings_json?.length || 0 }}</summary>
-              <header><strong>{{ t('room.chatSkills') }}</strong><span class="room-muted">{{ t('room.skillsHint') }}</span></header>
-              <p v-if="skillsLoading" class="room-muted">{{ t('room.skillsLoading') }}</p>
-              <p v-if="skillsError" class="room-error" role="alert">{{ t('room.skillsLoadError') }} <button class="secondary-button" type="button" @click="loadSkillCatalog">{{ t('room.refresh') }}</button></p>
-              <p v-else-if="!skillsLoading && !skillCatalog.length" class="room-muted">{{ t('room.skillsEmpty') }}</p>
-              <p v-if="skillsSaveError" class="room-error" role="alert">{{ t(skillsSaveError) }}</p>
-              <label v-for="skill in skillCatalog" :key="skillKey(skill)" class="room-skill-option">
-                <input type="checkbox" :checked="hasSkill(chatSkills, skill)" :disabled="busy || chatSkillsBusy" @change="toggleChatSkill(skill, $event.target.checked)" />
-                {{ skill.name || skill.slug }} <small>{{ skill.targetKind }} · {{ skill.namespace }}</small>
-              </label>
-              <button class="secondary-button" :disabled="busy || chatSkillsBusy || !chatSkillsDirty" @click="saveChatSkills">{{ chatSkillsBusy ? t('room.skillsSaving') : t('room.saveSkills') }}</button>
-            </details>
           </section>
         </div>
       </aside>
     </div>
 
-    <div v-if="roleSettingsOpen" class="room-modal-backdrop room-role-backdrop" @click.self="cancelRoleSettings" @wheel.self.prevent>
-      <section ref="roleSettingsRef" class="room-role-modal room-role-modal-v2" role="dialog" aria-modal="true" :aria-label="t('room.roleSettings')" tabindex="-1" @keydown.esc.stop="cancelRoleSettings">
+    <div v-if="roleSettingsOpen" class="room-modal-backdrop room-role-backdrop" @click.self="closeRoleSettings" @wheel.self.prevent>
+      <section ref="roleSettingsRef" class="room-role-modal room-role-modal-v2" role="dialog" aria-modal="true" :aria-label="t('room.roleSettings')" tabindex="-1" @keydown.esc.stop="closeRoleSettings">
         <header class="room-role-v2-header">
           <div class="room-role-v2-title">
             <span>{{ t('room.roleSettings') }}</span>
-            <strong>{{ selectedRole ? roleLabel(selectedRole) : (selectedRoleDraft?.displayName || t('room.addAgent')) }}<span v-if="selectedRoleDraft?.isController" class="room-agent-badge">{{ t('room.controller') }}</span></strong>
+            <strong>{{ roleDraft?.displayName || t('room.addAgent') }}</strong>
           </div>
           <div class="room-role-v2-close">
-            <button v-if="selectedRole" class="room-icon-button room-role-delete-button" type="button" :title="t('room.deleteRole', { name: roleLabel(selectedRole) })" :aria-label="t('room.deleteRole', { name: roleLabel(selectedRole) })" @click="roleDeleteArmed = true">
+            <button v-if="roleDraft?.id" class="room-icon-button room-role-delete-button" type="button" :title="t('room.deleteRole', { name: roleDraft.displayName })" :aria-label="t('room.deleteRole', { name: roleDraft.displayName })" @click="roleDeleteArmed = true">
               <TrashOutline />
             </button>
-            <button class="room-icon-button" type="button" :aria-label="t('common.close')" @click="cancelRoleSettings">
+            <button class="room-icon-button" type="button" :aria-label="t('common.close')" @click="closeRoleSettings">
               <CloseOutline />
             </button>
           </div>
         </header>
-        <div v-if="selectedRoleDraft" class="room-role-v2-body">
+        <div v-if="roleDraft" class="room-role-v2-body">
           <aside class="room-role-v2-side">
             <div class="room-role-v2-profile">
               <div class="room-role-v2-avatar">
-                <img v-if="selectedRoleDraft.provider" :src="agentLogo(selectedRoleDraft.provider)" alt="" />
-                <span v-else>{{ selectedRoleDraft.displayName.slice(0, 1) }}</span>
+                <img v-if="roleDraft.provider" :src="agentLogo(roleDraft.provider)" alt="" />
+                <span v-else>{{ (roleDraft.displayName || '?').slice(0, 1) }}</span>
               </div>
               <label class="room-role-v2-name">
-                <input v-model="selectedRoleDraft.displayName" maxlength="120" :aria-label="t('room.roleName')" @input="markCurrentRoleDraftDirty()" />
+                <input v-model="roleDraft.displayName" maxlength="120" :aria-label="t('room.roleName')" />
                 <PencilOutline aria-hidden="true" />
               </label>
-              <span class="room-role-v2-provider-label">{{ providerLabel(selectedRoleDraft.provider) }}</span>
+              <span class="room-role-v2-provider-label">{{ providerLabel(roleDraft.provider) }}</span>
               <div class="room-role-v2-provider-icons" role="group" :aria-label="t('room.agent')">
                 <button
-                  v-for="provider in providerOptions"
+                  v-for="provider in roleProviders"
                   :key="provider"
                   class="room-role-provider-choice"
-                  :class="{ active: selectedRoleDraft.provider === provider }"
+                  :class="{ active: roleDraft.provider === provider }"
                   type="button"
                   :data-provider="provider"
                   :title="providerLabel(provider)"
@@ -323,23 +381,22 @@
                 </button>
               </div>
               <textarea
-                v-model="selectedRoleDraft.responsibilities"
+                v-model="roleDraft.responsibilities"
                 class="room-role-v2-intro"
                 :aria-label="t('room.roleResponsibilities')"
                 :placeholder="t('room.noResponsibilities')"
                 rows="3"
                 maxlength="4000"
-                @input="markCurrentRoleDraftDirty()"
               />
               <button
                 class="room-role-controller-toggle"
-                :class="{ active: selectedRoleDraft.isController }"
+                :class="{ active: roleDraft.isCaptain }"
                 type="button"
-                :aria-pressed="selectedRoleDraft.isController"
-                @click="toggleRoleController"
+                :aria-pressed="roleDraft.isCaptain"
+                @click="roleDraft.isCaptain = !roleDraft.isCaptain"
               >
                 <span class="room-role-controller-switch" aria-hidden="true" />
-                <span>{{ t(selectedRoleDraft.isController ? 'room.isController' : 'room.makeController') }}</span>
+                <span>{{ roleDraft.isCaptain ? t('room.isCaptain') : t('room.makeCaptain') }}</span>
               </button>
             </div>
           </aside>
@@ -347,67 +404,35 @@
             <section class="room-role-v2-section">
               <h3>{{ t('room.rolePrompt') }}</h3>
               <div class="room-role-prompt-wrap">
-                <textarea v-model="selectedRoleDraft.prompt" class="room-role-prompt" rows="6" maxlength="2000" @input="markCurrentRoleDraftDirty()" />
-                <span class="room-role-prompt-count">{{ selectedRoleDraft.prompt.length }} / 2000</span>
+                <textarea v-model="roleDraft.prompt" class="room-role-prompt" rows="6" maxlength="100000" :placeholder="t('room.rolePromptHint')" />
               </div>
             </section>
             <section class="room-role-v2-section">
               <h3>{{ t('room.nativePermission') }}</h3>
               <div class="room-mini-options">
                 <label
-                  v-for="mode in nativePermissionModesFor(selectedRoleDraft.provider)"
+                  v-for="mode in permissionModesFor(roleDraft.provider)"
                   :key="mode.id"
                   class="room-mini-option"
-                  :class="{ active: selectedRoleDraft.nativePermission === mode.id }"
+                  :class="{ active: roleDraft.nativePermission === mode.id }"
                 >
-                  <input type="radio" :value="mode.id" v-model="selectedRoleDraft.nativePermission" @change="markCurrentRoleDraftDirty()" />
+                  <input v-model="roleDraft.nativePermission" type="radio" :value="mode.id" />
                   <span>{{ permissionModeLabel(mode) }}</span>
                 </label>
               </div>
-              <p v-if="selectedNativePermission" class="room-mini-empty">{{ permissionModeDescription(selectedNativePermission) }}</p>
-              <p v-if="selectedNativePermission?.risk === 'high'" class="room-error">{{ t('room.nativePermissionHighRisk') }}</p>
               <p class="room-mini-empty">{{ t('room.nativePermissionHint') }}</p>
             </section>
-            <section class="room-role-v2-section">
-              <h3>{{ t('room.skills') }}</h3>
-              <template v-if="selectedRole">
-                <div v-if="skillCatalogFor(selectedRole).length" class="room-mini-options room-role-v2-skills">
-                  <button
-                    v-for="mode in skillModeOptions"
-                    :key="mode"
-                    class="room-mini-option"
-                    :class="{ active: roleSkillModes[selectedRole.id] === mode }"
-                    type="button"
-                    @click="setRoleSkillMode(selectedRole, mode)"
-                  >
-                    {{ t(mode === 'inherit' ? 'room.skillsInherit' : mode === 'override' ? 'room.skillsOverride' : 'room.skillsNone') }}
-                  </button>
-                  <template v-if="roleSkillModes[selectedRole.id] === 'override'">
-                    <label v-for="skill in skillCatalogFor(selectedRole)" :key="skillKey(skill)" class="room-mini-option" :class="{ active: hasSkill(roleSkills[selectedRole.id], skill) }">
-                      <input type="checkbox" :checked="hasSkill(roleSkills[selectedRole.id], skill)" :disabled="busy || roleSkillsBusy[selectedRole.id]" @change="toggleRoleSkill(selectedRole, skill, $event.target.checked)" />
-                      <span>{{ skill.name || skill.slug }}</span>
-                    </label>
-                  </template>
-                  <button class="secondary-button compact" type="button" :disabled="busy || roleSkillsBusy[selectedRole.id] || !roleSkillsDirty[selectedRole.id]" @click="saveRoleSkills(selectedRole)">{{ roleSkillsBusy[selectedRole.id] ? t('room.skillsSaving') : t('room.saveSkills') }}</button>
-                </div>
-                <div v-else class="room-mini-options">
-                  <span class="room-mini-empty">{{ t('room.skillsEmpty') }}</span>
-                  <button class="room-mini-option" type="button" @click="loadSkillCatalog">{{ t('room.refresh') }}</button>
-                </div>
-              </template>
-              <p v-else class="room-mini-empty">{{ t('room.skillsAfterCreate') }}</p>
-            </section>
-            <p v-if="roleSaveError" class="room-error room-role-v2-error" role="alert">{{ t(roleSaveError) }}</p>
+            <p v-if="error" class="room-error room-role-v2-error" role="alert">{{ t('room.roleSaveError') }}</p>
           </div>
         </div>
-        <div v-if="roleDeleteArmed && selectedRole" class="room-role-delete-confirm" role="alertdialog" :aria-label="t('room.deleteRole', { name: roleLabel(selectedRole) })">
-          <span>{{ t('room.deleteRoleConfirm', { name: roleLabel(selectedRole) }) }}</span>
+        <div v-if="roleDeleteArmed && roleDraft?.id" class="room-role-delete-confirm" role="alertdialog" :aria-label="t('room.deleteRole', { name: roleDraft.displayName })">
+          <span>{{ t('room.deleteRoleConfirm', { name: roleDraft.displayName }) }}</span>
           <button class="secondary-button compact" type="button" @click="roleDeleteArmed = false">{{ t('common.cancel') }}</button>
-          <button class="danger-button" type="button" :disabled="busy" @click="deleteSelectedRole">{{ t('room.deleteConfirm') }}</button>
+          <button class="danger-button" type="button" :disabled="busy" @click="removeRole">{{ t('room.deleteConfirm') }}</button>
         </div>
         <footer class="room-role-v2-footer">
-          <button class="secondary-button" type="button" @click="cancelRoleSettings">{{ t('common.cancel') }}</button>
-          <button class="primary-button" type="button" :disabled="!canSaveRole" @click="saveRole(selectedRole)">{{ t(roleCreateDraft ? 'room.createRole' : 'room.saveRole') }}</button>
+          <button class="secondary-button" type="button" @click="closeRoleSettings">{{ t('common.cancel') }}</button>
+          <button class="primary-button" type="button" :disabled="busy || !canSaveRole" @click="saveRole">{{ t(roleDraft?.id ? 'room.saveRole' : 'room.createRole') }}</button>
         </footer>
       </section>
     </div>
@@ -428,597 +453,492 @@ import {
 import { agentLogo } from '../catalog.js'
 import { t } from '../i18n.js'
 import { useRoomWorkspace } from '../composables/useRoomWorkspace.js'
-import RoomArtifactDiff from './RoomArtifactDiff.vue'
-import RoomAssignmentTrace from './RoomAssignmentTrace.vue'
 
-const props = defineProps({ api: { type: Object, required: true }, pickDirectory: { type: Function, required: true }, agents: { type: Array, default: () => [] }, createRequest: { type: Boolean, default: false }, openRequest: { type: Object, default: null }, filesOpen: { type: Boolean, default: false } })
+const props = defineProps({
+  api: { type: Object, required: true },
+  pickDirectory: { type: Function, required: true },
+  agents: { type: Array, default: () => [] },
+  createRequest: { type: Boolean, default: false },
+  openRequest: { type: Object, default: null },
+  filesOpen: { type: Boolean, default: false },
+})
 const emit = defineEmits(['create-request-consumed', 'active-change', 'toggle-files'])
-const { rooms, snapshot, roomId, chatId, chat, tasks, assignments, roles, messages, reports, attentions, staleAssignments, liveAssignments,
-  hasOlderMessages, loadingOlderMessages, busy, error, load, refresh, openRoom, createRoom, createChat, send, loadOlderMessages, command } = useRoomWorkspace({ api: props.api })
+
+const {
+  rooms,
+  snapshot,
+  roomId,
+  chatId,
+  chat,
+  tasks,
+  roles,
+  captainAssignments,
+  runs,
+  reports,
+  reviews,
+  attentions,
+  messages,
+  hasOlderMessages,
+  loadingOlderMessages,
+  busy,
+  error,
+  writeAuthorized,
+  load,
+  refresh,
+  openRoom,
+  createRoom,
+  createChat,
+  deleteChat,
+  send,
+  loadOlderMessages,
+  acceptTask: acceptTaskCommand,
+  stopReply: stopReplyCommand,
+  answerAttention,
+  setWriteAuthorized,
+  createRole,
+  updateRole,
+  deleteRole,
+} = useRoomWorkspace({ api: props.api })
+
+const FALLBACK_PERMISSION_MODES = {
+  claude: [
+    { id: 'plan', label: 'Plan', description: 'Read and analyze without editing files.', risk: 'low' },
+    { id: 'acceptEdits', label: 'Accept Edits', description: 'Automatically accept file edits.', risk: 'medium' },
+    { id: 'bypassPermissions', label: 'Bypass Permissions', description: 'Skip native permission checks.', risk: 'high' },
+  ],
+  codex: [
+    { id: 'read-only', label: 'Read Only', description: 'Read files without writing.', risk: 'low' },
+    { id: 'workspace-write', label: 'Workspace Write', description: 'Read and write inside the workspace sandbox.', risk: 'medium' },
+    { id: 'danger-full-access', label: 'Danger Full Access', description: 'Disable the Codex sandbox.', risk: 'high' },
+  ],
+  default: [{ id: 'default', label: 'Native Configuration', description: 'Use the provider native permissions.', risk: 'medium' }],
+}
+
 const creating = ref(false)
 const settingsOpen = ref(false)
 const settingsRef = ref(null)
 const chatSettingsOpen = ref(false)
 const chatSettingsRef = ref(null)
-const roleCreateDraft = ref(null)
-const roleDeleteArmed = ref(false)
-const roleSettingsId = ref('')
+const roleSettingsOpen = ref(false)
 const roleSettingsRef = ref(null)
+const roleDraft = ref(null)
+const roleDeleteArmed = ref(false)
 const workPanelOpen = ref(true)
 const name = ref('')
 const directory = ref('')
 const chatTitle = ref('')
-const diffArtifactId = ref('')
-const drafts = ref({})
-const draft = computed({ get: () => drafts.value[chatId.value] || '', set: value => { drafts.value[chatId.value] = value } })
+const draft = ref('')
 const answers = ref({})
-const handoffRoles = ref({})
-const roleDrafts = ref({})
-const roleDraftDirty = ref({})
-const roleSaveError = ref('')
-const permissionModes = ref({})
-const FALLBACK_PERMISSION_MODES = {
-  claude: [
-    { id: 'plan', label: 'Plan', description: 'Read and analyze without editing files.', write: false, risk: 'low' },
-    { id: 'acceptEdits', label: 'Accept Edits', description: 'Automatically accept file edits.', write: true, risk: 'medium' },
-    { id: 'bypassPermissions', label: 'Bypass Permissions', description: 'Skip native permission checks. Can affect files outside the project.', write: true, risk: 'high' },
-  ],
-  codex: [
-    { id: 'read-only', label: 'Read Only', description: 'Read files without writing.', write: false, risk: 'low' },
-    { id: 'workspace-write', label: 'Workspace Write', description: 'Read and write inside the workspace sandbox.', write: true, risk: 'medium' },
-    { id: 'danger-full-access', label: 'Danger Full Access', description: 'Disable the Codex sandbox. Can affect files outside the project.', write: true, risk: 'high' },
-  ],
-  gemini: [
-    { id: 'default', label: 'Default', description: 'Use the Gemini CLI default approval behavior.', write: false, risk: 'low' },
-    { id: 'auto_edit', label: 'Auto Edit', description: 'Automatically accept file edits.', write: true, risk: 'medium' },
-    { id: 'yolo', label: 'YOLO', description: 'Skip approval checks. Can affect files outside the project.', write: true, risk: 'high' },
-  ],
-  pi: [
-    { id: 'no-approve', label: 'No Approve', description: 'Read-only tools without approval.', write: false, risk: 'low' },
-    { id: 'approve', label: 'Approve', description: 'Allow tool use and file changes.', write: true, risk: 'medium' },
-  ],
-  openclaw: [
-    { id: 'read-only', label: 'Read Only', description: 'Deny file writes and command execution while keeping native read tools.', write: false, risk: 'low' },
-    { id: 'default', label: 'Native Configuration', description: 'Use OpenClaw native tool permissions.', write: true, risk: 'medium' },
-  ],
-  kimi: [
-    { id: 'read-only', label: 'Read Only', description: 'Deny file writes and command execution while keeping native read tools.', write: false, risk: 'low' },
-    { id: 'default', label: 'Native Configuration', description: 'Use Kimi native ACP permissions.', write: true, risk: 'medium' },
-  ],
-  default: [{ id: 'default', label: 'Native Configuration', description: 'Use the provider native permissions.', write: true, risk: 'medium' }],
-}
-const skillModeOptions = ['inherit', 'override', 'none']
-const skillCatalog = ref([])
-const skillsLoading = ref(false)
-const skillsError = ref(false)
-const skillsSaveError = ref(false)
-let skillLoadGeneration = 0
-const contextDraft = ref('')
-const chatSkills = ref([])
-const chatSkillsDirty = ref(false)
-const chatSkillsBusy = ref(false)
-const roleSkills = ref({})
-const roleSkillModes = ref({})
-const roleSkillsDirty = ref({})
-const roleSkillsBusy = ref({})
 const picking = ref(false)
 const pickerError = ref(false)
 const timeline = ref(null)
-const staleAssignmentIds = computed(() => new Set(staleAssignments.value
-  .filter(item => assignments.value.some(assignment => assignment.id === item.assignmentId))
-  .map(item => item.assignmentId)))
-const workdirName = computed(() => (snapshot.value?.room?.workspace || '').split(/[\\/]/).filter(Boolean).at(-1) || '')
-const projectLabel = computed(() => snapshot.value?.room?.name || t('room.title'))
+
+const availableAgents = computed(() => props.agents.filter(agent => agent && agent.kind))
+const selectedProviders = ref([])
+const projectLabel = computed(() => snapshot.value?.room?.name || rooms.value.find(room => room.id === roomId.value)?.name || t('room.title'))
 const activeChatLabel = computed(() => {
   const item = chat.value
   if (!item) return snapshot.value ? t('room.chat') : t('room.title')
-  return item.is_primary && item.title === snapshot.value?.room?.name ? t('room.primaryChat') : item.title
+  return item.id === snapshot.value?.room?.primary_chat_id ? t('room.primaryChat') : item.title
 })
-const linkedArtifactIds = computed(() => new Set(reports.value.flatMap(report => report.artifact_ids_json || [])))
-const unlinkedArtifacts = computed(() => (snapshot.value?.artifacts || []).filter(artifact => !linkedArtifactIds.value.has(artifact.id)))
-const hasWork = computed(() => tasks.value.length > 0 || unlinkedArtifacts.value.length > 0 || staleAssignmentIds.value.size > 0)
-const showWorkPanel = computed(() => workPanelOpen.value && hasWork.value)
-const workCount = computed(() => tasks.value.length + unlinkedArtifacts.value.length)
-const selectedRole = computed(() => roles.value.find(role => role.id === roleSettingsId.value) || null)
-const selectedRoleDraft = computed(() => (
-  roleCreateDraft.value || (selectedRole.value ? roleDrafts.value[selectedRole.value.id] || null : null)
+const workdirName = computed(() => snapshot.value?.room?.workspace_label || '')
+const rolesById = computed(() => new Map(roles.value.map(role => [role.id, role])))
+const tasksById = computed(() => new Map((snapshot.value?.tasks || []).map(task => [task.id, task])))
+
+const entries = computed(() => {
+  const list = messages.value.map(message => {
+    const role = rolesById.value.get(message.author_id)
+    return {
+      key: `message:${message.id}`,
+      kind: 'message',
+      createdAt: message.created_at,
+      message,
+      isUser: message.author_type === 'user',
+      isSystem: message.author_type === 'system',
+      isCaptain: role?.is_captain === true,
+      isReviewReply: message.data?.reviewReply === true,
+      author: message.author_type === 'user'
+        ? t('room.you')
+        : message.author_type === 'system'
+          ? t('room.system')
+          : message.author_name || role?.display_name || t('room.system'),
+      provider: role?.provider || '',
+      mentions: (message.mentions || []).map(id => rolesById.value.get(id)?.display_name).filter(Boolean),
+    }
+  })
+  for (const report of reports.value) {
+    list.push({
+      key: `report:${report.id}`,
+      kind: 'report',
+      createdAt: report.created_at,
+      report,
+    })
+  }
+  return list.sort((left, right) => (
+    String(left.createdAt).localeCompare(String(right.createdAt)) || left.key.localeCompare(right.key)
+  ))
+})
+
+const workCount = computed(() => (
+  tasks.value.length
+  + reviews.value.length
+  + captainAssignments.value.length
+  + attentions.value.length
 ))
-const selectedNativePermission = computed(() => {
-  const draft = selectedRoleDraft.value
-  return draft ? nativePermissionModesFor(draft.provider).find(mode => mode.id === draft.nativePermission) || null : null
-})
-function nativePermissionModesFor(provider) {
-  return permissionModes.value[provider] || FALLBACK_PERMISSION_MODES[provider] || FALLBACK_PERMISSION_MODES.default
+const hasWork = computed(() => workCount.value > 0)
+const showWorkPanel = computed(() => workPanelOpen.value && hasWork.value)
+const canCreate = computed(() => Boolean(name.value.trim() && directory.value && selectedProviders.value.length))
+
+const roleProviders = computed(() => snapshot.value?.room?.providers || [])
+const canSaveRole = computed(() => Boolean(
+  roleDraft.value
+  && roleDraft.value.displayName.trim()
+  && roleDraft.value.provider
+  && roleProviders.value.includes(roleDraft.value.provider),
+))
+
+function defaultPermission(provider) {
+  return permissionModesFor(provider)[0]?.id || 'default'
 }
+
+function permissionModesFor(provider) {
+  return FALLBACK_PERMISSION_MODES[provider] || FALLBACK_PERMISSION_MODES.default
+}
+
 function permissionModeLabel(mode) {
   const key = `room.nativePermissionMode.${mode.id}`
   const label = t(key)
   return label === key ? mode.label : label
 }
-function permissionModeDescription(mode) {
-  const key = `room.nativePermissionMode.${mode.id}.description`
-  const description = t(key)
-  return description === key ? mode.description : description
-}
-function defaultNativePermissionFor(provider) {
-  const modes = nativePermissionModesFor(provider)
-  return (modes.find(mode => !mode.write) || modes[0])?.id || 'default'
-}
-async function loadPermissionModes() {
-  if (typeof props.api.permissionModes !== 'function') return
-  try {
-    const modes = await props.api.permissionModes()
-    if (modes && typeof modes === 'object') {
-      permissionModes.value = modes
-      const draft = roleCreateDraft.value
-      if (draft && !nativePermissionModesFor(draft.provider).some(mode => mode.id === draft.nativePermission)) {
-        draft.nativePermission = defaultNativePermissionFor(draft.provider)
-      }
-      for (const role of roles.value) {
-        if (roleDraftDirty.value[role.id]) continue
-        const roleDraft = roleDrafts.value[role.id]
-        if (roleDraft && !nativePermissionModesFor(role.provider).some(mode => mode.id === roleDraft.nativePermission)) {
-          roleDraft.nativePermission = defaultNativePermissionFor(role.provider)
-        }
-      }
-    }
-  } catch { /* keep the provider fallback */ }
-}
-const providerOptions = computed(() => [...new Set([
-  ...(snapshot.value?.room?.providers_json || []),
-  ...roles.value.map(role => role.provider),
-].filter(Boolean))])
-const roomProviders = computed(() => [...new Set((snapshot.value?.room?.providers_json || []).filter(Boolean))])
-const roleSettingsOpen = computed(() => Boolean(selectedRole.value || roleCreateDraft.value))
-const liveEntries = computed(() => Object.entries(liveAssignments.value).map(([id, live]) => {
-  const assignment = assignments.value.find(item => item.id === id)
-  const role = roles.value.find(item => item.id === assignment?.role_id)
-  return { id, author: roleLabel(role), provider: role?.provider || '', content: live?.text || '', status: live?.status || 'running' }
-}).filter(entry => entry.content))
-const entries = computed(() => [
-  ...messages.value.map(message => {
-    const role = roles.value.find(item => item.id === message.author_id)
-    const isController = message.author_type === 'controller'
-    return { key: message.id, author: message.author_type === 'user' ? t('room.you') : isController ? t('room.controller') : roleLabel(role),
-      content: message.content, createdAt: message.created_at, isUser: message.author_type === 'user', isController,
-      provider: role?.provider || (isController ? snapshot.value?.room?.providers_json?.[0] || '' : ''), report: false }
-  }),
-  ...reports.value.map(report => {
-    const assignment = assignments.value.find(item => item.id === report.assignment_id)
-    const role = roles.value.find(item => item.id === assignment?.role_id)
-    const artifacts = (report.artifact_ids_json || [])
-      .map(id => (snapshot.value?.artifacts || []).find(artifact => artifact.id === id))
-      .filter(Boolean)
-    return { key: report.id, author: `${roleLabel(role)} · ${t('room.report')}`, content: report.summary,
-      evidence: report.evidence_json, artifacts, assignment, report: true, isUser: false,
-      provider: role?.provider || '', createdAt: report.created_at }
-  }),
-].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))))
 
-function isControllerSeat(role) {
-  return Boolean(role?.is_controller)
-}
 function roleLabel(role) {
-  if (!role) return t('room.agent')
-  const displayName = String(role.display_name || '').trim()
-  return displayName && displayName !== role.provider ? displayName : providerLabel(role.provider)
+  return role?.display_name || role?.id || ''
 }
-function roleName(id) { return roleLabel(roles.value.find(item => item.id === id)) }
-function providerLabel(kind) { return props.agents.find(agent => agent.kind === kind)?.label || kind || t('room.noProviders') }
-function skillKey(skill) { return `${skill.targetKind}:${skill.namespace}:${skill.slug}` }
-function plainSkill(skill) {
-  return { targetKind: skill.targetKind, namespace: skill.namespace, slug: skill.slug, name: skill.name }
+
+function roleName(roleId) {
+  return rolesById.value.get(roleId)?.display_name || roleId || ''
 }
-function hasSkill(bindings, skill) { return (bindings || []).some(item => skillKey(item) === skillKey(skill)) }
-function skillCatalogFor(role) { return skillCatalog.value.filter(skill => !role?.provider || skill.targetKind === role.provider) }
-function toggleChatSkill(skill, checked) {
-  const next = chatSkills.value.filter(item => skillKey(item) !== skillKey(skill))
-  if (checked) next.push({ targetKind: skill.targetKind, namespace: skill.namespace, slug: skill.slug, name: skill.name })
-  chatSkills.value = next; chatSkillsDirty.value = true
+
+function assignmentTargetNames(assignment) {
+  return (assignment?.target_role_ids || []).map(roleName).filter(Boolean).join(' · ')
 }
-function toggleRoleSkill(role, skill, checked) {
-  const current = roleSkills.value[role.id] || []
-  const next = current.filter(item => skillKey(item) !== skillKey(skill))
-  if (checked) next.push({ targetKind: skill.targetKind, namespace: skill.namespace, slug: skill.slug, name: skill.name })
-  roleSkills.value = { ...roleSkills.value, [role.id]: next }
-  roleSkillsDirty.value = { ...roleSkillsDirty.value, [role.id]: true }
+
+function providerLabel(provider) {
+  return availableAgents.value.find(agent => agent.kind === provider)?.label
+    || String(provider || '').replace(/^\w/, letter => letter.toUpperCase())
+    || ''
 }
-function markRoleSkillsDirty(roleId) { roleSkillsDirty.value = { ...roleSkillsDirty.value, [roleId]: true } }
-function skillSaveErrorKey(error) {
-  if (String(error?.message || '').includes('LOCAL_SKILL_MANIFEST_MISSING')) return 'room.skillsManifestMissing'
-  if (String(error?.message || '').includes('LOCAL_SKILL_TRUST_REQUIRED')) return 'room.skillsTrustRequired'
-  return 'room.skillsSaveError'
+
+function statusLabel(status) {
+  const value = String(status || '')
+  if (!value) return ''
+  const key = `room.status.${value}`
+  const label = t(key)
+  return label === key ? value : label
 }
-async function saveChatSkills() {
-  if (typeof props.api.updateSkillBindings !== 'function') return
-  chatSkillsBusy.value = true
-  skillsSaveError.value = false
-  const targetChat = chatId.value
-  try { await props.api.updateSkillBindings({ chatId: targetChat, selections: chatSkills.value.map(plainSkill) }); if (chatId.value === targetChat) chatSkillsDirty.value = false; await refresh({ afterCurrent: true }) }
-  catch (error) { if (chatId.value === targetChat) skillsSaveError.value = skillSaveErrorKey(error) }
-  finally { chatSkillsBusy.value = false }
+
+function reportKindLabel(kind) {
+  const key = `room.reportKind.${kind}`
+  const label = t(key)
+  return label === key ? String(kind || '') : label
 }
-async function saveRoleSkills(role) {
-  if (typeof props.api.updateSkillBindings !== 'function') return
-  roleSkillsBusy.value = { ...roleSkillsBusy.value, [role.id]: true }
-  skillsSaveError.value = false
+
+function reviewKindLabel(kind) {
+  const key = `room.reviewKind.${kind}`
+  const label = t(key)
+  return label === key ? String(kind || '') : label
+}
+
+function taskLabel(task) {
+  if (!task) return ''
+  return `#${task.number} ${task.title}`.trim()
+}
+
+function taskRuns(taskId) {
+  return runs.value.filter(run => run.task_id === taskId)
+}
+
+function taskReports(taskId) {
+  return reports.value.filter(report => report.task_id === taskId)
+}
+
+function taskForReport(report) {
+  return tasksById.value.get(report?.task_id) || null
+}
+
+function canAcceptTask(task) {
+  return task?.status === 'in_review'
+}
+
+function isWorking(message) {
+  return message.author_type === 'agent' && ['queued', 'working'].includes(message.status)
+}
+
+function canStop(message) {
+  return message.author_type === 'agent'
+    && ['queued', 'working', 'waiting_for_input'].includes(message.status)
+}
+
+function formatTime(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+}
+
+function optionValue(option) {
+  return String(option?.id ?? option?.value ?? option?.label ?? option ?? '')
+}
+
+function optionLabel(option) {
+  return String(option?.label ?? option?.name ?? option ?? '')
+}
+
+function insertMention(role) {
+  const mention = `@${roleLabel(role)} `
+  draft.value = draft.value ? `${draft.value.replace(/\s*$/, ' ')}${mention}` : mention
+}
+
+async function sendMessage() {
+  const content = draft.value.trim()
+  if (!content || !chat.value) return
+  const result = await send(content)
+  if (result) {
+    draft.value = ''
+    await nextTick()
+    timeline.value?.scrollTo?.({ top: timeline.value.scrollHeight })
+  }
+}
+
+async function reload() {
+  pickerError.value = false
+  await load()
+  await refresh()
+}
+
+async function loadEarlierMessages() {
+  await loadOlderMessages()
+}
+
+async function acceptTask(taskId) {
+  await acceptTaskCommand(taskId)
+}
+
+async function stopReply(replyId) {
+  await stopReplyCommand(replyId)
+}
+
+async function answer(attention) {
+  const resolution = String(answers.value[attention.id] || '').trim()
+  if (!resolution) return
+  const result = await answerAttention(attention.id, resolution)
+  if (result) delete answers.value[attention.id]
+}
+
+function startCreating() {
+  pickerError.value = false
+  directory.value = ''
+  name.value = ''
+  selectedProviders.value = availableAgents.value.slice(0, 1).map(agent => agent.kind)
+  creating.value = true
+}
+
+async function chooseDirectory() {
+  if (picking.value) return
+  picking.value = true
+  pickerError.value = false
   try {
-    const mode = roleSkillModes.value[role.id]
-    const input = mode === 'inherit' ? { chatId: chatId.value, roleId: role.id, inheritChat: true } : { chatId: chatId.value, roleId: role.id, selections: mode === 'none' ? [] : (roleSkills.value[role.id] || []).map(plainSkill) }
-    await props.api.updateSkillBindings(input)
-    roleSkillsDirty.value = { ...roleSkillsDirty.value, [role.id]: false }
-    await refresh({ afterCurrent: true })
-  } catch (error) { if (chatId.value === role.chat_id) skillsSaveError.value = skillSaveErrorKey(error) }
-  finally { roleSkillsBusy.value = { ...roleSkillsBusy.value, [role.id]: false } }
-}
-const skillProviders = computed(() => [...new Set([...(snapshot.value?.room?.providers_json || []), ...roles.value.map(role => role.provider)].filter(Boolean))].sort().join(','))
-async function loadSkillCatalog() {
-  const generation = ++skillLoadGeneration
-  skillsLoading.value = true
-  skillsError.value = false
-  const kinds = skillProviders.value ? skillProviders.value.split(',') : []
-  const results = await Promise.allSettled(kinds.map(kind => typeof props.api.skills === 'function' ? props.api.skills(kind) : Promise.reject(new Error('SKILLS_UNAVAILABLE'))))
-  if (generation !== skillLoadGeneration) return
-  skillsError.value = results.some(result => result.status === 'rejected' || result.value?.supported === false)
-  const skills = results.flatMap(result => result.status === 'fulfilled' ? result.value?.skills || [] : [])
-  skillCatalog.value = [...new Map(skills.map(skill => [skillKey(skill), skill])).values()]
-  skillsLoading.value = false
-}
-function syncSkillDrafts() {
-  if (!chatSkillsDirty.value) chatSkills.value = chat.value?.skill_bindings_json || []
-  const modes = {}; const values = {}
-  for (const role of roles.value) {
-    modes[role.id] = roleSkillsDirty.value[role.id] ? roleSkillModes.value[role.id] : role.skill_bindings_json === null ? 'inherit' : (role.skill_bindings_json?.length ? 'override' : 'none')
-    values[role.id] = roleSkillsDirty.value[role.id] ? roleSkills.value[role.id] : role.skill_bindings_json || []
-  }
-  roleSkillModes.value = modes; roleSkills.value = values
-}
-function taskAssignments(id) { return assignments.value.filter(item => item.task_id === id) }
-function canRetry(item) { return ['failed', 'waiting', 'blocked', 'cancelled'].includes(item.status) && item.outcome !== 'unknown' && !assignments.value.some(next => next.previous_assignment_id === item.id) }
-function statusLabel(status) { const key = `room.status.${status}`; return t(key) === key ? t('room.status.waiting') : t(key) }
-function optionId(option) { return typeof option === 'string' ? option : option.id || option.optionId }
-function formatTime(value) { return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
-function roleDraftFrom(role) {
-  return {
-    displayName: roleLabel(role),
-    responsibilities: role.responsibilities || '',
-    provider: role.provider || '',
-    capabilities: [...(role.capabilities_json || [])],
-    nativePermission: role.native_permission || defaultNativePermissionFor(role.provider),
-    prompt: role.current_prompt || '',
-    isController: Boolean(role.is_controller),
+    const selected = await props.pickDirectory()
+    if (selected) directory.value = String(selected)
+  } catch {
+    pickerError.value = true
+  } finally {
+    picking.value = false
   }
 }
-function isRoleDisplayNameChanged(role, displayName) {
-  const value = String(displayName || '').trim()
-  const raw = String(role?.display_name || '').trim()
-  return value !== raw && value !== roleLabel(role)
-}
-function ensureRoleDraft(role) {
-  if (!role) return null
-  const existing = roleDrafts.value[role.id]
-  if (existing) return existing
-  const draft = roleDraftFrom(role)
-  roleDrafts.value = { ...roleDrafts.value, [role.id]: draft }
-  return draft
-}
-function markRoleDraftDirty(roleId) {
-  if (!roleId) return
-  roleDraftDirty.value = { ...roleDraftDirty.value, [roleId]: true }
-  roleSaveError.value = ''
-}
-function markCurrentRoleDraftDirty() {
-  roleSaveError.value = ''
-  if (selectedRole.value) markRoleDraftDirty(selectedRole.value.id)
-}
-function changeRoleProvider(provider) {
-  const role = selectedRole.value
-  const draft = selectedRoleDraft.value
-  if (!draft || !provider || draft.provider === provider) return
-  const followedProvider = draft.displayName.trim() === providerLabel(draft.provider)
-    && (!role || String(role.display_name || '') === role.provider)
-  draft.provider = provider
-  draft.nativePermission = defaultNativePermissionFor(provider)
-  if (followedProvider) draft.displayName = providerLabel(provider)
-  roleSaveError.value = ''
-  if (role) markRoleDraftDirty(role.id)
-}
-function toggleRoleController() {
-  const role = selectedRole.value
-  const draft = selectedRoleDraft.value
-  if (!draft) return
-  draft.isController = !draft.isController
-  roleSaveError.value = ''
-  if (role) markRoleDraftDirty(role.id)
-}
-function setRoleSkillMode(role, mode) {
-  if (!role || !mode) return
-  roleSkillModes.value = { ...roleSkillModes.value, [role.id]: mode }
-  markRoleSkillsDirty(role.id)
-}
-function sameCapabilities(left, right) {
-  const first = [...(left || [])].sort()
-  const second = [...(right || [])].sort()
-  return first.length === second.length && first.every((value, index) => value === second[index])
-}
-function isRoleDraftDirty(role) {
-  const draft = roleDrafts.value[role?.id]
-  if (!role || !draft) return false
-  return isRoleDisplayNameChanged(role, draft.displayName)
-    || draft.responsibilities !== (role.responsibilities || '')
-    || draft.provider !== role.provider
-    || !sameCapabilities(draft.capabilities, role.capabilities_json)
-    || draft.nativePermission !== (role.native_permission || defaultNativePermissionFor(role.provider))
-    || draft.prompt !== (role.current_prompt || '')
-    || Boolean(draft.isController) !== Boolean(role.is_controller)
-}
-function syncRoleDrafts() {
-  const next = { ...roleDrafts.value }
-  for (const role of roles.value) {
-    if (roleDraftDirty.value[role.id] && next[role.id]) continue
-    next[role.id] = roleDraftFrom(role)
+
+async function create() {
+  if (!canCreate.value) return
+  const providers = [...selectedProviders.value]
+  const roles = providers.map((provider, index) => ({
+    displayName: availableAgents.value.find(agent => agent.kind === provider)?.label || provider,
+    provider,
+    prompt: '',
+    isCaptain: index === 0,
+  }))
+  const result = await createRoom({
+    name: name.value.trim(),
+    workspace: directory.value,
+    title: name.value.trim(),
+    providers,
+    roles,
+  })
+  if (result) {
+    creating.value = false
+    name.value = ''
+    directory.value = ''
   }
-  for (const id of Object.keys(next)) {
-    if (!roles.value.some(role => role.id === id)) delete next[id]
-  }
-  roleDrafts.value = next
 }
-async function saveRole(role) {
-  if (roleCreateDraft.value) return createRoleFromDraft()
-  const draft = roleDrafts.value[role?.id]
-  if (!role || !draft || !isRoleDraftDirty(role)) return
-  roleSaveError.value = ''
-  const displayName = draft.displayName.trim()
-  if (!displayName) {
-    roleSaveError.value = 'room.roleNameRequired'
-    return
-  }
-  const payload = { type: 'update_role', roleId: role.id }
-  const displayNameChanged = isRoleDisplayNameChanged(role, displayName)
-  const providerChanged = draft.provider !== role.provider
-  if (displayNameChanged) payload.displayName = displayName
-  else if (providerChanged && String(role.display_name || '') === role.provider) {
-    payload.displayName = providerLabel(draft.provider)
-  }
-  if (draft.responsibilities !== (role.responsibilities || '')) payload.responsibilities = draft.responsibilities
-  if (providerChanged) payload.provider = draft.provider
-  if (draft.nativePermission !== (role.native_permission || defaultNativePermissionFor(role.provider))) {
-    payload.nativePermission = draft.nativePermission
-  }
-  if (draft.prompt !== (role.current_prompt || '')) payload.prompt = draft.prompt
-  if (Boolean(draft.isController) !== Boolean(role.is_controller)) payload.isController = Boolean(draft.isController)
-  if (Object.keys(payload).length === 2) return
-  const result = await command(payload)
-  if (!result) {
-    roleSaveError.value = 'room.roleSaveError'
-    return
-  }
-  roleDraftDirty.value = { ...roleDraftDirty.value, [role.id]: false }
-  syncRoleDrafts()
-}
-async function reload() { await load(); await refresh() }
+
 function openProjectSettings() {
-  chatSettingsOpen.value = false
   settingsOpen.value = true
+  nextTick(() => settingsRef.value?.focus?.())
 }
-function closeProjectSettings() { settingsOpen.value = false }
-function selectRoom(id) {
-  closeProjectSettings()
-  void openRoom(id)
-}
-function openChatSettings() {
+
+function closeProjectSettings() {
   settingsOpen.value = false
-  chatSettingsOpen.value = true
 }
-function closeChatSettings() { chatSettingsOpen.value = false }
+
+async function toggleWriteAuthorization() {
+  await setWriteAuthorized(!writeAuthorized.value)
+}
+
+function openChatSettings() {
+  chatSettingsOpen.value = true
+  chatTitle.value = ''
+  nextTick(() => chatSettingsRef.value?.focus?.())
+}
+
+function closeChatSettings() {
+  chatSettingsOpen.value = false
+}
+
+async function newChat() {
+  const title = chatTitle.value.trim()
+  if (!title) return
+  const result = await createChat(title)
+  if (result) chatTitle.value = ''
+}
+
+async function removeCurrentChat() {
+  if (!chatId.value) return
+  await deleteChat(chatId.value)
+}
+
+function openNewRole() {
+  roleDeleteArmed.value = false
+  roleDraft.value = {
+    id: '',
+    displayName: '',
+    provider: roleProviders.value[0] || '',
+    prompt: '',
+    responsibilities: '',
+    isCaptain: !roles.value.some(role => role.is_captain),
+    nativePermission: defaultPermission(roleProviders.value[0] || ''),
+  }
+  roleSettingsOpen.value = true
+  nextTick(() => roleSettingsRef.value?.focus?.())
+}
+
 function openRoleSettings(roleId) {
   const role = roles.value.find(item => item.id === roleId)
   if (!role) return
-  ensureRoleDraft(role)
-  settingsOpen.value = false
-  chatSettingsOpen.value = false
-  roleCreateDraft.value = null
   roleDeleteArmed.value = false
-  roleSaveError.value = ''
-  roleSettingsId.value = roleId
+  roleDraft.value = {
+    id: role.id,
+    displayName: role.display_name || '',
+    provider: role.provider || '',
+    prompt: role.prompt || '',
+    responsibilities: role.responsibilities || '',
+    isCaptain: role.is_captain === true,
+    nativePermission: role.native_permission || defaultPermission(role.provider || ''),
+  }
+  roleSettingsOpen.value = true
+  nextTick(() => roleSettingsRef.value?.focus?.())
 }
-function cancelRoleSettings() {
-  if (roleCreateDraft.value) {
-    roleCreateDraft.value = null
-    roleSettingsId.value = ''
-    roleDeleteArmed.value = false
-    roleSaveError.value = ''
-    return
-  }
-  const role = selectedRole.value
-  if (role) {
-    roleDrafts.value = { ...roleDrafts.value, [role.id]: roleDraftFrom(role) }
-    roleDraftDirty.value = { ...roleDraftDirty.value, [role.id]: false }
-  }
-  roleSettingsId.value = ''
+
+function changeRoleProvider(provider) {
+  if (!roleDraft.value || roleDraft.value.provider === provider) return
+  roleDraft.value.provider = provider
+  roleDraft.value.nativePermission = defaultPermission(provider)
+}
+
+function closeRoleSettings() {
+  roleSettingsOpen.value = false
   roleDeleteArmed.value = false
-  roleSaveError.value = ''
+  roleDraft.value = null
 }
-function openNewRole() {
-  const provider = roomProviders.value[0]
-  if (!provider) return
-  roleCreateDraft.value = {
-    displayName: providerLabel(provider),
-    responsibilities: '',
-    provider,
-    capabilities: [],
-    nativePermission: defaultNativePermissionFor(provider),
-    prompt: '',
-    isController: false,
-  }
-  roleSettingsId.value = ''
-  roleDeleteArmed.value = false
-  roleSaveError.value = ''
-}
-async function createRoleFromDraft() {
-  const draft = roleCreateDraft.value
-  if (!draft) return
-  const displayName = draft.displayName.trim()
-  if (!displayName) {
-    roleSaveError.value = 'room.roleNameRequired'
-    return
-  }
-  if (!draft.provider) return
-  roleSaveError.value = ''
+
+async function saveRole() {
+  if (!canSaveRole.value) return
   const payload = {
-    type: 'create_role',
-    displayName,
-    provider: draft.provider,
-    responsibilities: draft.responsibilities || '',
-    nativePermission: draft.nativePermission,
+    displayName: roleDraft.value.displayName.trim(),
+    provider: roleDraft.value.provider,
+    prompt: roleDraft.value.prompt,
+    responsibilities: roleDraft.value.responsibilities,
+    isCaptain: roleDraft.value.isCaptain,
+    nativePermission: roleDraft.value.nativePermission,
   }
-  if (draft.prompt) payload.prompt = draft.prompt
-  if (draft.isController) payload.isController = true
-  const result = await command(payload)
-  if (!result) {
-    roleSaveError.value = 'room.roleSaveError'
-    return
-  }
-  let role = roles.value.find(item => item.id === result.roleId)
-  if (!role && result.roleId) {
-    await refresh({ afterCurrent: true })
-    role = roles.value.find(item => item.id === result.roleId)
-  }
-  roleCreateDraft.value = null
-  roleDeleteArmed.value = false
-  roleSaveError.value = ''
-  if (role) {
-    ensureRoleDraft(role)
-    roleDraftDirty.value = { ...roleDraftDirty.value, [role.id]: false }
-    roleSettingsId.value = role.id
-  } else {
-    roleSettingsId.value = ''
-  }
+  const result = roleDraft.value.id
+    ? await updateRole(roleDraft.value.id, payload)
+    : await createRole(payload)
+  if (result) closeRoleSettings()
 }
-async function deleteSelectedRole() {
-  const role = selectedRole.value
-  if (!role) return
-  roleSaveError.value = ''
-  const result = await command({ type: 'delete_role', roleId: role.id })
-  if (!result) {
-    roleSaveError.value = 'room.roleDeleteError'
-    return
-  }
-  roleDeleteArmed.value = false
-  roleSettingsId.value = ''
-  roleCreateDraft.value = null
+
+async function removeRole() {
+  if (!roleDraft.value?.id) return
+  const result = await deleteRole(roleDraft.value.id)
+  if (result) closeRoleSettings()
 }
-const canSaveRole = computed(() => {
-  const draft = selectedRoleDraft.value
-  if (busy.value || !draft) return false
-  if (roleCreateDraft.value) return Boolean(draft.displayName.trim() && draft.provider)
-  return Boolean(selectedRole.value) && isRoleDraftDirty(selectedRole.value)
-})
-function startCreating() { settingsOpen.value = false; chatSettingsOpen.value = false; creating.value = true }
-async function scrollToAttention() { await nextTick(); if (timeline.value) timeline.value.scrollTop = timeline.value.scrollHeight }
-async function chooseDirectory() {
-  picking.value = true
-  pickerError.value = false
-  try { const result = await props.pickDirectory(); if (result) directory.value = result }
-  catch { pickerError.value = true }
-  finally { picking.value = false }
+
+function scrollToAttention() {
+  document.querySelector('.room-attention-card')?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
 }
-async function create() {
-  const providers = [...new Set(props.agents.map(agent => agent.kind).filter(Boolean))]
-  if (await createRoom({ name: name.value.trim(), workspace: directory.value, providers, title: t('room.chat') })) creating.value = false
-}
-async function newChat() { if (await createChat(chatTitle.value.trim())) chatTitle.value = '' }
-async function sendMessage() {
-  const target = chatId.value
-  const content = draft.value
-  if (await send(content)) drafts.value[target] = ''
-}
-async function sendContext() {
-  const targetChat = chatId.value
-  if (await send(contextDraft.value.trim())) { if (targetChat === chatId.value) contextDraft.value = '' }
-}
-async function loadEarlierMessages() {
-  const container = timeline.value
-  const previousHeight = container?.scrollHeight || 0
-  const previousTop = container?.scrollTop || 0
-  await loadOlderMessages()
-  await nextTick()
-  if (container && timeline.value === container) {
-    container.scrollTop = previousTop + container.scrollHeight - previousHeight
-  }
-}
-async function answer(attention) {
-  await command({ type: 'answer_attention', attentionId: attention.id,
-    ...(attention.options_json?.length ? { optionId: answers.value[attention.id] } : { comment: answers.value[attention.id] }) })
-}
-function retryPayload(assignment) {
-  return { type: 'retry_task', taskId: assignment.task_id, assignmentId: assignment.id }
-}
-function onOverlayKeydown(event) {
+
+function handleEscape(event) {
   if (event.key !== 'Escape') return
-  if (creating.value) { event.preventDefault(); creating.value = false }
-  else if (roleCreateDraft.value || roleSettingsId.value) { event.preventDefault(); cancelRoleSettings() }
-  else if (chatSettingsOpen.value) { event.preventDefault(); closeChatSettings() }
-  else if (settingsOpen.value) { event.preventDefault(); closeProjectSettings() }
+  if (roleSettingsOpen.value) {
+    event.preventDefault()
+    closeRoleSettings()
+  } else if (chatSettingsOpen.value) {
+    event.preventDefault()
+    closeChatSettings()
+  } else if (settingsOpen.value) {
+    event.preventDefault()
+    closeProjectSettings()
+  } else if (creating.value) {
+    event.preventDefault()
+    creating.value = false
+  }
 }
-watch([settingsOpen, chatSettingsOpen, creating, roleCreateDraft, roleSettingsId], async ([settings, chatSettings, create, newRole, roleId]) => {
-  const open = settings || chatSettings || create || Boolean(newRole) || Boolean(roleId)
-  document.body.classList.toggle('room-overlay-open', open)
-  if (open) document.addEventListener('keydown', onOverlayKeydown)
-  else document.removeEventListener('keydown', onOverlayKeydown)
-  if (settings) { await nextTick(); settingsRef.value?.focus?.() }
-  else if (chatSettings) { await nextTick(); chatSettingsRef.value?.focus?.() }
-  else if (newRole) { await nextTick(); roleSettingsRef.value?.focus?.() }
-  else if (roleId) { await nextTick(); roleSettingsRef.value?.focus?.() }
+
+watch(creating, (open) => {
+  if (!open) return
+  const previous = document.activeElement
+  nextTick(() => {
+    if (previous?.blur) previous.blur()
+  })
 })
-watch(() => props.createRequest, requested => {
+
+watch([roomId, chatId], ([nextRoom, nextChat]) => {
+  if (!nextRoom) return
+  emit('active-change', { roomId: nextRoom, chatId: nextChat })
+})
+
+watch(() => props.createRequest, (requested) => {
   if (!requested) return
-  startCreating()
   emit('create-request-consumed')
+  startCreating()
 }, { immediate: true })
-let openRequestGeneration = 0
-watch(() => props.openRequest, async request => {
+
+watch(() => props.openRequest, (request) => {
   if (!request?.roomId) return
-  const generation = ++openRequestGeneration
-  if (roomId.value !== request.roomId) await openRoom(request.roomId)
-  if (generation !== openRequestGeneration) return
-  if (!request.chatId) return
-  if (!snapshot.value?.chats?.some(chat => chat.id === request.chatId)) await refresh({ afterCurrent: true })
-  if (generation !== openRequestGeneration) return
-  if (snapshot.value?.chats?.some(chat => chat.id === request.chatId)) chatId.value = request.chatId
+  void openRoom(request.roomId, request.chatId)
 }, { immediate: true })
-watch(roomId, () => { workPanelOpen.value = true })
-watch([roomId, chatId], ([room, chat]) => {
-  if (room) emit('active-change', { roomId: room, chatId: chat || '' })
-  roleSettingsId.value = ''
-  roleCreateDraft.value = null
-  roleDeleteArmed.value = false
-  handoffRoles.value = {}
-  answers.value = {}
-  roleDrafts.value = {}
-  roleDraftDirty.value = {}
-  roleSaveError.value = ''
-  contextDraft.value = ''
-  chatSkillsDirty.value = false
-  roleSkillsDirty.value = {}
-  skillsSaveError.value = false
-  syncSkillDrafts()
-  diffArtifactId.value = ''
-}, { immediate: true })
-watch(roles, () => { syncRoleDrafts() }, { immediate: true })
-watch(skillProviders, () => { void loadSkillCatalog() }, { immediate: true })
-watch([snapshot, roles, chatId], syncSkillDrafts, { immediate: true })
-watch(() => entries.value.length, async () => { await nextTick(); if (timeline.value) timeline.value.scrollTop = timeline.value.scrollHeight })
+
+watch([creating, settingsOpen, chatSettingsOpen, roleSettingsOpen], (values) => {
+  document.body.classList.toggle('room-overlay-open', values.some(Boolean))
+})
+
 onMounted(() => {
-  void loadPermissionModes()
+  window.addEventListener('keydown', handleEscape)
   void load()
 })
+
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleEscape)
   document.body.classList.remove('room-overlay-open')
-  document.removeEventListener('keydown', onOverlayKeydown)
 })
 </script>
-
 <style scoped>
 .room-workspace { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; padding: 0; gap: 0; background: var(--surface); color: var(--text); }
 .room-toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px clamp(16px, 3vw, 28px); border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 94%, var(--surface-raised)); }
@@ -1227,4 +1147,38 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 
 <style>
 body.room-overlay-open { overflow: hidden; }
+</style>
+
+<style scoped>
+.room-subtitle-divider { opacity: 0.45; }
+.room-subtitle [data-tone="ready"] { color: var(--accent-text); }
+.room-message-status { color: var(--faint); font-size: var(--text-2xs); }
+.room-message-status[data-status="working"],
+.room-message-status[data-status="queued"],
+.room-message-status[data-status="starting"] { color: var(--accent-text); }
+.room-message-status[data-status="failed"],
+.room-message-status[data-status="interrupted"],
+.room-message-status[data-status="unknown"] { color: var(--danger, #b94c4c); }
+.room-message-system .room-message-body { padding: 4px 0; color: var(--faint); font-size: var(--text-xs); }
+.room-message-captain .room-message-body { padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--accent-soft) 34%, var(--surface-raised)); }
+.room-mention-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.room-mention-chip { display: inline-flex; align-items: center; padding: 2px 7px; border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border)); border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font: inherit; font-size: var(--text-2xs); cursor: pointer; }
+.room-composer-mentions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; width: min(920px, 100%); margin: 0 auto 8px; }
+.room-report-card .room-message-body { padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); }
+.room-report-task { color: var(--faint); font-size: var(--text-2xs); }
+.room-runs, .room-reports { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: var(--text-xs); }
+.room-runs-title { color: var(--faint); font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: 0.04em; }
+.room-run-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 8px; align-items: baseline; margin: 4px 0; }
+.room-run-row > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-report-row { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
+.room-review-card p { white-space: pre-wrap; }
+.room-provider-picker { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.room-provider-option { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font-size: var(--text-xs); cursor: pointer; }
+.room-provider-option:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.room-provider-option img { width: 16px; height: 16px; object-fit: contain; }
+.room-provider-option input { margin: 0; }
+@media (max-width: 950px) {
+  .room-run-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .room-run-row > span:nth-child(2) { display: none; }
+}
 </style>

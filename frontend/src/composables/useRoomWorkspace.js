@@ -1,14 +1,19 @@
 import { computed, onScopeDispose, ref } from 'vue'
 
-export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
+/**
+ * Renderer-side room domain adapter.
+ *
+ * The domain service is authoritative. This composable keeps the last
+ * display-safe snapshot, paginates older messages, and sends narrow commands;
+ * it never invents task, report, or review state.
+ */
+export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
   const rooms = ref([])
   const snapshot = ref(null)
   const roomId = ref('')
   const chatId = ref('')
   const busy = ref(false)
   const error = ref(false)
-  const staleAssignments = ref([])
-  const liveAssignments = ref({})
   const olderMessages = ref({})
   const olderMessagesAvailable = ref({})
   const loadingOlderMessages = ref(false)
@@ -18,18 +23,37 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
   let changedTimer = null
   let refreshing = null
   let unsubscribeChanges = null
-  let unsubscribeAssignmentEvents = null
+
   const chat = computed(() => snapshot.value?.chats.find(item => item.id === chatId.value) || null)
+  const roomsById = computed(() => new Map(rooms.value.map(room => [room.id, room])))
   const tasks = computed(() => (snapshot.value?.tasks || []).filter(item => item.chat_id === chatId.value))
-  const assignments = computed(() => (snapshot.value?.assignments || []).filter(item => tasks.value.some(task => task.id === item.task_id)))
   const roles = computed(() => (snapshot.value?.roles || []).filter(item => item.chat_id === chatId.value))
+  const captainAssignments = computed(() => (
+    snapshot.value?.assignments || []
+  ).filter(item => item.chat_id === chatId.value))
+  const runs = computed(() => (
+    snapshot.value?.runs || []
+  ).filter(run => tasks.value.some(task => task.id === run.task_id)))
+  const reports = computed(() => (
+    snapshot.value?.reports || []
+  ).filter(report => tasks.value.some(task => task.id === report.task_id)))
+  const reviews = computed(() => (
+    snapshot.value?.reviews || []
+  ).filter(review => review.chat_id === chatId.value))
+  const attentions = computed(() => (
+    snapshot.value?.attentions || []
+  ).filter(item => item.chat_id === chatId.value && item.status === 'open'))
   const messages = computed(() => {
-    const combined = [...(olderMessages.value[chatId.value] || []), ...(snapshot.value?.messages || []).filter(item => item.chat_id === chatId.value)]
-    return [...new Map(combined.filter(item => !item.deleted_at).map(item => [item.id, item])).values()].sort((a, b) => a.sequence - b.sequence)
+    const current = (snapshot.value?.messages || []).filter(item => item.chat_id === chatId.value)
+    const combined = [...(olderMessages.value[chatId.value] || []), ...current]
+    return [...new Map(combined.filter(item => !item.deleted_at).map(item => [item.id, item])).values()]
+      .sort((left, right) => left.sequence - right.sequence)
   })
-  const hasOlderMessages = computed(() => olderMessagesAvailable.value[chatId.value] ?? Boolean(snapshot.value?.messages_have_older?.includes(chatId.value)))
-  const reports = computed(() => (snapshot.value?.reports || []).filter(item => tasks.value.some(task => task.id === item.task_id)))
-  const attentions = computed(() => (snapshot.value?.attentions || []).filter(item => item.chat_id === chatId.value && item.status === 'open'))
+  const hasOlderMessages = computed(() => (
+    olderMessagesAvailable.value[chatId.value]
+      ?? Boolean(snapshot.value?.messages_have_older?.includes(chatId.value))
+  ))
+  const writeAuthorized = computed(() => snapshot.value?.room?.write_authorized === true)
 
   function schedule() {
     clearTimeout(timer)
@@ -41,19 +65,6 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
       if (disposed || !roomId.value) return
       clearTimeout(changedTimer)
       changedTimer = setTimeout(() => { void refresh({ afterCurrent: true }) }, 80)
-    })
-  }
-  if (typeof api.onAssignmentEvent === 'function') {
-    unsubscribeAssignmentEvents = api.onAssignmentEvent(payload => {
-      if (disposed || payload?.roomId !== roomId.value || !payload.assignmentId || !payload.event) return
-      const assignment = assignments.value.find(item => item.id === payload.assignmentId)
-      if (!assignment || !tasks.value.some(task => task.id === assignment.task_id)) return
-      const event = payload.event
-      const previous = liveAssignments.value[payload.assignmentId] || {}
-      const text = event.type === 'answer_delta' ? `${previous.text || ''}${event.delta || ''}` : previous.text || ''
-      liveAssignments.value = { ...liveAssignments.value, [payload.assignmentId]: {
-        ...previous, ...event, text: text.slice(-32 * 1024), status: event.status || previous.status || 'running',
-      } }
     })
   }
 
@@ -71,45 +82,42 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
     const requestedRoom = roomId.value
     const promise = (async () => {
       try {
-        const data = await api.snapshot({ roomId: requestedRoom })
+        const data = await api.snapshot({ roomId: requestedRoom, includeCaptain: true })
         if (disposed || generation !== requestGeneration) return null
         snapshot.value = data
-        const activeIds = new Set((data.assignments || []).filter(item => ['running', 'queued'].includes(item.status)).map(item => item.id))
-        liveAssignments.value = Object.fromEntries(Object.entries(liveAssignments.value).filter(([id]) => activeIds.has(id)))
-        if (typeof api.listStaleAssignments === 'function') {
-          try {
-            const stale = await api.listStaleAssignments({ roomId: requestedRoom, timeoutMs: 120_000 }) || []
-            if (disposed || generation !== requestGeneration || roomId.value !== requestedRoom) return null
-            staleAssignments.value = stale
-          }
-          catch { if (!disposed && generation === requestGeneration && roomId.value === requestedRoom) staleAssignments.value = [] }
-        } else staleAssignments.value = []
-        if (!data.chats.some(item => item.id === chatId.value)) chatId.value = data.room.primary_chat_id || data.chats[0]?.id || ''
+        if (!data.chats.some(item => item.id === chatId.value)) {
+          chatId.value = data.room.primary_chat_id || data.chats[0]?.id || ''
+        }
         error.value = false
         return data
       } catch {
         if (!disposed && generation === requestGeneration) error.value = true
         return null
       } finally {
-        if (generation === requestGeneration && !disposed) { refreshing = null; schedule() }
+        if (generation === requestGeneration && !disposed) {
+          refreshing = null
+          schedule()
+        }
       }
     })()
     refreshing = { generation: requestGeneration, promise }
     return promise
   }
 
-  async function openRoom(id) {
+  async function openRoom(id, targetChatId = '') {
     generation++
     clearTimeout(timer)
     roomId.value = id
     snapshot.value = null
-    staleAssignments.value = []
-    liveAssignments.value = {}
     olderMessages.value = {}
     olderMessagesAvailable.value = {}
-    chatId.value = ''
+    chatId.value = targetChatId || ''
     error.value = false
-    return refresh()
+    const data = await refresh()
+    if (data && targetChatId && !data.chats.some(item => item.id === targetChatId)) {
+      chatId.value = data.room.primary_chat_id || data.chats[0]?.id || ''
+    }
+    return data
   }
 
   async function load() {
@@ -118,15 +126,28 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
       if (disposed) return
       rooms.value = data
       if (!roomId.value && data[0]) await openRoom(data[0].id)
-    } catch { if (!disposed) error.value = true }
+      else if (roomId.value && !data.some(room => room.id === roomId.value)) {
+        roomId.value = ''
+        chatId.value = ''
+        snapshot.value = null
+      }
+    } catch {
+      if (!disposed) error.value = true
+    }
   }
 
   async function mutate(operation) {
     if (busy.value || disposed) return null
     busy.value = true
     error.value = false
-    try { return await operation() } catch { if (!disposed) error.value = true; return null }
-    finally { busy.value = false }
+    try {
+      return await operation()
+    } catch {
+      if (!disposed) error.value = true
+      return null
+    } finally {
+      busy.value = false
+    }
   }
 
   async function createRoom(input) {
@@ -134,7 +155,7 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
       const result = await api.bootstrap(input)
       if (disposed) return result
       rooms.value = await api.listRooms()
-      await openRoom(result.roomId)
+      await openRoom(result.roomId, result.chatId)
       return result
     })
   }
@@ -151,42 +172,167 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
     })
   }
 
-  async function send(content) {
+  async function deleteChat(targetChatId) {
+    const targetRoom = roomId.value
+    return mutate(async () => {
+      const result = await api.deleteChat({ roomId: targetRoom, chatId: targetChatId })
+      if (!disposed && roomId.value === targetRoom) {
+        await refresh({ afterCurrent: true })
+        if (!disposed && chatId.value === targetChatId) {
+          chatId.value = snapshot.value?.room?.primary_chat_id || snapshot.value?.chats?.[0]?.id || ''
+        }
+      }
+      return result
+    })
+  }
+
+  async function deleteRoom(targetRoomId = roomId.value) {
+    return mutate(async () => {
+      const result = await api.deleteRoom({ roomId: targetRoomId })
+      if (disposed) return result
+      rooms.value = await api.listRooms()
+      if (roomId.value === targetRoomId) {
+        const next = rooms.value[0]
+        if (next) await openRoom(next.id)
+        else {
+          roomId.value = ''
+          chatId.value = ''
+          snapshot.value = null
+        }
+      }
+      return result
+    })
+  }
+
+  async function send(content, { clientId = crypto.randomUUID() } = {}) {
+    const targetRoom = roomId.value
     const targetChat = chatId.value
     return mutate(async () => {
-      const result = await api.submitMessage({ chatId: targetChat, content })
+      const result = await api.submitMessage({
+        roomId: targetRoom,
+        chatId: targetChat,
+        content,
+        clientId,
+      })
       await refresh({ afterCurrent: true })
       return result
     })
   }
 
   async function loadOlderMessages() {
-    if (loadingOlderMessages.value || !hasOlderMessages.value || !messages.value.length || typeof api.chatMessages !== 'function') return null
+    if (loadingOlderMessages.value || !hasOlderMessages.value || !messages.value.length
+        || typeof api.chatMessages !== 'function') return null
     const targetRoom = roomId.value
     const targetChat = chatId.value
-    const beforeSequence = Math.min(...messages.value.map(item => item.sequence))
+    const beforeSeq = Math.min(...messages.value.map(item => item.sequence))
     loadingOlderMessages.value = true
     try {
-      const page = await api.chatMessages({ roomId: targetRoom, chatId: targetChat, beforeSequence, limit: 100 })
+      const page = await api.chatMessages({
+        roomId: targetRoom,
+        chatId: targetChat,
+        beforeSeq,
+        limit: 100,
+        includeCaptain: true,
+      })
       if (disposed || roomId.value !== targetRoom || chatId.value !== targetChat) return null
       const merged = [...(olderMessages.value[targetChat] || []), ...(page.messages || [])]
-      olderMessages.value = { ...olderMessages.value, [targetChat]: [...new Map(merged.map(item => [item.id, item])).values()] }
-      olderMessagesAvailable.value = { ...olderMessagesAvailable.value, [targetChat]: Boolean(page.hasMore) }
+      olderMessages.value = {
+        ...olderMessages.value,
+        [targetChat]: [...new Map(merged.map(item => [item.id, item])).values()],
+      }
+      olderMessagesAvailable.value = {
+        ...olderMessagesAvailable.value,
+        [targetChat]: Boolean(page.hasMore),
+      }
       return page
-    } catch { if (!disposed) error.value = true; return null }
-    finally { loadingOlderMessages.value = false }
+    } catch {
+      if (!disposed) error.value = true
+      return null
+    } finally {
+      loadingOlderMessages.value = false
+    }
   }
 
-  async function command(input) {
-    const targetChat = chatId.value
+  async function acceptTask(taskId) {
+    const targetRoom = roomId.value
     return mutate(async () => {
-      const commandId = crypto.randomUUID()
-      const payload = { ...input, chatId: targetChat }
-      if (['set_workspace_write', 'stop_task', 'retry_task', 'handoff_task', 'update_role_prompt', 'update_role', 'create_role', 'delete_role'].includes(input.type)) payload.commandId = commandId
-      const result = await api.applyUserCommand(payload)
+      const result = await api.acceptTask({
+        roomId: targetRoom,
+        taskId,
+        commandId: crypto.randomUUID(),
+      })
       await refresh({ afterCurrent: true })
       return result
     })
+  }
+
+  async function stopReply(replyId) {
+    const targetRoom = roomId.value
+    return mutate(async () => {
+      const result = await api.stopReply({ roomId: targetRoom, replyId })
+      await refresh({ afterCurrent: true })
+      return result
+    })
+  }
+
+  async function answerAttention(attentionId, resolution) {
+    const targetRoom = roomId.value
+    const targetChat = chatId.value
+    return mutate(async () => {
+      const result = await api.answerAttention({
+        roomId: targetRoom,
+        chatId: targetChat,
+        attentionId,
+        resolution,
+        commandId: crypto.randomUUID(),
+      })
+      await refresh({ afterCurrent: true })
+      return result
+    })
+  }
+
+  async function setWriteAuthorized(authorized) {
+    const targetRoom = roomId.value
+    return mutate(async () => {
+      const result = await api.setWriteAuthorized({ roomId: targetRoom, authorized: authorized === true })
+      await refresh({ afterCurrent: true })
+      return result
+    })
+  }
+
+  async function createRole(input) {
+    const targetRoom = roomId.value
+    const targetChat = chatId.value
+    return mutate(async () => {
+      const result = await api.createRole({ roomId: targetRoom, chatId: targetChat, ...input })
+      await refresh({ afterCurrent: true })
+      return result
+    })
+  }
+
+  async function updateRole(roleId, input) {
+    const targetRoom = roomId.value
+    return mutate(async () => {
+      const result = await api.updateRole({ roomId: targetRoom, roleId, ...input })
+      await refresh({ afterCurrent: true })
+      return result
+    })
+  }
+
+  async function deleteRole(roleId) {
+    const targetRoom = roomId.value
+    return mutate(async () => {
+      const result = await api.deleteRole({ roomId: targetRoom, roleId })
+      await refresh({ afterCurrent: true })
+      return result
+    })
+  }
+
+  async function runtimeEvents({ runId = null, limit = 500 } = {}) {
+    const targetRoom = roomId.value
+    const targetChat = chatId.value
+    if (!targetRoom || !targetChat) return []
+    return api.runtimeEvents({ roomId: targetRoom, chatId: targetChat, runId, limit })
   }
 
   onScopeDispose(() => {
@@ -195,8 +341,44 @@ export function useRoomWorkspace({ api, pollMs = 1500 } = {}) {
     clearTimeout(timer)
     clearTimeout(changedTimer)
     unsubscribeChanges?.()
-    unsubscribeAssignmentEvents?.()
   })
-  return { rooms, snapshot, roomId, chatId, chat, tasks, assignments, roles, messages, reports, attentions, staleAssignments, liveAssignments,
-    hasOlderMessages, loadingOlderMessages, busy, error, load, refresh, openRoom, createRoom, createChat, send, loadOlderMessages, command }
+
+  return {
+    rooms,
+    roomsById,
+    snapshot,
+    roomId,
+    chatId,
+    chat,
+    tasks,
+    roles,
+    captainAssignments,
+    runs,
+    reports,
+    reviews,
+    attentions,
+    messages,
+    hasOlderMessages,
+    loadingOlderMessages,
+    busy,
+    error,
+    writeAuthorized,
+    load,
+    refresh,
+    openRoom,
+    createRoom,
+    createChat,
+    deleteChat,
+    deleteRoom,
+    send,
+    loadOlderMessages,
+    acceptTask,
+    stopReply,
+    answerAttention,
+    setWriteAuthorized,
+    createRole,
+    updateRole,
+    deleteRole,
+    runtimeEvents,
+  }
 }

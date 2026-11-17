@@ -6,6 +6,7 @@
  * never sees the workspace path, session refs, PIDs, or raw runtime activity;
  * read-model DTOs are display-safe by construction.
  */
+const crypto = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
 
@@ -307,6 +308,209 @@ function createRoomHost({
     return { deleted: true, chatId: chat.id }
   }
 
+  function deleteRoom(input = {}) {
+    const room = requireRoom(input.roomId)
+    const busyReply = roomDb.database.prepare(`
+      SELECT COUNT(*) AS n FROM messages m
+      JOIN chats c ON c.id = m.chat_id
+      WHERE c.room_id = ? AND m.author_type = 'agent'
+        AND m.status IN ('queued', 'working', 'waiting_for_input', 'stopping')
+    `).get(room.id).n
+    const busyRun = roomDb.database.prepare(`
+      SELECT COUNT(*) AS n FROM task_runs r
+      JOIN tasks t ON t.id = r.task_id
+      JOIN chats c ON c.id = t.chat_id
+      WHERE c.room_id = ? AND r.status IN ('queued', 'starting', 'running', 'stopping')
+    `).get(room.id).n
+    if (busyReply > 0 || busyRun > 0) throw hostError('ROOM_ROOM_BUSY')
+    roomDb.database.prepare('DELETE FROM rooms WHERE id = ?').run(room.id)
+    return { deleted: true, roomId: room.id }
+  }
+
+  function roleBusy(roleId) {
+    const reply = roomDb.database.prepare(`
+      SELECT COUNT(*) AS n FROM messages
+      WHERE author_id = ? AND author_type = 'agent'
+        AND status IN ('queued', 'working', 'waiting_for_input', 'stopping')
+    `).get(roleId).n
+    const run = roomDb.database.prepare(`
+      SELECT COUNT(*) AS n FROM task_runs
+      WHERE role_id = ? AND status IN ('queued', 'starting', 'running', 'stopping')
+    `).get(roleId).n
+    return reply > 0 || run > 0
+  }
+
+  function roleContext(input) {
+    const room = requireRoom(input.roomId)
+    const role = repository.getRole(cleanText(input.roleId, 120, 'roleId'))
+    if (!role) throw hostError('ROOM_ROLE_NOT_FOUND')
+    const chat = requireChat(role.chatId, room.id)
+    return { room, role, chat }
+  }
+
+  function createRole(input = {}) {
+    const room = requireRoom(input.roomId)
+    const chat = requireChat(input.chatId, room.id)
+    if (typeof input.displayName !== 'string' || !input.displayName.trim()) {
+      throw hostError('ROOM_ROLE_NAME_REQUIRED')
+    }
+    if (!room.providers.includes(input.provider)) throw hostError('ROOM_ROLE_PROVIDER_NOT_ALLOWED')
+    if (input.isCaptain === true) {
+      const captain = roomDb.database.prepare(
+        "SELECT id FROM chat_roles WHERE chat_id = ? AND is_captain = 1 AND status = 'active'",
+      ).get(chat.id)
+      if (captain) throw hostError('ROOM_ROLE_CAPTAIN_CONFLICT')
+    }
+    return roomDb.withTransaction(() => {
+      const roleId = repository.createRole({
+        chatId: chat.id,
+        displayName: input.displayName.trim(),
+        provider: input.provider,
+        prompt: typeof input.prompt === 'string' ? input.prompt.slice(0, 100_000) : '',
+        isCaptain: input.isCaptain === true,
+        nativePermission: input.nativePermission === undefined
+          ? defaultNativePermission(input.provider)
+          : cleanText(input.nativePermission, 80, 'nativePermission'),
+        capabilities: stringList(input.capabilities, 16, 'capabilities'),
+        model: input.model === undefined || input.model === null
+          ? null
+          : cleanText(input.model, 120, 'model'),
+      })
+      repository.addParticipant({ chatId: chat.id, roleId })
+      return { roomId: room.id, chatId: chat.id, roleId }
+    })
+  }
+
+  function updateRole(input = {}) {
+    const { room, role, chat } = roleContext(input)
+    if (roleBusy(role.id)) throw hostError('ROOM_ROLE_BUSY')
+    if (input.provider !== undefined && !room.providers.includes(input.provider)) {
+      throw hostError('ROOM_ROLE_PROVIDER_NOT_ALLOWED')
+    }
+    if (input.isCaptain === true && role.isCaptain !== true) {
+      const captain = roomDb.database.prepare(
+        "SELECT id FROM chat_roles WHERE chat_id = ? AND is_captain = 1 AND status = 'active'",
+      ).get(chat.id)
+      if (captain) throw hostError('ROOM_ROLE_CAPTAIN_CONFLICT')
+    }
+    return roomDb.withTransaction(() => {
+      const assignments = []
+      const values = []
+      if (input.displayName !== undefined) {
+        const displayName = cleanText(input.displayName, 120, 'displayName')
+        assignments.push('display_name = ?')
+        values.push(displayName)
+      }
+      if (input.provider !== undefined) {
+        assignments.push('provider = ?')
+        values.push(cleanText(input.provider, 40, 'provider'))
+      }
+      if (input.model !== undefined) {
+        assignments.push('model = ?')
+        values.push(input.model === null ? null : cleanText(input.model, 120, 'model'))
+      }
+      if (input.nativePermission !== undefined) {
+        assignments.push('native_permission = ?')
+        values.push(cleanText(input.nativePermission, 80, 'nativePermission'))
+      }
+      if (input.capabilities !== undefined) {
+        assignments.push('capabilities_json = ?')
+        values.push(JSON.stringify(stringList(input.capabilities, 16, 'capabilities')))
+      }
+      if (input.responsibilities !== undefined) {
+        const responsibilities = typeof input.responsibilities === 'string'
+          ? input.responsibilities.slice(0, 4000)
+          : ''
+        assignments.push('responsibilities = ?')
+        values.push(responsibilities)
+      }
+      if (input.isCaptain !== undefined) {
+        assignments.push('is_captain = ?')
+        values.push(input.isCaptain === true ? 1 : 0)
+      }
+      if (assignments.length > 0) {
+        assignments.push('updated_at = ?')
+        values.push(new Date(now()).toISOString(), role.id)
+        roomDb.database.prepare(
+          `UPDATE chat_roles SET ${assignments.join(', ')} WHERE id = ?`,
+        ).run(...values)
+      }
+      if (input.prompt !== undefined) {
+        if (typeof input.prompt !== 'string' || input.prompt.length > 100_000) {
+          throw hostError('ROOM_ROLE_PROMPT_REQUIRED')
+        }
+        const revision = (roomDb.database.prepare(
+          'SELECT MAX(revision) AS revision FROM role_prompt_revisions WHERE role_id = ?',
+        ).get(role.id)?.revision || 0) + 1
+        roomDb.database.prepare(`
+          INSERT INTO role_prompt_revisions (id, role_id, revision, prompt, created_by, created_at)
+          VALUES (?, ?, ?, ?, 'user', ?)
+        `).run(crypto.randomUUID(), role.id, revision, input.prompt, new Date(now()).toISOString())
+      }
+      return { roomId: room.id, chatId: chat.id, roleId: role.id }
+    })
+  }
+
+  function deleteRole(input = {}) {
+    const { room, role } = roleContext(input)
+    if (roleBusy(role.id)) throw hostError('ROOM_ROLE_BUSY')
+    const inUse = roomDb.database.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM task_lanes WHERE role_id = ?) +
+        (SELECT COUNT(*) FROM task_runs WHERE role_id = ?) +
+        (SELECT COUNT(*) FROM tasks WHERE assignee_role_id = ? OR created_by_role_id = ?) AS n
+    `).get(role.id, role.id, role.id, role.id).n
+    if (inUse > 0) throw hostError('ROOM_ROLE_IN_USE')
+    roomDb.database.prepare('DELETE FROM chat_roles WHERE id = ?').run(role.id)
+    return { deleted: true, roomId: room.id, roleId: role.id }
+  }
+
+  function answerAttention(input = {}) {
+    const room = requireRoom(input.roomId)
+    const chat = requireChat(input.chatId, room.id)
+    const attentionId = cleanText(input.attentionId, 120, 'attentionId')
+    const commandId = cleanText(input.commandId, 120, 'commandId')
+    const resolution = cleanText(input.resolution, 4000, 'resolution')
+    const attention = roomDb.database.prepare(
+      'SELECT * FROM attentions WHERE id = ?',
+    ).get(attentionId)
+    if (!attention || attention.chat_id !== chat.id) throw hostError('ROOM_ATTENTION_NOT_FOUND')
+    if (attention.status !== 'open') {
+      const existing = roomDb.database.prepare(
+        "SELECT * FROM user_commands WHERE type = 'answer_attention' AND id = ?",
+      ).get(commandId)
+      if (existing) return { attentionId, status: 'answered' }
+      throw hostError('ROOM_ATTENTION_ALREADY_ANSWERED')
+    }
+    return roomDb.withTransaction(() => {
+      roomDb.database.prepare(`
+        UPDATE attentions
+        SET status = 'answered', answered_by = 'user', resolution_json = ?
+        WHERE id = ?
+      `).run(JSON.stringify({ text: resolution }), attention.id)
+      roomDb.database.prepare(`
+        INSERT INTO user_commands (id, chat_id, type, payload_json, status, result_json, created_at)
+        VALUES (?, ?, 'answer_attention', ?, 'succeeded', ?, ?)
+      `).run(
+        commandId,
+        chat.id,
+        JSON.stringify({ attentionId, resolution }),
+        JSON.stringify({ attentionId, status: 'answered' }),
+        new Date(now()).toISOString(),
+      )
+      service.timeline.append({
+        chatId: chat.id,
+        authorType: 'system',
+        authorId: 'user',
+        kind: 'attention_resolution',
+        content: `Attention answered: ${resolution}`,
+        status: 'done',
+      })
+      service.requestLiveness()
+      return { attentionId: attention.id, status: 'answered' }
+    })
+  }
+
   function submitMessage(input = {}) {
     const chat = requireChat(input.chatId, input.roomId ? roomIdOf(input.roomId) : null)
     if (typeof input.content !== 'string' || input.content.length > MAX_MESSAGE_LENGTH) {
@@ -488,6 +692,11 @@ function createRoomHost({
     bootstrap,
     createChat,
     deleteChat,
+    deleteRoom,
+    createRole,
+    updateRole,
+    deleteRole,
+    answerAttention,
     submitMessage,
     acceptTask,
     stopReply,

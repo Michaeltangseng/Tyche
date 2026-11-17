@@ -12,6 +12,11 @@ const CHANNELS = Object.freeze({
   chatMessages: 'team-room:chat-messages',
   createChat: 'team-room:chat-create',
   deleteChat: 'team-room:chat-delete',
+  deleteRoom: 'team-room:room-delete',
+  createRole: 'team-room:role-create',
+  updateRole: 'team-room:role-update',
+  deleteRole: 'team-room:role-delete',
+  answerAttention: 'team-room:attention-answer',
   submitMessage: 'team-room:message-submit',
   acceptTask: 'team-room:accept-task',
   stopReply: 'team-room:stop-reply',
@@ -101,6 +106,85 @@ function registerTeamRoomIpc({ registerTrustedHandle, getHost }) {
     text(parsed.roomId)
     text(parsed.chatId)
     return host().deleteChat(parsed)
+  })
+
+  registerTrustedHandle(CHANNELS.deleteRoom, input => {
+    const parsed = assertInput(input, ['roomId'])
+    text(parsed.roomId)
+    return host().deleteRoom(parsed)
+  })
+
+  registerTrustedHandle(CHANNELS.createRole, input => {
+    const parsed = assertInput(input, [
+      'roomId', 'chatId', 'displayName', 'provider', 'prompt', 'isCaptain',
+      'nativePermission', 'capabilities', 'model',
+    ])
+    text(parsed.roomId)
+    text(parsed.chatId)
+    text(parsed.displayName)
+    text(parsed.provider, 40)
+    if (parsed.prompt !== undefined && (typeof parsed.prompt !== 'string' || parsed.prompt.length > 100_000)) {
+      throw ipcError('TEAM_ROOM_INPUT_INVALID')
+    }
+    if (parsed.isCaptain !== undefined && typeof parsed.isCaptain !== 'boolean') {
+      throw ipcError('TEAM_ROOM_INPUT_INVALID')
+    }
+    if (parsed.nativePermission !== undefined) text(parsed.nativePermission, 80)
+    if (parsed.capabilities !== undefined) {
+      if (!Array.isArray(parsed.capabilities) || parsed.capabilities.length > 16
+          || parsed.capabilities.some(item => typeof item !== 'string' || item.length > 200)) {
+        throw ipcError('TEAM_ROOM_INPUT_INVALID')
+      }
+    }
+    if (parsed.model !== undefined && parsed.model !== null) text(parsed.model, 120)
+    return host().createRole(parsed)
+  })
+
+  registerTrustedHandle(CHANNELS.updateRole, input => {
+    const parsed = assertInput(input, [
+      'roomId', 'roleId', 'displayName', 'provider', 'prompt', 'isCaptain',
+      'nativePermission', 'capabilities', 'model', 'responsibilities',
+    ])
+    text(parsed.roomId)
+    text(parsed.roleId)
+    if (parsed.displayName !== undefined) text(parsed.displayName)
+    if (parsed.provider !== undefined) text(parsed.provider, 40)
+    if (parsed.prompt !== undefined && (typeof parsed.prompt !== 'string' || parsed.prompt.length > 100_000)) {
+      throw ipcError('TEAM_ROOM_INPUT_INVALID')
+    }
+    if (parsed.isCaptain !== undefined && typeof parsed.isCaptain !== 'boolean') {
+      throw ipcError('TEAM_ROOM_INPUT_INVALID')
+    }
+    if (parsed.nativePermission !== undefined) text(parsed.nativePermission, 80)
+    if (parsed.capabilities !== undefined) {
+      if (!Array.isArray(parsed.capabilities) || parsed.capabilities.length > 16
+          || parsed.capabilities.some(item => typeof item !== 'string' || item.length > 200)) {
+        throw ipcError('TEAM_ROOM_INPUT_INVALID')
+      }
+    }
+    if (parsed.model !== undefined && parsed.model !== null) text(parsed.model, 120)
+    if (parsed.responsibilities !== undefined
+        && (typeof parsed.responsibilities !== 'string' || parsed.responsibilities.length > 4000)) {
+      throw ipcError('TEAM_ROOM_INPUT_INVALID')
+    }
+    return host().updateRole(parsed)
+  })
+
+  registerTrustedHandle(CHANNELS.deleteRole, input => {
+    const parsed = assertInput(input, ['roomId', 'roleId'])
+    text(parsed.roomId)
+    text(parsed.roleId)
+    return host().deleteRole(parsed)
+  })
+
+  registerTrustedHandle(CHANNELS.answerAttention, input => {
+    const parsed = assertInput(input, ['roomId', 'chatId', 'attentionId', 'resolution', 'commandId'])
+    text(parsed.roomId)
+    text(parsed.chatId)
+    text(parsed.attentionId)
+    text(parsed.resolution, 4000)
+    text(parsed.commandId)
+    return host().answerAttention(parsed)
   })
 
   registerTrustedHandle(CHANNELS.submitMessage, input => {

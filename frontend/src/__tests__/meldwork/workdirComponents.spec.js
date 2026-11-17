@@ -3,7 +3,6 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import WorkdirTree from '../../components/workdir/WorkdirTree.vue'
 import FilePreview from '../../components/workdir/FilePreview.vue'
-import FileDiff from '../../components/workdir/FileDiff.vue'
 
 const t = (key, params = {}) => (params.size == null ? key : `${key}:${params.size}`)
 
@@ -70,40 +69,3 @@ describe('FilePreview', () => {
   })
 })
 
-describe('FileDiff', () => {
-  it('shows the change label when no text diff is available', () => {
-    const controller = {
-      diff: ref({
-        path: 'a.png',
-        change: { change: 'large-file-changed', diffAvailable: false },
-      }),
-      error: ref(''),
-      t,
-      theme: 'light',
-    }
-    const wrapper = mount(FileDiff, {
-      props: { controller },
-      global: { stubs: { DiffView: true } },
-    })
-    expect(wrapper.text()).toContain('workdir.change.large-file-changed')
-    expect(wrapper.find('diff-view-stub').exists()).toBe(false)
-  })
-
-  it('renders the text diff in the shared diff view', () => {
-    const controller = {
-      diff: ref({
-        path: 'a.md',
-        change: { change: 'content-changed', diffAvailable: true },
-        diff: { text: '@@ -1 +1 @@\n-old\n+new' },
-      }),
-      error: ref(''),
-      t,
-      theme: 'light',
-    }
-    const wrapper = mount(FileDiff, {
-      props: { controller },
-      global: { stubs: { DiffView: true } },
-    })
-    expect(wrapper.find('diff-view-stub').exists()).toBe(true)
-  })
-})
