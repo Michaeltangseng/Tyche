@@ -195,7 +195,7 @@ eta 的缺口 / 不照搬：
 
 ### Slice 3：补 eta 借鉴的 UI 能力（核心已完成，`28a439d`）
 
-- 流式：RuntimeEvent → process box + tool cards + answer；30–60ms 批量；首 token skeleton；重连/interrupted 状态。
+- 流式：RuntimeEvent → process box + tool cards + answer；main 进程 40ms 批量（200 条上限）；首 token skeleton；重连/interrupted 状态。
 - Tool trace：按 command/diff/write/plan/JSON/图片/子步骤渲染；默认折叠；Transcript 抽屉；失败/权限节点。
 - TaskRun：日志 + 时间条/瀑布图；LiveRuns；attempt/previous run。
 - Context/Usage：Chat header context chip；Session 检查器（prompt/tools/分片/compaction）；Role/TaskRun/Room 三层 token·cost；provider-reported vs estimated。

@@ -63,12 +63,12 @@ function api(snapshot = data()) {
       changed = callback
       return () => { changed = null }
     }),
-    onRuntimeEvent: vi.fn(callback => {
+    onRuntimeEvents: vi.fn(callback => {
       runtimeEvent = callback
       return () => { runtimeEvent = null }
     }),
     emitChanged: () => changed?.(),
-    emitRuntimeEvent: payload => runtimeEvent?.(payload),
+    emitRuntimeEvent: payload => runtimeEvent?.([payload]),
   }
 }
 

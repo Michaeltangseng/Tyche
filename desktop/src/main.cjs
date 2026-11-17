@@ -114,6 +114,29 @@ const traceAppendedNotifier = createTraceAppendedNotifier({
   },
 })
 
+function flushTeamRoomRuntimeEvents() {
+  teamRoomEventTimer = null
+  if (!teamRoomEventBuffer.length) return
+  const batch = teamRoomEventBuffer
+  teamRoomEventBuffer = []
+  if (mainWindow && !mainWindow.isDestroyed()
+      && isTrustedLocalWebContents(mainWindow.webContents)) {
+    mainWindow.webContents.send('team-room:runtime-events', batch)
+  }
+}
+
+function queueTeamRoomRuntimeEvent(payload) {
+  teamRoomEventBuffer.push(payload)
+  if (teamRoomEventBuffer.length >= 200) {
+    if (teamRoomEventTimer) clearTimeout(teamRoomEventTimer)
+    flushTeamRoomRuntimeEvents()
+    return
+  }
+  if (teamRoomEventTimer) return
+  teamRoomEventTimer = setTimeout(flushTeamRoomRuntimeEvents, 40)
+  teamRoomEventTimer.unref?.()
+}
+
 // Faults outside a request handler are written to a small private log in
 // userData (secrets redacted, size-capped) instead of disappearing or
 // taking the app down, so instability reports have evidence.
@@ -154,6 +177,8 @@ let skillTrustStore = null
 let skillSnapshotSelections = null
 let shutdownStarted = false
 let teamRoomHost = null
+let teamRoomEventBuffer = []
+let teamRoomEventTimer = null
 const knowledgeInstallShutdown = new AbortController()
 let quitCleanup = null
 let cachedAppIcon
@@ -1218,12 +1243,7 @@ if (!hasSingleInstanceLock) {
               mainWindow.webContents.send('team-room:changed', {})
             }
           },
-          onRuntimeEvent: payload => {
-            if (mainWindow && !mainWindow.isDestroyed()
-                && isTrustedLocalWebContents(mainWindow.webContents)) {
-              mainWindow.webContents.send('team-room:runtime-event', payload)
-            }
-          },
+          onRuntimeEvent: queueTeamRoomRuntimeEvent,
         })
         await teamRoomHost.start()
       } catch (error) {

@@ -86,7 +86,7 @@ test('local preload exposes the local-only Meldwork API', async () => {
   assert.deepEqual(Object.keys(api.teamRoom).sort(), [
     'acceptTask', 'answerAttention', 'bootstrap', 'chatMessages', 'createChat', 'createRole',
     'deleteChat', 'deleteRole', 'deleteRoom', 'filesList', 'filesRead', 'listRooms',
-    'onChanged', 'onRuntimeEvent', 'runtimeEvents', 'setWriteAuthorized', 'snapshot',
+    'onChanged', 'onRuntimeEvents', 'runtimeEvents', 'setWriteAuthorized', 'snapshot',
     'stopReply', 'submitMessage', 'updateRole',
   ].sort())
   await api.teamRoom.snapshot({ roomId: 'room-1' })
@@ -212,13 +212,14 @@ test('team-room preload exposes cancellable change and runtime-event subscriptio
   assert.equal(listeners.has('team-room:changed'), false)
 
   const runtime = []
-  const unsubscribeRuntime = api.teamRoom.onRuntimeEvent(payload => runtime.push(payload))
-  const runtimeListener = listeners.get('team-room:runtime-event')
+  const unsubscribeRuntime = api.teamRoom.onRuntimeEvents(payload => runtime.push(payload))
+  const runtimeListener = listeners.get('team-room:runtime-events')
   assert.equal(typeof runtimeListener, 'function')
-  runtimeListener({}, { runId: 'run-1', event: { kind: 'text_delta', text: 'hi' } })
-  assert.deepEqual(runtime, [{ runId: 'run-1', event: { kind: 'text_delta', text: 'hi' } }])
+  const batch = [{ runId: 'run-1', event: { kind: 'text_delta', text: 'hi' } }]
+  runtimeListener({}, batch)
+  assert.deepEqual(runtime, [batch])
   unsubscribeRuntime()
-  assert.equal(listeners.has('team-room:runtime-event'), false)
+  assert.equal(listeners.has('team-room:runtime-events'), false)
 })
 
 test('local preload exposes the complete narrow Knowledge Connector lifecycle', async () => {

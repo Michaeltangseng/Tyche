@@ -167,8 +167,10 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
     }
   }
 
-  if (typeof api.onRuntimeEvent === 'function') {
-    unsubscribeRuntimeEvents = api.onRuntimeEvent(applyRuntimeEvent)
+  if (typeof api.onRuntimeEvents === 'function') {
+    unsubscribeRuntimeEvents = api.onRuntimeEvents((events) => {
+      for (const event of Array.isArray(events) ? events : [events]) applyRuntimeEvent(event)
+    })
   }
 
   async function refresh({ afterCurrent = false } = {}) {

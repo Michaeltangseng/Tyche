@@ -132,10 +132,10 @@ if (isLocalDocument) Object.assign(desktopApi, {
       ipcRenderer.on('team-room:changed', listener)
       return () => ipcRenderer.removeListener('team-room:changed', listener)
     },
-    onRuntimeEvent: callback => {
+    onRuntimeEvents: callback => {
       const listener = (_event, payload) => callback(payload)
-      ipcRenderer.on('team-room:runtime-event', listener)
-      return () => ipcRenderer.removeListener('team-room:runtime-event', listener)
+      ipcRenderer.on('team-room:runtime-events', listener)
+      return () => ipcRenderer.removeListener('team-room:runtime-events', listener)
     },
   }),
   trace: Object.freeze({
