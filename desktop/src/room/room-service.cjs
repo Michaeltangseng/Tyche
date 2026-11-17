@@ -15,6 +15,9 @@
  * session. Hard-crash cleanup of OAR-spawned processes is still a separate
  * production item.
  */
+const fs = require('node:fs')
+const path = require('node:path')
+
 const { createTimeline } = require('./timeline.cjs')
 const { createSessionStore } = require('./session-store.cjs')
 const { createOutbox } = require('./effects.cjs')
@@ -25,6 +28,7 @@ const { createCaptainReview } = require('./captain-review.cjs')
 const { createSupervisor } = require('./supervisor.cjs')
 const { recoverOnStart } = require('./recovery.cjs')
 const { createRuntimeEvents } = require('./runtime-events.cjs')
+const { sweepRuntimeProcesses } = require('./runtime-processes.cjs')
 const { createToolDispatcher } = require('./tools/dispatcher.cjs')
 const { registerMentionTool } = require('./tools/mention.cjs')
 const { registerReadChatTool } = require('./tools/read.cjs')
@@ -48,6 +52,8 @@ function createRoomService({
   now = () => Date.now(),
   onEvent = () => {},
   onTaskSettled: onTaskSettledEvent = null,
+  runtimeWrapperPath = null,
+  runtimeStateDir = null,
 } = {}) {
   if (!roomDb || !repository) throw new TypeError('ROOM_SERVICE_DEPENDENCIES_REQUIRED')
   const { database } = roomDb
@@ -56,6 +62,14 @@ function createRoomService({
   const outboxStore = outbox ?? createOutbox({ roomDb, repository })
   const toolDispatcher = dispatcher ?? createToolDispatcher({ roomDb, repository })
   const runtimeEvents = createRuntimeEvents({ roomDb, now })
+  const stateDirectory = runtimeStateDir
+    ?? (runtimeWrapperPath ? path.join(path.dirname(roomDb.databasePath), 'runtime') : null)
+  if (stateDirectory) {
+    try {
+      fs.mkdirSync(stateDirectory, { recursive: true, mode: 0o700 })
+      fs.chmodSync(stateDirectory, 0o700)
+    } catch { /* the wrapper and sweep treat an unusable state dir as no records */ }
+  }
 
   function recordRuntimeEvent(payload) {
     // Text/reasoning deltas are already on the reply row; keep the trace small.
@@ -156,12 +170,22 @@ function createRoomService({
       settlement,
       onTaskSettled,
       onEvent: recordRuntimeEvent,
+      runtimeWrapperPath,
+      runtimeStateDir: stateDirectory,
       ...adapterOptions,
     })
   }
   if (!runtimeAdapter || typeof runtimeAdapter.start !== 'function') {
     throw new Error('ROOM_RUNTIME_ADAPTER_REQUIRED')
   }
+
+  async function sweepRuntimeProcessesNow() {
+    if (!stateDirectory) return { killed: 0, removed: 0, skipped: 0 }
+    return await sweepRuntimeProcesses({ directory: stateDirectory })
+  }
+  const startupSweep = stateDirectory
+    ? sweepRuntimeProcessesNow().catch(error => ({ error: String(error?.message ?? error) }))
+    : Promise.resolve(null)
 
   const recovery = recoverOnOpen
     ? recoverOnStart({ roomDb, repository, now })
@@ -272,7 +296,11 @@ function createRoomService({
     unsubscribeCommit = null
     supervisor?.stop()
     try { await livenessRun } catch { /* shutdown is best effort */ }
+    try { await startupSweep } catch { /* shutdown is best effort */ }
     try { await runtimeAdapter.disposeAll?.() } catch { /* shutdown is best effort */ }
+    // OAR's launcher may already have exited while its process group survived;
+    // the sweep verifies the recorded identity and stops the group.
+    try { await sweepRuntimeProcessesNow() } catch { /* shutdown is best effort */ }
   }
 
   return {
@@ -289,6 +317,9 @@ function createRoomService({
     supervisor,
     adapter: runtimeAdapter,
     runtimeEvents,
+    runtimeStateDir: stateDirectory,
+    startupSweep,
+    sweepRuntimeProcesses: sweepRuntimeProcessesNow,
     recovery,
     submitUserMessage,
     startQueuedReplies,

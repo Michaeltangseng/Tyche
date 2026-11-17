@@ -60,6 +60,7 @@ async function main() {
   }
   let roomDb = null
   let service = null
+  let runtimeStateDir = null
   try {
     const env = {
       ...process.env,
@@ -74,6 +75,9 @@ async function main() {
     const executable = await resolveExecutable(provider, { env })
     if (!executable) throw new Error('OAR_SMOKE_PROVIDER_NOT_INSTALLED')
     result.executable = executable
+    runtimeStateDir = path.join(root, 'runtime')
+    const runtimeWrapperPath = path.join(__dirname, '..', 'src', 'room', 'meldwork-runtime-wrapper.sh')
+    result.runtimeWrapperPath = runtimeWrapperPath
 
     roomDb = openRoomDatabase({ directory: path.join(root, 'room') })
     const repository = createRoomRepository(roomDb)
@@ -110,11 +114,14 @@ async function main() {
         turnTimeoutMs: 8 * 60 * 1000,
       }),
       livenessDebounceMs: 150,
+      runtimeWrapperPath,
+      runtimeStateDir,
       onTaskSettled: info => {
         result.taskSettlement = info
         resolveTaskSettled(info)
       },
     })
+    result.startupSweep = await service.startupSweep
 
     const userMessage = `@Captain Assign Worker (role id ${workerRoleId}) to create a task. `
       + `Call assign_in_group with text: "Create a task with title OAR smoke task, description Confirm the OAR engine loop, acceptance finish_task called. Use the create_task tool." `
@@ -174,6 +181,9 @@ async function main() {
 
     await service.waitForChatIdle({ chatId, timeoutMs: 8 * 60 * 1000 })
     result.activityAfterChat = service.timeline.activitySeq(chatId)
+    result.runtimePidFilesBeforeClose = runtimeStateDir && fs.existsSync(runtimeStateDir)
+      ? fs.readdirSync(runtimeStateDir).filter(name => name.endsWith('.pid')).length
+      : 0
 
     const task = roomDb.database.prepare('SELECT * FROM tasks WHERE id = ?').get(taskRow.id)
     const run = roomDb.database.prepare('SELECT * FROM task_runs WHERE id = ?').get(result.runId)
@@ -193,7 +203,6 @@ async function main() {
       ORDER BY created_at ASC, rowid ASC
     `).all()
     result.toolCalls = toolCalls
-    const succeeded = name => toolCalls.some(call => call.tool_name === name && call.status === 'succeeded')
 
     const workerChatRef = roomDb.database.prepare(`
       SELECT native_session_ref FROM sessions
@@ -224,28 +233,39 @@ async function main() {
     )
     result.taskSessionSeparate = Boolean(workerChatRef && taskSessionRef && workerChatRef !== taskSessionRef)
 
-    result.ok = result.engineDriven === true
-      && result.serviceDriven === true
-      && result.sawReview === true
-      && result.taskStatus === 'in_review'
-      && result.runStatus === 'completed'
-      && result.reportKind === 'ready'
-      && result.reviewKinds.includes('assignment_settled')
-      && result.activityStable === true
-      && result.reviewReplyStatus === 'done'
-      && result.reviewReplyAudience === 'captain'
-      && result.reviewReplyFlag === true
-      && result.captainSessionStable === true
-      && result.taskSessionSeparate === true
-      && succeeded('assign_in_group')
-      && succeeded('create_task')
-      && succeeded('finish_task')
   } catch (error) {
     result.error = String(error?.code || error?.message || error)
   } finally {
     try { await service?.close() } catch { /* best effort */ }
+    try {
+      result.runtimePidFilesAfterClose = runtimeStateDir && fs.existsSync(runtimeStateDir)
+        ? fs.readdirSync(runtimeStateDir).filter(name => name.endsWith('.pid')).length
+        : 0
+    } catch {
+      result.runtimePidFilesAfterClose = null
+    }
     try { roomDb?.close() } catch { /* best effort */ }
   }
+  const succeeded = name => Array.isArray(result.toolCalls)
+    && result.toolCalls.some(call => call.tool_name === name && call.status === 'succeeded')
+  result.ok = result.engineDriven === true
+    && result.serviceDriven === true
+    && result.sawReview === true
+    && result.taskStatus === 'in_review'
+    && result.runStatus === 'completed'
+    && result.reportKind === 'ready'
+    && Array.isArray(result.reviewKinds) && result.reviewKinds.includes('assignment_settled')
+    && result.activityStable === true
+    && result.reviewReplyStatus === 'done'
+    && result.reviewReplyAudience === 'captain'
+    && result.reviewReplyFlag === true
+    && result.captainSessionStable === true
+    && result.taskSessionSeparate === true
+    && result.runtimePidFilesBeforeClose > 0
+    && result.runtimePidFilesAfterClose === 0
+    && succeeded('assign_in_group')
+    && succeeded('create_task')
+    && succeeded('finish_task')
   fs.writeFileSync(resultPath, JSON.stringify(result, null, 2), { mode: 0o600 })
   console.log(JSON.stringify({ stage: 'complete', resultPath, ...result }))
   if (!result.ok) process.exitCode = 1

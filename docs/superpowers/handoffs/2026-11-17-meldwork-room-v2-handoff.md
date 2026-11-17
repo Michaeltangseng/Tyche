@@ -18,7 +18,7 @@
 
 | 项目 | 结果 |
 | --- | --- |
-| `desktop/test/room` 18 个测试文件 | **57 tests / 57 pass / 0 fail** |
+| `desktop/test/room` 19 个测试文件 | **59 tests / 59 pass / 0 fail** |
 | Claude Code resume proof | `resumed: true`, `remembered: true`, session ref 稳定 |
 | Codex resume proof | `resumed: true`, `remembered: true`, session ref 稳定 |
 | MCP tool loop proof | `create_task` / `finish_task` / `mention` list + call 成功，`ok: true` |
@@ -61,6 +61,8 @@ desktop/src/room/
   runtime-adapter.cjs          OAR runtime adapter：per-run MCP、dispatcher 绑定、YOLO、NO_PROXY、Task 结算
   room-service.cjs             domain/tools/adapter/supervisor/recovery 装配、liveness、disposeAll
   runtime-events.cjs           bounded runtime_events（schema v3）：tool/turn/usage/failure/exit
+  runtime-processes.cjs        wrapper PID 记录、startup/close sweep（POSIX）
+  meldwork-runtime-wrapper.sh  OAR_*_BIN wrapper：exec 前写 <pid>\t<ps lstart>
   tools/
     dispatcher.cjs             register/bindRun/invoke、callId 幂等、args_hash 校验、readOnly 审计
     mcp-server.cjs             Streamable HTTP MCP server、per-run bearer token、callId metadata
@@ -95,6 +97,7 @@ desktop/scripts/
 15. **Room service / liveness**：`room-service.cjs` 装配 domain、tools、adapter、supervisor、recovery；domain commit 150ms debounce 启动 queued replies + pump runs；`startQueuedReplies` 按角色串行；`close()` 停 timer、`disposeAll` adapter。
 16. **Runtime events**：schema v3 `runtime_events`；OAR 非增量事件（tool/turn/usage/failure/exit）按 run/chat/task 持久化，payload 16KB 截断；文本 delta 留在 reply 行；trace 写失败不影响 run。
 17. **Deferred minors（三项）**：Task number 按 Room 分配；`progress` 报告映射 `in_progress`；`accept_task` 校验最新 required run 的 ready report 和 required artifacts。
+18. **硬崩进程治理（POSIX）**：runtime wrapper 在 `exec` 前写 `<pid>\t<ps lstart>`；service 启动/close sweep 校验 start time、杀进程组、清理记录；Claude/Codex smoke 均 beforeClose=4、afterClose=0。Windows/main wiring 未做。
 
 ## 必须守住的语义
 
@@ -138,7 +141,7 @@ desktop/scripts/
 3. `engine.startReply` 与 Task `pump` 通过 adapter 调用真实 CLI；
 4. 用真实 CLI 重跑 engine 驱动的 seam，替换 marker fallback。
 
-**POC 结果与剩余项（2026-11-17）**：真实 Claude/Codex 均通过（service-driven）；`room-service` 负责 liveness（domain commit 150ms debounce 启动 queued replies + pump runs）、supervisor review、recovery 和 `close()` disposeAll；`startQueuedReplies` 按角色串行；OAR 非增量事件已持久化到 `runtime_events`（schema v3）。仍未生产化：OAR 进程硬崩孤儿（不经过 `managed-spawn`/`process-registry`）；Trace UI/保留策略；非 OAR provider 仍走旧层；Electron 43/Node 24、asar/打包、全量测试未验证。
+**POC 结果与剩余项（2026-11-17）**：真实 Claude/Codex 均通过（service-driven）；`room-service` 负责 liveness（domain commit 150ms debounce 启动 queued replies + pump runs）、supervisor review、recovery 和 `close()` disposeAll；`startQueuedReplies` 按角色串行；OAR 非增量事件已持久化到 `runtime_events`（schema v3）；OAR 硬崩进程在 POSIX 由 runtime wrapper + start-time sweep 覆盖（Windows/main wiring 待做）。仍未生产化：Trace UI/保留策略；非 OAR provider 仍走旧层；Electron 43/Node 24、asar/打包、全量测试未验证。
 
 ### Ruling 2：领域幂等仍不完整
 
@@ -172,14 +175,14 @@ dispatcher 的 `callId` 幂等只覆盖“客户端复用 callId”的情况。`
 ```bash
 cd desktop
 
-# 小范围 room 测试（当前 57/57）
+# 小范围 room 测试（当前 59/59）
 node --test test/room/db.test.cjs test/room/repository.test.cjs test/room/timeline.test.cjs \
   test/room/session-store.test.cjs test/room/routing.test.cjs test/room/briefing.test.cjs \
   test/room/effects.test.cjs test/room/engine.test.cjs test/room/dispatcher.test.cjs \
   test/room/mcp-server.test.cjs test/room/mention.test.cjs test/room/read.test.cjs \
   test/room/task-queue.test.cjs test/room/settlement.test.cjs \
   test/room/captain-review.test.cjs test/room/recovery.test.cjs \
-  test/room/room-service.test.cjs test/room/runtime-events.test.cjs
+  test/room/room-service.test.cjs test/room/runtime-events.test.cjs test/room/runtime-processes.test.cjs
 ```
 
 真实证明（需要本机已安装并登录对应 CLI）：

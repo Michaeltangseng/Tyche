@@ -69,6 +69,8 @@ function createOarRuntimeAdapter({
   loadOar = () => import('@botiverse/oar'),
   onTaskSettled = () => {},
   onEvent: onTaskEvent = null,
+  runtimeWrapperPath = null,
+  runtimeStateDir = null,
   now = () => Date.now(),
   turnTimeoutMs = 10 * 60 * 1000,
   debug = (...args) => {
@@ -111,7 +113,7 @@ function createOarRuntimeAdapter({
     }
   }
 
-  async function installationFor(provider) {
+  async function installationFor(provider, runId) {
     if (!SUPPORTED_PROVIDERS.has(provider)) {
       throw adapterError('ROOM_RUNTIME_UNSUPPORTED', `room runtime does not support provider ${JSON.stringify(provider)}`)
     }
@@ -121,19 +123,30 @@ function createOarRuntimeAdapter({
       throw adapterError('ROOM_RUNTIME_INSTALLATION_UNAVAILABLE', `${provider} has no installation probe`)
     }
     const executable = await resolveExecutable(provider)
-    const sessionEnv = {
+    const useWrapper = Boolean(runtimeWrapperPath && runtimeStateDir && executable)
+    const command = useWrapper ? runtimeWrapperPath : executable
+    const baseEnv = {
       ...env,
-      ...(executable ? { [`OAR_${provider.toUpperCase()}_BIN`]: executable } : {}),
+      ...(command ? { [`OAR_${provider.toUpperCase()}_BIN`]: command } : {}),
+      ...(useWrapper ? {
+        MELDWORK_RUNTIME_BIN: executable,
+        MELDWORK_ROOM_STATE_DIR: runtimeStateDir,
+      } : {}),
       NO_PROXY: LOOPBACK_NO_PROXY,
       no_proxy: LOOPBACK_NO_PROXY,
     }
-    const installation = await runtime.installation({ env: sessionEnv })
+    // The installation probe runs the wrapper without a run id, so it does not
+    // write a PID record; the actual session does.
+    const installation = await runtime.installation({ env: baseEnv })
     if (!installation || installation.kind !== 'available') {
       throw adapterError(
         'ROOM_RUNTIME_UNAVAILABLE',
         `${provider} is not available: ${installation?.reason ?? installation?.kind ?? 'unknown'}`,
       )
     }
+    const sessionEnv = useWrapper && runId
+      ? { ...baseEnv, MELDWORK_ROOM_RUN_ID: runId }
+      : baseEnv
     return { runtime, installation, sessionEnv }
   }
 
@@ -187,8 +200,8 @@ function createOarRuntimeAdapter({
     }
   }
 
-  async function openSession({ provider, cwd, resume, mcpServer, appendSystemPrompt }) {
-    const { runtime, installation, sessionEnv } = await installationFor(provider)
+  async function openSession({ provider, cwd, resume, mcpServer, appendSystemPrompt, runId }) {
+    const { runtime, installation, sessionEnv } = await installationFor(provider, runId)
     const options = {
       cwd,
       ...(resume ? { resume } : {}),
@@ -410,6 +423,7 @@ function createOarRuntimeAdapter({
           resume: nativeSessionRef || undefined,
           mcpServer: mcpEntryOf(mcpServer),
           appendSystemPrompt: rolePrompt(roleId),
+          runId,
         })
         tracked = trackSignal(runId, signal)
         const turn = startTurn({ session, prompt, signal: tracked.signal, onEvent })
@@ -474,6 +488,7 @@ function createOarRuntimeAdapter({
         resume: sessionRow?.native_session_ref || undefined,
         mcpServer: mcpEntryOf(mcpServer),
         appendSystemPrompt: rolePrompt(run.roleId),
+        runId: run.id,
       })
       tracked = trackSignal(run.id, null)
       const taskEvent = typeof onTaskEvent === 'function'

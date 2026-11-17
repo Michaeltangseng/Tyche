@@ -645,7 +645,9 @@ eta 是三层，不是一层：
 - `runtime_events`（schema v3）：OAR 非增量事件按 run/chat/task 持久化，payload 16KB 截断；文本 delta 留在 reply 行。
 - 测试：18 个 room 测试文件，**57/57 pass**。
 - Deferred minors（三项）：Task number per Room；progress → in_progress；accept_task 校验最新 required run 的 ready report/required artifacts。
-- 剩余：OAR 硬崩孤儿、Trace UI/保留策略、Electron 43/打包、非 OAR provider。
+- 硬崩进程治理（POSIX）：`meldwork-runtime-wrapper.sh` 在 exec 前写 `<pid>\t<ps lstart>`；`runtime-processes.cjs` 启动/close sweep 校验 start time、杀进程组、清理记录；Claude/Codex smoke 均 beforeClose=4、afterClose=0。
+- 测试：19 个 room 测试文件，**59/59 pass**。
+- 剩余：Windows 硬崩、main wiring、Trace UI/保留策略、Electron 43/打包、非 OAR provider。
 
 ## 9. 参考文件
 
