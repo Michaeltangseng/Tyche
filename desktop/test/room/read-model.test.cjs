@@ -114,6 +114,7 @@ test('snapshot is display-safe and public by default', t => {
   assert.deepEqual(snapshot.reports[0].artifact_ids, ['artifact-1'])
   assert.equal(snapshot.attentions[0].type, 'run_failed')
   assert.equal(snapshot.reviews[0].kind, 'assignment_settled')
+  assert.equal(snapshot.reviews[0].body, undefined)
   assert.equal(snapshot.assignments[0].target_role_ids[0], context.workerRoleId)
   context.roomDb.close()
 })
@@ -123,7 +124,7 @@ test('snapshot can include captain rows and reports older pages', t => {
   const model = createRoomReadModel({ roomDb: context.roomDb })
   const all = model.snapshot({ roomId: context.roomId, messageLimit: 10, includeCaptain: true })
   assert.equal(all.messages.some(message => message.content === 'captain reply'), true)
-  assert.equal(all.messages.some(message => message.content === 'review body'), true)
+  assert.equal(all.messages.some(message => message.content === 'review body'), false)
 
   const page = model.snapshot({ roomId: context.roomId, messageLimit: 2 })
   assert.equal(page.messages.length, 2)
@@ -173,5 +174,22 @@ test('snapshot includes the room artifact ledger without absolute paths', t => {
     updated_at: at,
   }])
   assert.equal(JSON.stringify(snapshot.artifacts).includes(context.roomId), false)
+  context.roomDb.close()
+})
+
+test('display text replaces the absolute room workspace path', t => {
+  const context = setup(t)
+  context.timeline.append({
+    chatId: context.chatId,
+    authorType: 'agent',
+    authorId: context.workerRoleId,
+    content: `wrote ${context.directory}/docs/room.md`,
+    status: 'done',
+  })
+  const model = createRoomReadModel({ roomDb: context.roomDb })
+  const snapshot = model.snapshot({ roomId: context.roomId, messageLimit: 20 })
+  const message = snapshot.messages.find(item => item.content.includes('docs/room.md'))
+  assert.equal(message.content.includes(context.directory), false)
+  assert.equal(message.content, `wrote ${path.basename(context.directory)}/docs/room.md`)
   context.roomDb.close()
 })

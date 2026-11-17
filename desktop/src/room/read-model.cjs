@@ -22,6 +22,22 @@ function boundedLimit(value, fallback, max) {
   return Math.min(max, Math.floor(number))
 }
 
+function workspaceLabel(room) {
+  return room?.workspace ? (path.basename(room.workspace) || 'workspace') : 'workspace'
+}
+
+/** Keep workspace paths out of display text even when an Agent quotes them. */
+function scrubWorkspace(value, room) {
+  if (typeof value !== 'string' || !room?.workspace) return value
+  return value.split(room.workspace).join(workspaceLabel(room))
+}
+
+function scrubEvidence(values, room) {
+  return Array.isArray(values)
+    ? values.map(value => scrubWorkspace(value, room))
+    : []
+}
+
 function roomView(row, chats) {
   return {
     id: row.id,
@@ -69,7 +85,7 @@ function roleView(row, prompt) {
   }
 }
 
-function safeMessageData(data) {
+function safeMessageData(data, room = null) {
   if (data === null || typeof data !== 'object' || Array.isArray(data)) return null
   const safe = {}
   if (data.reviewReply === true) safe.reviewReply = true
@@ -77,11 +93,13 @@ function safeMessageData(data) {
   if (Number.isInteger(data.checkpoint)) safe.checkpoint = data.checkpoint
   if (typeof data.reportId === 'string') safe.reportId = data.reportId
   if (typeof data.reportKind === 'string') safe.reportKind = data.reportKind
-  if (typeof data.thinking === 'string' && data.thinking.length > 0) safe.thinking = data.thinking
+  if (typeof data.thinking === 'string' && data.thinking.length > 0) {
+    safe.thinking = scrubWorkspace(data.thinking, room)
+  }
   return Object.keys(safe).length > 0 ? safe : null
 }
 
-function messageView(row, roleNames) {
+function messageView(row, roleNames, room) {
   const authorName = row.author_type === 'user'
     ? 'user'
     : row.author_type === 'system'
@@ -98,28 +116,28 @@ function messageView(row, roleNames) {
     author_id: row.author_id,
     author_name: authorName,
     kind: row.kind,
-    content: row.content,
+    content: scrubWorkspace(row.content, room),
     mentions: parseJson(row.mentions_json, []),
     reply_to: row.reply_to,
     task_id: row.task_id,
     root_message_id: row.root_message_id,
     captain_assignment_id: row.captain_assignment_id,
     status: row.status,
-    data: safeMessageData(parseJson(row.data_json, null)),
+    data: safeMessageData(parseJson(row.data_json, null), room),
     created_at: row.created_at,
     edited_at: row.edited_at,
     deleted_at: row.deleted_at ?? null,
   }
 }
 
-function taskView(row, roleNames) {
+function taskView(row, roleNames, room = null) {
   return {
     id: row.id,
     chat_id: row.chat_id,
     number: row.number,
-    title: row.title,
-    description: row.description,
-    acceptance: row.acceptance,
+    title: scrubWorkspace(row.title, room),
+    description: scrubWorkspace(row.description, room),
+    acceptance: scrubWorkspace(row.acceptance, room),
     kind: row.kind,
     status: row.status,
     created_by_role_id: row.created_by_role_id,
@@ -155,15 +173,15 @@ function runView(row) {
   }
 }
 
-function reportView(row) {
+function reportView(row, room = null) {
   return {
     id: row.id,
     task_id: row.task_id,
     run_id: row.run_id,
     lane_id: row.lane_id,
     kind: row.kind,
-    summary: row.summary,
-    evidence: parseJson(row.evidence_json, []),
+    summary: scrubWorkspace(row.summary, room),
+    evidence: scrubEvidence(parseJson(row.evidence_json, []), room),
     artifact_ids: parseJson(row.artifact_ids_json, []),
     next_request: parseJson(row.next_request_json, null),
     attention_id: row.attention_id,
@@ -171,13 +189,13 @@ function reportView(row) {
   }
 }
 
-function attentionView(row) {
+function attentionView(row, room = null) {
   return {
     id: row.id,
     chat_id: row.chat_id,
     task_id: row.task_id,
     type: row.type,
-    question: row.question,
+    question: scrubWorkspace(row.question, room),
     options: parseJson(row.options_json, []),
     status: row.status,
     requested_by: row.requested_by,
@@ -189,16 +207,13 @@ function attentionView(row) {
 }
 
 function reviewView(row) {
+  // Review bodies are Captain-only observations and contain internal ids.
+  // The UI shows kind/status/timestamps; the Captain reads the body itself.
   return {
     id: row.id,
     chat_id: row.chat_id,
-    assignment_id: row.assignment_id,
     kind: row.kind,
-    checkpoint_seq: row.checkpoint_seq,
     status: row.status,
-    body: row.body,
-    data: parseJson(row.data_json, null),
-    reply_id: row.reply_id,
     created_at: row.created_at,
     updated_at: row.updated_at,
   }
@@ -269,7 +284,8 @@ function createRoomReadModel({ roomDb } = {}) {
   }
 
   function messageRows(chatId, { limit, beforeSeq = null, includeCaptain = false } = {}) {
-    const clauses = ['chat_id = ?']
+    // Captain review system rows are internal observations, not chat messages.
+    const clauses = ["chat_id = ?", "kind != 'captain_review'"]
     const parameters = [chatId]
     if (!includeCaptain) clauses.push("audience = 'chat'")
     if (Number.isInteger(beforeSeq) && beforeSeq > 0) {
@@ -306,7 +322,7 @@ function createRoomReadModel({ roomDb } = {}) {
     const older = []
     for (const chat of chats) {
       const page = messageRows(chat.id, { limit, includeCaptain })
-      messages.push(...page.rows.map(row => messageView(row, roleNames)))
+      messages.push(...page.rows.map(row => messageView(row, roleNames, room)))
       if (page.hasMore) older.push(chat.id)
     }
 
@@ -363,10 +379,10 @@ function createRoomReadModel({ roomDb } = {}) {
       roles: roles.map(role => roleView(role, rolePrompt(role.id))),
       messages,
       messages_have_older: older,
-      tasks: tasks.map(task => taskView(task, roleNames)),
+      tasks: tasks.map(task => taskView(task, roleNames, room)),
       runs: runs.map(runView),
-      reports: reports.map(reportView),
-      attentions: attentions.map(attentionView),
+      reports: reports.map(report => reportView(report, room)),
+      attentions: attentions.map(attention => attentionView(attention, room)),
       reviews: reviews.map(reviewView),
       assignments: assignments.map(assignmentView),
       artifacts: artifacts.map(artifactView),
@@ -377,6 +393,7 @@ function createRoomReadModel({ roomDb } = {}) {
     if (typeof chatId !== 'string' || chatId.length === 0) throw new TypeError('ROOM_READ_MODEL_CHAT_REQUIRED')
     const chat = database.prepare('SELECT * FROM chats WHERE id = ?').get(chatId)
     if (!chat) throw new Error('ROOM_CHAT_NOT_FOUND')
+    const room = roomRow(chat.room_id)
     const roomRoles = roleRows(chat.room_id)
     const roleNames = roleNameMap(roomRoles)
     const page = messageRows(chatId, {
@@ -385,7 +402,7 @@ function createRoomReadModel({ roomDb } = {}) {
       includeCaptain,
     })
     return {
-      messages: page.rows.map(row => messageView(row, roleNames)),
+      messages: page.rows.map(row => messageView(row, roleNames, room)),
       hasMore: page.hasMore,
     }
   }

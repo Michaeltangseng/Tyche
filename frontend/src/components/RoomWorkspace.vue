@@ -243,7 +243,6 @@
               <strong>{{ reviewKindLabel(review.kind) }}</strong>
               <span :data-status="review.status">{{ statusLabel(review.status) }}</span>
             </header>
-            <p>{{ review.body }}</p>
             <time class="room-muted">{{ formatTime(review.created_at) }}</time>
           </article>
         </template>
@@ -607,9 +606,16 @@ const entries = computed(() => {
       report,
     })
   }
-  return list.sort((left, right) => (
-    String(left.createdAt).localeCompare(String(right.createdAt)) || left.key.localeCompare(right.key)
-  ))
+  return list.sort((left, right) => {
+    const byTime = String(left.createdAt).localeCompare(String(right.createdAt))
+    if (byTime !== 0) return byTime
+    // Same-millisecond rows must keep ledger order, never random UUID order.
+    if (left.kind !== right.kind) return left.kind === 'message' ? -1 : 1
+    const leftSequence = left.message?.sequence ?? 0
+    const rightSequence = right.message?.sequence ?? 0
+    if (leftSequence !== rightSequence) return leftSequence - rightSequence
+    return left.key.localeCompare(right.key)
+  })
 })
 
 const usageLabel = computed(() => {

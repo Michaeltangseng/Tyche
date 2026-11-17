@@ -3,7 +3,7 @@
     <summary>
       <span>{{ t('room.trace') }}</span>
       <span v-if="toolCount" class="room-run-trace-count">{{ toolCount }}</span>
-      <span v-if="usageLabel" class="room-run-trace-count">{{ usageLabel }}</span>
+      <span v-if="usageLabel" class="room-run-trace-count">{{ t('room.usageContext') }} {{ usageLabel }}</span>
     </summary>
     <p v-if="loading" class="room-muted">{{ t('room.loadingTrace') }}</p>
     <p v-else-if="loadError" class="room-error" role="alert">
@@ -20,7 +20,7 @@
     </p>
     <article v-for="tool in tools" :key="tool.callId" class="room-tool-card" :data-status="tool.status">
       <header>
-        <strong>{{ tool.name }}</strong>
+        <strong>{{ toolLabel(tool.name) }}</strong>
         <span>{{ statusLabel(tool.status) }}</span>
       </header>
       <details v-if="tool.input">
@@ -95,6 +95,12 @@ function statusLabel(status) {
   const key = `room.status.${status || 'unknown'}`
   const label = t(key)
   return label === key ? String(status || '') : label
+}
+
+function toolLabel(name) {
+  return String(name || 'tool')
+    .replace(/^mcp__[^_]+__/, '')
+    .replace(/^meldwork_/, '')
 }
 
 async function load() {

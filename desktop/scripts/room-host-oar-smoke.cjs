@@ -63,6 +63,7 @@ async function main() {
   try {
     await host.start()
     const nativePermission = provider === 'claude' ? 'bypassPermissions' : 'danger-full-access'
+    const useDefaultPrompts = process.argv.includes('--default-prompts')
     const created = host.bootstrap({
       name: 'Host OAR smoke',
       workspace,
@@ -72,14 +73,18 @@ async function main() {
         {
           displayName: 'Captain',
           provider,
-          prompt: 'You coordinate this room. Use assign_in_group to assign work. Keep replies short.',
+          ...(useDefaultPrompts
+            ? {}
+            : { prompt: 'You coordinate this room. Use assign_in_group to assign work. Keep replies short.' }),
           isCaptain: true,
           nativePermission,
         },
         {
           displayName: 'Worker',
           provider,
-          prompt: 'You execute assigned tasks. Use the room tools. Keep replies short.',
+          ...(useDefaultPrompts
+            ? {}
+            : { prompt: 'You execute assigned tasks. Use the room tools. Keep replies short.' }),
           nativePermission,
         },
       ],

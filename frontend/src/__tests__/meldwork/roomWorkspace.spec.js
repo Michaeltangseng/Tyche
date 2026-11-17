@@ -212,6 +212,25 @@ describe('team room workspace', () => {
     }))
   })
 
+  it('keeps same-millisecond messages in ledger sequence order', async () => {
+    const snapshot = data()
+    snapshot.messages = [
+      {
+        id: 'later', chat_id: 'chat-1', sequence: 2, author_type: 'agent', author_id: 'worker',
+        author_name: 'Writer', content: 'Second', status: 'done', created_at: '2026-11-15T10:00:00.000Z',
+      },
+      {
+        id: 'earlier', chat_id: 'chat-1', sequence: 1, author_type: 'user', author_id: 'user',
+        author_name: 'user', content: 'First', status: 'done', created_at: '2026-11-15T10:00:00.000Z',
+      },
+    ]
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+    const rows = wrapper.findAll('.room-message')
+    expect(rows[0].text()).toContain('First')
+    expect(rows[1].text()).toContain('Second')
+  })
+
   it('streams live text, tools, and context usage for a working reply', async () => {
     const snapshot = data()
     snapshot.messages = [{

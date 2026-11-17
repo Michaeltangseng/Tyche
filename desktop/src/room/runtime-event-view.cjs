@@ -31,6 +31,25 @@ function toolOutput(value, max = MAX_OUTPUT) {
   }).filter(Boolean).join('\n'), max)
 }
 
+function toolNameOf(event) {
+  return text(
+    event.toolName
+      || event.tool?.name
+      || event.name
+      || (typeof event.tool === 'string' ? event.tool : '')
+      || 'tool',
+    120,
+  )
+}
+
+const HOST_TOOLS = /(?:^|__)(assign_in_group|post_in_chat|create_task|finish_task|comment_task|mention|read_chat)$/
+
+function hostToolOutput(name, output) {
+  // Host tool results are structured domain rows. The trace should show that
+  // the tool ran, not the internal ids and message payloads it returned.
+  return HOST_TOOLS.test(name) ? '' : output
+}
+
 function safeUsage(usage) {
   if (!usage || typeof usage !== 'object' || Array.isArray(usage)) return null
   const result = {}
@@ -71,7 +90,7 @@ function safeEvent(event) {
       result.text = text(event.content?.kind === 'text' ? event.content.text : '')
       break
     case 'tool_call_started':
-      result.toolName = text(event.toolName ?? event.tool ?? 'tool', 120)
+      result.toolName = toolNameOf(event)
       if (event.callId) result.callId = text(event.callId, 160)
       result.input = text(event.input, MAX_INPUT)
       break
@@ -79,13 +98,15 @@ function safeEvent(event) {
       if (event.callId) result.callId = text(event.callId, 160)
       result.input = text(event.input, MAX_INPUT)
       break
-    case 'tool_call_ended':
+    case 'tool_call_ended': {
       if (event.callId) result.callId = text(event.callId, 160)
-      result.toolName = text(event.tool ?? event.toolName ?? 'tool', 120)
+      const name = toolNameOf(event)
+      result.toolName = name
       result.status = event.result === 'failed' ? 'failed' : 'completed'
-      result.output = toolOutput(event.content)
+      result.output = hostToolOutput(name, toolOutput(event.content, 2000))
       if (Number.isInteger(event.exitCode)) result.exitCode = event.exitCode
       break
+    }
     case 'usage': {
       const usage = safeUsage(event.usage)
       if (usage) result.usage = usage

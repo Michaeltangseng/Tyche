@@ -31,10 +31,29 @@ const ROOM_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/
 const PROVIDER = /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/
 const DEFAULT_CAPTAIN_PROMPT = [
   'You are the Captain of this chat.',
+  'Use assign_in_group to give work to other roles.',
+  'Reply directly for normal answers; use post_in_chat only for a separate public notice, without duplicating your reply.',
+  'Do not create tasks yourself; the assigned role owns its task.',
+  'Keep replies short and quote task numbers when useful.',
+].join(' ')
+const DEFAULT_WORKER_PROMPT = [
+  'You execute tasks assigned to you in this chat.',
+  'For work that changes files or needs several steps, create a task with create_task before doing it.',
+  'When the task is complete, call finish_task with status ready and a short summary.',
+  'Use comment_task for short comments on an existing task.',
+  'Keep replies short.',
+].join(' ')
+// Kept so rooms created by earlier builds repair their untouched defaults.
+const LEGACY_CAPTAIN_PROMPT = [
+  'You are the Captain of this chat.',
   'Use assign_in_group to give work to other roles, and post_in_chat for public updates.',
   'Do not create tasks yourself; the assigned role owns its task.',
   'Keep replies short and quote task numbers when useful.',
 ].join(' ')
+
+function isCaptainPrompt(value) {
+  return value === DEFAULT_CAPTAIN_PROMPT || value === LEGACY_CAPTAIN_PROMPT
+}
 
 function hostError(code, message) {
   const error = new Error(message || code)
@@ -231,9 +250,9 @@ function createRoomHost({
     const captainCount = roles.filter(role => role.isCaptain).length
     if (captainCount > 1) throw hostError('ROOM_ROLE_CAPTAIN_CONFLICT')
     if (captainCount === 0) roles[0].isCaptain = true
-    if (!roles.some(role => role.prompt)) {
-      const captain = roles.find(role => role.isCaptain)
-      if (captain) captain.prompt = DEFAULT_CAPTAIN_PROMPT
+    for (const role of roles) {
+      if (role.prompt) continue
+      role.prompt = role.isCaptain ? DEFAULT_CAPTAIN_PROMPT : DEFAULT_WORKER_PROMPT
     }
     return roomDb.withTransaction(() => {
       const roomId = repository.createRoom({
@@ -277,12 +296,17 @@ function createRoomHost({
     return roomDb.withTransaction(() => {
       const chatId = repository.createChat({ roomId: room.id, title })
       for (const role of sourceRoles) {
+        const isCaptain = role.is_captain === 1
+        let prompt = role.prompt || ''
+        if (!isCaptain && isCaptainPrompt(prompt)) prompt = DEFAULT_WORKER_PROMPT
+        else if (isCaptain && prompt === DEFAULT_WORKER_PROMPT) prompt = DEFAULT_CAPTAIN_PROMPT
+        if (!prompt) prompt = isCaptain ? DEFAULT_CAPTAIN_PROMPT : DEFAULT_WORKER_PROMPT
         const roleId = repository.createRole({
           chatId,
           displayName: role.display_name,
           provider: role.provider,
-          prompt: role.prompt || '',
-          isCaptain: role.is_captain === 1,
+          prompt,
+          isCaptain,
           nativePermission: role.native_permission,
           capabilities: JSON.parse(role.capabilities_json || '[]'),
           model: role.model,
@@ -355,6 +379,39 @@ function createRoomHost({
     return { room, role, chat }
   }
 
+  function latestPrompt(roleId) {
+    return roomDb.database.prepare(`
+      SELECT prompt FROM role_prompt_revisions
+      WHERE role_id = ? ORDER BY revision DESC, rowid DESC LIMIT 1
+    `).get(roleId)?.prompt ?? ''
+  }
+
+  function insertPromptRevision(roleId, prompt) {
+    const revision = (roomDb.database.prepare(
+      'SELECT MAX(revision) AS revision FROM role_prompt_revisions WHERE role_id = ?',
+    ).get(roleId)?.revision || 0) + 1
+    roomDb.database.prepare(`
+      INSERT INTO role_prompt_revisions (id, role_id, revision, prompt, created_by, created_at)
+      VALUES (?, ?, ?, ?, 'system', ?)
+    `).run(crypto.randomUUID(), roleId, revision, prompt, new Date(now()).toISOString())
+  }
+
+  /**
+   * Earlier builds gave every role the Captain prompt and kept it after a
+   * demotion. Repair the untouched defaults without overwriting custom prompts.
+   */
+  function repairDefaultPrompts() {
+    const roles = roomDb.database.prepare("SELECT id, is_captain FROM chat_roles WHERE status = 'active'").all()
+    for (const role of roles) {
+      const prompt = latestPrompt(role.id)
+      if (role.is_captain === 1 && (prompt === DEFAULT_WORKER_PROMPT || prompt === LEGACY_CAPTAIN_PROMPT)) {
+        insertPromptRevision(role.id, DEFAULT_CAPTAIN_PROMPT)
+      } else if (role.is_captain !== 1 && isCaptainPrompt(prompt)) {
+        insertPromptRevision(role.id, DEFAULT_WORKER_PROMPT)
+      }
+    }
+  }
+
   function createRole(input = {}) {
     const room = requireRoom(input.roomId)
     const chat = requireChat(input.chatId, room.id)
@@ -368,12 +425,15 @@ function createRoomHost({
       ).get(chat.id)
       if (captain) throw hostError('ROOM_ROLE_CAPTAIN_CONFLICT')
     }
+    const prompt = typeof input.prompt === 'string' && input.prompt.length > 0
+      ? input.prompt.slice(0, 100_000)
+      : (input.isCaptain === true ? DEFAULT_CAPTAIN_PROMPT : DEFAULT_WORKER_PROMPT)
     return roomDb.withTransaction(() => {
       const roleId = repository.createRole({
         chatId: chat.id,
         displayName: input.displayName.trim(),
         provider: input.provider,
-        prompt: typeof input.prompt === 'string' ? input.prompt.slice(0, 100_000) : '',
+        prompt,
         isCaptain: input.isCaptain === true,
         nativePermission: input.nativePermission === undefined
           ? defaultNativePermission(input.provider)
@@ -399,6 +459,13 @@ function createRoomHost({
         "SELECT id FROM chat_roles WHERE chat_id = ? AND is_captain = 1 AND status = 'active'",
       ).get(chat.id)
       if (captain) throw hostError('ROOM_ROLE_CAPTAIN_CONFLICT')
+    }
+    const currentPrompt = latestPrompt(role.id)
+    const nextCaptain = input.isCaptain === undefined ? role.isCaptain : input.isCaptain === true
+    let promptToWrite = input.prompt
+    if (promptToWrite === undefined && nextCaptain !== role.isCaptain) {
+      if (nextCaptain && currentPrompt === DEFAULT_WORKER_PROMPT) promptToWrite = DEFAULT_CAPTAIN_PROMPT
+      else if (!nextCaptain && isCaptainPrompt(currentPrompt)) promptToWrite = DEFAULT_WORKER_PROMPT
     }
     return roomDb.withTransaction(() => {
       const assignments = []
@@ -442,8 +509,8 @@ function createRoomHost({
           `UPDATE chat_roles SET ${assignments.join(', ')} WHERE id = ?`,
         ).run(...values)
       }
-      if (input.prompt !== undefined) {
-        if (typeof input.prompt !== 'string' || input.prompt.length > 100_000) {
+      if (promptToWrite !== undefined) {
+        if (typeof promptToWrite !== 'string' || promptToWrite.length > 100_000) {
           throw hostError('ROOM_ROLE_PROMPT_REQUIRED')
         }
         const revision = (roomDb.database.prepare(
@@ -452,7 +519,7 @@ function createRoomHost({
         roomDb.database.prepare(`
           INSERT INTO role_prompt_revisions (id, role_id, revision, prompt, created_by, created_at)
           VALUES (?, ?, ?, ?, 'user', ?)
-        `).run(crypto.randomUUID(), role.id, revision, input.prompt, new Date(now()).toISOString())
+        `).run(crypto.randomUUID(), role.id, revision, promptToWrite, new Date(now()).toISOString())
       }
       return { roomId: room.id, chatId: chat.id, roleId: role.id }
     })
@@ -670,6 +737,7 @@ function createRoomHost({
     if (!started) {
       started = (async () => {
         await service.startupSweep
+        try { repairDefaultPrompts() } catch { /* prompt repair is best-effort */ }
         try { service.runtimeEvents.prune() } catch { /* retention is best-effort */ }
         service.requestTick()
         service.requestLiveness()

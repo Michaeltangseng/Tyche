@@ -6,7 +6,8 @@
 
 ## 0. 前置
 
-1. 退出所有正在运行的 Meldwork / Electron 实例。
+1. 退出所有正在运行的 Meldwork / Electron 实例。  
+   旧版本创建过的 Room 会在启动时自动修正被错挂的默认 Captain/Worker 提示词；自定义提示词不会被覆盖。
 2. 启动源码版本：
    ```bash
    cd desktop
@@ -109,6 +110,7 @@
 预期：
 
 - Trace 默认折叠，展开才请求/显示；
+- host MCP 工具（assign_in_group/create_task/finish_task/post_in_chat/comment_task/mention/read_chat）只显示输入摘要，不显示内部 JSON 返回；
 - 不出现可执行文件绝对路径、session ref、PID；
 - 失败工具会显示 failed 状态（可以故意让它执行一个不存在的命令来验证）。
 

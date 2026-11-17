@@ -348,3 +348,62 @@ test('runtime events are scoped to a chat in the room', (t) => {
     /ROOM_CHAT_NOT_FOUND/,
   )
 })
+
+test('captain and worker default prompts follow the role, including demotion', (t) => {
+  const { workspace, host } = createHost(t)
+  const created = host.bootstrap({
+    name: 'Prompts',
+    workspace,
+    providers: ['codex', 'claude'],
+    roles: [
+      { displayName: 'Captain', provider: 'codex', prompt: '', isCaptain: true },
+      { displayName: 'Worker', provider: 'claude', prompt: '', isCaptain: false },
+    ],
+  })
+  let roles = host.snapshot({ roomId: created.roomId }).roles
+  const captain = roles.find(role => role.is_captain)
+  const worker = roles.find(role => !role.is_captain)
+  assert.match(captain.prompt, /Do not create tasks yourself/)
+  assert.match(worker.prompt, /create_task/)
+  assert.doesNotMatch(worker.prompt, /Do not create tasks yourself/)
+
+  host.updateRole({ roomId: created.roomId, roleId: captain.id, isCaptain: false })
+  roles = host.snapshot({ roomId: created.roomId }).roles
+  assert.match(roles.find(role => role.id === captain.id).prompt, /create_task/)
+
+  host.updateRole({ roomId: created.roomId, roleId: worker.id, isCaptain: true })
+  roles = host.snapshot({ roomId: created.roomId }).roles
+  assert.match(roles.find(role => role.id === worker.id).prompt, /Do not create tasks yourself/)
+
+  const extra = host.createRole({
+    roomId: created.roomId,
+    chatId: created.chatId,
+    displayName: 'Extra',
+    provider: 'codex',
+  })
+  const extraRole = host.snapshot({ roomId: created.roomId }).roles.find(role => role.id === extra.roleId)
+  assert.match(extraRole.prompt, /create_task/)
+})
+
+test('startup repairs the legacy captain prompt on a demoted role', async (t) => {
+  const { workspace, host } = createHost(t)
+  const legacy = [
+    'You are the Captain of this chat.',
+    'Use assign_in_group to give work to other roles, and post_in_chat for public updates.',
+    'Do not create tasks yourself; the assigned role owns its task.',
+    'Keep replies short and quote task numbers when useful.',
+  ].join(' ')
+  const created = host.bootstrap({
+    name: 'Legacy prompts',
+    workspace,
+    providers: ['codex'],
+    roles: [
+      { displayName: 'Captain', provider: 'codex', prompt: 'route', isCaptain: true },
+      { displayName: 'Legacy worker', provider: 'codex', prompt: legacy },
+    ],
+  })
+  await host.start()
+  const worker = host.snapshot({ roomId: created.roomId }).roles.find(role => role.display_name === 'Legacy worker')
+  assert.match(worker.prompt, /create_task/)
+  assert.doesNotMatch(worker.prompt, /Do not create tasks yourself/)
+})
