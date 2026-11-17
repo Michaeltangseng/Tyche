@@ -163,7 +163,7 @@ desktop/src/room/                 # 新 domain；不要复用 desktop/src/collab
 - `tasks`：id、chat_id、number、title、description、acceptance、kind、status（backlog/todo/in_progress/in_review/blocked/done/cancelled）、created_by_role_id、assignee_role_id、captain_assignment_id、parent_task_id、blocked_by_task_ids_json、required_artifact_ids_json、optional、source_message_ids_json、context_revision、default_write_scopes_json、created_at、updated_at。
 - `task_activities`：id、task_id、seq、kind（comment/report/status/run）、author_type、author_id、body、message_id、created_at。Task 自己的时间线；Task lane 的 `last_seq` 用它。
 - `task_lanes`：id、task_id、role_id、kind（executor/mention）、session_id、last_seq、active、created_at。一个 Task 一个执行者 lane，外加每个被 mention 的角色一个 lane。
-- `task_runs`：id、task_id、lane_id、role_id、status（queued/starting/running/completed/failed/interrupted/cancelled）、outcome（pending/known/unknown）、session_id、required、continues_run_id、previous_run_id、captain_assignment_id、machine、workspace_ref、write_scopes_json、queued_at、started_at、ended_at、reason。
+- `task_runs`：id、task_id、lane_id、role_id、status（queued/starting/running/completed/failed/interrupted/cancelled）、outcome（pending/known/unknown）、snapshot_state（not_applicable/pending/completed/failed/unknown）、session_id、required、continues_run_id、previous_run_id、captain_assignment_id、machine、workspace_ref、write_scopes_json、queued_at、started_at、ended_at、reason。
 - `reports`：id、task_id、run_id、lane_id、kind（progress/ready/waiting/blocked/failed/handoff）、summary、evidence_json、artifact_ids_json、next_request_json、attention_id、created_at。
 - `attentions`：id、chat_id、task_id、type、question、options_json、status、requested_by、answered_by、resolution_json、created_at、answered_at。
 - `artifacts`：id、room_id、task_id、run_id、path、kind、version、status（draft/published/accepted/rejected/superseded）、commit、created_at、updated_at。
@@ -172,6 +172,7 @@ desktop/src/room/                 # 新 domain；不要复用 desktop/src/collab
 - `events`：id、room_id、chat_id、seq、actor_id、type、payload_json、created_at（append-only 审计）。
 - `effects`：id、chat_id、kind、status（pending/running/succeeded/failed/unknown）、payload_json、idempotency_key、attempts、last_error、created_at、started_at、completed_at。
 - `user_commands`：id、chat_id、type、payload_json、status、result_json、created_at（幂等）。
+- `tool_calls`：id、run_id、call_id、tool_name、args_hash、status、result_json、created_at、updated_at；`UNIQUE(run_id, call_id)`。`call_id` 是逻辑调用 ID；同参数的新调用使用新的 `call_id`。
 
 **不再保留** `assignments`、`controller_decisions`、`reports.assignment_id` 这类以“平台派发”为中心的表/字段。TaskRun 取代 Assignment；Captain 的可见消息和 Agent 工具调用取代 ControllerAction 批次；`captain_assignments` 只是可见授权的 review 台账。
 
@@ -253,7 +254,8 @@ Agent 工具不能只存在于文档里；必须有明确通道。
 - 身份由 MCP server 绑定，**不接受工具参数里的 author/actor/runId**。
 - 只有执行者 lane 的当前 run 可以调用 `finish_task`；mention lane 只有读/评论/mention/ask 工具。
 - 工具结果必须回传给运行中的 session（`create_task` 返回 taskId、`list_tasks` 返回列表等）；MCP server 是完整工具循环，不是一次性标记。
-- 调用 ID 由 MCP server/平台生成并记录；不要假设 CLI 或模型提供稳定的 `toolCallId`。幂等键用 `(runId, toolName, canonical args)` 或 server 记录的调用 ID，跨重试保持不变。
+- **幂等身份是一次逻辑调用的 `callId`，不是参数 hash。** 平台/MCP server 首次接受调用时生成 `callId`，并在结果元数据返回；重试必须复用同一个 `callId`。如果传输不能保证重试复用 `callId`，不要承诺跨重试幂等：读工具每次都执行；写工具用领域唯一键兜底（`finish_task` 唯一 per task+run；`create_task` 唯一 per assignment+source message；`comment_task` 需要调用方提供幂等键）。
+- `args hash` 只用于校验同一 `callId` 的参数一致性，不用于识别新调用；相同参数的新调用仍是新调用，读工具不得因参数相同而返回旧结果。
 - MCP server 只监听 loopback，生命周期跟随 run；不把 token/凭据暴露给 CLI。
 
 ### 6.2 兜底：严格文本标记（受限降级）
@@ -267,6 +269,7 @@ Agent 工具不能只存在于文档里；必须有明确通道。
 - **标记不是 MCP 等价物。** 每个回复只应用最后一个完整标记；没有工具结果回传，不能在同一回复里先 `create_task` 再 `comment_task`，也不能 `list_tasks`/`get_task` 后继续决策。
 - 标记只适合一次**终止动作**：`mention`、`create_task`、`comment_task` 或 `finish_task` 中的一个；`finish_task` 的标记与 Report 标记共用严格校验。
 - 身份仍然由平台从 run/session 绑定，标记里的字段不能指定作者。
+- 标记里的 `callId` 只是客户端重试键，不能当作平台身份；缺失或变化时按新调用处理，写工具用领域唯一键兜底，读工具每次都执行。
 - Captain 工具（`assign_in_group`、`post_in_chat`、`proposal`、`control_task`）需要 MCP；标记协议没有闭环的授权/结果返回，不支持 Captain 自治。
 - 不支持 MCP、也不支持标记的 CLI 只能作为只读讨论参与者；不能建 Task、mention 或 finish_task。
 

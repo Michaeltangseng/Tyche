@@ -65,7 +65,7 @@
 - supervisor 60 秒 tick 是兜底；**任何领域变化**（消息追加、Task、run、inbox、conversation state）的 150ms debounce 是快路径。
 - `hasNew` 用 `activityBaseline = max(checkpoint, 各未取消 assignment 的 public 消息 seq)`，再比较 `activity_seq`；指派消息本身不算“指派之后的新活动”。
 - `assign_in_group` 的消息、`captain_assignments`、目标 queued reply 同一事务写入，然后 `requestTick()`。
-- 没有 Task 的 assignment 回复也能生成 `assignment_settled`；未指派回复、仍 active 的回复、关联 Task 仍 todo/in_progress 或还有 open run 时不触发。
+- 没有 Task 的 assignment 回复也能生成 `assignment_settled`；`hasNew` 比较整个 Chat 的 `activity_seq`，不按作者过滤。没有 assignment 的 Chat 不产生 assignment review；存在未取消 assignment 时，其他 public 活动也可能触发。仍 active 的回复、关联 Task 仍 todo/in_progress 或还有 open run 会挡住。
 - 有 Task 时，`finish_task` 的 Chat 消息先推进 `activity_seq`，但 Task 结算前仍 `in_progress`；review 等 Task 进入 `in_review`/`blocked` 后才触发。
 - review 行和**平台为这次 review 投递创建的那条 reply** 标 `audience=captain`，不计入 `activity_seq`；`reviewReply=true` 只打在这条 reply 上，`assign_in_group` / `post_in_chat` 不继承。
 - `post_in_chat` 是 public，目标空闲时仍可能触发下一轮；Captain 的普通总结应放在 review reply，`post_in_chat` 只用于确需公开的通知。
@@ -101,7 +101,7 @@
 ### D6. Agent 工具通道 MCP 优先，严格标记兜底
 
 - `mention` / `create_task` / `comment_task` / `finish_task` 都必须有通道。
-- 身份由 run/session 绑定；调用 ID 由平台/server 生成，幂等键用 `(runId, toolName, canonical args)`。
+- 身份由 run/session 绑定；幂等身份是平台/server 生成的逻辑 `callId`，重试复用同一个 ID；参数 hash 只校验同一 ID 的参数一致性。
 - 只有执行者 lane 的 active run 能 `finish_task`。
 
 ### D7. Task 验收是用户命令
@@ -118,7 +118,7 @@
 
 ### D9. MCP 是完整工具循环，标记只做受限降级
 
-- MCP 返回工具结果；调用 ID 由平台/server 生成，幂等键不依赖模型提供的 `toolCallId`。
+- MCP 返回工具结果；幂等身份是平台/server 生成的逻辑 `callId`，重试复用同一个 ID；参数 hash 只校验同一 ID 的参数一致性，相同参数的新调用是新调用，读工具不缓存旧结果。
 - 标记一次回复只支持一个终止动作，没有结果回传；Captain 工具需要 MCP。
 - 详见 ADR-N19。
 
@@ -126,6 +126,8 @@
 
 - 退出确认 + after 快照 + Artifact 合并/校验后，Task 才进入 `in_review`/`blocked`。
 - `accept_task` 只能在结算完成后调用。
+- 观察到的非零退出是 `failed/outcome=known`；只有无法确认退出才是 `interrupted/outcome=unknown`，不能合并。
+- 只读任务没有快照：退出确认 + Report 校验即可；快照状态是平台确定的 `not_applicable`，不是 Agent 自报，也不是快照失败的兜底。
 - 详见 ADR-N11。
 
 ### D11. Captain 不得自我派发；assignment 因果链持久化
@@ -151,7 +153,7 @@
 ### D14. 迁移覆盖 v2 与活跃执行
 
 - old checkpoint 与 v2 SQLite 两种来源都映射。
-- active runs/effects 不迁移为 running；标 interrupted/unknown，先做进程对账。
+- active runs/effects 不迁移为 running；标 interrupted/unknown，先做进程对账。旧 pending effect 不因状态自动可执行；`start_assignment` 归档，`artifact_snapshot`/`stop_assignment` 仅在目标对象/对账满足时转换，未知 kind 归档。
 - Trace、shadow Git、Artifact 引用保留并按新 TaskRun 授权映射；旧 session 只有 Provider/作用域/目录/权限都匹配才恢复。
 - 详见 06 2.2。
 
@@ -269,13 +271,15 @@
 
 ### Q24. MCP 调用 ID 与幂等键的具体格式
 
-- **推荐**：MCP server 生成并记录调用 ID；幂等键用 `(runId, toolName, canonical args)`，跨重试稳定。
+- **推荐**：幂等身份是一次逻辑调用的 `callId`，不是参数 hash。MCP server 首次接受时生成并在结果元数据返回；重试必须复用同一个 `callId`。
+- **如果传输不能保证重试复用 `callId`**：读工具每次都执行；写工具用领域唯一键兜底（`finish_task` per task+run；`create_task` per assignment+source message；`comment_task` 需要调用方幂等键）。
 - **待定**：是否保留 CLI 提供的 call ID 作为辅助字段，但不作为唯一键。
 
 ### Q25. finish_task 后快照失败怎么办
 
-- **推荐**：Task 保持 `in_progress`/`blocked`，Report 保留；创建 Attention；不进入 `in_review`，不释放租约。
-- **待定**：是否允许用户“接受无快照结果”，还是必须重拍或放弃本次产物。
+- **写入型**：快照失败 → `snapshot_state=failed`；Task 保持 `in_progress`/`blocked`，Report 保留；创建 Attention；不进入 `in_review`，不释放租约。
+- **只读型**：没有快照 → `snapshot_state=not_applicable`（平台根据运行权限确定）；退出确认 + Report 校验即可进入 `in_review`。
+- **待定**：写入型是否允许用户“接受无快照结果”，还是必须重拍或放弃本次产物。
 
 ### Q26. read_chat 的分页与编辑策略
 

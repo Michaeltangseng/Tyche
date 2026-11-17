@@ -115,6 +115,7 @@ TaskRun
   role_id
   status          // queued | starting | running | completed | failed | interrupted | cancelled
   outcome         // pending | known | unknown
+  snapshot_state  // not_applicable | pending | completed | failed | unknown
   session_id
   required        // 该 run 是否阻塞 Task 完成
   continues_run_id
@@ -188,16 +189,19 @@ Do not merge into the main branch unless the task says so.
    - 平台以 Agent 身份把“#编号 标题 + 摘要”发回来源 Chat，推进 `chat.activity_seq`；
    - Task 仍保持 `in_progress`（或等待状态），**不立即进入 `in_review`**。
 2. 平台等待进程退出确认。
-3. 退出确认后，在租约内完成 after 快照，生成 Artifact IDs，并合并进 Report。
+3. 退出确认后，按 run 类型结算：
+   - **写入型 run**：在租约内完成 after 快照，生成 Artifact IDs 并合并进 Report；`snapshot_state=completed`。
+   - **只读 run**：没有写入租约和快照；平台根据运行权限写入 `snapshot_state=not_applicable`，只校验 Report。`not_applicable` 不能由 Agent 自报，也不能作为快照失败的兜底。
+   - **快照失败**：`snapshot_state=failed`；Task 不进入 `in_review`/`blocked`，保留 `in_progress`/`blocked` + Attention。
 4. 校验 Report 归属、Artifact 范围和快照结果后，Task 才进入 `in_review`（ready）或 `blocked`，并释放 lane、机器槽位和写入租约。
 5. `accept_task` 只允许在结算完成后调用；用户不能在进程仍在运行或快照未完成时接受。
 
 边界：
 
 - Agent 不能引用本次 run 尚未生成的 Artifact ID；平台在快照后补入。
-- 进程在 `finish_task` 后失败或退出未知：run → `interrupted/outcome=unknown`；Task → `blocked` + Attention；Report 保留但不能验收。
+- `finish_task` 后观察到进程非零退出：run → `failed/outcome=known`；Task → `blocked` + Attention；Report 保留但不能验收；快照/产物是否仍可生成另行判断，不能因此把退出事实改成 unknown。
+- `finish_task` 后无法确认进程是否退出：run → `interrupted/outcome=unknown`；lane 阻塞到进程对账完成；Task → `blocked` + Attention；不自动重试，不伪造退出。
 - run 安静结束但没有 `finish_task`：平台提醒一次；仍然没有报告则 run failed（known），Task → `blocked` + Attention。
-- 进程退出未确认：run → `interrupted/outcome=unknown`；创建 Attention；不自动重试，不伪造退出。
 
 ## 4. Report
 
@@ -270,7 +274,8 @@ Agent 工具不能只存在于文档里；必须有明确通道。
 - 身份由 server 绑定，不接受工具参数里的 author/actor/runId。
 - 只有执行者 lane 的 active run 能调用 `finish_task`；mention lane 只有读/评论/mention/ask 工具。
 - 工具结果必须回传给运行中的 session（`create_task` 返回 taskId、`list_tasks` 返回列表等）；MCP server 是完整工具循环，不是一次性标记。
-- 调用 ID 由 MCP server/平台生成并记录；不要假设 CLI 或模型提供稳定的 `toolCallId`。幂等键用 `(runId, toolName, canonical args)` 或 server 记录的调用 ID，跨重试保持不变。
+- **幂等身份是一次逻辑调用的 `callId`，不是参数 hash。** 平台/MCP server 首次接受调用时生成 `callId`，并在结果元数据返回；重试必须复用同一个 `callId`。如果传输不能保证重试复用 `callId`，不要承诺跨重试幂等：读工具每次都执行；写工具用领域唯一键兜底（`finish_task` 唯一 per task+run；`create_task` 唯一 per assignment+source message；`comment_task` 需要调用方提供幂等键）。
+- `args hash` 只用于校验同一 `callId` 的参数一致性，不用于识别新调用；相同参数的新调用仍是新调用，读工具不得因参数相同而返回旧结果。
 - MCP server 只监听 loopback，生命周期跟随 run；不把 token/凭据暴露给 CLI。
 
 ### 5.2 兜底：严格文本标记（受限降级）
@@ -282,6 +287,7 @@ Agent 工具不能只存在于文档里；必须有明确通道。
 - **标记不是 MCP 等价物。** 每个回复只应用最后一个完整标记；没有工具结果回传，不能先 `create_task` 再 `comment_task`，也不能 `list_tasks`/`get_task` 后继续决策。
 - 标记只适合一次**终止动作**：`mention`、`create_task`、`comment_task` 或 `finish_task` 中的一个；`finish_task` 与 Report 标记共用严格校验。
 - 身份仍然由平台从 run/session 绑定；标记里的字段不能指定作者。
+- 标记里的 `callId` 只是客户端重试键，不能当作平台身份；缺失或变化时按新调用处理，写工具用领域唯一键兜底，读工具每次都执行。
 - Captain 工具（`assign_in_group`、`post_in_chat`、`proposal`、`control_task`）需要 MCP；标记协议没有闭环的授权/结果返回，不支持 Captain 自治。
 - 不支持 MCP、也不支持标记的 CLI 只能作为只读讨论参与者；不能建 Task、mention 或 finish_task。
 
@@ -354,7 +360,7 @@ hasNew = chat.activity_seq > activityBaseline
 
   指派消息本身不是“指派之后的新活动”。`assign_in_group` 的可见消息、`captain_assignments` 记录、目标的 queued reply 行在同一事务写入，然后 `requestTick()`；目标立刻 queued，会被“目标仍忙”挡住。
 
-- **没有 Task 也会 review**：目标角色回复结束并空闲、且 Chat 有 public 新活动，就生成 `assignment_settled`，不要求它建 Task。挡住的是还在 queued/working/stopping 的回复，以及关联 Task 仍 todo/in_progress 或还有未结束 run。
+- **没有 Task 也会 review**：目标角色回复结束并空闲、且 Chat 有 public 新活动，就生成 `assignment_settled`，不要求它建 Task。`hasNew` 比较整个 Chat 的 `activity_seq`，不按作者过滤；没有 assignment 的 Chat 不产生 assignment review，但存在未取消 assignment 时其他 public 活动也可能触发。挡住的是还在 queued/working/stopping 的回复，以及关联 Task 仍 todo/in_progress 或还有未结束 run。
 - **有 Task 时等结算**：`finish_task` 的 Chat 消息先推进 `activity_seq`，但 Task 在结算完成前仍是 `in_progress`；review 等到 Task 进入 `in_review`/`blocked` 后才触发。结算引起的 Task 状态变化也必须 `requestTick()`。
 - **review 流量不推进 activity 水位**：`chat.activity_seq` 只统计 public 消息，排除 `audience=captain` 的 review 行和平台为这次 review 投递创建的那条 reply（`data_json.reviewReply=true`）。`reviewReply=true` **只打在 review 投递的 reply 上**；`assign_in_group` / `post_in_chat` 是另外的消息，不继承这个标记，且是 public，计入 `activity_seq`。
 - `post_in_chat` 是 public；目标已空闲时，它仍可能再开一轮 `assignment_settled`。Captain 的普通总结应放在 review reply（`audience=captain`）；`post_in_chat` 只用于确需公开的通知。
@@ -366,9 +372,11 @@ hasNew = chat.activity_seq > activityBaseline
 - review 正文是**观察**：assignment/task id、checkpoint、目标状态；不是上一环全文。Captain 通过正常增量简报读取水位之后、别人已经写完的 public 原文，再按 Prompt 决定下一步。
 - Captain 的总结放在 review reply（`audience=captain`）；`post_in_chat` 是 public，会计入 `activity_seq`，可能触发下一次 review，只用于确需公开的通知。
 
-触发来源：`finish_task` 在来源 Chat 追加 Agent 消息，推进 `activity_seq`；supervisor 看到新活动，在目标空闲后生成 review。已指派角色的 public 回复结束并空闲就会 review；不触发的是未指派的回复、仍在 queued/working/stopping 的回复，以及关联 Task 仍 todo/in_progress 或还有未结束 run。
+**触发时序**：`finish_task` 的 Chat 消息先推进 `activity_seq`，但 Task 在结算完成前仍是 `in_progress`，所以 review 不会在快照前触发。退出确认 + after 快照 + Artifact 合并后，Task 进入 `in_review`/`blocked`；这个状态变化触发 `requestTick()`，supervisor 才 review。`in_review` / `done` / `cancelled` 不是 busy；`blocked` 走 `assignment_blocked`，不走 `assignment_settled`。
 
-**不要**新增“Captain completion wake”或独立 completion budget；review supervisor 的 checkpoint + idle 检查已经覆盖循环保护。**不要**要求每个阶段调用 `stage_complete`；纯聊天阶段只要有 Captain assignment 且产生新活动，review 就能看到。
+`hasNew` 比较的是整个 Chat 的 `activity_seq`；没有 assignment 的 Chat 不产生 assignment review。但只要存在未取消 assignment，其他 public 活动也可能推进 `activity_seq` 并触发 `hasNew`（与 eta 一致，不按作者过滤）。仍 queued/working/stopping 的回复、关联 Task 仍 todo/in_progress 或还有未结束 run 会挡住 review。
+
+**不要**新增 `completion wake`、独立 completion budget 或 `stage_complete`。循环保护来自 `activity_seq` 排除 review 行和 review reply；`post_in_chat` 是 public，仍可能再开一轮，这是平台行为，不能靠 Prompt 保证。checkpoint/dedupe/idle 只覆盖 review 流量。
 
 ### 6.5 Captain 工作流 Prompt
 
@@ -443,7 +451,9 @@ Attention 是需要用户处理的事项：
 ### 8.3 Artifact
 
 - Artifact 属于 Room，不属于 Chat。
-- 写入型 run 在租约内做 shadow Git 快照；产生 commit/diff 引用。
+- 写入型 run 在租约内做 shadow Git 快照；产生 commit/diff 引用；`snapshot_state=completed`。
+- 只读 run 没有写入租约和快照；平台根据运行权限写 `snapshot_state=not_applicable`，不要求 Artifact。
+- 快照失败时 `snapshot_state=failed`；Task 不能进入 `in_review`，创建 Attention，不把失败当成 `not_applicable`。
 - Artifact 状态：`draft | published | accepted | rejected | superseded`；与 Task 状态独立。
 - Report 可以引用已存在的 Artifact；Agent 不能凭路径或伪造 ID 创建版本。
 - `accept_task` 只能在结算完成后调用：进程退出已确认、after 快照已完成、Artifact ID 已合并并校验；它可以要求 required Artifact 已接受/发布。接受 Artifact 本身不自动完成 Task。

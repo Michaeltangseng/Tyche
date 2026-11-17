@@ -94,7 +94,7 @@
 - Captain 是 Chat 内的 Role，`is_captain=1`，有自己的 Participant Session；`author_type=agent`，用徽章标识。
 - 它的工具是：`assign_in_group`、`post_in_chat`、读工具、`request_attention`、`control_task`（continue/pause）、`propose_role`、`set_role_prompt`。
 - `assign_in_group` 只写一条可见消息并 @ 目标；目标 Agent 自己建 Task；不得以 Captain 自己为目标，assignment 因果链见 ADR-N21。
-- Captain 工具限定在所属 Chat；不能跨 Chat 读取/写入；不提供 `list_chats` / `read_chat`。
+- Captain 工具限定在所属 Chat；不能跨 Chat 读取/写入；不提供跨 Chat 的 `list_chats` / `read_chat`；当前 Chat 的 `read_chat(beforeSeq, limit)` 是允许的。
 - Captain 不能授予权限、改工作区、直接设置 Task done/cancelled、rerun/delete Task。
 - 没有 Captain 时，路由退回显式 @mention / 唯一参与者。
 
@@ -181,6 +181,8 @@
 - 自由文本不能作为完成依据；工具优先，严格标记作为 fallback。
 - `finish_task` 是完成声明，不是结算：Task 保持 `in_progress`，直到进程退出确认、after 快照完成、Artifact ID 合并并校验后，才进入 `in_review`（ready）或 `blocked`。
 - 用户 `accept_task` 只能在结算完成后调用；`reject_task` 回到 `todo`。
+- 观察到的非零退出是 `failed/outcome=known`（退出事实已确认）；只有无法确认进程是否退出才是 `interrupted/outcome=unknown`。两者不能合并。
+- 结算分两条：写入型 = 退出确认 + 快照完成 + Artifact/Report 校验；只读型 = 退出确认 + Report 校验 + `snapshot_state=not_applicable`。`not_applicable` 由平台根据运行权限确定，不能由 Agent 自报，也不能作为快照失败的兜底。
 - Artifact 状态（draft/published/accepted/rejected/superseded）与 Task 状态独立；accept Artifact 不自动 done。
 - `handoff` Report 只记录建议；实际 `handoff_task` 是用户命令。
 
@@ -273,15 +275,15 @@ hasNew = chat.activity_seq > activityBaseline
   - 批量、checkpoint、dedupe、attempts/backoff；只合并同一个 Chat 的 pending review；
   - review 以 `system` 消息进入 Captain 会话，并创建一条 queued reply；`mentions: []`，不占 5 次 agent-to-agent 预算；
   - 只在 Captain 空闲时投递。
-- `finish_task` 在来源 Chat 追加 Agent 消息，推进 `chat.activity_seq`；supervisor 由此看到新活动。
+- `finish_task` 在来源 Chat 追加 Agent 消息，推进 `chat.activity_seq`；但 Task 在结算完成前仍是 `in_progress`，review 不在快照前触发。退出确认 + after 快照 + Artifact 合并后，Task 进入 `in_review`/`blocked`；这个状态变化触发 `requestTick()`，supervisor 才 review。`in_review`/`done`/`cancelled` 不是 busy，Captain 可以在用户验收前派下一阶段；如果用户在 tick 前 `accept_task`，`done` 仍要 review；`blocked` 走 `assignment_blocked`。
 - review 正文是观察，不是上一环全文；Captain 通过增量简报读取实际 public 消息。
 - Captain Prompt 按 Chat 保存 revision；review 附带当前 revision，平台不解析 Prompt、不做状态机。
 
 **后果：**
 - 三阶段 workflow：3 次 `assign_in_group` 是普通消息 + @，不写 `kind=mention`，**不占 5 次**；3 次 system review 也不占。5 次只约束 Agent 的 `mention` 工具调用，不限制 `assign_in_group` 的阶段数；平台仍校验并发/成本。
 - review 行和 review reply 不推进 `activity_seq`，所以不会因为它们自己再次触发 `assignment_settled`；但 `post_in_chat` 是 public，目标空闲时仍可能再开一轮。Captain 的普通总结应放在 review reply；`post_in_chat` 只用于确需公开的通知。
-- 已指派角色的 public 回复结束并空闲就会 review；未指派的回复、仍在 queued/working/stopping 的回复、以及关联 Task 仍 todo/in_progress 或还有未结束 run 时不触发。
-- 不需要自创 loop guard；checkpoint/dedupe/idle 检查已经覆盖 review 流量；`post_in_chat` 例外由 Captain Prompt 约束。
+- `hasNew` 比较整个 Chat 的 `activity_seq`，不按作者过滤：没有 assignment 的 Chat 不产生 assignment review；存在未取消 assignment 时，其他 public 活动也可能触发。仍 queued/working/stopping 的回复、关联 Task 仍 todo/in_progress 或还有未结束 run 会挡住 review。
+- 循环保护来自 `activity_seq` 排除 review 行和 review reply；这不是 eta 的 direct chat 语义，是 Meldwork 同 Chat 投递的必要适配。`post_in_chat` 是 public，仍可能再开一轮，这是平台行为，不能靠 Captain Prompt 保证。checkpoint/dedupe/idle 只覆盖 review 流量。
 
 ## ADR-N17：Agent 间唤醒异步，平台不做隐式串行
 
@@ -323,7 +325,9 @@ hasNew = chat.activity_seq > activityBaseline
 - main 为每次 run/session 起一个本地 MCP server；工具包括 `mention`、`create_task`、`comment_task`、`finish_task`、`list_tasks`、`get_task`、`read_task`、`read_chat`、`request_attention`。
 - 身份由 MCP server 绑定，不接受工具参数里的 author/actor/runId。
 - 工具结果必须回传给运行中的 session；MCP 是完整工具循环，不是一次性标记。
-- 调用 ID 由 MCP server/平台生成并记录；不要假设 CLI 或模型提供稳定的 `toolCallId`。幂等键用 `(runId, toolName, canonical args)` 或 server 调用 ID，跨重试保持不变。
+- 幂等身份是一次逻辑调用的 `callId`，不是参数 hash；平台/MCP server 首次接受调用时生成并在结果元数据返回，重试必须复用同一个 `callId`。
+- 如果传输不能保证重试复用 `callId`，不要承诺跨重试幂等：读工具每次都执行；写工具用领域唯一键兜底（`finish_task` per task+run；`create_task` per assignment+source message；`comment_task` 需要调用方幂等键）。
+- `args hash` 只校验同一 `callId` 的参数一致性；相同参数的新调用是新调用，读工具不得返回旧缓存。
 - 只有执行者 lane 的 active run 能调用 `finish_task`；mention lane 只有读/评论/mention/ask 工具。
 - 不支持 MCP 的 CLI 只能用严格文本标记做**受限降级**：一次回复只应用一个终止动作，没有工具结果回传，不能 `list_tasks`/`get_task` 后继续决策，也不能同一回复里先 `create_task` 再 `comment_task`。
 - Captain 工具（`assign_in_group`、`post_in_chat`、proposal、`control_task`）需要 MCP；标记协议没有闭环的授权/结果返回。
@@ -417,9 +421,20 @@ hasNew = chat.activity_seq > activityBaseline
 | 简报裁剪后无补读 | 02/04 增加当前 Chat 的分页 `read_chat`；编辑产生新活动 |
 | Task/TaskRun/Effect 状态不闭合 | 04 统一 Task 状态、TaskRun status+outcome、Effect 生命周期 |
 | 迁移未覆盖 v2/活跃执行/Trace/Artifact | 06 增加 v2 source→target、unknown/active 处理、Trace/shadow Git/session 校验 |
+| 旧 pending effect 不能只迁 status | 06 增加 effect kind 迁移表；旧 pending 默认不取得新执行资格 |
 | Controller 被说成平台算法 | 修正：Controller 本身也是被隐藏/JSON 约束的 Agent |
 | sidecar 与 local-first 表述不准确 | 修正：本地 sidecar 不必然违反 local-first；不选它是因为运行时/数据/权限/打包成本 |
 | eta `session-key.ts` 路径质疑 | 本地 eta 快照 `03197d88` 中该文件存在；05 固定参考提交 |
+| review 触发句仍在 finish_task 时触发 | 03/04/ADR-N16 改为：finish_task 只推进 activity_seq，Task 结算后进入 in_review/blocked，状态变化才 review |
+| ADR-N16 说“checkpoint 已覆盖循环保护” | 改为 activity_seq 排除 review 流量的平台保护；post_in_chat 仍可能再触发 |
+| 03 2.1 说 Captain review 回复都标 reviewReply | 改为只有平台为 review 投递创建的那条 reply 标记 |
+| ADR-N6 说“不提供 read_chat” | 改为不提供跨 Chat 读取；当前 Chat 的 read_chat 允许 |
+| Phase 2.5 缺 Task/Report/Artifact 表 | Phase 1 先建薄版；Phase 2.5 明确最小表 |
+| 工具幂等按参数 hash 会吞掉合法重复调用 | 改为逻辑 callId；参数 hash 只校验同一调用；读工具不缓存 |
+| 已知失败被归入退出未知 | 观察到的非零退出 = failed/outcome=known；只有无法确认才是 unknown |
+| 只读 Task 没有快照结算分支 | 写入型快照；只读型 snapshot_state=not_applicable，由平台确定 |
+| “未指派角色回复不触发”比算法承诺更多 | 改为 eta 行为：hasNew 比较整个 Chat activity_seq，不按作者过滤 |
+| 旧 pending effect 直接迁移/执行 | 06 增加 effect kind 迁移表；旧 pending 默认不取得新执行资格 |
 
 ## 被取代的旧决策
 

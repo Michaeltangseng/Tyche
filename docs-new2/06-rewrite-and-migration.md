@@ -94,7 +94,7 @@
 | v2 tasks / reports / attentions / artifacts | 同名新表 | 按 assignment/run 归属映射；Artifact 保留 commit/version |
 | v2 assignments | `task_runs` | 按 assignment id 映射；report 按 assignment 关联；不重建旧 Assignment 模型 |
 | v2 controller_decisions | `events` / 归档 | 不再保留 decisions 表；决策作为历史审计事件 |
-| v2 effects | 新 effects | pending 可重试；running/unknown 转 unknown + Attention；不自动重放 |
+| v2 effects | 归档 / 按 kind 转换 | 不能只迁 status；旧 kind 的 handler/payload 与新引擎不同。旧 pending 默认不取得新引擎执行资格；按下方 kind 表转换 |
 | Trace JSONL | 原文件保留 | 新库只存引用；按新 Room/TaskRun 重新授权，不重写历史 Trace |
 | shadow Git | 原仓库保留 | Artifact commit/diff 引用保留；不重写历史；按新 Artifact 授权读取 |
 
@@ -103,12 +103,23 @@
 - 迁移前先停止启动新 run；活跃 run 标 `status=interrupted, outcome=unknown`，活跃 effect 标 `unknown`；完成进程对账后才允许 retry/handoff；迁移窗口内不双写。
 - 迁移工具必须 dry-run、幂等、可回滚；迁移报告写入私有区。
 
+**v2 effect kind 迁移表**
+
+| v2 kind | 处理 |
+| --- | --- |
+| `start_assignment` | **只归档**。新引擎只有在迁移后的 TaskRun 仍是 active 且用户显式 retry 时，才创建新的 `start_run`；不消费旧 effect。 |
+| `artifact_snapshot` | 默认归档；仅当对应新 TaskRun/Artifact 已存在且 run 已结算时，才转换为新快照意图；否则归档 + 报告。 |
+| `stop_assignment` | 默认归档；仅当迁移后的 TaskRun 仍 active/unknown 且进程对账确认后，才创建新的 stop 意图；否则归档。 |
+| 其他 / 未知 | 归档 + 迁移报告；不自动执行。 |
+
+旧 `pending` effect 不因状态为 pending 就取得新引擎执行资格；转换必须同时满足 kind 白名单、目标对象存在、权限/租约和幂等键校验。
+
 ### 2.3 一次性迁移步骤
 
 1. 停止启动新 run；等待当前写入/租约收口；迁移窗口内不双写。
 2. 备份旧 checkpoint 账本和 v2 SQLite（复制到带时间戳的目录）。
 3. 读取两种旧结构，生成迁移计划（dry-run）。
-4. 写入新 Room/Chat/Role/Participant/Message/Task/TaskRun/Report/Artifact/Attention；活跃 run 标 `status=interrupted, outcome=unknown`，effect 标 `unknown`。
+4. 写入新 Room/Chat/Role/Participant/Message/Task/TaskRun/Report/Artifact/Attention；活跃 run 标 `status=interrupted, outcome=unknown`，effect 标 `unknown`；旧 effect 按 kind 表归档/转换，不默认执行。
 5. 写入 `legacy_imported` 标记和迁移报告。
 6. 校验数量、编号、Report 归属、Artifact/Trace 引用；进程对账完成后再允许 retry/handoff。
 7. 迁移失败回滚新库；旧库不动。
@@ -145,7 +156,7 @@
 
 ### Phase 1：新账本 + 时间线 + 路由 + 简报
 
-- 新建 `room.sqlite` 与 schema/migration；**先建最小表**（Room/Chat/Role/Participant/Message/Session/TaskLane/Event/Effect），Task/Report/Artifact 表按 Phase 3/4 增量迁移，不要一次铺完。
+- 新建 `room.sqlite` 与 schema/migration；**先建最小表**（Room/Chat/Role/Participant/Message/Session/TaskLane/Event/Effect）。Phase 2.5 需要的最小 Task/TaskRun/Report/Artifact/CaptainReview 表也在此先建薄版；完整字段和迁移按 Phase 3/4 增量补齐，不要一次铺完。
 - 实现 Room/Chat/Role/Participant/Message/Session/TaskLane 的 repository。
 - 实现 Message 追加、seq、revision、client_id、status、编辑/删除事件。
 - 实现 routing 和 briefing 的纯函数 + 定向测试；简报返回 `omittedSeqs`/`truncatedIds`，实现当前 Chat 的 `read_chat` 分页。
@@ -186,6 +197,7 @@
 → Captain review
 ```
 
+- 先建这条链用到的最小表：Task / TaskRun / Report / Artifact / CaptainReview / CaptainAssignment / Effect；不需要完整 UI 或全量迁移。
 - 不允许用替身模拟全部模型返回；至少一个真实 CLI 跑通这条链。
 - 如果 MCP 不可用，验证受限标记的终止动作，并明确它不能替代完整工具循环。
 - 这条链跑通前，不铺完所有 UI 和旧数据迁移。
@@ -197,11 +209,11 @@
 - Agent 工具：`create_task`、`draft_task`、`list_tasks`、`get_task`、`read_task`、`comment_task`、`finish_task`。
 - TaskRun 队列、lane、writeScopes、并发、pump、评论续跑、rerun；`start_run` effect 成功 = 进程启动，不是运行结束。
 - Report 导入与 Task 状态推导；`accept_task` / `reject_task`。
-- `finish_task` 完成声明与结算分离：退出确认 + after 快照 + Artifact 合并后才 `in_review`/`blocked`。
+- `finish_task` 完成声明与结算分离：写入型 = 退出确认 + after 快照 + Artifact 合并后才 `in_review`/`blocked`；只读型 = 退出确认 + Report 校验 + `snapshot_state=not_applicable`。
 - Task 卡/Report 卡的最小 UI 读模型。
 - 一次性 CLI 的评论/回答排队 continuation run。
 
-**退出条件**：Agent 默认直接 `create_task`；Task 在自己的 lane session 里执行；评论续跑同一 lane；finish_task 回到 Chat；没有 Report 不能 done；退出/快照完成前不能 in_review/accept_task；writeScopes 校验通过；TaskRun outcome 能表达 known/unknown。
+**退出条件**：Agent 默认直接 `create_task`；Task 在自己的 lane session 里执行；评论续跑同一 lane；finish_task 回到 Chat；没有 Report 不能 done；写入型 run 的退出/快照完成前不能 in_review/accept_task；只读 run 的 `snapshot_state=not_applicable` 且 Report 校验后才 in_review；writeScopes 校验通过；TaskRun outcome 能表达 known/unknown。
 
 ### Phase 4：Captain + Captain review supervisor + Attention
 
@@ -291,7 +303,7 @@ npm --prefix desktop run pack
 | 简报裁掉关键信息 | 100×2000 上限 + `omittedSeqs`/`truncatedIds` + `read_chat` 补读 + Session Handoff + Task/Artifact |
 | Report 解析不可靠 | MCP 工具优先；标记严格校验；无报告不猜完成 |
 | Effect pump 串行化并发 | ADR-N20：启动成功 = 进程已启动/登记，pump 不 await 整段 run；并发由 lane/机器/租约控制 |
-| finish_task 提前结算 | 完成声明与结算分离：退出确认 + 快照 + Artifact 合并后才 in_review；accept_task 只能在结算后 |
+| finish_task 提前结算 | 完成声明与结算分离：写入型退出+快照+Artifact，只读型退出+Report+`snapshot_state=not_applicable`；快照失败不结算；accept_task 只能在结算后 |
 | 迁移丢数据 | 备份、dry-run、source→target 矩阵、迁移报告、失败回滚；v2/active/unknown 单独处理 |
 | 权限/租约回归 | 保留现有安全测试；新 domain 只能调用既有权限层 |
 | 重新长回 Controller | ADR 明确禁止平台拆任务；`create_task` 只能由 Agent 工具触发 |
@@ -308,6 +320,7 @@ npm --prefix desktop run pack
 - 不做 Controller 的隐藏批次兼容层。
 - 不做 Assignment 与 TaskRun 的双模型。
 - 不做旧 sessionRef 的伪造恢复。
+- 不默认执行旧 pending effect；只按 kind 白名单转换。
 - 不做自创 Captain completion wake / 独立 completion 预算 / `stage_complete` 工具。
 - 不把文本标记当成完整工具循环；不把 `finish_task` 当成结算完成。
 - 不在第一阶段做隔离 worktree、跨 Chat 依赖、内置模型 runtime、memory sidecar。

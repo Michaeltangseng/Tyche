@@ -62,7 +62,7 @@ Message
 - 编辑产生新事件，不覆盖历史审计；删除保留墓碑。
 - 用户、Agent、系统消息使用同一个 envelope；Captain 的 `author_type` 是 `agent`，用 `is_captain` 标识，不设特殊 author type。
 - `system` / `captain_review` 消息可以用 `audience = "captain"`；只进入 Captain 的简报，不进入其他参与者简报，也不计入 `chat.activity_seq`。
-- Captain 对 review 的回复也标 `audience = "captain"`（`data_json.reviewReply = true`），同样不计入 activity。
+- **只有平台为这次 review 投递创建的那条 reply** 标 `audience = "captain"` + `data_json.reviewReply = true`，不计入 activity；Captain 的其他回复不自动继承这个标记。
 - `assign_in_group` / `post_in_chat` 是 public（`audience = "chat"`），计入 `activity_seq`。
 - 追加消息时 `chat.last_seq` 总是前进；只有 public 消息（`audience = "chat"` 且不是 review reply）推进 `chat.activity_seq`。
 
@@ -84,7 +84,7 @@ Message
 - `task_draft` / `task_card` 是 Task 在时间线上的投影，属于提出它的那条回复。
 - `report_card` 是 Report 在时间线上的投影。
 - Task 的详细状态不重复写进 Message；Message 只存 `task_id` 和展示所需的快照。
-- Agent 的 `finish_task` 会在来源 Chat 追加一条 Agent 消息，内容为任务编号 + 标题 + 摘要；这会推进 `chat.activity_seq`，也是 Captain review 看到新活动的来源。
+- Agent 的 `finish_task` 会在来源 Chat 追加一条 Agent 消息，内容为任务编号 + 标题 + 摘要；这会推进 `chat.activity_seq`，也是结算后 Captain review 看到新活动的来源。结算前 Task 仍是 `in_progress`，review 会被 task busy 挡住。
 - `captain_review` 是系统 review 行，`audience=captain`；它进入 Captain 的 session，不进入其他参与者简报，也不计入 `chat.activity_seq`。
 
 ## 3. Session
@@ -427,7 +427,7 @@ hasNew = chat.activity_seq > activityBaseline
 
   指派消息本身不是“指派之后的新活动”。`assign_in_group` 的可见消息、`captain_assignments` 记录、目标的 queued reply 行必须在**同一事务**写入，然后再 `requestTick()`；这样目标立刻处于 queued，会被“目标仍忙”挡住，不会把刚发出的指派当成 `assignment_settled`。
 
-- **没有 Task 也会 review**：目标角色回复结束并空闲、且 Chat 有 public 新活动，就生成 `assignment_settled`，不要求它建 Task。挡住的是还在 queued/working/stopping 的回复，以及关联 Task 仍 todo/in_progress 或还有未结束 run。未指派角色的回复不触发。
+- **没有 Task 也会 review**：目标角色回复结束并空闲、且 Chat 有 public 新活动，就生成 `assignment_settled`，不要求它建 Task。`hasNew` 比较整个 Chat 的 `activity_seq`，不按作者过滤；没有 assignment 的 Chat 不产生 assignment review，但存在未取消 assignment 时其他 public 活动也可能触发。挡住的是还在 queued/working/stopping 的回复，以及关联 Task 仍 todo/in_progress 或还有未结束 run。
 - **有 Task 时等结算**：`finish_task` 的 Chat 消息先推进 `activity_seq`，但 Task 在结算完成前仍是 `in_progress`；review 等到 Task 进入 `in_review`/`blocked` 后才触发。结算引起的 Task 状态变化也必须 `requestTick()`。
 - **review 流量不能推进 activity 水位**：`chat.activity_seq` 只统计 public 消息，排除 `audience=captain` 的 review 行和平台为这次 review 投递创建的那条 reply（`data_json.reviewReply=true`）。`reviewReply=true` **只打在 review 投递的 reply 上**；`assign_in_group` / `post_in_chat` 是另外的消息，不继承这个标记，且是 public，计入 `activity_seq`。
 - `post_in_chat` 是 public；目标已空闲时，它仍可能再开一轮 `assignment_settled`。Captain 的普通总结应放在 review reply（`audience=captain`）；`post_in_chat` 只用于确需公开的通知。
@@ -438,7 +438,9 @@ hasNew = chat.activity_seq > activityBaseline
 - review 以 `system` 消息进入 Captain 的会话，并创建 queued reply；`mentions: []`，不占 5 次 agent-to-agent 预算。
 - review 正文是**观察**：assignment/task id、checkpoint、目标状态；不是上一环全文。Captain 通过正常增量简报读取水位之后、别人已经写完的 public 原文，再按 Prompt 决定下一步。
 
-**触发来源**：`finish_task` 在来源 Chat 追加 Agent 消息，推进 `activity_seq`；目标空闲后 supervisor 生成 review。已指派角色的 public 回复结束并空闲就会 review；不唤醒的是未指派的回复、仍在 queued/working/stopping 的回复，以及关联 Task 仍 todo/in_progress 或还有未结束 run。
+**触发时序**：`finish_task` 的 Chat 消息先推进 `activity_seq`，但 Task 在结算完成前仍是 `in_progress`，所以 review 不会在快照前触发。退出确认 + after 快照 + Artifact 合并后，Task 进入 `in_review`/`blocked`；这个状态变化触发 `requestTick()`，supervisor 才 review。`in_review` / `done` / `cancelled` 不是 busy；`blocked` 走 `assignment_blocked`，不走 `assignment_settled`。
+
+`hasNew` 比较的是整个 Chat 的 `activity_seq`；没有 assignment 的 Chat 不产生 assignment review。但只要存在未取消 assignment，其他 public 活动也可能推进 `activity_seq` 并触发 `hasNew`（与 eta 一致，不按作者过滤）。仍 queued/working/stopping 的回复、关联 Task 仍 todo/in_progress 或还有未结束 run 会挡住 review。
 
 **Captain 仍然不建 Task**：review 只是让它看到“上一环结算了”；它按自己的 Prompt 发可见授权，目标 Agent 自己 `create_task`。
 
@@ -458,10 +460,12 @@ Chat-1 的 Captain Prompt：
 
 1. 用户只 @ Captain（或不 @，Captain 是默认接收者）。
 2. Captain `assign_in_group` 效果图 → 消息、`captain_assignments`、目标 queued reply 同一事务写入 → 效果图角色被唤醒，自己 `create_task`。
-3. 效果图 `finish_task` → 来源 Chat 追加 Agent 消息 → `activity_seq` 前进。
-4. supervisor review → `captain_review` → system 消息唤醒 Captain；Captain 的简报包含效果图的完整发言。
-5. Captain 按 Prompt 派架构 → 同理派实施。
-6. 实施完成 → Captain review → Captain 看到全部完成，发总结，不再派任务。
+3. 效果图 `finish_task` → 完成声明；来源 Chat 追加 Agent 消息 → `activity_seq` 前进，但 Task 仍是 `in_progress`。
+4. 进程退出确认 + after 快照 + Artifact 合并 → Task 进入 `in_review`；Task 状态变化触发 `requestTick()`。
+5. supervisor review → `captain_review` → system 消息唤醒 Captain；Captain 的简报包含效果图的完整发言。`in_review` 不是 busy，Captain 可以派架构，不必等用户验收。
+6. 如果用户在 tick 前 `accept_task`，Task 已是 `done`；`done` 不是 busy，review 仍要发，否则下一阶段不会派。
+7. 如果 finish_task 是 `blocked`，结算后走 `assignment_blocked`，不要和 `in_review` 的 `assignment_settled` 混成同一种触发。
+8. Captain 按 Prompt 派架构 → 同理派实施；实施完成 → Captain review → 总结，不再派任务。
 
 预算：`assign_in_group` 是普通消息 + @，不写 `kind=mention`，**不占 5 次**；Captain review 是 system 消息，也不占。5 次只统计 Agent 通过 `mention` 工具写出的 `kind=mention` 行（eta `timeline.ts:450-457`）。所以三阶段 workflow 不受这个预算限制；平台仍校验并发、成本和写入边界。
 
