@@ -150,19 +150,30 @@ function createOarRuntimeAdapter({
     return { runtime, installation, sessionEnv }
   }
 
-  function allowedToolsFor(role, mode) {
-    if (mode === 'task') return ['mention', 'read_chat', 'create_task', 'comment_task', 'finish_task']
+  function allowedToolsFor(role, mode, laneKind = 'executor') {
+    if (mode === 'task') {
+      if (laneKind !== 'executor') return ['mention', 'read_chat', 'comment_task']
+      return ['mention', 'read_chat', 'create_task', 'comment_task', 'finish_task']
+    }
     if (role.isCaptain === true) return ['mention', 'read_chat', 'assign_in_group', 'post_in_chat']
     return ['mention', 'read_chat', 'create_task', 'comment_task']
   }
 
-  function bindRun({ runId, chatId, roleId, mode, captainAssignmentId = null, rootMessageId = null }) {
+  function bindRun({
+    runId,
+    chatId,
+    roleId,
+    mode,
+    captainAssignmentId = null,
+    rootMessageId = null,
+    laneKind = 'executor',
+  }) {
     const role = repository.getRole(roleId)
     if (!role) throw adapterError('ROOM_ROLE_NOT_FOUND', `room role ${roleId} not found`)
     dispatcher.bindRun(runId, {
       chatId,
       roleId,
-      allowedTools: allowedToolsFor(role, mode),
+      allowedTools: allowedToolsFor(role, mode, laneKind),
       captainAssignmentId,
       rootMessageId,
     })
@@ -317,7 +328,19 @@ function createOarRuntimeAdapter({
     return { launch, completion }
   }
 
-  function taskPrompt(task) {
+  function taskPrompt(task, laneKind = 'executor') {
+    if (laneKind !== 'executor') {
+      return [
+        "You are participating in a task's mention lane in the Meldwork room.",
+        `Task id: ${task.id}`,
+        `Task #${task.number}: ${task.title ?? ''}`,
+        `Description: ${task.description ?? ''}`,
+        `Acceptance: ${task.acceptance ?? ''}`,
+        '',
+        'Read the task and its comments, then use comment_task or mention if you need to say something.',
+        'Do not call finish_task: only the executor lane may finish or settle this task.',
+      ].join('\n')
+    }
     return [
       'You are the assigned agent for a task in the Meldwork room.',
       `Task id: ${task.id}`,
@@ -333,7 +356,35 @@ function createOarRuntimeAdapter({
     ].join('\n')
   }
 
-  async function finalizeTaskRun({ run, task, result }) {
+  async function finalizeTaskRun({ run, task, result, laneKind = 'executor' }) {
+    if (laneKind !== 'executor') {
+      // A mention-lane run is a comment turn, not a task settlement. Record the
+      // run fact and leave the task status untouched; only the executor lane
+      // can produce a report or enter in_review.
+      const endedAt = new Date(now()).toISOString()
+      const runStatus = result.status === 'done'
+        ? 'completed'
+        : result.status === 'failed'
+          ? 'failed'
+          : 'interrupted'
+      const outcome = result.status === 'stopped' ? 'unknown' : 'known'
+      const reason = result.status === 'done' ? null : String(result.text ?? result.status).slice(0, 500)
+      database.prepare(`
+        UPDATE task_runs SET status = ?, outcome = ?, snapshot_state = 'not_applicable',
+          ended_at = ?, reason = ? WHERE id = ? AND status IN ('starting', 'running')
+      `).run(runStatus, outcome, endedAt, reason, run.id)
+      const settledRun = database.prepare('SELECT status FROM task_runs WHERE id = ?').get(run.id)
+      const settledTask = database.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id)
+      onTaskSettled({
+        runId: run.id,
+        taskId: task.id,
+        status: result.status,
+        runStatus: settledRun?.status,
+        taskStatus: settledTask?.status,
+        laneKind,
+      })
+      return
+    }
     if (!settlement) {
       onTaskSettled({ runId: run.id, taskId: task.id, error: adapterError('ROOM_SETTLEMENT_REQUIRED', 'no settlement service') })
       return
@@ -368,6 +419,7 @@ function createOarRuntimeAdapter({
         status: result.status,
         runStatus: settledRun?.status,
         taskStatus: settledTask?.status,
+        laneKind: 'executor',
       })
     } catch (error) {
       onTaskSettled({ runId: run.id, taskId: task.id, error })
@@ -458,12 +510,14 @@ function createOarRuntimeAdapter({
       const chat = repository.getChat(task.chatId)
       if (!chat) throw adapterError('ROOM_CHAT_NOT_FOUND', `chat ${task.chatId} not found`)
       const room = repository.getRoom(chat.roomId)
+      const laneKind = task.laneKind === 'mention' ? 'mention' : 'executor'
       const role = bindRun({
         runId: run.id,
         chatId: task.chatId,
         roleId: run.roleId,
         mode: 'task',
         captainAssignmentId: run.captainAssignmentId ?? null,
+        laneKind,
       })
       const workspace = run.workspaceRef || room?.workspace
       if (!workspace) throw adapterError('ROOM_WORKSPACE_REQUIRED', `task ${task.id} has no workspace`)
@@ -478,7 +532,7 @@ function createOarRuntimeAdapter({
         skillBindings: [],
         model: role.model ?? null,
         thinkingLevel: null,
-        laneKind: 'executor',
+        laneKind,
       })
       const sessionRow = database.prepare('SELECT native_session_ref FROM sessions WHERE id = ?').get(roomSession.sessionId)
       mcpServer = await mcpFactory({ dispatcher, runId: run.id })
@@ -501,7 +555,7 @@ function createOarRuntimeAdapter({
             event,
           })
         : null
-      const turn = startTurn({ session, prompt: taskPrompt(task), signal: tracked.signal, onEvent: taskEvent })
+      const turn = startTurn({ session, prompt: taskPrompt(task, laneKind), signal: tracked.signal, onEvent: taskEvent })
       turn.launch.then(({ nativeSessionRef }) => {
         if (nativeSessionRef) {
           try {
@@ -516,7 +570,7 @@ function createOarRuntimeAdapter({
         await mcpServer?.close().catch(() => {})
       })
       completions.add(completion)
-      completion.then(result => finalizeTaskRun({ run, task, result }))
+      completion.then(result => finalizeTaskRun({ run, task, result, laneKind }))
         .catch(error => onTaskSettled({ runId: run.id, taskId: task.id, error }))
         .finally(() => completions.delete(completion))
       completion.catch(() => {})

@@ -141,7 +141,7 @@ function createRoomService({
     timeline: timelineStore,
     queueRun: queue,
   })
-  registerFinishTaskTool({ dispatcher: toolDispatcher, settlement })
+  registerFinishTaskTool({ dispatcher: toolDispatcher, settlement, roomDb })
   registerCaptainTools({ dispatcher: toolDispatcher, repository, captainAssignment, timeline: timelineStore })
 
   function onTaskSettled(info) {

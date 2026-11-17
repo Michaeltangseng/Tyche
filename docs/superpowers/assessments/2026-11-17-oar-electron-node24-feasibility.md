@@ -646,7 +646,9 @@ eta 是三层，不是一层：
 - 测试：18 个 room 测试文件，**57/57 pass**。
 - Deferred minors（三项）：Task number per Room；progress → in_progress；accept_task 校验最新 required run 的 ready report/required artifacts。
 - 硬崩进程治理（POSIX）：`meldwork-runtime-wrapper.sh` 在 exec 前写 `<pid>\t<ps lstart>`；`runtime-processes.cjs` 启动/close sweep 校验 start time、杀进程组、清理记录；Claude/Codex smoke 均 beforeClose=4、afterClose=0。
-- 测试：19 个 room 测试文件，**59/59 pass**。
+- Mention lane：非 executor 的 `comment_task` 在评论者 mention lane 续跑（required=false）；mention run 完成不改 Task 状态；OAR smoke 真实覆盖。
+- Recovery unknown effects：running effect → unknown 时建 `effect_unknown` Attention。
+- 测试：19 个 room 测试文件，**62/62 pass**。
 - 剩余：Windows 硬崩、main wiring、Trace UI/保留策略、Electron 43/打包、非 OAR provider。
 
 ## 9. 参考文件

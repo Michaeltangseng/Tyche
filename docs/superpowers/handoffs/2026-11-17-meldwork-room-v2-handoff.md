@@ -18,7 +18,7 @@
 
 | 项目 | 结果 |
 | --- | --- |
-| `desktop/test/room` 19 个测试文件 | **59 tests / 59 pass / 0 fail** |
+| `desktop/test/room` 19 个测试文件 | **62 tests / 62 pass / 0 fail** |
 | Claude Code resume proof | `resumed: true`, `remembered: true`, session ref 稳定 |
 | Codex resume proof | `resumed: true`, `remembered: true`, session ref 稳定 |
 | MCP tool loop proof | `create_task` / `finish_task` / `mention` list + call 成功，`ok: true` |
@@ -98,6 +98,8 @@ desktop/scripts/
 16. **Runtime events**：schema v3 `runtime_events`；OAR 非增量事件（tool/turn/usage/failure/exit）按 run/chat/task 持久化，payload 16KB 截断；文本 delta 留在 reply 行；trace 写失败不影响 run。
 17. **Deferred minors（三项）**：Task number 按 Room 分配；`progress` 报告映射 `in_progress`；`accept_task` 校验最新 required run 的 ready report 和 required artifacts。
 18. **硬崩进程治理（POSIX）**：runtime wrapper 在 `exec` 前写 `<pid>\t<ps lstart>`；service 启动/close sweep 校验 start time、杀进程组、清理记录；Claude/Codex smoke 均 beforeClose=4、afterClose=0。Windows/main wiring 未做。
+19. **Mention lane**：非 executor 的 `comment_task` 在评论者 mention lane 续跑（required=false）；mention lane 只有 mention/read_chat/comment_task；`finish_task` 仅 executor lane；mention run 完成不改变 Task 状态；OAR smoke 真实覆盖（comment_task 成功、mention run completed、Task 保持 in_review）。
+20. **Recovery unknown effects**：running effect → unknown 时为每个 effect 建 `effect_unknown` Attention；start_run payload 解析 task_id。
 
 ## 必须守住的语义
 
@@ -164,18 +166,18 @@ dispatcher 的 `callId` 幂等只覆盖“客户端复用 callId”的情况。`
 
 ### Deferred minors
 
-- `comment_task` 续跑使用评论者 lane，而不是 Task executor lane。（未做）
+- ~~`comment_task` 续跑使用评论者 lane，而不是 Task executor lane~~ **已完成（2026-11-17）**：非 executor 走 mention lane，required=false；mention lane 无 finish_task/create_task；mention run 完成不改 Task 状态。
 - ~~`acceptTask` 只校验“有 completed run + report”，未校验最新 required run 的 ready report/artifacts~~ **已完成（2026-11-17）**：最新 required run + ready report + required artifacts。
 - ~~`progress` 报告把 Task 映射成 `blocked`~~ **已完成**：`progress` → `in_progress`。
 - ~~Task number 按 Chat 分配~~ **已完成**：按 Room 分配。
-- recovery 的 Attention 只覆盖有 write scope 的 run，未覆盖 unknown effects。（未做）
+- ~~recovery 的 Attention 只覆盖有 write scope 的 run，未覆盖 unknown effects~~ **已完成**：每个 unknown effect 建 `effect_unknown` Attention。
 
 ## 验证命令
 
 ```bash
 cd desktop
 
-# 小范围 room 测试（当前 59/59）
+# 小范围 room 测试（当前 62/62）
 node --test test/room/db.test.cjs test/room/repository.test.cjs test/room/timeline.test.cjs \
   test/room/session-store.test.cjs test/room/routing.test.cjs test/room/briefing.test.cjs \
   test/room/effects.test.cjs test/room/engine.test.cjs test/room/dispatcher.test.cjs \
@@ -226,7 +228,7 @@ npm --prefix desktop run pack
 1. **人工集成验证**：按上面的真实证明命令重跑，确认本机 CLI 行为。
 2. **runtime adapter + MCP 注入（POC 已完成）**：`runtime-adapter.cjs` 使用 OAR，`engine.startReply` 和 Task `pump` 已走真实 Claude/Codex；`room-oar-smoke.cjs` 明确 `engineDriven: true`（Claude/Codex 均通过）。下一步是进程治理、事件/Trace 对齐、Electron 43/Node 24 与全量验证。
 3. **领域幂等（已完成）**：`domain_idempotency`（schema v2）；`create_task` per assignment+source，`comment_task` 调用方 key/缺省 source+text；room 测试 52/52。下一步建议先补 OAR 硬崩进程清理/事件 Trace 持久化，再进 deferred minors。
-4. **Deferred minors**：按业务优先级补。
+4. **Deferred minors（已完成）**：五项全部完成（Task number/work progress/acceptTask/mention lane/unknown effect Attention）。下一步进入 UI 阶段。
 5. **UI/preload/renderer**：在 engine 真实闭环通过后再接。
 6. **旧数据迁移/旧引擎退场**：单独计划；当前切片不碰。
 

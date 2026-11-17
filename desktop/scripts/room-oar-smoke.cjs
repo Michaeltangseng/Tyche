@@ -99,11 +99,22 @@ async function main() {
       prompt: 'You execute assigned tasks. Use the room tools. Keep replies short.',
       nativePermission,
     })
+    const commenterRoleId = repository.createRole({
+      chatId,
+      displayName: 'Commenter',
+      provider,
+      prompt: 'You can comment on tasks. Use comment_task. Keep replies short.',
+      nativePermission,
+    })
     repository.addParticipant({ chatId, roleId: captainRoleId })
     repository.addParticipant({ chatId, roleId: workerRoleId })
+    repository.addParticipant({ chatId, roleId: commenterRoleId })
+    result.commenterRoleId = commenterRoleId
 
     let resolveTaskSettled
     const taskSettled = new Promise(resolve => { resolveTaskSettled = resolve })
+    let resolveCommentLaneSettled
+    const commentLaneSettled = new Promise(resolve => { resolveCommentLaneSettled = resolve })
     service = createRoomService({
       roomDb,
       repository,
@@ -117,8 +128,13 @@ async function main() {
       runtimeWrapperPath,
       runtimeStateDir,
       onTaskSettled: info => {
-        result.taskSettlement = info
-        resolveTaskSettled(info)
+        if (info?.laneKind === 'mention') {
+          result.commentLaneSettlement = info
+          resolveCommentLaneSettled(info)
+        } else {
+          result.taskSettlement = info
+          resolveTaskSettled(info)
+        }
       },
     })
     result.startupSweep = await service.startupSweep
@@ -181,6 +197,34 @@ async function main() {
 
     await service.waitForChatIdle({ chatId, timeoutMs: 8 * 60 * 1000 })
     result.activityAfterChat = service.timeline.activitySeq(chatId)
+
+    // A non-executor comment must continue in its own mention lane and must
+    // not settle or change the task.
+    const commentMessage = `@Commenter Comment on task ${taskRow.id} with comment_task: "Please keep the summary concise." Then reply briefly.`
+    service.submitUserMessage({ chatId, content: commentMessage })
+    await service.waitForChatIdle({ chatId, timeoutMs: 8 * 60 * 1000 })
+    const commentSettlement = await withTimeout(
+      commentLaneSettled,
+      8 * 60 * 1000,
+      'OAR_SMOKE_COMMENT_LANE_TIMEOUT',
+    )
+    if (commentSettlement?.error) {
+      throw new Error(`OAR_SMOKE_COMMENT_LANE_FAILED: ${commentSettlement.error}`)
+    }
+    result.commentLaneSettlement = commentSettlement
+    const commentRun = roomDb.database.prepare(`
+      SELECT r.*, l.kind AS lane_kind, l.role_id AS lane_role_id
+      FROM task_runs r JOIN task_lanes l ON l.id = r.lane_id
+      WHERE r.task_id = ? AND l.kind = 'mention'
+      ORDER BY r.queued_at DESC, r.rowid DESC LIMIT 1
+    `).get(taskRow.id)
+    result.commentRunId = commentRun?.id ?? null
+    result.commentRunStatus = commentRun?.status ?? null
+    result.commentLaneKind = commentRun?.lane_kind ?? null
+    result.commentRunRole = commentRun?.lane_role_id ?? null
+    result.commentRunRequired = commentRun ? commentRun.required === 1 : null
+    result.taskStatusAfterComment = roomDb.database.prepare('SELECT status FROM tasks WHERE id = ?')
+      .get(taskRow.id)?.status ?? null
     result.runtimePidFilesBeforeClose = runtimeStateDir && fs.existsSync(runtimeStateDir)
       ? fs.readdirSync(runtimeStateDir).filter(name => name.endsWith('.pid')).length
       : 0
@@ -199,7 +243,7 @@ async function main() {
     const reviewReplyData = reviewReplyRow?.data_json ? JSON.parse(reviewReplyRow.data_json) : null
     const toolCalls = roomDb.database.prepare(`
       SELECT tool_name, status FROM tool_calls
-      WHERE tool_name IN ('create_task', 'finish_task', 'assign_in_group')
+      WHERE tool_name IN ('create_task', 'finish_task', 'assign_in_group', 'comment_task')
       ORDER BY created_at ASC, rowid ASC
     `).all()
     result.toolCalls = toolCalls
@@ -261,11 +305,18 @@ async function main() {
     && result.reviewReplyFlag === true
     && result.captainSessionStable === true
     && result.taskSessionSeparate === true
+    && result.commentLaneSettlement?.laneKind === 'mention'
+    && result.commentRunStatus === 'completed'
+    && result.commentLaneKind === 'mention'
+    && result.commentRunRole === result.commenterRoleId
+    && result.commentRunRequired === false
+    && result.taskStatusAfterComment === 'in_review'
     && result.runtimePidFilesBeforeClose > 0
     && result.runtimePidFilesAfterClose === 0
     && succeeded('assign_in_group')
     && succeeded('create_task')
     && succeeded('finish_task')
+    && succeeded('comment_task')
   fs.writeFileSync(resultPath, JSON.stringify(result, null, 2), { mode: 0o600 })
   console.log(JSON.stringify({ stage: 'complete', resultPath, ...result }))
   if (!result.ok) process.exitCode = 1

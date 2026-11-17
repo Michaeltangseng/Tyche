@@ -258,8 +258,20 @@ function createSettlement({ roomDb, repository, timeline, now = () => Date.now()
   }
 }
 
-function registerFinishTaskTool({ dispatcher, settlement }) {
+function registerFinishTaskTool({ dispatcher, settlement, roomDb }) {
+  if (!roomDb) throw new TypeError('ROOM_FINISH_TASK_DATABASE_REQUIRED')
+  const { database } = roomDb
   dispatcher.register('finish_task', async (args, context) => {
+    const lane = database.prepare(`
+      SELECT l.kind, l.role_id, t.assignee_role_id
+      FROM task_runs r
+      JOIN task_lanes l ON l.id = r.lane_id
+      JOIN tasks t ON t.id = r.task_id
+      WHERE r.id = ?
+    `).get(context.runId)
+    if (!lane || lane.kind !== 'executor' || lane.role_id !== lane.assignee_role_id) {
+      throw new Error('ROOM_FINISH_TASK_LANE_INVALID')
+    }
     return settlement.claim({
       runId: context.runId,
       taskId: args.taskId,

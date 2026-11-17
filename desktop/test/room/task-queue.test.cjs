@@ -154,6 +154,78 @@ test('comment_task dedupes by caller key or source and text', async t => {
   roomDb.close()
 })
 
+test('a non-executor comment continues in the commenter mention lane', async t => {
+  const { roomDb, repo, roomId, chatId, roleId, timeline, outbox, queue } = setup(t)
+  const otherRole = repo.createRole({ chatId, displayName: 'B', provider: 'claude', prompt: 'p' })
+  repo.addParticipant({ chatId, roleId: otherRole })
+  const dispatcher = createToolDispatcher({ roomDb, repository: repo })
+  registerTaskTools({ dispatcher, roomDb, repository: repo, timeline, queueRun: queue })
+  dispatcher.bindRun('run-a', { chatId, roleId, allowedTools: ['create_task'] })
+  const created = await dispatcher.invoke({
+    runId: 'run-a',
+    callId: 'c1',
+    name: 'create_task',
+    args: { title: 'T', description: 'D', acceptance: 'A' },
+  })
+  dispatcher.bindRun('run-b', { chatId, roleId: otherRole, allowedTools: ['comment_task'] })
+  const comment = await dispatcher.invoke({
+    runId: 'run-b',
+    callId: 'c2',
+    name: 'comment_task',
+    args: { taskId: created.taskId, text: 'please adjust' },
+  })
+  assert.ok(comment.runId)
+
+  const runs = queue.listRuns(created.taskId)
+  const mentionRun = runs.find(run => run.id === comment.runId)
+  assert.equal(mentionRun.roleId, otherRole)
+  assert.equal(mentionRun.required, false)
+  const lane = roomDb.database.prepare('SELECT kind FROM task_lanes WHERE id = ?').get(mentionRun.laneId)
+  assert.equal(lane.kind, 'mention')
+  assert.equal(runs.filter(run => run.roleId === roleId).length, 1)
+
+  const seen = []
+  const runnable = createTaskQueue({
+    roomDb,
+    repository: repo,
+    timeline,
+    outbox,
+    startRun: async (run, task) => { seen.push([run.id, task.laneKind]) },
+  })
+  await runnable.pump({ roomId })
+  assert.equal(seen.find(([id]) => id === comment.runId)?.[1], 'mention')
+  roomDb.close()
+})
+
+test('a mention lane run does not reopen an in_review task', async t => {
+  const { roomDb, repo, roomId, chatId, roleId, timeline, outbox, queue } = setup(t)
+  const otherRole = repo.createRole({ chatId, displayName: 'B', provider: 'claude', prompt: 'p' })
+  repo.addParticipant({ chatId, roleId: otherRole })
+  const task = queue.createTask({ chatId, roleId, title: 'T', description: 'D', acceptance: 'A' })
+  const [executorRun] = queue.listRuns(task.taskId)
+  roomDb.database.prepare("UPDATE task_runs SET status = 'completed', outcome = 'known' WHERE id = ?")
+    .run(executorRun.id)
+  roomDb.database.prepare("UPDATE tasks SET status = 'in_review' WHERE id = ?").run(task.taskId)
+  const mentionRun = queue.enqueueRun({
+    taskId: task.taskId,
+    roleId: otherRole,
+    laneKind: 'mention',
+    required: false,
+  })
+  const runnable = createTaskQueue({
+    roomDb,
+    repository: repo,
+    timeline,
+    outbox,
+    startRun: async () => {},
+  })
+  const started = await runnable.pump({ roomId })
+  assert.equal(started.length, 1)
+  assert.equal(started[0].id, mentionRun.id)
+  assert.equal(queue.getTask(task.taskId).status, 'in_review')
+  roomDb.close()
+})
+
 test('task numbers are allocated per room, not per chat', t => {
   const { roomDb, repo, roomId, chatId, roleId, queue } = setup(t)
   const first = queue.createTask({ chatId, roleId, title: 'One', description: 'D', acceptance: 'A' })

@@ -204,8 +204,14 @@ function createTaskQueue({ roomDb, repository, timeline, outbox, now = () => Dat
         if (!claimed) continue
         database.prepare("UPDATE task_runs SET status = 'starting', started_at = ? WHERE id = ?")
           .run(at(), candidate.id)
-        database.prepare("UPDATE tasks SET status = 'in_progress', updated_at = ? WHERE id = ?")
-          .run(at(), candidate.task_id)
+        // A mention-lane comment must not reopen a task that is already
+        // in_review/blocked; only an executor run moves it to in_progress.
+        if (candidate.lane_kind === 'executor') {
+          database.prepare(`
+            UPDATE tasks SET status = 'in_progress', updated_at = ?
+            WHERE id = ? AND status IN ('todo', 'backlog', 'in_review', 'blocked')
+          `).run(at(), candidate.task_id)
+        }
         const run = runView(database.prepare('SELECT * FROM task_runs WHERE id = ?').get(candidate.id))
         try {
           await startRun(run, {
@@ -216,6 +222,7 @@ function createTaskQueue({ roomDb, repository, timeline, outbox, now = () => Dat
             description: candidate.description,
             acceptance: candidate.acceptance,
             assigneeRoleId: candidate.assignee_role_id,
+            laneKind: candidate.lane_kind,
           })
           // A very fast run may have settled before startRun resolves; never
           // overwrite a completed/interrupted run with "running".

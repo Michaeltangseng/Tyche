@@ -94,12 +94,39 @@ test('accept_task refuses before settlement and succeeds after', t => {
 test('finish_task tool claims through the bound run', async t => {
   const { roomDb, repo, chatId, roleId, settlement, taskId, runId } = seedRunningRun(t, { writeScopes: [] })
   const dispatcher = createToolDispatcher({ roomDb, repository: repo })
-  registerFinishTaskTool({ dispatcher, settlement })
+  registerFinishTaskTool({ dispatcher, settlement, roomDb })
   dispatcher.bindRun(runId, { chatId, roleId, allowedTools: ['finish_task'] })
   const result = await dispatcher.invoke({ runId, callId: 'finish-1', name: 'finish_task',
     args: { taskId, status: 'ready', summary: 'done' } })
   assert.equal(result.report.kind, 'ready')
   assert.equal(result.task.status, 'in_progress')
+  roomDb.close()
+})
+
+test('finish_task is rejected outside the executor lane', async t => {
+  const { roomDb, repo, chatId, roleId, queue, settlement, taskId } = seedRunningRun(t, { writeScopes: [] })
+  const otherRole = repo.createRole({ chatId, displayName: 'B', provider: 'claude', prompt: 'p' })
+  repo.addParticipant({ chatId, roleId: otherRole })
+  const mentionRun = queue.enqueueRun({
+    taskId,
+    roleId: otherRole,
+    laneKind: 'mention',
+    required: false,
+  })
+  roomDb.database.prepare("UPDATE task_runs SET status = 'running', started_at = 't2' WHERE id = ?")
+    .run(mentionRun.id)
+  const dispatcher = createToolDispatcher({ roomDb, repository: repo })
+  registerFinishTaskTool({ dispatcher, settlement, roomDb })
+  dispatcher.bindRun(mentionRun.id, { chatId, roleId: otherRole, allowedTools: ['finish_task'] })
+  await assert.rejects(
+    dispatcher.invoke({
+      runId: mentionRun.id,
+      callId: 'finish-mention',
+      name: 'finish_task',
+      args: { taskId, status: 'ready', summary: 'done' },
+    }),
+    /ROOM_FINISH_TASK_LANE_INVALID/,
+  )
   roomDb.close()
 })
 

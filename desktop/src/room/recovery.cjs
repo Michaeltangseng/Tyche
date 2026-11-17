@@ -22,6 +22,7 @@ function recoverOnStart({ roomDb, repository, now = () => Date.now() }) {
         ended_at = ?, reason = 'restart recovery'
       WHERE status IN ('starting', 'running')
     `).run(at)
+    const runningEffects = database.prepare("SELECT * FROM effects WHERE status = 'running'").all()
     const effects = database.prepare(`
       UPDATE effects SET status = 'unknown', last_error = 'restart recovery', completed_at = ?
       WHERE status = 'running'
@@ -45,6 +46,26 @@ function recoverOnStart({ roomDb, repository, now = () => Date.now() }) {
         run.task_id,
         `Run ${run.id} was interrupted by a restart and may have written to disk.`,
         run.role_id,
+        at,
+      )
+      attentionsCreated += 1
+    }
+
+    for (const effect of runningEffects) {
+      const payload = parseJson(effect.payload_json, {})
+      let taskId = null
+      if (typeof payload.runId === 'string' && payload.runId.length > 0) {
+        const run = database.prepare('SELECT task_id FROM task_runs WHERE id = ?').get(payload.runId)
+        taskId = run?.task_id ?? null
+      }
+      database.prepare(`
+        INSERT INTO attentions (id, chat_id, task_id, type, question, options_json, status, requested_by, created_at)
+        VALUES (?, ?, ?, 'effect_unknown', ?, '[]', 'open', 'system', ?)
+      `).run(
+        crypto.randomUUID(),
+        effect.chat_id,
+        taskId,
+        `Effect ${effect.kind} (${effect.idempotency_key ?? effect.id}) was running when the service restarted; its outcome is unknown.`,
         at,
       )
       attentionsCreated += 1

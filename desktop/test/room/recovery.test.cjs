@@ -48,8 +48,10 @@ test('restart keeps queued, interrupts working, marks runs unknown, and never re
   assert.equal(writeRun.status, 'interrupted')
   assert.equal(writeRun.outcome, 'unknown')
   assert.equal(roomDb.database.prepare('SELECT * FROM effects WHERE id=?').get(effect.id).status, 'unknown')
-  assert.equal(roomDb.database.prepare('SELECT COUNT(*) AS n FROM attentions WHERE task_id=?').get(writeTask.taskId).n, 1)
+  assert.equal(recovered.attentionsCreated, 2)
+  assert.equal(roomDb.database.prepare('SELECT COUNT(*) AS n FROM attentions WHERE task_id=?').get(writeTask.taskId).n, 2)
   assert.equal(roomDb.database.prepare('SELECT COUNT(*) AS n FROM attentions WHERE task_id=?').get(readTask.taskId).n, 0)
+  assert.equal(roomDb.database.prepare("SELECT COUNT(*) AS n FROM attentions WHERE type='effect_unknown'").get().n, 1)
   assert.equal(queue.getLane({ taskId: writeTask.taskId, roleId }).active, false)
 
   const restarted = []

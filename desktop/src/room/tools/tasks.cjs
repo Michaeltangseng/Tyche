@@ -100,11 +100,16 @@ function registerTaskTools({ dispatcher, roomDb, repository, timeline, queueRun 
           const last = database.prepare(`
             SELECT id FROM task_runs WHERE task_id = ? ORDER BY queued_at DESC, rowid DESC LIMIT 1
           `).get(args.taskId)
+          // A comment from the executor continues the executor lane. A comment
+          // from any other participant stays in that participant's mention
+          // lane and never becomes a required run for acceptance.
+          const executor = task.assignee_role_id === context.roleId
+          const laneKind = executor ? 'executor' : 'mention'
           const run = queueRun.enqueueRun({
             taskId: args.taskId,
             roleId: context.roleId,
-            laneKind: 'executor',
-            required: true,
+            laneKind,
+            required: executor,
             continuesRunId: last?.id ?? null,
             writeScopes: [],
           })
