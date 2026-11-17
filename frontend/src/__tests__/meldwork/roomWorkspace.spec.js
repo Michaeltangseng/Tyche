@@ -50,6 +50,7 @@ function api(snapshot = data()) {
     deleteRoom: vi.fn(async () => ({ deleted: true, roomId: 'room-1' })),
     createRole: vi.fn(async () => ({ roomId: 'room-1', chatId: 'chat-1', roleId: 'new-role' })),
     updateRole: vi.fn(async () => ({ roomId: 'room-1', chatId: 'chat-1', roleId: 'worker' })),
+    setCaptain: vi.fn(async ({ roleId }) => ({ roomId: 'room-1', chatId: 'chat-1', roleId })),
     deleteRole: vi.fn(async () => ({ deleted: true, roomId: 'room-1', roleId: 'worker' })),
     answerAttention: vi.fn(async () => ({ attentionId: 'attention-1', status: 'answered' })),
     submitMessage: vi.fn(async () => ({ message: { id: 'message-1' }, replies: [] })),
@@ -361,6 +362,24 @@ describe('team room workspace', () => {
     await wrapper.get('.room-role-delete-confirm .danger-button').trigger('click')
     await flushPromises()
     expect(bridge.deleteRole).toHaveBeenCalledWith({ roomId: 'room-1', roleId: 'worker' })
+  })
+
+  it('promotes a role through the atomic Captain swap', async () => {
+    const bridge = api()
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+
+    await wrapper.findAll('.room-agent-chip')[1].trigger('click')
+    await flushPromises()
+    await wrapper.get('.room-role-controller-toggle').trigger('click')
+    await wrapper.get('.room-role-v2-footer .primary-button').trigger('click')
+    await flushPromises()
+
+    expect(bridge.updateRole).toHaveBeenCalledWith(expect.objectContaining({
+      roleId: 'worker',
+      isCaptain: false,
+    }))
+    expect(bridge.setCaptain).toHaveBeenCalledWith({ roomId: 'room-1', roleId: 'worker' })
   })
 
   it('toggles room write authorization and requests the files drawer', async () => {

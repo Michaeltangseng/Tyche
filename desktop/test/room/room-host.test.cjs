@@ -407,3 +407,37 @@ test('startup repairs the legacy captain prompt on a demoted role', async (t) =>
   assert.match(worker.prompt, /create_task/)
   assert.doesNotMatch(worker.prompt, /Do not create tasks yourself/)
 })
+
+test('Captain swaps atomically and chat roles stay independent', (t) => {
+  const { workspace, host } = createHost(t)
+  const created = host.bootstrap({
+    name: 'Independence',
+    workspace,
+    providers: ['codex', 'claude'],
+    roles: [
+      { displayName: 'Codex Captain', provider: 'codex', prompt: '', isCaptain: true },
+      { displayName: 'Claude Worker', provider: 'claude', prompt: '', isCaptain: false },
+    ],
+  })
+  const second = host.createChat({ roomId: created.roomId, title: 'Second' })
+  const primaryRoles = host.snapshot({ roomId: created.roomId }).roles
+  const codex = primaryRoles.find(role => role.display_name === 'Codex Captain')
+  const claude = primaryRoles.find(role => role.display_name === 'Claude Worker')
+
+  // Editing one chat's role must not rewrite the clone in another chat.
+  host.updateRole({ roomId: created.roomId, roleId: claude.id, displayName: 'Claude Editor' })
+  const secondRoles = host.snapshot({ roomId: created.roomId }).roles
+    .filter(role => role.chat_id === second.chatId)
+  assert.ok(secondRoles.some(role => role.display_name === 'Claude Worker'))
+  assert.equal(secondRoles.some(role => role.display_name === 'Claude Editor'), false)
+
+  // Swapping the Captain is one transaction: old captain demoted, prompts
+  // adjusted, new captain promoted.
+  const swapped = host.setCaptain({ roomId: created.roomId, roleId: claude.id })
+  assert.equal(swapped.previousRoleId, codex.id)
+  const roles = host.snapshot({ roomId: created.roomId }).roles
+  assert.equal(roles.find(role => role.id === codex.id).is_captain, false)
+  assert.equal(roles.find(role => role.id === claude.id).is_captain, true)
+  assert.match(roles.find(role => role.id === codex.id).prompt, /create_task/)
+  assert.match(roles.find(role => role.id === claude.id).prompt, /Do not create tasks yourself/)
+})

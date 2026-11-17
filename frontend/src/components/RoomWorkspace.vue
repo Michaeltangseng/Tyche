@@ -350,6 +350,7 @@
                 <input v-model="chatTitle" :placeholder="t('room.chatName')" :aria-label="t('room.chatName')" maxlength="120" />
                 <button class="secondary-button" :disabled="busy || !chatTitle.trim()">{{ t('room.newChat') }}</button>
               </form>
+              <p class="room-muted">{{ t('room.newChatInheritHint') }}</p>
               <button
                 v-if="snapshot && snapshot.chats.length > 1 && chatId !== snapshot.room.primary_chat_id"
                 class="danger-button"
@@ -529,6 +530,7 @@ const {
   setWriteAuthorized,
   createRole,
   updateRole,
+  setCaptain,
   deleteRole,
 } = useRoomWorkspace({ api: props.api })
 
@@ -554,6 +556,7 @@ const chatSettingsRef = ref(null)
 const roleSettingsOpen = ref(false)
 const roleSettingsRef = ref(null)
 const roleDraft = ref(null)
+const roleSettingsWasCaptain = ref(false)
 const roleDeleteArmed = ref(false)
 const workPanelOpen = ref(true)
 const name = ref('')
@@ -869,6 +872,7 @@ async function removeCurrentChat() {
 
 function openNewRole() {
   roleDeleteArmed.value = false
+  roleSettingsWasCaptain.value = false
   roleDraft.value = {
     id: '',
     displayName: '',
@@ -886,6 +890,7 @@ function openRoleSettings(roleId) {
   const role = roles.value.find(item => item.id === roleId)
   if (!role) return
   roleDeleteArmed.value = false
+  roleSettingsWasCaptain.value = role.is_captain === true
   roleDraft.value = {
     id: role.id,
     displayName: role.display_name || '',
@@ -913,18 +918,37 @@ function closeRoleSettings() {
 
 async function saveRole() {
   if (!canSaveRole.value) return
+  const wantsCaptain = roleDraft.value.isCaptain === true
   const payload = {
     displayName: roleDraft.value.displayName.trim(),
     provider: roleDraft.value.provider,
     prompt: roleDraft.value.prompt,
     responsibilities: roleDraft.value.responsibilities,
-    isCaptain: roleDraft.value.isCaptain,
     nativePermission: roleDraft.value.nativePermission,
   }
-  const result = roleDraft.value.id
-    ? await updateRole(roleDraft.value.id, payload)
-    : await createRole(payload)
-  if (result) closeRoleSettings()
+  if (roleDraft.value.id) {
+    // Save normal fields first, then swap the chat-level Captain atomically.
+    // This keeps a custom prompt and avoids the "two Captains" intermediate
+    // state that the old two-save flow exposed.
+    const result = await updateRole(roleDraft.value.id, {
+      ...payload,
+      isCaptain: wantsCaptain && roleSettingsWasCaptain.value,
+    })
+    if (!result) return
+    if (wantsCaptain && !roleSettingsWasCaptain.value) {
+      const swapped = await setCaptain(roleDraft.value.id)
+      if (!swapped) return
+    }
+    closeRoleSettings()
+    return
+  }
+  const result = await createRole({ ...payload, isCaptain: false })
+  if (!result) return
+  if (wantsCaptain) {
+    const swapped = await setCaptain(result.roleId)
+    if (!swapped) return
+  }
+  closeRoleSettings()
 }
 
 async function removeRole() {

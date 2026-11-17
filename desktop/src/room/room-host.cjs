@@ -525,6 +525,43 @@ function createRoomHost({
     })
   }
 
+  /**
+   * Captain is a chat-level singleton. Swapping it is one transaction so the
+   * UI never has to demote the old Captain and promote the new one in two
+   * separate saves.
+   */
+  function setCaptain(input = {}) {
+    const { room, role, chat } = roleContext(input)
+    if (roleBusy(role.id)) throw hostError('ROOM_ROLE_BUSY')
+    const previous = roomDb.database.prepare(
+      "SELECT id FROM chat_roles WHERE chat_id = ? AND is_captain = 1 AND status = 'active'",
+    ).get(chat.id)
+    if (previous?.id === role.id) {
+      return { roomId: room.id, chatId: chat.id, roleId: role.id, previousRoleId: previous.id }
+    }
+    if (previous && roleBusy(previous.id)) throw hostError('ROOM_ROLE_BUSY')
+    return roomDb.withTransaction(() => {
+      roomDb.database.prepare(
+        'UPDATE chat_roles SET is_captain = 0, updated_at = ? WHERE chat_id = ? AND is_captain = 1',
+      ).run(new Date(now()).toISOString(), chat.id)
+      roomDb.database.prepare(
+        'UPDATE chat_roles SET is_captain = 1, updated_at = ? WHERE id = ?',
+      ).run(new Date(now()).toISOString(), role.id)
+      if (previous && isCaptainPrompt(latestPrompt(previous.id))) {
+        insertPromptRevision(previous.id, DEFAULT_WORKER_PROMPT)
+      }
+      if (latestPrompt(role.id) === DEFAULT_WORKER_PROMPT) {
+        insertPromptRevision(role.id, DEFAULT_CAPTAIN_PROMPT)
+      }
+      return {
+        roomId: room.id,
+        chatId: chat.id,
+        roleId: role.id,
+        previousRoleId: previous?.id ?? null,
+      }
+    })
+  }
+
   function deleteRole(input = {}) {
     const { room, role } = roleContext(input)
     if (roleBusy(role.id)) throw hostError('ROOM_ROLE_BUSY')
@@ -771,6 +808,7 @@ function createRoomHost({
     deleteRoom,
     createRole,
     updateRole,
+    setCaptain,
     deleteRole,
     answerAttention,
     submitMessage,

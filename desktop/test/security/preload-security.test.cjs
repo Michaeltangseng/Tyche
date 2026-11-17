@@ -86,8 +86,8 @@ test('local preload exposes the local-only Meldwork API', async () => {
   assert.deepEqual(Object.keys(api.teamRoom).sort(), [
     'acceptTask', 'answerAttention', 'bootstrap', 'chatMessages', 'createChat', 'createRole',
     'deleteChat', 'deleteRole', 'deleteRoom', 'filesList', 'filesRead', 'listRooms',
-    'onChanged', 'onRuntimeEvents', 'runtimeEvents', 'setWriteAuthorized', 'snapshot',
-    'stopReply', 'submitMessage', 'updateRole',
+    'onChanged', 'onRuntimeEvents', 'runtimeEvents', 'setCaptain', 'setWriteAuthorized',
+    'snapshot', 'stopReply', 'submitMessage', 'updateRole',
   ].sort())
   await api.teamRoom.snapshot({ roomId: 'room-1' })
   assert.deepEqual(invocations, [{
@@ -181,6 +181,7 @@ test('team-room preload forwards only validated domain requests', async () => {
   await api.teamRoom.deleteRoom({ roomId: 'room' })
   await api.teamRoom.createRole({ roomId: 'room', chatId: 'chat', displayName: 'Writer', provider: 'codex' })
   await api.teamRoom.updateRole({ roomId: 'room', roleId: 'role', prompt: 'write' })
+  await api.teamRoom.setCaptain({ roomId: 'room', roleId: 'role' })
   await api.teamRoom.deleteRole({ roomId: 'room', roleId: 'role' })
   await api.teamRoom.answerAttention({ roomId: 'room', chatId: 'chat', attentionId: 'a', resolution: 'ok', commandId: 'c' })
   await api.teamRoom.submitMessage({ roomId: 'room', chatId: 'chat', content: 'hello', clientId: 'c1' })
@@ -193,7 +194,8 @@ test('team-room preload forwards only validated domain requests', async () => {
   assert.deepEqual(invocations.map(item => item.channel), [
     'team-room:list', 'team-room:bootstrap', 'team-room:snapshot', 'team-room:chat-messages',
     'team-room:chat-create', 'team-room:chat-delete', 'team-room:room-delete',
-    'team-room:role-create', 'team-room:role-update', 'team-room:role-delete',
+    'team-room:role-create', 'team-room:role-update', 'team-room:role-set-captain',
+    'team-room:role-delete',
     'team-room:attention-answer', 'team-room:message-submit', 'team-room:accept-task',
     'team-room:stop-reply', 'team-room:files-list', 'team-room:files-read',
     'team-room:write-authorized', 'team-room:runtime-events',

@@ -118,6 +118,7 @@ if (isLocalDocument) Object.assign(desktopApi, {
     deleteRoom: input => ipcRenderer.invoke('team-room:room-delete', input),
     createRole: input => ipcRenderer.invoke('team-room:role-create', input),
     updateRole: input => ipcRenderer.invoke('team-room:role-update', input),
+    setCaptain: input => ipcRenderer.invoke('team-room:role-set-captain', input),
     deleteRole: input => ipcRenderer.invoke('team-room:role-delete', input),
     answerAttention: input => ipcRenderer.invoke('team-room:attention-answer', input),
     submitMessage: input => ipcRenderer.invoke('team-room:message-submit', input),

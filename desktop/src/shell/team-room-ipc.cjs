@@ -15,6 +15,7 @@ const CHANNELS = Object.freeze({
   deleteRoom: 'team-room:room-delete',
   createRole: 'team-room:role-create',
   updateRole: 'team-room:role-update',
+  setCaptain: 'team-room:role-set-captain',
   deleteRole: 'team-room:role-delete',
   answerAttention: 'team-room:attention-answer',
   submitMessage: 'team-room:message-submit',
@@ -168,6 +169,13 @@ function registerTeamRoomIpc({ registerTrustedHandle, getHost }) {
       throw ipcError('TEAM_ROOM_INPUT_INVALID')
     }
     return host().updateRole(parsed)
+  })
+
+  registerTrustedHandle(CHANNELS.setCaptain, input => {
+    const parsed = assertInput(input, ['roomId', 'roleId'])
+    text(parsed.roomId)
+    text(parsed.roleId)
+    return host().setCaptain(parsed)
   })
 
   registerTrustedHandle(CHANNELS.deleteRole, input => {

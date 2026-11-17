@@ -55,6 +55,19 @@
 - 顶部出现 context usage chip（百分比或 token 数）。
 - 工作台里出现 Captain review / assignment 记录（可能稍晚）。
 
+## 场景 A2：在新 Chat 里换 Captain
+
+1. 在同一个 Room 新建一个 Chat（会复制当前角色）。
+2. 打开 Codex 角色设置，把它从 Captain 改掉；或直接打开 Claude 角色设置，勾选 Captain 并保存。
+3. 保存后查看角色 chip 和角色提示词。
+
+预期：
+
+- 不需要“先降旧 Captain，再升新 Captain”两次保存；一次保存原子完成。
+- 旧 Captain 自动降为 Worker，提示词变为 Worker 默认值；
+- 新 Captain 提示词变为 Captain 默认值；
+- 修改只影响当前 Chat，其他 Chat 的角色不变。
+
 ## 场景 B：完整任务闭环（主场景）
 
 1. 新开一个 Chat，或继续当前 Chat。

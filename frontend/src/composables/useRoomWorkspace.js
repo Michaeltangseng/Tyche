@@ -454,6 +454,15 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
     })
   }
 
+  async function setCaptain(roleId) {
+    const targetRoom = roomId.value
+    return mutate(async () => {
+      const result = await api.setCaptain({ roomId: targetRoom, roleId })
+      await refresh({ afterCurrent: true })
+      return result
+    })
+  }
+
   async function deleteRole(roleId) {
     const targetRoom = roomId.value
     return mutate(async () => {
@@ -517,6 +526,7 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
     setWriteAuthorized,
     createRole,
     updateRole,
+    setCaptain,
     deleteRole,
     runtimeEvents,
   }
