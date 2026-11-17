@@ -181,7 +181,13 @@ function createCaptainReview({ roomDb, repository, timeline, now = () => Date.no
       `).all(chatId)
       if (pending.length === 0) return []
       const reviewIds = pending.map(review => review.id)
-      const body = pending.map(review => review.body).join('\n\n').slice(0, 12_000)
+      const observations = pending.map(review => review.body).join('\n\n').slice(0, 12_000)
+      const body = [
+        'Review the settled assignments below.',
+        'Reply to the user with a short user-facing outcome summary; do not repeat internal ids, checkpoint numbers, or this observation text verbatim.',
+        '',
+        observations,
+      ].join('\n')
       const promptRevision = database.prepare(`
         SELECT MAX(revision) AS revision FROM role_prompt_revisions WHERE role_id = ?
       `).get(captain.roleId).revision ?? 1
