@@ -11,6 +11,11 @@ function createSessionStore({ roomDb, repository, now = () => Date.now() }) {
     return database.prepare('SELECT * FROM chat_participants WHERE chat_id = ? AND role_id = ?').get(chatId, roleId)
   }
 
+  function laneRow(taskId, roleId, kind) {
+    return database.prepare('SELECT * FROM task_lanes WHERE task_id = ? AND role_id = ? AND kind = ?')
+      .get(taskId, roleId, kind)
+  }
+
   function sameConfiguration(row, input, skillBindingsJson) {
     return row.provider === input.provider
       && row.prompt_revision === input.promptRevision
@@ -26,36 +31,44 @@ function createSessionStore({ roomDb, repository, now = () => Date.now() }) {
       const {
         scopeType, scopeId, roleId, provider, promptRevision, permissionMode,
         workspaceRef, skillBindings = [], model = null, thinkingLevel = null,
-        created = () => {},
+        laneKind = 'executor', created = () => {},
       } = input
-      if (scopeType !== 'chat') throw new Error('ROOM_SESSION_SCOPE_UNSUPPORTED')
+      if (scopeType !== 'chat' && scopeType !== 'task') throw new Error('ROOM_SESSION_SCOPE_UNSUPPORTED')
       if (typeof provider !== 'string' || provider.length === 0) throw new TypeError('ROOM_SESSION_PROVIDER_REQUIRED')
       if (typeof workspaceRef !== 'string' || workspaceRef.length === 0) throw new TypeError('ROOM_SESSION_WORKSPACE_REQUIRED')
-      const participant = participantRow(scopeId, roleId)
-      if (!participant) throw new Error('ROOM_PARTICIPANT_NOT_FOUND')
+      const scope = scopeType === 'chat'
+        ? participantRow(scopeId, roleId)
+        : laneRow(scopeId, roleId, laneKind)
+      if (!scope) throw new Error(scopeType === 'chat' ? 'ROOM_PARTICIPANT_NOT_FOUND' : 'ROOM_TASK_LANE_NOT_FOUND')
       const skillBindingsJson = JSON.stringify(skillBindings ?? [])
       const active = database.prepare(`
         SELECT * FROM sessions
-        WHERE scope_type = 'chat' AND scope_id = ? AND role_id = ? AND state = 'active'
-      `).all(scopeId, roleId)
+        WHERE scope_type = ? AND scope_id = ? AND role_id = ? AND state = 'active'
+      `).all(scopeType, scopeId, roleId)
       const match = active.find(row => sameConfiguration(row, input, skillBindingsJson))
       if (match) return { sessionId: match.id, reused: true, baselineSeq: match.baseline_seq }
 
       const sessionId = crypto.randomUUID()
       const createdAt = at()
-      const baselineSeq = participant.last_seq
+      const baselineSeq = scope.last_seq
       roomDb.withTransaction(() => {
         database.prepare(`
           INSERT INTO sessions
             (id, scope_type, scope_id, role_id, provider, baseline_seq, prompt_revision, permission_mode,
              workspace_ref, skill_bindings_json, model, thinking_level, state, created_at)
-          VALUES (?, 'chat', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
         `).run(
-          sessionId, scopeId, roleId, provider, baselineSeq, promptRevision, permissionMode,
+          sessionId, scopeType, scopeId, roleId, provider, baselineSeq, promptRevision, permissionMode,
           workspaceRef, skillBindingsJson, model ?? null, thinkingLevel ?? null, createdAt,
         )
-        database.prepare('UPDATE chat_participants SET session_id = ? WHERE chat_id = ? AND role_id = ?')
-          .run(sessionId, scopeId, roleId)
+        if (scopeType === 'chat') {
+          database.prepare('UPDATE chat_participants SET session_id = ? WHERE chat_id = ? AND role_id = ?')
+            .run(sessionId, scopeId, roleId)
+        } else {
+          database.prepare(`
+            UPDATE task_lanes SET session_id = ? WHERE task_id = ? AND role_id = ? AND kind = ?
+          `).run(sessionId, scopeId, roleId, laneKind)
+        }
       })
       created(sessionId)
       return { sessionId, reused: false, baselineSeq }
@@ -95,6 +108,19 @@ function createSessionStore({ roomDb, repository, now = () => Date.now() }) {
         UPDATE chat_participants SET last_seq = MAX(last_seq, ?) WHERE chat_id = ? AND role_id = ?
       `).run(seq, chatId, roleId)
       if (result.changes === 0) throw new Error('ROOM_PARTICIPANT_NOT_FOUND')
+    },
+
+    getLaneLastSeq({ taskId, roleId, kind = 'executor' }) {
+      const row = laneRow(taskId, roleId, kind)
+      if (!row) throw new Error('ROOM_TASK_LANE_NOT_FOUND')
+      return row.last_seq
+    },
+
+    setLaneLastSeq({ taskId, roleId, kind = 'executor', seq }) {
+      const result = database.prepare(`
+        UPDATE task_lanes SET last_seq = MAX(last_seq, ?) WHERE task_id = ? AND role_id = ? AND kind = ?
+      `).run(seq, taskId, roleId, kind)
+      if (result.changes === 0) throw new Error('ROOM_TASK_LANE_NOT_FOUND')
     },
   }
 }
