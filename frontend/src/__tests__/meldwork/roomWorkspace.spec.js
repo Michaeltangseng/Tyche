@@ -34,6 +34,7 @@ function data() {
 
 function api(snapshot = data()) {
   let changed = null
+  let runtimeEvent = null
   return {
     listRooms: vi.fn(async () => [{
       id: 'room-1',
@@ -62,7 +63,12 @@ function api(snapshot = data()) {
       changed = callback
       return () => { changed = null }
     }),
+    onRuntimeEvent: vi.fn(callback => {
+      runtimeEvent = callback
+      return () => { runtimeEvent = null }
+    }),
     emitChanged: () => changed?.(),
+    emitRuntimeEvent: payload => runtimeEvent?.(payload),
   }
 }
 
@@ -204,6 +210,63 @@ describe('team room workspace', () => {
       content: 'Another message',
       clientId: expect.any(String),
     }))
+  })
+
+  it('streams live text, tools, and context usage for a working reply', async () => {
+    const snapshot = data()
+    snapshot.messages = [{
+      id: 'reply-1', chat_id: 'chat-1', sequence: 2, author_type: 'agent', author_id: 'worker',
+      author_name: 'Writer', content: '', status: 'working', created_at: '2026-11-15T10:01:00Z',
+    }]
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+
+    bridge.emitRuntimeEvent({
+      runId: 'reply-1', chatId: 'chat-1', roleId: 'worker', mode: 'chat',
+      event: { kind: 'text_delta', text: 'Writing the docs', seq: 1 },
+    })
+    await flushPromises()
+    expect(wrapper.get('.room-live-output').text()).toBe('Writing the docs')
+
+    bridge.emitRuntimeEvent({
+      runId: 'reply-1', chatId: 'chat-1', roleId: 'worker', mode: 'chat',
+      event: { kind: 'tool_call_started', callId: 'call-1', toolName: 'shell', input: 'ls', seq: 2 },
+    })
+    await flushPromises()
+    expect(wrapper.get('.room-tool-card').text()).toContain('shell')
+
+    bridge.emitRuntimeEvent({
+      runId: 'reply-1', chatId: 'chat-1', roleId: 'worker', mode: 'chat',
+      event: { kind: 'usage', usage: { totalTokens: 1280, context: { percent: 42 } }, seq: 3 },
+    })
+    await flushPromises()
+    expect(wrapper.get('.room-usage-chip').text()).toBe('42%')
+  })
+
+  it('loads a persisted trace for a completed reply', async () => {
+    const snapshot = data()
+    snapshot.messages = [{
+      id: 'reply-1', chat_id: 'chat-1', sequence: 2, author_type: 'agent', author_id: 'worker',
+      author_name: 'Writer', content: 'Done', status: 'done', created_at: '2026-11-15T10:01:00Z',
+    }]
+    const bridge = api(snapshot)
+    bridge.runtimeEvents.mockResolvedValue([{
+      id: 'event-1', runId: 'reply-1', chatId: 'chat-1', kind: 'tool_call_started',
+      payload: { kind: 'tool_call_started', callId: 'call-1', toolName: 'shell', input: 'ls' },
+      createdAt: '2026-11-15T10:01:01Z',
+    }])
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+
+    const trace = wrapper.get('.room-run-trace')
+    trace.element.open = true
+    await trace.trigger('toggle')
+    await flushPromises()
+    expect(bridge.runtimeEvents).toHaveBeenCalledWith({
+      roomId: 'room-1', chatId: 'chat-1', runId: 'reply-1', limit: 1000,
+    })
+    expect(trace.text()).toContain('shell')
   })
 
   it('accepts settled tasks and answers open attentions', async () => {

@@ -15,6 +15,7 @@ const { createRoomRepository } = require('./repository.cjs')
 const { createRoomReadModel } = require('./read-model.cjs')
 const { createRoomService } = require('./room-service.cjs')
 const { createOarRuntimeAdapter } = require('./runtime-adapter.cjs')
+const { sanitizeRuntimeEvent, sanitizeStoredEvent } = require('./runtime-event-view.cjs')
 const {
   classifyContent,
   imageMime,
@@ -144,6 +145,7 @@ function createRoomHost({
   liveness = true,
   now = () => Date.now(),
   onChanged = () => {},
+  onRuntimeEvent = () => {},
 } = {}) {
   if (typeof privateRoot !== 'string' || !path.isAbsolute(privateRoot)) {
     throw new TypeError('ROOM_HOST_PRIVATE_ROOT_REQUIRED')
@@ -159,6 +161,11 @@ function createRoomHost({
     recoverOnOpen: true,
     liveness,
     now,
+    onEvent: (payload) => {
+      const view = sanitizeRuntimeEvent(payload)
+      if (!view) return
+      try { onRuntimeEvent(view) } catch { /* event observers are best-effort */ }
+    },
     adapterFactory: adapterFactory || (deps => createOarRuntimeAdapter({
       ...deps,
       env,
@@ -655,7 +662,7 @@ function createRoomHost({
       chatId: chat.id,
       runId,
       limit: input.limit,
-    })
+    }).map(sanitizeStoredEvent).filter(Boolean)
   }
 
   async function start() {

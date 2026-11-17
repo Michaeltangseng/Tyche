@@ -51,6 +51,7 @@
       </div>
 
       <div class="room-header-actions">
+        <span v-if="usageLabel" class="room-usage-chip" :title="t('room.usageContext')">{{ usageLabel }}</span>
         <button v-if="attentions.length" class="room-notice-pill" type="button" @click="scrollToAttention">
           {{ t('room.attentions', { count: attentions.length }) }}
         </button>
@@ -114,10 +115,23 @@
                     <span class="room-message-status" :data-status="entry.message.status">{{ statusLabel(entry.message.status) }}</span>
                   </header>
                   <p v-if="entry.message.content">{{ entry.message.content }}</p>
+                  <p v-else-if="liveFor(entry.message)?.text" class="room-live-output" aria-live="polite">{{ liveFor(entry.message).text }}</p>
                   <p v-else-if="isWorking(entry.message)" class="room-live-output" aria-live="polite">{{ t('room.liveOutput') }}</p>
+                  <details v-if="liveFor(entry.message)?.reasoning" class="room-reasoning">
+                    <summary>{{ t('room.thinking') }}</summary>
+                    <p>{{ liveFor(entry.message).reasoning }}</p>
+                  </details>
                   <div v-if="entry.mentions.length" class="room-mention-row">
                     <span v-for="name in entry.mentions" :key="name" class="room-mention-chip">@{{ name }}</span>
                   </div>
+                  <RoomRunTrace
+                    v-if="entry.message.author_type === 'agent'"
+                    :api="api"
+                    :room-id="roomId"
+                    :chat-id="chatId"
+                    :run-id="entry.message.id"
+                    :live="liveFor(entry.message)"
+                  />
                   <div v-if="entry.message.status === 'waiting_for_input'" class="room-actions">
                     <span class="room-muted">{{ t('room.waitingForInput') }}</span>
                   </div>
@@ -204,12 +218,15 @@
           <div class="room-runs">
             <p class="room-runs-title">{{ t('room.runs') }}</p>
             <p v-if="!taskRuns(task.id).length" class="room-muted">{{ t('room.noRuns') }}</p>
-            <p v-for="run in taskRuns(task.id)" :key="run.id" class="room-run-row">
-              <span>{{ roleName(run.role_id) }}</span>
-              <span>{{ run.lane_kind === 'mention' ? t('room.mentionLane') : t('room.executorLane') }}</span>
-              <span :data-status="run.status">{{ statusLabel(run.status) }}</span>
-              <span v-if="run.outcome !== 'pending'" class="room-muted">{{ run.outcome }}</span>
-            </p>
+            <div v-for="run in taskRuns(task.id)" :key="run.id" class="room-run-entry">
+              <p class="room-run-row">
+                <span>{{ roleName(run.role_id) }}</span>
+                <span>{{ run.lane_kind === 'mention' ? t('room.mentionLane') : t('room.executorLane') }}</span>
+                <span :data-status="run.status">{{ statusLabel(run.status) }}</span>
+                <span v-if="run.outcome !== 'pending'" class="room-muted">{{ run.outcome }}</span>
+              </p>
+              <RoomRunTrace :api="api" :room-id="roomId" :chat-id="chatId" :run-id="run.id" />
+            </div>
           </div>
           <div v-if="taskReports(task.id).length" class="room-reports">
             <p v-for="report in taskReports(task.id)" :key="report.id" class="room-report-row">
@@ -242,6 +259,18 @@
             <time class="room-muted">{{ formatTime(assignment.created_at) }}</time>
           </article>
         </template>
+
+        <template v-if="artifacts.length">
+          <h2>{{ t('room.artifacts') }}</h2>
+          <article v-for="artifact in artifacts" :key="artifact.id" class="room-card room-artifact-entry">
+            <header>
+              <strong>{{ artifact.path }}</strong>
+              <span :data-status="artifact.status">{{ statusLabel(artifact.status) }}</span>
+            </header>
+            <p class="room-muted">{{ artifact.kind }} · {{ artifact.version }}</p>
+            <p v-if="tasksById.get(artifact.task_id)" class="room-muted">{{ taskLabel(tasksById.get(artifact.task_id)) }}</p>
+          </article>
+        </template>
       </aside>
     </div>
 
@@ -252,7 +281,7 @@
           <button class="secondary-button" type="button" @click="creating = false">{{ t('common.close') }}</button>
         </header>
         <p v-if="error || pickerError" class="room-error" role="alert">{{ t('room.error') }}</p>
-        <label>{{ t('room.name') }}<input v-model="name" maxlength="256" required /></label>
+        <label>{{ t('room.name') }}<input v-model="name" maxlength="120" required /></label>
         <div class="room-directory">
           <button class="secondary-button" type="button" :disabled="busy || picking" @click="chooseDirectory">{{ t('room.chooseDirectory') }}</button>
           <span>{{ directory || t('room.noDirectory') }}</span>
@@ -319,7 +348,7 @@
                 </select>
               </label>
               <form class="room-new-chat" @submit.prevent="newChat">
-                <input v-model="chatTitle" :placeholder="t('room.chatName')" :aria-label="t('room.chatName')" maxlength="256" />
+                <input v-model="chatTitle" :placeholder="t('room.chatName')" :aria-label="t('room.chatName')" maxlength="120" />
                 <button class="secondary-button" :disabled="busy || !chatTitle.trim()">{{ t('room.newChat') }}</button>
               </form>
               <button
@@ -453,6 +482,7 @@ import {
 import { agentLogo } from '../catalog.js'
 import { t } from '../i18n.js'
 import { useRoomWorkspace } from '../composables/useRoomWorkspace.js'
+import RoomRunTrace from './RoomRunTrace.vue'
 
 const props = defineProps({
   api: { type: Object, required: true },
@@ -477,7 +507,10 @@ const {
   reports,
   reviews,
   attentions,
+  artifacts,
   messages,
+  liveRuns,
+  chatUsage,
   hasOlderMessages,
   loadingOlderMessages,
   busy,
@@ -579,11 +612,21 @@ const entries = computed(() => {
   ))
 })
 
+const usageLabel = computed(() => {
+  const usage = chatUsage.value
+  if (!usage) return ''
+  if (usage.context?.percent != null) return `${Math.round(usage.context.percent)}%`
+  if (usage.totalTokens != null) return String(usage.totalTokens)
+  if (usage.context?.tokens != null) return String(usage.context.tokens)
+  return ''
+})
+
 const workCount = computed(() => (
   tasks.value.length
   + reviews.value.length
   + captainAssignments.value.length
   + attentions.value.length
+  + artifacts.value.length
 ))
 const hasWork = computed(() => workCount.value > 0)
 const showWorkPanel = computed(() => workPanelOpen.value && hasWork.value)
@@ -672,6 +715,10 @@ function canAcceptTask(task) {
 
 function isWorking(message) {
   return message.author_type === 'agent' && ['queued', 'working'].includes(message.status)
+}
+
+function liveFor(message) {
+  return liveRuns.value[message.id] || null
 }
 
 function canStop(message) {
@@ -1181,4 +1228,22 @@ body.room-overlay-open { overflow: hidden; }
   .room-run-row { grid-template-columns: minmax(0, 1fr) auto auto; }
   .room-run-row > span:nth-child(2) { display: none; }
 }
+</style>
+
+<style scoped>
+.room-usage-chip { padding: 3px 8px; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-size: var(--text-2xs); font-weight: 600; }
+.room-run-trace { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); font-size: var(--text-xs); }
+.room-run-trace > summary { display: flex; gap: 8px; align-items: center; color: var(--text-soft); cursor: pointer; }
+.room-run-trace-count { padding: 1px 6px; border-radius: 999px; background: var(--surface-active); color: var(--faint); font-size: 10px; }
+.room-tool-card { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: color-mix(in srgb, var(--surface) 82%, var(--surface-raised)); }
+.room-tool-card[data-status="failed"] { border-color: color-mix(in srgb, var(--danger, #b94c4c) 45%, var(--border)); }
+.room-tool-card header { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.room-tool-card header span { color: var(--faint); font-size: var(--text-2xs); }
+.room-tool-card details { margin-top: 4px; }
+.room-tool-card summary { color: var(--text-soft); cursor: pointer; }
+.room-tool-card pre, .room-reasoning p { max-height: 16rem; overflow: auto; margin: 4px 0 0; padding: 7px 8px; border-radius: 6px; background: var(--surface); font-size: var(--text-2xs); white-space: pre-wrap; overflow-wrap: anywhere; }
+.room-reasoning { margin-top: 6px; }
+.room-reasoning > summary { color: var(--faint); font-size: var(--text-2xs); cursor: pointer; }
+.room-usage-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; color: var(--text-soft); font-size: var(--text-2xs); }
+.room-run-entry + .room-run-entry { margin-top: 6px; }
 </style>

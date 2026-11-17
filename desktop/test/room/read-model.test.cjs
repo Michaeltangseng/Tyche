@@ -139,7 +139,7 @@ test('snapshot can include captain rows and reports older pages', t => {
   context.roomDb.close()
 })
 
-test('listRooms exposes a label, not the absolute workspace', t => {
+test('listRooms exposes a label and chats, not the absolute workspace', t => {
   const context = setup(t)
   const model = createRoomReadModel({ roomDb: context.roomDb })
   const rooms = model.listRooms()
@@ -148,5 +148,30 @@ test('listRooms exposes a label, not the absolute workspace', t => {
   assert.equal(rooms[0].workspace, undefined)
   assert.equal(typeof rooms[0].workspace_label, 'string')
   assert.equal(rooms[0].chat_count, 1)
+  assert.equal(rooms[0].chats[0].id, context.chatId)
+  context.roomDb.close()
+})
+
+test('snapshot includes the room artifact ledger without absolute paths', t => {
+  const context = setup(t)
+  const at = new Date().toISOString()
+  context.roomDb.database.prepare(`
+    INSERT INTO artifacts (id, room_id, task_id, run_id, path, kind, version, status, created_at, updated_at)
+    VALUES ('artifact-1', ?, NULL, NULL, 'docs/room.md', 'document', 'v1', 'published', ?, ?)
+  `).run(context.roomId, at, at)
+  const model = createRoomReadModel({ roomDb: context.roomDb })
+  const snapshot = model.snapshot({ roomId: context.roomId })
+  assert.deepEqual(snapshot.artifacts, [{
+    id: 'artifact-1',
+    task_id: null,
+    run_id: null,
+    path: 'docs/room.md',
+    kind: 'document',
+    version: 'v1',
+    status: 'published',
+    created_at: at,
+    updated_at: at,
+  }])
+  assert.equal(JSON.stringify(snapshot.artifacts).includes(context.roomId), false)
   context.roomDb.close()
 })

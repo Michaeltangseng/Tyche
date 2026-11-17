@@ -1218,6 +1218,12 @@ if (!hasSingleInstanceLock) {
               mainWindow.webContents.send('team-room:changed', {})
             }
           },
+          onRuntimeEvent: payload => {
+            if (mainWindow && !mainWindow.isDestroyed()
+                && isTrustedLocalWebContents(mainWindow.webContents)) {
+              mainWindow.webContents.send('team-room:runtime-event', payload)
+            }
+          },
         })
         await teamRoomHost.start()
       } catch (error) {

@@ -91,6 +91,7 @@ function messageView(row, roleNames) {
     id: row.id,
     chat_id: row.chat_id,
     sequence: row.seq,
+    client_id: row.client_id ?? null,
     revision: row.revision,
     audience: row.audience,
     author_type: row.author_type,
@@ -198,6 +199,20 @@ function reviewView(row) {
     body: row.body,
     data: parseJson(row.data_json, null),
     reply_id: row.reply_id,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  }
+}
+
+function artifactView(row) {
+  return {
+    id: row.id,
+    task_id: row.task_id ?? null,
+    run_id: row.run_id ?? null,
+    path: row.path,
+    kind: row.kind,
+    version: row.version,
+    status: row.status,
     created_at: row.created_at,
     updated_at: row.updated_at,
   }
@@ -337,6 +352,10 @@ function createRoomReadModel({ roomDb } = {}) {
           SELECT * FROM captain_assignments WHERE chat_id IN (${placeholders})
           ORDER BY created_at ASC, rowid ASC
         `).all(...chatIds)
+    const artifacts = database.prepare(`
+      SELECT * FROM artifacts WHERE room_id = ?
+      ORDER BY created_at ASC, rowid ASC
+    `).all(room.id)
 
     return {
       room: roomView(room, chats),
@@ -350,6 +369,7 @@ function createRoomReadModel({ roomDb } = {}) {
       attentions: attentions.map(attentionView),
       reviews: reviews.map(reviewView),
       assignments: assignments.map(assignmentView),
+      artifacts: artifacts.map(artifactView),
     }
   }
 

@@ -32,6 +32,20 @@ function createHost(t) {
   return { root, workspace, host }
 }
 
+test('the production host assembles the OAR adapter by default', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-host-oar-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const host = createRoomHost({
+    privateRoot: path.join(root, 'private'),
+    liveness: false,
+  })
+  t.after(() => host.close())
+  assert.equal(typeof host.service.adapter.start, 'function')
+  assert.equal(typeof host.service.adapter.startTaskRun, 'function')
+  assert.equal(fs.existsSync(path.join(__dirname, '..', '..', 'src', 'room', 'meldwork-runtime-wrapper.sh')), true)
+  await host.start()
+})
+
 test('bootstrap creates a display-safe room with a default captain', async (t) => {
   const { root, workspace, host } = createHost(t)
   const created = host.bootstrap({
@@ -288,6 +302,41 @@ test('a room with running work cannot be deleted', (t) => {
     deleted: true,
     roomId: created.roomId,
   })
+})
+
+test('live runtime events are sanitized before reaching the host observer', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-host-events-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const workspace = path.join(root, 'workspace')
+  fs.mkdirSync(workspace, { recursive: true })
+  const events = []
+  const adapter = {
+    start({ onEvent }) {
+      onEvent({ kind: 'text_delta', text: 'hello', seq: 1 })
+      onEvent({ kind: 'usage', usage: { totalTokens: 12, context: { percent: 1 } }, seq: 2 })
+      return {
+        launch: Promise.resolve({ nativeSessionRef: 'session-1' }),
+        completion: Promise.resolve({ status: 'done', text: 'hello', thinking: '', activity: [] }),
+      }
+    },
+    startTaskRun() { throw new Error('not used') },
+    async disposeAll() {},
+  }
+  const host = createRoomHost({
+    privateRoot: path.join(root, 'private'),
+    adapterFactory: () => adapter,
+    liveness: false,
+    onRuntimeEvent: payload => events.push(payload),
+  })
+  t.after(() => host.close())
+  const created = host.bootstrap({ name: 'Events', workspace, providers: ['codex'] })
+  host.submitMessage({ roomId: created.roomId, chatId: created.chatId, content: 'hi' })
+  await host.service.startQueuedReplies({ chatId: created.chatId })
+
+  assert.deepEqual(events.map(event => event.event.kind), ['text_delta', 'usage'])
+  assert.equal(events[0].runId.startsWith('optimistic'), false)
+  assert.equal(JSON.stringify(events).includes('session-1'), false)
+  assert.equal(events[1].event.usage.totalTokens, 12)
 })
 
 test('runtime events are scoped to a chat in the room', (t) => {

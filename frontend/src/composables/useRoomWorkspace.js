@@ -1,4 +1,4 @@
-import { computed, onScopeDispose, ref } from 'vue'
+import { computed, onScopeDispose, ref, watch } from 'vue'
 
 /**
  * Renderer-side room domain adapter.
@@ -17,12 +17,16 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
   const olderMessages = ref({})
   const olderMessagesAvailable = ref({})
   const loadingOlderMessages = ref(false)
+  const liveRuns = ref({})
+  const chatUsage = ref(null)
+  const optimistic = ref([])
   let generation = 0
   let disposed = false
   let timer = null
   let changedTimer = null
   let refreshing = null
   let unsubscribeChanges = null
+  let unsubscribeRuntimeEvents = null
 
   const chat = computed(() => snapshot.value?.chats.find(item => item.id === chatId.value) || null)
   const roomsById = computed(() => new Map(rooms.value.map(room => [room.id, room])))
@@ -43,9 +47,14 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
   const attentions = computed(() => (
     snapshot.value?.attentions || []
   ).filter(item => item.chat_id === chatId.value && item.status === 'open'))
+  const artifacts = computed(() => snapshot.value?.artifacts || [])
   const messages = computed(() => {
     const current = (snapshot.value?.messages || []).filter(item => item.chat_id === chatId.value)
-    const combined = [...(olderMessages.value[chatId.value] || []), ...current]
+    const knownClientIds = new Set(current.map(item => item.client_id).filter(Boolean))
+    const pending = optimistic.value.filter(item => (
+      item.chat_id === chatId.value && !knownClientIds.has(item.client_id)
+    ))
+    const combined = [...(olderMessages.value[chatId.value] || []), ...current, ...pending]
     return [...new Map(combined.filter(item => !item.deleted_at).map(item => [item.id, item])).values()]
       .sort((left, right) => left.sequence - right.sequence)
   })
@@ -66,6 +75,100 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
       clearTimeout(changedTimer)
       changedTimer = setTimeout(() => { void refresh({ afterCurrent: true }) }, 80)
     })
+  }
+
+  async function loadChatUsage() {
+    if (disposed || !roomId.value || !chatId.value || typeof api.runtimeEvents !== 'function') return null
+    try {
+      const events = await api.runtimeEvents({
+        roomId: roomId.value,
+        chatId: chatId.value,
+        limit: 500,
+      })
+      if (disposed) return null
+      for (let index = (events || []).length - 1; index >= 0; index -= 1) {
+        const payload = events[index]?.payload
+        if (payload?.kind === 'usage' && payload.usage) {
+          chatUsage.value = payload.usage
+          return payload.usage
+        }
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
+
+  watch(chatId, () => { void loadChatUsage() })
+
+  function liveState(runId) {
+    if (!liveRuns.value[runId]) {
+      liveRuns.value = {
+        ...liveRuns.value,
+        [runId]: { text: '', reasoning: '', tools: [], usage: null, status: 'running', lastSeq: 0 },
+      }
+    }
+    return liveRuns.value[runId]
+  }
+
+  function updateLive(runId, update) {
+    liveRuns.value = {
+      ...liveRuns.value,
+      [runId]: { ...liveState(runId), ...update },
+    }
+  }
+
+  function applyRuntimeEvent(payload) {
+    if (disposed || !payload?.runId || payload.chatId !== chatId.value) return
+    const event = payload.event || {}
+    const current = liveState(payload.runId)
+    if (Number.isInteger(event.seq) && event.seq < current.lastSeq) return
+    const lastSeq = Number.isInteger(event.seq) ? event.seq : current.lastSeq
+    if (event.kind === 'text_delta') {
+      updateLive(payload.runId, { text: `${current.text}${event.text || ''}`.slice(-32 * 1024), lastSeq })
+      return
+    }
+    if (event.kind === 'reasoning') {
+      updateLive(payload.runId, {
+        reasoning: `${current.reasoning}${event.text || ''}`.slice(-16 * 1024),
+        lastSeq,
+      })
+      return
+    }
+    if (event.kind === 'tool_call_started' || event.kind === 'tool_call_input' || event.kind === 'tool_call_ended') {
+      const callId = event.callId || event.toolName || `tool-${event.seq || current.tools.length}`
+      const existing = current.tools.find(tool => tool.callId === callId)
+      const next = {
+        callId,
+        name: event.toolName || existing?.name || 'tool',
+        input: event.input ?? existing?.input ?? '',
+        output: event.output ?? existing?.output ?? '',
+        status: event.status || existing?.status || 'running',
+        ...(event.exitCode !== undefined ? { exitCode: event.exitCode } : {}),
+      }
+      updateLive(payload.runId, {
+        tools: existing
+          ? current.tools.map(tool => (tool.callId === callId ? next : tool))
+          : [...current.tools, next],
+        lastSeq,
+      })
+      return
+    }
+    if (event.kind === 'usage' && event.usage) {
+      updateLive(payload.runId, { usage: event.usage, lastSeq })
+      chatUsage.value = event.usage
+      return
+    }
+    if (event.kind === 'turn_ended' || event.kind === 'failure' || event.kind === 'exited') {
+      updateLive(payload.runId, {
+        status: event.kind === 'turn_ended' ? 'completed' : 'failed',
+        lastSeq,
+      })
+    }
+  }
+
+  if (typeof api.onRuntimeEvent === 'function') {
+    unsubscribeRuntimeEvents = api.onRuntimeEvent(applyRuntimeEvent)
   }
 
   async function refresh({ afterCurrent = false } = {}) {
@@ -111,6 +214,9 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
     snapshot.value = null
     olderMessages.value = {}
     olderMessagesAvailable.value = {}
+    liveRuns.value = {}
+    chatUsage.value = null
+    optimistic.value = []
     chatId.value = targetChatId || ''
     error.value = false
     const data = await refresh()
@@ -205,9 +311,30 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
   }
 
   async function send(content, { clientId = crypto.randomUUID() } = {}) {
+    if (busy.value || disposed) return null
     const targetRoom = roomId.value
     const targetChat = chatId.value
-    return mutate(async () => {
+    const sequence = Number.MAX_SAFE_INTEGER
+    optimistic.value = [...optimistic.value, {
+      id: `optimistic:${clientId}`,
+      client_id: clientId,
+      chat_id: targetChat,
+      sequence,
+      revision: 1,
+      audience: 'chat',
+      author_type: 'user',
+      author_id: 'user',
+      author_name: 'user',
+      kind: 'message',
+      content,
+      mentions: [],
+      status: 'sending',
+      data: null,
+      created_at: new Date().toISOString(),
+    }]
+    busy.value = true
+    error.value = false
+    try {
       const result = await api.submitMessage({
         roomId: targetRoom,
         chatId: targetChat,
@@ -216,7 +343,13 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
       })
       await refresh({ afterCurrent: true })
       return result
-    })
+    } catch {
+      if (!disposed) error.value = true
+      return null
+    } finally {
+      optimistic.value = optimistic.value.filter(item => item.client_id !== clientId)
+      if (!disposed) busy.value = false
+    }
   }
 
   async function loadOlderMessages() {
@@ -341,6 +474,7 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
     clearTimeout(timer)
     clearTimeout(changedTimer)
     unsubscribeChanges?.()
+    unsubscribeRuntimeEvents?.()
   })
 
   return {
@@ -357,7 +491,10 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
     reports,
     reviews,
     attentions,
+    artifacts,
     messages,
+    liveRuns,
+    chatUsage,
     hasOlderMessages,
     loadingOlderMessages,
     busy,
