@@ -160,6 +160,7 @@ eta 已经提供这些机制：每个 (agent × conversation) 一个持久 sessi
 - [06 重写与迁移](06-rewrite-and-migration.md)
 - [07 架构决策记录](07-decisions.md)
 - [08 待决问题](08-open-questions.md)
+- [09 UI 方向与信息架构](09-ui-direction.md)
 
 ## 明确抛弃
 

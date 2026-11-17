@@ -232,7 +232,7 @@ npm --prefix desktop run pack
 2. **runtime adapter + MCP 注入（POC 已完成）**：`runtime-adapter.cjs` 使用 OAR，`engine.startReply` 和 Task `pump` 已走真实 Claude/Codex；`room-oar-smoke.cjs` 明确 `engineDriven: true`（Claude/Codex 均通过）。下一步是进程治理、事件/Trace 对齐、Electron 43/Node 24 与全量验证。
 3. **领域幂等（已完成）**：`domain_idempotency`（schema v2）；`create_task` per assignment+source，`comment_task` 调用方 key/缺省 source+text；room 测试 52/52。下一步建议先补 OAR 硬崩进程清理/事件 Trace 持久化，再进 deferred minors。
 4. **Deferred minors（已完成）**：五项全部完成（Task number/work progress/acceptTask/mention lane/unknown effect Attention）。下一步进入 UI 阶段。
-5. **UI/preload/renderer**：在 engine 真实闭环通过后再接。
+5. **UI/preload/renderer**：在 engine 真实闭环通过后再接。UI 审计、Keep/Delete/Rewrite 和实施切片见 `docs-new2/09-ui-direction.md` 与 `docs/superpowers/handoffs/2026-11-17-room-ui-rewrite-handoff.md`。
 6. **旧数据迁移/旧引擎退场**：单独计划；当前切片不碰。
 
 ## 交接检查

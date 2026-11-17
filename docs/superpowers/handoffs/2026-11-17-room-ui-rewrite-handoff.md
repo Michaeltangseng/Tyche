@@ -1,0 +1,277 @@
+# Room UI 重写交接（2026-11-17）
+
+> 用途：后端阶段完成、UI 审计完成后的交接。上下文压缩后从本文继续。
+>
+> 配套：
+> - `docs-new2/09-ui-direction.md`：完整 UI 审计、Keep/Delete/Rewrite、目标信息架构。
+> - `docs/superpowers/handoffs/2026-11-17-meldwork-room-v2-handoff.md`：后端垂直切片历史与语义。
+
+## 0. 一句话
+
+**后端已经闭环；UI 仍跑在旧 `room-engine` 上。下一步先删旧 Project Room preview，再把 `RoomWorkspace` 数据层接到新 room domain，最后删旧 `room-engine`。保留视觉外壳，不保留旧 contract。**
+
+## 1. 当前状态
+
+- 仓库：`/Users/limu/Desktop/githubs/29-meldwork/Tyche`
+- 分支：`project-room`；8 个 commit **未 push**
+- 最新 commit：`988fab2 feat(room): add a display-safe read model for the room UI`
+
+| Commit | 内容 |
+| --- | --- |
+| `48d5eec` | OAR runtime adapter + engine-driven smoke |
+| `58a95b9` | 领域幂等（schema v2） |
+| `2d672fd` | room-service + liveness + supervisor + recovery |
+| `ae86b61` | runtime_events（schema v3） |
+| `5d94e35` | Task number / progress / acceptTask |
+| `a2d5eff` | OAR 硬崩进程治理（wrapper + sweep） |
+| `7ba6a66` | mention lane + unknown-effect Attention |
+| `988fab2` | display-safe room read model |
+
+验证状态：
+
+- **65/65** room tests（20 个测试文件）。
+- Claude / Codex service-driven OAR smoke：均 `ok: true`、`engineDriven: true`、`serviceDriven: true`。
+- Smoke 含 mention lane：`comment_task` 成功、mention run `completed`、`required=false`、Task 保持 `in_review`。
+- 硬崩治理：wrapper 写入 7 个 PID 记录，close 后 0。
+- 未跑：frontend/desktop 全量测试、pack、Electron 43/Node 24。
+
+新 room domain 已具备：
+
+- SQLite schema v3、Room/Chat/Role/Participant/Message/Task/TaskRun/Report/Attention/Session/CaptainReview/Artifact/Effect/RuntimeEvent/DomainIdempotency。
+- `engine`、`task-queue`、`settlement`、`captain-review`、`supervisor`、`recovery`。
+- `runtime-adapter.cjs`（OAR，Claude/Codex）、per-run MCP、NO_PROXY、YOLO（POC 例外）。
+- `room-service.cjs`（liveness、supervisor、recovery、disposeAll）。
+- `domain-idempotency.cjs`、`runtime-events.cjs`、`runtime-processes.cjs` + wrapper。
+- `read-model.cjs`：`listRooms` / `snapshot` / `chatMessages`，display-safe snake_case DTO。
+
+UI 现状：
+
+- `RoomWorkspace`（`frontend/src/components/RoomWorkspace.vue`）视觉外壳可用，但数据仍来自旧 `desktop/src/room-engine/`。
+- 旧 Project Room preview（`ProjectRoom*` + `useProjectRoom*`）仍在，绑定 checkpoint/gate/seat/round。
+- 新 room domain **没有 IPC、preload、UI**。
+
+## 2. UI 审计结论（详见 `docs-new2/09-ui-direction.md`）
+
+当前 UI：
+
+- 左侧 Agent 列表 + Team rooms（Room → Chat）+ 旧 Project rooms。
+- RoomWorkspace：header（Room/Chat 名、角色 chips、Attention/文件/Work）、timeline（用户/Agent/Controller、Report、Assignment Trace、实时输出、Attention）、composer、右侧文件抽屉、Work 面板、设置弹窗。
+- 截图问题：文件面板报 `SCHEDULER_CLAIM_ROOT_INVALID`；写授权靠 Captain 在聊天里解释；没有流式 process/tool 卡、token/context、独立 Task 板/Inbox。
+
+已死/应删的旧 UI：
+
+- `ProjectRoomProgress.vue`（进度链/摘要注释，永远不展开）。
+- `ProjectRoomStatus` 的 “View diff”（无消费者）。
+- `ProjectRoomDrawer` 的 FileDiff（从未加载）。
+- `ProjectRoomSeatSettings` 的 add/remove（模板注释）。
+- `project:open` 事件（无消费）。
+- `projectRoomPreview` 开关（迁移脚手架）。
+
+eta 的强项：
+
+- 回复行状态机 `queued → working → waiting_for_input → done/failed/stopping/stopped`。
+- 持久时间线 vs 实时流分离（live 来自 session events，结束后读 timeline 快照）。
+- process 与 answer 分离；tool card 按 command/diff/write/plan/JSON/图片/子步骤渲染；Transcript 抽屉。
+- TaskRun 日志 + 时间条/瀑布图；上下文占用环 + Session prompt/tools 检查器。
+- Attention 只列真正阻塞的事，可内联回答；不做通知中心。
+- 乐观 outbox、幂等 clientId、held messages、草稿恢复。
+- Task/Artifact 卡与 turn provenance；Agent/Role 配置 tabs；三栏自适应外壳。
+
+eta 的缺口 / 不照搬：
+
+- 没有一等公民 Report（finish_task 摘要只变评论）→ Meldwork 必须做独立 Report 卡。
+- Usage 分散、无全局页、无 per-run cost、cost 未渲染 → Meldwork 做 Role/TaskRun/Room 三层。
+- 不照搬：全局 Captain、machines/daemon、memory、routines、LLM gateway、Email、wire/cordis、Agent 作为全局配置、用户新建 Task/拖拽到 done、XML review fallback、TUI/mobile、4 字符/token 当计费。
+
+## 3. 关键决策
+
+1. **保留 `RoomWorkspace` 视觉外壳，重写数据适配层。** 不保留旧 `room-engine` 的 assignment/artifact/trace/files/context contract。
+2. **删除旧 Project Room preview 整套。** 不保留 checkpoint/gate/seat/round 的任何 UI 或后端状态机。
+3. **不做长期双引擎。** 新 UI 切换完成后删除旧 `room-engine` IPC/service/UI 数据路径；旧数据只归档，不迁移。
+4. **借鉴 eta 的信息模型，不复制它的产品边界。** 重点借：回复状态机、持久时间线 vs 实时流、process/tool trace、TaskRun 日志、context/session 检查器、Attention、乐观 outbox、Task/Artifact 卡、Role 配置、三栏外壳。
+5. **Meldwork 要有 eta 没有的：** 一等公民 Report、Role/TaskRun/Room token·cost、per-seat 权限与 write scope、Room 级 Artifact 账本、每 Chat 一个 Captain。
+6. **POC 例外保留：** Chat/Task 当前 YOLO；生产化前重新评估 Chat 只读/write 租约语义。
+
+## 4. 接下来的实施方向（按顺序）
+
+### Slice 0：删除旧 Project Room preview（先做，独立低风险）
+
+目标：把旧 checkpoint/gate/seat/round UI 和入口一次清掉，Team rooms/RoomWorkspace 不受影响。
+
+删除范围：
+
+- UI 组件：`ProjectRoomStatus.vue`、`ProjectRoomGatePanel.vue`、`ProjectRoomProgress.vue`、`ProjectRoomComposer.vue`、`ProjectRoomTimelineCard.vue`、`ProjectRoomCreateDialog.vue`、`ProjectRoomSeatSettings.vue`、`ProjectRoomOverlay.vue`、旧 `ProjectRoomDrawer.vue`。
+- Composables：`useProjectRoomView.js`、`useProjectRoom.js`。
+- App：`App.vue` 中旧 project room controllers/watches/timeline props/sidebar props/overlay/dialog/imports。
+- 侧栏：`WorkspaceSidebar.vue` 的 Project rooms / Legacy projects / pending decisions。
+- 设置：`GeneralSettingsPanel.vue` 的 Project rooms preview 开关、`projectRoomPreview` preference、locale。
+- IPC/preload：`project:*`、`projectRoom.*`、`frontend/src/desktop.js` 旧方法、`preload.cjs:111-156`。
+- 后端：`desktop/src/project-room/` 全部（ProjectService/checkpoint/gate/seat/round/projection/store）。
+- workspace JSON：`state.projects[]`、`groups[].projectId/projectRole`、`snapshot.projectRooms/pendingDecisions`。
+- i18n/CSS/测试：`projectRoom.*` 旧分组、旧 project-room CSS、`projectRoom*.spec.js`。
+
+删除顺序：UI 入口 → composables/controllers → preload/project IPC → ProjectService/checkpoint → workspace JSON 字段 → i18n/CSS/tests。
+
+验收：
+
+- 侧栏只剩 Team rooms + Agent 列表；无 Project rooms / Legacy projects / preview 开关。
+- `rg -n "ProjectRoom|useProjectRoom|projectRoomPreview|project:" frontend/src desktop/src` 无残留引用（测试/文档除外）。
+- frontend build + 相关 tests 通过。
+- RoomWorkspace 仍能打开（它只依赖 `room` API，不依赖 `project`）。
+
+### Slice 1：新 Room host + IPC + preload
+
+目标：让新 room domain 成为唯一运行时数据源；不再经过旧 `room-engine`。
+
+新增/修改：
+
+- `desktop/src/room/room-host.cjs`（新）：
+  - 新 SQLite 目录（如 `<privateRoot>/room/room.sqlite`），打开 `room-db`/repository/read model。
+  - 创建 `room-service`，`adapterFactory: createOarRuntimeAdapter`，传 `runtimeWrapperPath`（asar unpack 路径）、`runtimeStateDir`、`env`。
+  - `recoverOnOpen: true`、`startupSweep`、app quit `close()`（先 disposeAll 再 sweep）。
+- `desktop/src/shell/room-ipc.cjs`（新）：
+  - 窄 handler：`listRooms`、`snapshot`、`chatMessages`、`bootstrap`、`chat-create`、`message-submit`、`accept-task`、`stop-reply`、`changed`。
+  - 只返回 display-safe DTO；拒绝绝对路径/session ref/PID/token。
+- `preload.cjs`：用新 `room` API 替换旧 `room.*`；`onChanged` 用 `room:changed`。
+- `main.cjs`：创建 room host、注册 room IPC、quit close；移除旧 room-engine service/IPC 只在新 UI 切换后做。
+- 缺失 contract 一起补：
+  - `artifacts`（read model + accept/reject/ledger）
+  - `filesList/filesRead`（Room workspace 安全只读；不走旧 scheduler claim）
+  - `chat_context_revisions`（协作约定真正保存）
+  - `skills`（Role/Chat skill bindings）
+  - `runtime_events` / trace endpoint（按 runId；授权在 main）
+  - `usage/context`（OAR events 的 usage、context；Role/TaskRun/Room 聚合）
+  - `write authorization`（Room 级 opt-in）
+  - `stop/retry/accept task` 用户命令（commandId 幂等）
+  - `mention` 输入能力（composer @ 成员/文件）
+
+验收：
+
+- 新 RoomWorkspace 能用新 IPC 完成：建 Room/Chat、发消息、流式、Task/Report/Review/Attention、文件、artifact、trace。
+- `room-engine` 不再被新 UI 调用；旧 IPC/service 在 Slice 4 删除。
+- 不向 renderer 下发 workspace 绝对路径、session/native ref、PID、token、tool 原始 activity。
+
+### Slice 2：重写 `useRoomWorkspace` + `RoomWorkspace` 数据层
+
+- `useRoomWorkspace.js`（202 行）改为新 read model：`assignments→runs`、`is_controller→is_captain`、`report.run_id`、`attention.options`、`workspace_label/write_authorized`。
+- `RoomWorkspace.vue` 保留视觉外壳；重绑 header/角色 chips/timeline/composer/work panel/settings。
+- 新增卡片：Captain review、Captain assignment、Task/Run/Report/Artifact、Attention、mention/system。
+- Composer：@ 成员/文件、# 任务、附件、reply/root；排队/发送。
+- 右栏：文件 / 任务 / 待办 / 产物 / 轨迹。
+- 角色设置：`is_captain`、prompt revision、native permission、capabilities、write scopes；删除 checkpointRoles。
+- Chat 设置：context revision、skills；删除旧 `sendContext` 伪消息。
+- 保留 i18n/视觉 token/响应式/Escape/aria。
+
+验收：
+
+- Electron desktop 模式跑通完整协作：消息、流式、Task/Report、Captain review、Attention、文件/artifact/trace。
+- 不出现 checkpoint/gate/seat/round/controller/pending decision 词汇。
+- frontend tests + build + build:desktop；desktop 相关测试。
+
+### Slice 3：补 eta 借鉴的 UI 能力
+
+- 流式：RuntimeEvent → process box + tool cards + answer；30–60ms 批量；首 token skeleton；重连/interrupted 状态。
+- Tool trace：按 command/diff/write/plan/JSON/图片/子步骤渲染；默认折叠；Transcript 抽屉；失败/权限节点。
+- TaskRun：日志 + 时间条/瀑布图；LiveRuns；attempt/previous run。
+- Context/Usage：Chat header context chip；Session 检查器（prompt/tools/分片/compaction）；Role/TaskRun/Room 三层 token·cost；provider-reported vs estimated。
+- Needs you：统一 Attention 面板；内联回答；不自动弹窗；统一 badge。
+- Task 板 + Artifact 账本 + Report 卡；Room 级页面。
+- 乐观 outbox/held messages/草稿恢复（桌面端优先）。
+
+### Slice 4：删除旧 `room-engine`
+
+- 新 UI 切换后删除 `preload.cjs` 旧 `room.*`、`room-engine/room-ipc.cjs`、`room-engine/room-service.cjs`、controller/assignment-runner/artifact-reader/session-supervisor/旧 trace。
+- 清理旧 room CSS/i18n/tests；删除旧 `RoomAssignmentTrace` 的 assignment contract（保留视觉，改 run trace）。
+- 确保只有一套 Room UI、一套数据源、一套状态机。
+
+### Slice 5：硬化
+
+- Electron 43 / Node 24、asar/打包、全量测试。
+- Windows 硬崩治理（wrapper 目前 POSIX）。
+- runtime_events 保留策略、Trace UI 授权。
+- 非 OAR provider（Gemini/DeepSeek/Mimo/ZCode/Hermes/WorkBuddy/OpenClaw/OpenCodeReview）仍走旧层，单独评估。
+- POC YOLO 语义生产化复核。
+
+## 5. 第一刀的具体文件清单（Slice 0）
+
+删除/修改：
+
+```text
+frontend/src/components/ProjectRoomStatus.vue
+frontend/src/components/ProjectRoomGatePanel.vue
+frontend/src/components/ProjectRoomProgress.vue
+frontend/src/components/ProjectRoomComposer.vue
+frontend/src/components/ProjectRoomTimelineCard.vue
+frontend/src/components/ProjectRoomCreateDialog.vue
+frontend/src/components/ProjectRoomSeatSettings.vue
+frontend/src/components/ProjectRoomOverlay.vue
+frontend/src/components/ProjectRoomDrawer.vue
+frontend/src/composables/useProjectRoomView.js
+frontend/src/composables/useProjectRoom.js
+frontend/src/App.vue（旧 controllers/watches/props/imports）
+frontend/src/components/WorkspaceSidebar.vue（旧 Project rooms / Legacy / pending decisions）
+frontend/src/components/GeneralSettingsPanel.vue（preview 开关）
+frontend/src/desktop.js（projectRoom methods）
+desktop/src/preload.cjs（projectRoom API）
+desktop/src/shell/project-ipc.cjs
+desktop/src/project-room/*
+desktop/src/workspace/local-workspace-state.cjs（projectRooms/pendingDecisions）
+desktop/src/workspace/local-workspace-conversations.cjs（projectId/projectRole 字段）
+frontend/src/locales/en.js, zh.js（projectRoom.*）
+frontend/src/styles/*（旧 project-room 专用）
+frontend/src/__tests__/meldwork/projectRoom*.spec.js
+```
+
+保留：`RoomWorkspace`、`RoomFilesDrawer`、`WorkdirTree/FilePreview`、`RoomAssignmentTrace` 视觉、`RoomArtifactDiff` 视觉、`room.*` i18n、通用样式。
+
+## 6. 坑 / 风险
+
+- **read model roles**：snapshot 返回 room 下所有 chat 的 roles；UI 要按当前 chat 过滤，不要误以为 Room 级角色。
+- **assignments vs runs**：`read-model.assignments` 是 Captain assignment；执行记录是 `runs`。旧 UI 的 `assignments` 概念必须改名。
+- **文件面板**：旧的 `SCHEDULER_CLAIM_ROOT_INVALID` 来自旧 scheduler；新 files API 只读 Room workspace，走安全路径校验，不下发绝对路径。
+- **写授权**：Room 级 opt-in；不要再用 Captain 聊天解释；UI 要有明确开关和只读提示。
+- **usage/context**：OAR 有 usage 事件，但 adapter 目前只收集活动，未持久化 usage；Slice 1 需要定义 Session/Run usage contract。
+- **artifacts**：schema 有表，read model 未返回；没有 producer/diff/accept 命令，需要补。
+- **Captain review**：read model 已返回 `reviews`，UI 完全没渲染；新 UI 必须补。
+- **旧数据迁移**：本阶段不做；旧数据归档/只读；不要双读双写。
+- **Windows**：wrapper/sweep 仅 POSIX；Windows 需另做 taskkill/process tree。
+- **POC YOLO**：Chat/Task 全 YOLO 是临时决定，生产前重新评估 handoff 的 Chat 只读/write 租约。
+
+## 7. 验证命令
+
+```bash
+cd desktop
+
+# 后端 room 测试（当前 65/65）
+node --test test/room/db.test.cjs test/room/repository.test.cjs test/room/timeline.test.cjs \
+  test/room/session-store.test.cjs test/room/routing.test.cjs test/room/briefing.test.cjs \
+  test/room/effects.test.cjs test/room/engine.test.cjs test/room/dispatcher.test.cjs \
+  test/room/mcp-server.test.cjs test/room/mention.test.cjs test/room/read.test.cjs \
+  test/room/task-queue.test.cjs test/room/settlement.test.cjs test/room/captain-review.test.cjs \
+  test/room/recovery.test.cjs test/room/room-service.test.cjs test/room/runtime-events.test.cjs \
+  test/room/runtime-processes.test.cjs test/room/read-model.test.cjs
+
+# OAR service smoke（真实 Claude/Codex）
+MELDWORK_USER_DATA=/tmp/meldwork-room-oar node scripts/room-oar-smoke.cjs --run --provider claude
+MELDWORK_USER_DATA=/tmp/meldwork-room-oar node scripts/room-oar-smoke.cjs --run --provider codex
+
+# UI 切片后
+npm --prefix ../frontend test
+npm --prefix ../frontend run build
+npm --prefix ../frontend run build:desktop
+
+# 最终集成
+npm --prefix desktop test
+npm --prefix desktop run pack
+```
+
+按仓库规则：全部测试由所有者人工做；不要声称跑过全量。
+
+## 8. 压缩后恢复清单
+
+- [ ] 读本文 + `docs-new2/09-ui-direction.md` + `2026-11-17-meldwork-room-v2-handoff.md`。
+- [ ] `git log -8 --oneline` 确认 `988fab2` 及之前 8 个 commit；分支 `project-room`。
+- [ ] 跑 room 测试确认 **65/65**。
+- [ ] 下一步：**Slice 0 删除旧 Project Room preview**。
+- [ ] 旧 Project Room preview 删除完成后，再进入 Slice 1（Room host/IPC/preload）。
+- [ ] 不要恢复旧 `project:*` / `room-engine` contract；不要双引擎。
