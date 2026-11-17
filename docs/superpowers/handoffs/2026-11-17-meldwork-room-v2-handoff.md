@@ -1,123 +1,192 @@
-# Meldwork Room v2 交接文档
+# Meldwork Room v2 实施交接
 
-> 用途：上下文压缩或换会话后，先把下面的“可直接粘贴的 prompt”交给下一个 agent，再按需补充细节。
-
-## 可直接粘贴的 prompt
-
-```text
-你是 Tyche / Meldwork 项目的实施 agent。仓库：/Users/limu/Desktop/githubs/33-Tyche/Tyche，分支 project-room。
-
-先读这些文件，不要先写代码：
-1. docs-new2/README.md
-2. docs-new2/01-principles-and-scope.md
-3. docs-new2/02-target-architecture.md
-4. docs-new2/03-conversation-session-and-briefing.md
-5. docs-new2/04-task-captain-and-report.md
-6. docs-new2/06-rewrite-and-migration.md
-7. docs-new2/07-decisions.md
-8. docs-new2/08-open-questions.md
-9. docs/superpowers/plans/2026-11-17-meldwork-room-v2-vertical-slice.md
-
-当前状态：
-- docs-new2 已批准为实施基线。
-- 实施计划已完成，但还没有写任何产品代码。
-- 用户尚未选择执行方式：Native（当前 session 自己实现）或 Subagent-driven（每个任务新 subagent + reviewer）。推荐 Native；不要未经用户确认就派 subagent。
-- 用户要求“先不执行”。除非用户明确说开始，否则只做阅读、计划和澄清。
-
-你必须守住的决定：
-- 保留 Electron main / preload / renderer 信任边界、原生 CLI 调用、权限、进程注册、Run Ledger、Trace、写入租约、shadow Git、Artifact 快照。
-- 新领域代码放在 desktop/src/room/，不要改 desktop/src/room-engine/、desktop/src/project-room/ 或旧 workspace JSON 路径。
-- 每个 Chat × Role 一个持久 Chat session；每个 Task lane（executor/mention）一个 Task session；last_seq 属于 participant/lane，不属于 session。
-- Agent 自己 create_task / 执行 / finish_task；Captain 只发可见授权，不建任务，不自我派发。
-- Captain review 用 eta 的 review supervisor，不做 completion wake、独立 completion 预算或 stage_complete。
-- hasNew = activity_seq > max(checkpoint, 各未取消 assignment 的 public 消息 seq)；review 行和 review reply 不计入 activity_seq；post_in_chat 是 public，可能再次触发。
-- 5 次唤醒预算只约束 Agent 的 mention 工具；assign_in_group 和 Captain review 不计入。
-- Chat 回复默认只读；写入只发生在有授权、writeScopes 和租约的 TaskRun；隔离前每个 Room 同时最多一个写入型 run。
-- finish_task 是完成声明，不是结算：退出确认 + 快照/Report 校验后才 in_review/blocked；accept_task 只能在结算后。
-- 写入型结算要快照；只读型 snapshot_state=not_applicable，由平台按运行权限确定。
-- 观察到的非零退出 = failed/outcome=known；无法确认退出 = interrupted/outcome=unknown，不能合并。
-- MCP 是完整工具循环；文本标记只支持单一终止动作，Captain 工具需要 MCP；幂等键是逻辑 callId，不是参数 hash。
-- 不回退旧架构，不做双引擎长期兼容；旧数据只做一次性迁移/归档（迁移不在首个切片）。
-- 早期阶段允许重写，但不要顺手重构无关代码；每个任务保持可回滚。
-
-执行计划时：
-- 按 docs/superpowers/plans/2026-11-17-meldwork-room-v2-vertical-slice.md 的任务顺序，TDD：先写失败测试，再实现，再跑通过，再提交。
-- 每个任务只改计划列出的文件；接口名、字段、错误码不要擅自改名。
-- Phase 2 必须先跑 Claude Code 和 Codex 的 resume proof；resume 不成立就停下报告，不要继续铺 Task/UI。
-- 同时验证 MCP 工具能否 list/call 并回传结果；不能验证就明确降级，不要声称完全自主。
-- Phase 2.5 必须用真实 CLI 跑通：持久 session → 工具 → Task session → finish_task → 退出确认 → 快照/结算 → Captain review。
-- 报告时给出实际运行的命令和输出；没跑就说没跑。
-
-用户偏好：
-- 不要未经允许派 adversarial-review subagent；需要 review 先问。
-- 不要用“MVP”框定需求；这是完整产品，分期只在实施计划里。
-- 复用优先；能复用现有能力就不要自研。
-- Agent for agent：平台不拆大任务、不追踪 Agent 内部步骤。
-```
+> 用途：新人接手 Meldwork 项目室重写。当前 `project-room` 分支上的垂直切片已经实现、测试并跑过真实 CLI 证明。
+> 下一步不是继续铺功能，而是把 **engine → runtime adapter → MCP/工具循环** 真正接通，然后做集成、UI 和旧数据/旧引擎退场。
+> 本文取代此前“尚未开始实施”的版本；历史版本在 git 里。
 
 ## 当前状态
 
-- 基线文档：`docs-new2/` 已提交。
-- 实施计划：`docs/superpowers/plans/2026-11-17-meldwork-room-v2-vertical-slice.md` 已提交。
-- 代码：**尚未开始**。
-- 执行方式：**未选择**。用户说“先不执行”。
-- 最近提交（以实际 `git log` 为准）：
-  - `a6da20c` add room v2 vertical slice implementation plan
-  - `ef9d31e` tighten project room execution contracts
-  - `5f50d7d` record eta-inspired project room rewrite direction
+- 分支：`project-room`，已推送 `origin/project-room`。
+- 实施计划：`docs/superpowers/plans/2026-11-17-meldwork-room-v2-vertical-slice.md`，13 个任务全部完成。
+- 设计基线：`docs-new2/` 已批准。
+- 新领域代码：`desktop/src/room/`。
+- 测试：`desktop/test/room/`。
+- 旧引擎：`desktop/src/room-engine/`、`desktop/src/project-room/` **未改动**，不要在新切片里复用它们的 schema。
+- 未做：Renderer/preload/UI、旧数据迁移、旧引擎删除、完整 engine 工具循环、真实 CLI 的 MCP 注入。
 
-## 关键文件
+## 验证证据（本分支已实际运行）
 
-### 设计基线
-- `docs-new2/README.md`：总览、原则、方案对比、明确抛弃项。
-- `docs-new2/01`：目标、非目标、约束、术语、成功标准。
-- `docs-new2/02`：目标架构、schema 草案、effect 生命周期、MCP/标记、DTO。
-- `docs-new2/03`：Message/回复行、Session、简报、routing/mention、Captain review。
-- `docs-new2/04`：Task/TaskRun/lane、finish/结算、Report、Agent 工具、Captain、Attention。
-- `docs-new2/05`：eta 复用映射（固定 eta commit `03197d88`）。
-- `docs-new2/06`：保留/重写/删除、迁移矩阵、阶段、风险。
-- `docs-new2/07`：ADR-N1 ~ N21。
-- `docs-new2/08`：已定问题、待定问题、证明门槛。
+| 项目 | 结果 |
+| --- | --- |
+| `desktop/test/room` 16 个测试文件 | **43 tests / 43 pass / 0 fail** |
+| Claude Code resume proof | `resumed: true`, `remembered: true`, session ref 稳定 |
+| Codex resume proof | `resumed: true`, `remembered: true`, session ref 稳定 |
+| MCP tool loop proof | `create_task` / `finish_task` / `mention` list + call 成功，`ok: true` |
+| Seam smoke Claude | `ok: true`，持久 Chat session、独立 Task session、finish→settlement→in_review、Captain review 全链路 |
+| Seam smoke Codex | `ok: true`，同上 |
 
-### 实施计划
-- `docs/superpowers/plans/2026-11-17-meldwork-room-v2-vertical-slice.md`
-- 13 个任务：DB/schema → repository → timeline → session store → routing → briefing → effects/engine → tools/MCP/mention/read → task queue → settlement → Captain review → recovery → real CLI proofs。
+按仓库所有者要求，没有跑全量测试；最终集成阶段由人工验证。不要声称跑过全量。
 
-### 现有代码参考
-- 原生调用：`desktop/src/workspace/local-workspace-agent-invocation.cjs`
-- session 原语：`desktop/src/workspace/invocation-session.cjs`
-- CLI adapter：`desktop/src/agents/cli/`
-- 进程注册：`desktop/src/agents/process/process-registry.cjs`
-- Run Ledger / journal：`desktop/src/runs/`
-- 写入租约：`desktop/src/runs/path-claims.cjs`
-- shadow Git：`desktop/src/project-room/shadow-git.cjs`
-- 旧 v2 参考（不要复用 schema）：`desktop/src/room-engine/`
-- 真实 CLI smoke 参考：`desktop/scripts/smoke-room.cjs`
+## 先读什么
 
-### eta 参考
-- 源码：`/Users/limu/Desktop/githubs/33-Tyche/eta/eta`
-- 固定 commit：`03197d88`
-- 关键文件：`apps/eta/src/conversations/{engine,briefing,routing,places}.ts`、`apps/eta/src/tasks/{runner,session-key,tools}.ts`、`apps/eta/src/captain/{supervisor,service,tools}.ts`、`packages/eta-compaction/src/`。
-- 注意：另一个 eta commit `fab4012` 使用 `session-owner.ts`；不要混用两个快照。
+1. `docs-new2/README.md`：总览、原则、明确抛弃项。
+2. `docs-new2/02-target-architecture.md`：目标分层、SQLite 表语义、effect 生命周期、MCP/标记。
+3. `docs-new2/03-conversation-session-and-briefing.md`：Message/回复行、Session、增量简报、routing、Captain review。
+4. `docs-new2/04-task-captain-and-report.md`：Task/TaskRun/lane、finish/结算、Report、Captain 工具。
+5. `docs-new2/07-decisions.md`：ADR-N1 ~ N21。
+6. 实施计划：`docs/superpowers/plans/2026-11-17-meldwork-room-v2-vertical-slice.md`。
+7. 本文。
 
-## 下一步
+eta 参考固定 commit `03197d88`；不要和另一个快照 `fab4012` 混用。
 
-1. 用户选择执行方式：Native（推荐）或 Subagent-driven。
-2. 用户明确说开始后，按计划 Task 1 开始；不要先写 UI、不要先迁移旧数据。
-3. Phase 2 proof 是硬门槛：
-   - Claude Code resume：记住事实 → resume → 问回事实；
-   - Codex resume：同上；
-   - MCP：list/call 工具并拿到结果；
-   - 任一失败：停下报告，调整设计。
-4. Phase 2.5 真实 CLI 接缝通过后，再继续 Task/UI/迁移。
+## 代码地图
 
-## 验证命令（计划执行时使用）
+```text
+desktop/src/room/
+  db.cjs / schema.cjs          SQLite 打开、WAL/FK/busy_timeout、私有目录、事务、schema v1
+  repository.cjs               Room/Chat/Role/Participant/role_prompt_revisions
+  timeline.cjs                 message seq、activity_seq、clientId 去重、edit 事件、状态迁移
+  session-store.cjs            chat/task 两种 scope、持久 native ref、baseline、轮换、水位
+  routing.cjs                  用户消息路由、mention budget
+  briefing.cjs                 增量简报、100 条/2000 字上限、captain-only 可见性、seen
+  effects.cjs                  outbox：pending/running/succeeded/failed/unknown
+  engine.cjs                   submitUserMessage、queueReply、startReply、startQueuedReplies、stopReply
+  task-queue.cjs               createTask、enqueueRun、pump、lane、写租约、恢复门禁
+  settlement.cjs               finish_task claim、settle、accept_task、finish_task 工具
+  captain-review.cjs           assignment 台账、review 生成、批量投递、start_reply effect
+  supervisor.cjs               150ms debounce + 60s tick 兜底
+  recovery.cjs                 restart 恢复、lane 挂起/激活、process 对账
+  tools/
+    dispatcher.cjs             register/bindRun/invoke、callId 幂等、args_hash 校验、readOnly 审计
+    mcp-server.cjs             Streamable HTTP MCP server、per-run bearer token、callId metadata
+    mention.cjs                mention 工具、5 次预算、queueReply
+    read.cjs                   read_chat 分页、captain-only 过滤
+    tasks.cjs                  create_task / comment_task
+    captain.cjs                assign_in_group / post_in_chat、createCaptainAssignment
+
+desktop/scripts/
+  room-resume-proof.cjs        Claude/Codex resume 证明，写 room-resume-proof.json
+  room-mcp-proof.cjs           本地 MCP list/call 证明，写 room-mcp-proof.json
+  room-seam-smoke.cjs          模块级真实 CLI 接缝证明，写 room-seam-result.json
+```
+
+## 已实现的能力
+
+1. **Schema v1**：17 张核心表 + `role_prompt_revisions` / `chat_context_revisions` / `attentions` / `user_commands`。私有目录 `0700`、DB `0600`、WAL/FK/busy_timeout、同步事务/savepoint。
+2. **Repository**：Room/Chat/Role/Participant，稳定的错误码；role prompt revision 1 与 role 同事务写入。
+3. **Timeline**：`seq` 分配、`clientId` 去重、`activity_seq` 只统计 public 行（排除 `audience=captain` 和 `data.reviewReply=true`）；`edit` 追加 public 事件并推进 activity。
+4. **Session store**：Chat 每个 Role 一个持久 session；Task lane 一个持久 session；`last_seq` 在 participant/lane，不在 session；配置变化自动轮换旧 active session；`baseline_seq` 来自当前水位。
+5. **Routing**：显式 @ → Captain → 唯一成员；5 次预算只数 `kind=mention`。
+6. **Briefing**：只发 `last_seq` 之后的行；跳过自己；未完成行阻塞水位；100 条/2000 字；返回 `seen`、`omittedSeqs`、`truncatedIds`；Captain-only 行只对 Captain 可见。
+7. **Effects/Engine**：`start_reply` effect 在 launch 后成功，不等待 run 完成；runtime launch/completion 分离；完成时水位用 `briefing.seen`，不会跳过 in-flight peer；`startQueuedReplies` 会暴露 launch 错误。
+8. **Tools/MCP**：dispatcher 逻辑 `callId` 幂等、同 callId 不同 args 抛 `ROOM_TOOL_CALL_ARGS_MISMATCH`、read 工具不缓存；MCP Streamable HTTP + per-run bearer token；`read_chat` 过滤 Captain-only；`mention` 写 `kind=mention` 并排队；`create_task`/`finish_task` 可用。
+9. **Task/Run**：`create_task` 默认直接建 Task + executor lane + queued run + `start_run` effect；`pump` 每个 lane 一个 run、Room 一个写 run；creator/assignee 同 Chat 校验；Captain assignment 下强制调用者执行。
+10. **Settlement**：`finish_task` 只是 claim，Task 保持 `in_progress`；`settle` 要求退出确认 + 报告；写入型要求 `snapshot=completed`，只读型平台设 `not_applicable`；非零退出 `failed/known`，退出未知 `interrupted/unknown`；`accept_task` 只能在结算后。
+11. **Captain review**：全局基线 `max(checkpoint, 所有 active assignment 消息 seq)`；目标忙/Task 未结算/run 未结束会挡住；review 行和 review reply 不推进 activity；批量投递同 Chat；投递时写 `start_reply` effect；supervisor 150ms debounce + 60s tick。
+12. **Recovery**：queued 保留；working/waiting → interrupted；starting/running → interrupted/unknown；running effect → unknown；有写 scope 的 run 建 Attention；被中断的 lane `active=0`，`pump` 不启动，必须 `activateLane` 释放。
+13. **真实 CLI 证明**：resume、MCP、模块级 seam 都已跑通（见上表）。
+
+## 必须守住的语义
+
+- 新 Chat 路径不读写旧 `meldwork-workspace.json` 存 session。
+- `last_seq` 属于 `chat_participants` / `task_lanes`；`sessions` 只有 `baseline_seq`。
+- `activity_seq` 排除 `audience=captain` 的 review 行和 `reviewReply=true` 的投递回复；`assign_in_group` / `post_in_chat` 是 public，会计入。
+- Captain 不建 Task、不自我派发；`assign_in_group` 一条可见消息 + assignment + 目标 queued reply 同一事务。
+- 5 次预算只约束 Agent `mention`，不约束 `assign_in_group` / review。
+- Chat 回复只读；写入只在有授权、非空冻结 `write_scopes`、租约的 TaskRun；隔离前每个 Room 最多一个写 run。
+- `finish_task` 是完成声明，不是结算；`in_review` 只能在退出/快照结算后。
+- 只读 Task 的 `snapshot_state=not_applicable` 由平台确定，不信任 Agent 自报。
+- 观察到的非零退出与无法确认退出不能合并。
+- MCP 是完整工具循环；文本标记只是受限 fallback；Captain 工具需要 MCP。
+- 不做双引擎长期兼容；旧数据迁移不在这个切片。
+
+## 当前限制（接手第一优先级）
+
+### Ruling 1：engine 还没有接工具循环
+
+`engine.startReply` 目前只调用 runtime 的 `start/launch/completion`，没有：
+
+- 创建并传入 per-run MCP server URL/token；
+- 把 dispatcher、`finish_task`、`create_task`、`mention` 绑定到 run；
+- 把 TaskRun 的 `start_run` 真正变成一次 CLI 调用；
+- 生产代码里的 supervisor/review 投递后启动 Captain reply。
+
+`room-seam-smoke.cjs` 是**模块级**接缝证明：它直接调用 queue/settlement/review，并用严格文本标记模拟工具动作。结果里明确写了：
+
+```json
+{ "integrationMode": "module-seam-marker-fallback", "engineDriven": false }
+```
+
+不要把它当成“真实 CLI 全自主工具循环”。下一步应新增 `desktop/src/room/runtime-adapter.cjs`（计划文件列表中已有但未分配任务），并：
+
+1. 为每个 run 启动一个本地 MCP server，生成 token，绑定 `runId`；
+2. 把 MCP URL/token 注入 Claude Code / Codex 的启动参数或临时配置（需要改 `desktop/src/agents/cli/cli-invocations.cjs` 或 proof 层适配）；
+3. `engine.startReply` 与 Task `pump` 通过 adapter 调用真实 CLI；
+4. 用真实 CLI 重跑 engine 驱动的 seam，替换 marker fallback。
+
+### Ruling 2：领域幂等仍不完整
+
+dispatcher 的 `callId` 幂等只覆盖“客户端复用 callId”的情况。`create_task` / `comment_task` 还没有 per-assignment+source-message 的领域幂等键；客户端用新 callId 重试仍可能重复。下一步按 `docs-new2/04` §5.1 补。
+
+### 已修复的 review 问题（不要回退）
+
+- Captain review 投递必须同时写 `start_reply` effect。
+- Captain 的 briefing 必须传 `viewerIsCaptain`。
+- 完成水位必须用 `briefing.seen`，不能用 `reply.seq`。
+- 重启后 lane 必须挂起，`pump` 必须尊重 `task_lanes.active` 和未对账的写 run。
+- `read_chat` 必须过滤 Captain-only。
+- `create_task` 必须校验 creator/assignee 同 Chat；Captain assignment 下强制调用者。
+- session 配置变化必须轮换旧 active session。
+- review 基线必须是所有 active assignment 消息的全局最大值。
+- MCP server 必须要求 per-run bearer token。
+- resume proof 必须要求第二次 session ref 相同。
+
+### Deferred minors
+
+- `comment_task` 续跑使用评论者 lane，而不是 Task executor lane。
+- `acceptTask` 只校验“有 completed run + report”，未校验最新 required run 的 ready report/artifacts。
+- `progress` 报告把 Task 映射成 `blocked`，spec 是 `in_progress`。
+- Task number 按 Chat 分配，spec 说按 Room。
+- recovery 的 Attention 只覆盖有 write scope 的 run，未覆盖 unknown effects。
+
+## 验证命令
 
 ```bash
-# 单个测试
-cd desktop && node --test test/room/<file>.test.cjs
+cd desktop
 
-# 计划完成后，按 AGENTS.md
+# 小范围 room 测试（当前 43/43）
+node --test test/room/db.test.cjs test/room/repository.test.cjs test/room/timeline.test.cjs \
+  test/room/session-store.test.cjs test/room/routing.test.cjs test/room/briefing.test.cjs \
+  test/room/effects.test.cjs test/room/engine.test.cjs test/room/dispatcher.test.cjs \
+  test/room/mcp-server.test.cjs test/room/mention.test.cjs test/room/read.test.cjs \
+  test/room/task-queue.test.cjs test/room/settlement.test.cjs \
+  test/room/captain-review.test.cjs test/room/recovery.test.cjs
+```
+
+真实证明（需要本机已安装并登录对应 CLI）：
+
+```bash
+cd desktop
+export MELDWORK_USER_DATA=/tmp/meldwork-room-proof
+
+ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron \
+  scripts/room-resume-proof.cjs --run --provider claude
+ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron \
+  scripts/room-resume-proof.cjs --run --provider codex
+
+node scripts/room-mcp-proof.cjs
+
+ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron \
+  scripts/room-seam-smoke.cjs --run --provider claude
+ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron \
+  scripts/room-seam-smoke.cjs --run --provider codex
+```
+
+结果文件在 `$MELDWORK_USER_DATA/room-resume-proof.json`、`room-mcp-proof.json`、`room-seam-result.json`。
+
+按仓库规则，最终集成前还要跑（当前所有者会人工做）：
+
+```bash
 npm --prefix frontend test
 npm --prefix frontend run build
 npm --prefix frontend run build:desktop
@@ -125,20 +194,21 @@ npm --prefix desktop test
 npm --prefix desktop run pack
 ```
 
-真实 proof 脚本（计划 Task 13）：
+## 建议的下一步顺序
 
-```bash
-cd desktop
-ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron \
-  scripts/room-resume-proof.cjs --run --provider claude
-ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron \
-  scripts/room-resume-proof.cjs --run --provider codex
-```
+1. **人工集成验证**：按上面的真实证明命令重跑，确认本机 CLI 行为。
+2. **runtime adapter + MCP 注入**：新增 `runtime-adapter.cjs`；把 per-run MCP server/token 注入 Claude/Codex；让 `engine.startReply` 和 Task `pump` 走同一条真实运行时路径；重写 `room-seam-smoke`，明确 `engineDriven: true`。
+3. **领域幂等**：`create_task` / `comment_task` 的 assignment+source message 幂等键。
+4. **Deferred minors**：按业务优先级补。
+5. **UI/preload/renderer**：在 engine 真实闭环通过后再接。
+6. **旧数据迁移/旧引擎退场**：单独计划；当前切片不碰。
 
 ## 交接检查
 
-- [ ] 已读 `docs-new2/README.md` 与 `02/03/04`。
-- [ ] 已读实施计划的任务列表与 Review Focus。
-- [ ] 已确认执行方式。
-- [ ] 已确认当前没有未提交的代码改动（文档改动除外）。
-- [ ] 已确认 Phase 2 proof 是硬门槛，不会跳过。
+- [ ] 已读 `docs-new2/README.md`、`02/03/04/07` 和本文。
+- [ ] 已在本机跑过 room 测试，确认 43/43。
+- [ ] 已在本机跑过 Claude/Codex resume、MCP、seam 证明。
+- [ ] 理解 `room-seam-smoke.cjs` 是模块级 marker fallback，不是 engine 驱动的完整闭环。
+- [ ] 理解 `desktop/src/room-engine/` 是旧引擎，不要在新切片里复用。
+- [ ] 不新增数据迁移、不做双引擎长期兼容。
+- [ ] 下一步先做 runtime adapter + CLI MCP 注入，再考虑 UI/迁移。
