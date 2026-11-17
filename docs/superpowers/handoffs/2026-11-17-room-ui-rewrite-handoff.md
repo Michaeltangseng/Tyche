@@ -40,6 +40,7 @@
 - **96/96** room domain + team-room IPC + preload security。
 - **30/30** invocation/permission/write/lease workspace tests。
 - Claude / Codex service-driven OAR smoke（Node 24.22.3，Electron 43 升级后）：均 `ok: true`、`engineDriven: true`、`serviceDriven: true`；`assign_in_group → create_task → finish_task → settlement → Captain review → mention lane comment_task` 全链路；wrapper PID 记录 7/9 → 0。
+- **Host-driven OAR smoke**（新 `scripts/room-host-oar-smoke.cjs`）：Claude 与 Codex 均 `ok: true`；bootstrap → 角色 → 消息 → task run → settlement → in_review → Captain review；live runtime events 2560/172；wrapper PID 4 → 0。
 - 前端：build / build:desktop 通过；Node 22 全量 **103 failed / 375 passed**，与 HEAD 基线减去已删除测试一致（剩余失败均为基线已有的 App 旧断言漂移）。
 - 未跑：desktop 全量 suite、pack、Electron 43/Node 24、真实 Electron 窗口手工验收。
 
@@ -215,6 +216,7 @@ eta 的缺口 / 不照搬：
 
 - **Electron 43 / Node 24（已完成）**：`electron@43.8.10`（内置 Node 24.22.1），`engines.node >=24`；OAR 在 Electron Node 下可加载，`node:sqlite` 可用。二进制用 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ node node_modules/electron/install.js` 下载。
 - **启动 smoke（已完成）**：`./node_modules/.bin/electron .` 在 Electron 43 下成功启动 main/GPU/network/renderer，无启动异常；仅做了启动/退出，未做完整交互。
+- **Host OAR smoke（已完成）**：`npm --prefix desktop run smoke:room-host` 走生产 `room-host`，Claude/Codex 均跑通 bootstrap → task → settlement → review，live events 与 wrapper PID 清理正常。
 - **真实 Electron 窗口验收（待人工）**：新建 Room → 选目录/角色 → 发消息 → 流式 → create_task/finish_task → Report/验收 → Captain review → Attention → 文件抽屉/trace。
 - **Pack（待人工）**：`npm --prefix desktop run pack`。
 - **Windows**：PID wrapper/sweep 仅 POSIX；adapter 已在 Windows 跳过 wrapper（不会尝试执行 `.sh`），但硬崩后进程组回收需要单独实现 taskkill/process tree。
