@@ -9,6 +9,7 @@ const { createRoomRepository } = require('../../src/room/repository.cjs')
 const { createTimeline } = require('../../src/room/timeline.cjs')
 const { createCaptainReview } = require('../../src/room/captain-review.cjs')
 const { createCaptainAssignment } = require('../../src/room/tools/captain.cjs')
+const { createOutbox } = require('../../src/room/effects.cjs')
 
 function seedTaskInProgress(roomDb, chatId, roleId) {
   const { database } = roomDb
@@ -48,7 +49,8 @@ test('captain review waits for settlement and review traffic does not advance ac
   const reply = timeline.append({ chatId, authorType: 'agent', authorId: a, content: '' })
   timeline.finish(reply.id, { status: 'done', text: 'done' })
   const taskId = seedTaskInProgress(roomDb, chatId, a)
-  const review = createCaptainReview({ roomDb, repository: repo, timeline })
+  const outbox = createOutbox({ roomDb, repository: repo })
+  const review = createCaptainReview({ roomDb, repository: repo, timeline, outbox })
   review.recordAssignment({ chatId, messageId: assignmentMessage.id, rootMessageId: assignmentMessage.id,
     targetRoleIds: [a], targetReplyIds: [reply.id] })
   assert.equal(review.review({ chatId }).length, 0)
@@ -57,8 +59,9 @@ test('captain review waits for settlement and review traffic does not advance ac
   assert.equal(pending.length, 1)
   assert.equal(pending[0].kind, 'assignment_settled')
   const activityBefore = timeline.activitySeq(chatId)
-  review.deliver({ chatId })
+  const delivered = review.deliver({ chatId })
   assert.equal(timeline.activitySeq(chatId), activityBefore)
+  assert.equal(outbox.findByIdempotencyKey(`start_reply:${delivered[0].reply.id}`).status, 'pending')
   const reviewRow = timeline.latest(chatId)
   assert.equal(reviewRow.audience, 'captain')
   const captainReply = timeline.after(chatId, activityBefore).find(row => row.authorId === captainRoleId)
@@ -66,6 +69,33 @@ test('captain review waits for settlement and review traffic does not advance ac
   assert.equal(captainReply.data.reviewReply, true)
   timeline.append({ chatId, authorType: 'agent', authorId: captainRoleId, content: 'public notice' })
   assert.equal(timeline.activitySeq(chatId) > activityBefore, true)
+  roomDb.close()
+})
+
+test('review baseline includes every active assignment message', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const roomDb = openRoomDatabase({ directory })
+  const repo = createRoomRepository(roomDb)
+  const roomId = repo.createRoom({ name: 'R', workspace: directory })
+  const chatId = repo.createChat({ roomId, title: 'C' })
+  const captainRoleId = repo.createRole({ chatId, displayName: 'Captain', provider: 'claude', prompt: 'route', isCaptain: true })
+  const a = repo.createRole({ chatId, displayName: 'A', provider: 'claude', prompt: 'work' })
+  repo.addParticipant({ chatId, roleId: captainRoleId }); repo.addParticipant({ chatId, roleId: a })
+  const timeline = createTimeline({ roomDb, repository: repo })
+  const firstMessage = timeline.append({ chatId, authorType: 'agent', authorId: captainRoleId,
+    content: '@A first', mentions: [a], status: 'done' })
+  const firstReply = timeline.append({ chatId, authorType: 'agent', authorId: a, content: 'done', status: 'done' })
+  const secondMessage = timeline.append({ chatId, authorType: 'agent', authorId: captainRoleId,
+    content: '@A second', mentions: [a], status: 'done' })
+  const review = createCaptainReview({ roomDb, repository: repo, timeline })
+  review.recordAssignment({ chatId, messageId: firstMessage.id, rootMessageId: firstMessage.id,
+    targetRoleIds: [a], targetReplyIds: [firstReply.id] })
+  review.recordAssignment({ chatId, messageId: secondMessage.id, rootMessageId: secondMessage.id,
+    targetRoleIds: [a], targetReplyIds: [] })
+  assert.equal(review.review({ chatId }).length, 0)
+  timeline.append({ chatId, authorType: 'user', authorId: 'user', content: 'new activity', status: 'done' })
+  assert.equal(review.review({ chatId }).length, 1)
   roomDb.close()
 })
 

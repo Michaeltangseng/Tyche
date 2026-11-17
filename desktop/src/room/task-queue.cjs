@@ -114,7 +114,15 @@ function createTaskQueue({ roomDb, repository, timeline, outbox, now = () => Dat
       if (typeof title !== 'string' || title.length === 0) throw new TypeError('ROOM_TASK_TITLE_REQUIRED')
       const chat = repository.getChat(chatId)
       if (!chat) throw new Error('ROOM_CHAT_NOT_FOUND')
-      const assignee = assigneeRoleId ?? roleId
+      const creator = repository.getRole(roleId)
+      if (!creator || creator.chatId !== chatId || creator.status !== 'active') throw new Error('ROOM_TASK_CREATOR_INVALID')
+      const assignee = captainAssignmentId ? roleId : (assigneeRoleId ?? roleId)
+      if (!captainAssignmentId) {
+        const assigneeRole = repository.getRole(assignee)
+        if (!assigneeRole || assigneeRole.chatId !== chatId || assigneeRole.status !== 'active') {
+          throw new Error('ROOM_TASK_ASSIGNEE_INVALID')
+        }
+      }
       return roomDb.withTransaction(() => {
         const next = database.prepare('SELECT COALESCE(MAX(number), 0) + 1 AS number FROM tasks WHERE chat_id = ?').get(chatId).number
         const taskId = crypto.randomUUID()
@@ -162,7 +170,8 @@ function createTaskQueue({ roomDb, repository, timeline, outbox, now = () => Dat
         JOIN tasks t ON t.id = r.task_id
         JOIN chats c ON c.id = t.chat_id
         JOIN task_lanes l ON l.id = r.lane_id
-        WHERE c.room_id = ? AND r.status = 'queued' AND t.status NOT IN ('done', 'cancelled')
+        WHERE c.room_id = ? AND r.status = 'queued' AND l.active = 1
+          AND t.status NOT IN ('done', 'cancelled')
         ORDER BY r.queued_at ASC, r.rowid ASC
       `).all(roomId)
       const started = []
@@ -177,8 +186,10 @@ function createTaskQueue({ roomDb, repository, timeline, outbox, now = () => Dat
             SELECT 1 AS busy FROM task_runs r
             JOIN tasks t ON t.id = r.task_id
             JOIN chats c ON c.id = t.chat_id
-            WHERE c.room_id = ? AND r.status IN ('starting', 'running')
-              AND r.write_scopes_json != '[]'
+            JOIN task_lanes l ON l.id = r.lane_id
+            WHERE c.room_id = ? AND r.write_scopes_json != '[]'
+              AND (r.status IN ('starting', 'running')
+                OR (l.active = 0 AND r.status = 'interrupted'))
             LIMIT 1
           `).get(roomId)
           if (writeBusy) continue

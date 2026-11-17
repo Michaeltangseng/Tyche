@@ -50,6 +50,21 @@ test('pump starts one run per lane and marks the start effect succeeded', async 
   roomDb.close()
 })
 
+test('create_task rejects foreign assignees and forces the caller under a captain assignment', t => {
+  const { roomDb, repo, chatId, roleId, queue } = setup(t)
+  const foreignRoom = repo.createRoom({ name: 'Other', workspace: '/tmp' })
+  const foreignChat = repo.createChat({ roomId: foreignRoom, title: 'Other' })
+  const foreignRole = repo.createRole({ chatId: foreignChat, displayName: 'Foreign', provider: 'claude', prompt: 'p' })
+  assert.throws(() => queue.createTask({ chatId, roleId, title: 'T', description: 'D', acceptance: 'A',
+    assigneeRoleId: foreignRole }), /ROOM_TASK_ASSIGNEE_INVALID/)
+  const otherRole = repo.createRole({ chatId, displayName: 'B', provider: 'claude', prompt: 'p' })
+  repo.addParticipant({ chatId, roleId: otherRole })
+  const task = queue.createTask({ chatId, roleId, title: 'T', description: 'D', acceptance: 'A',
+    assigneeRoleId: otherRole, captainAssignmentId: 'cap-1' })
+  assert.equal(queue.getTask(task.taskId).assigneeRoleId, roleId)
+  roomDb.close()
+})
+
 test('task tools create a task and add a continuation run for a comment', async t => {
   const { roomDb, repo, chatId, roleId, queue } = setup(t)
   const dispatcher = createToolDispatcher({ roomDb, repository: repo })

@@ -7,6 +7,7 @@ const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontext
 
 function createMcpHttpServer({ dispatcher, runId, host = '127.0.0.1', port = 0 }) {
   if (typeof runId !== 'string' || runId.length === 0) return Promise.reject(new Error('ROOM_MCP_RUN_ID_REQUIRED'))
+  const token = crypto.randomBytes(24).toString('hex')
 
   function buildServer() {
     const server = new Server(
@@ -16,7 +17,7 @@ function createMcpHttpServer({ dispatcher, runId, host = '127.0.0.1', port = 0 }
     server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: dispatcher.listTools(runId) }))
     server.setRequestHandler(CallToolRequestSchema, async request => {
       const { name, arguments: args } = request.params
-      const callId = request.params._meta?.callId ?? crypto.randomUUID()
+      const callId = request.params._meta?.callId ?? request.id ?? crypto.randomUUID()
       try {
         const result = await dispatcher.invoke({ runId, callId, name, args: args ?? {} })
         const structured = result !== null && typeof result === 'object' && !Array.isArray(result)
@@ -25,9 +26,10 @@ function createMcpHttpServer({ dispatcher, runId, host = '127.0.0.1', port = 0 }
         return {
           content: [{ type: 'text', text: JSON.stringify(result ?? null) }],
           structuredContent: structured,
+          _meta: { callId },
         }
       } catch (error) {
-        return { isError: true, content: [{ type: 'text', text: error?.message ?? String(error) }] }
+        return { isError: true, content: [{ type: 'text', text: error?.message ?? String(error) }], _meta: { callId } }
       }
     })
     return server
@@ -36,6 +38,11 @@ function createMcpHttpServer({ dispatcher, runId, host = '127.0.0.1', port = 0 }
   const httpServer = http.createServer(async (req, res) => {
     if (!req.url || !req.url.startsWith('/mcp')) {
       res.statusCode = 404
+      res.end()
+      return
+    }
+    if (req.headers.authorization !== `Bearer ${token}`) {
+      res.statusCode = 401
       res.end()
       return
     }
@@ -62,6 +69,7 @@ function createMcpHttpServer({ dispatcher, runId, host = '127.0.0.1', port = 0 }
       const address = httpServer.address()
       resolve({
         url: `http://${host}:${address.port}/mcp`,
+        token,
         close: () => new Promise((done, fail) => {
           httpServer.closeAllConnections?.()
           httpServer.close(error => (error ? fail(error) : done()))

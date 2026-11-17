@@ -27,6 +27,11 @@ function recoverOnStart({ roomDb, repository, now = () => Date.now() }) {
       WHERE status = 'running'
     `).run(at)
 
+    const laneIds = [...new Set(interruptedRuns.map(run => run.lane_id))]
+    for (const laneId of laneIds) {
+      database.prepare('UPDATE task_lanes SET active = 0 WHERE id = ?').run(laneId)
+    }
+
     let attentionsCreated = 0
     for (const run of interruptedRuns) {
       const writeScopes = parseJson(run.write_scopes_json, [])
@@ -50,8 +55,16 @@ function recoverOnStart({ roomDb, repository, now = () => Date.now() }) {
       interruptedRuns: runs.changes,
       unknownEffects: effects.changes,
       attentionsCreated,
+      lanesSuspended: laneIds.length,
     }
   })
+}
+
+function activateLane({ roomDb, taskId, roleId, kind = 'executor' }) {
+  const result = roomDb.database.prepare(`
+    UPDATE task_lanes SET active = 1 WHERE task_id = ? AND role_id = ? AND kind = ?
+  `).run(taskId, roleId, kind)
+  if (result.changes === 0) throw new Error('ROOM_TASK_LANE_NOT_FOUND')
 }
 
 function reconcileProcess({ runId, records }) {
@@ -61,4 +74,4 @@ function reconcileProcess({ runId, records }) {
   return { exited, known }
 }
 
-module.exports = { recoverOnStart, reconcileProcess }
+module.exports = { recoverOnStart, reconcileProcess, activateLane }

@@ -67,14 +67,16 @@ async function main() {
     const first = await invoke(agent, 'Remember the number 47. Do not say the number in this reply.', workdir, options, 120_000)
     result.firstSessionRef = first.sessionRef || ''
     result.firstText = String(first.text || '').slice(0, 500)
-    result.resumed = Boolean(first.sessionRef)
 
     const second = await invoke(agent, 'What number did I ask you to remember? Reply with the number only.', workdir,
       { ...options, sessionRef: first.sessionRef || '' }, 120_000)
     result.secondSessionRef = second.sessionRef || ''
     result.secondText = String(second.text || '').slice(0, 500)
     result.sessionRefChanged = Boolean(second.sessionRef && first.sessionRef && second.sessionRef !== first.sessionRef)
+    result.resumed = Boolean(first.sessionRef && second.sessionRef
+      && second.sessionRef === first.sessionRef && !result.sessionRefChanged)
     result.remembered = /\b47\b/.test(result.secondText)
+    result.compactionProven = false
   } catch (error) {
     result.error = String(error?.code || error?.message || error)
   }

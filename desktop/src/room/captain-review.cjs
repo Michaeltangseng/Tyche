@@ -42,7 +42,7 @@ function assignmentView(row) {
 const BUSY_REPLY = new Set(['queued', 'working', 'stopping'])
 const OPEN_RUN = new Set(['queued', 'starting', 'running', 'in_progress'])
 
-function createCaptainReview({ roomDb, repository, timeline, now = () => Date.now() }) {
+function createCaptainReview({ roomDb, repository, timeline, now = () => Date.now(), outbox = null }) {
   const { database } = roomDb
 
   function at() {
@@ -88,6 +88,10 @@ function createCaptainReview({ roomDb, repository, timeline, now = () => Date.no
         SELECT MAX(checkpoint_seq) AS checkpoint FROM captain_reviews WHERE chat_id = ?
       `).get(chatId).checkpoint ?? 0
       const checkpoint = Math.max(chat.captain_reviewed_seq ?? 0, lastReview)
+      const assignmentBaseline = assignments.reduce((max, assignment) => {
+        const row = database.prepare('SELECT seq FROM messages WHERE id = ?').get(assignment.message_id)
+        return Math.max(max, row?.seq ?? 0)
+      }, 0)
       const created = []
 
       for (const assignment of assignments) {
@@ -120,8 +124,7 @@ function createCaptainReview({ roomDb, repository, timeline, now = () => Date.no
           if (open) continue
         }
 
-        const assignmentMessage = database.prepare('SELECT seq FROM messages WHERE id = ?').get(assignment.message_id)
-        const baseline = Math.max(checkpoint, assignmentMessage?.seq ?? 0)
+        const baseline = Math.max(checkpoint, assignmentBaseline)
         const blocked = waiting || tasks.some(task => task.status === 'blocked')
         const hasNew = chat.activity_seq > baseline
         if (!hasNew && !blocked) continue
@@ -207,6 +210,14 @@ function createCaptainReview({ roomDb, repository, timeline, now = () => Date.no
           status: 'queued',
           data: { reviewReply: true, reviewIds, checkpoint, promptRevision },
         })
+        if (outbox) {
+          outbox.enqueue({
+            chatId,
+            kind: 'start_reply',
+            payload: { replyId: reply.id, roleId: captain.roleId, triggerId: message.id },
+            idempotencyKey: `start_reply:${reply.id}`,
+          })
+        }
         for (const review of pending) {
           database.prepare("UPDATE captain_reviews SET status = 'completed', reply_id = ?, updated_at = ? WHERE id = ?")
             .run(reply.id, at(), review.id)

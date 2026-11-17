@@ -53,6 +53,10 @@ function createSessionStore({ roomDb, repository, now = () => Date.now() }) {
       const baselineSeq = scope.last_seq
       roomDb.withTransaction(() => {
         database.prepare(`
+          UPDATE sessions SET state = 'rotated', rotated_at = ?, rotate_reason = 'configuration-changed'
+          WHERE scope_type = ? AND scope_id = ? AND role_id = ? AND state = 'active'
+        `).run(createdAt, scopeType, scopeId, roleId)
+        database.prepare(`
           INSERT INTO sessions
             (id, scope_type, scope_id, role_id, provider, baseline_seq, prompt_revision, permission_mode,
              workspace_ref, skill_bindings_json, model, thinking_level, state, created_at)

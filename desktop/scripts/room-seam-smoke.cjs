@@ -1,4 +1,6 @@
-// Real CLI seam smoke: chat session -> created task -> task session -> finish claim -> settlement -> Captain review.
+// Module-level real CLI seam smoke. It exercises the room modules with text markers; it does NOT yet drive
+// the chat engine, MCP dispatcher, or runtime adapter end to end. See integrationMode in the result.
+// Chain: chat session -> created task -> task session -> finish claim -> settlement -> Captain review.
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
@@ -71,7 +73,7 @@ async function main() {
   const workdir = path.join(root, 'project')
   fs.mkdirSync(workdir, { recursive: true, mode: 0o700 })
   const resultPath = path.join(userData, 'room-seam-result.json')
-  const result = { provider, ok: false, error: null }
+  const result = { provider, ok: false, integrationMode: 'module-seam-marker-fallback', engineDriven: false, error: null }
   let roomDb
   try {
     const shell = await resolveNativeShellEnvironment()

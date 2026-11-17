@@ -8,9 +8,9 @@ const { createRoomRepository } = require('../../src/room/repository.cjs')
 const { createTimeline } = require('../../src/room/timeline.cjs')
 const { createOutbox } = require('../../src/room/effects.cjs')
 const { createTaskQueue } = require('../../src/room/task-queue.cjs')
-const { recoverOnStart, reconcileProcess } = require('../../src/room/recovery.cjs')
+const { recoverOnStart, reconcileProcess, activateLane } = require('../../src/room/recovery.cjs')
 
-test('restart keeps queued, interrupts working, marks runs unknown, and never replays unknown effects', t => {
+test('restart keeps queued, interrupts working, marks runs unknown, and never replays unknown effects', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
@@ -50,6 +50,17 @@ test('restart keeps queued, interrupts working, marks runs unknown, and never re
   assert.equal(roomDb.database.prepare('SELECT * FROM effects WHERE id=?').get(effect.id).status, 'unknown')
   assert.equal(roomDb.database.prepare('SELECT COUNT(*) AS n FROM attentions WHERE task_id=?').get(writeTask.taskId).n, 1)
   assert.equal(roomDb.database.prepare('SELECT COUNT(*) AS n FROM attentions WHERE task_id=?').get(readTask.taskId).n, 0)
+  assert.equal(queue.getLane({ taskId: writeTask.taskId, roleId }).active, false)
+
+  const restarted = []
+  const runnable = createTaskQueue({ roomDb, repository: repo, timeline, outbox,
+    startRun: async run => { restarted.push(run.id) } })
+  runnable.enqueueRun({ taskId: writeTask.taskId, roleId, laneKind: 'executor' })
+  assert.equal((await runnable.pump({ roomId })).length, 0)
+  activateLane({ roomDb, taskId: writeTask.taskId, roleId })
+  assert.equal(queue.getLane({ taskId: writeTask.taskId, roleId }).active, true)
+  assert.equal((await runnable.pump({ roomId })).length, 1)
+  assert.equal(restarted.length, 1)
   roomDb.close()
 })
 

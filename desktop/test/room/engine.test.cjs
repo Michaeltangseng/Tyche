@@ -68,3 +68,64 @@ test('stopReply aborts a working reply and finishes it as stopped', async t => {
   assert.equal(timeline.get(replies[0].id).status, 'stopped')
   roomDb.close()
 })
+
+test('startQueuedReplies surfaces a queued reply without a start effect', async t => {
+  const { roomDb, chatId, roleId, timeline, engine } = setup(t)
+  timeline.append({ chatId, authorType: 'agent', authorId: roleId, content: '', status: 'queued' })
+  await assert.rejects(engine.startQueuedReplies({ chatId }), /ROOM_REPLY_EFFECT_NOT_FOUND/)
+  roomDb.close()
+})
+
+test('the captain receives captain-only review rows in its briefing', async t => {
+  const { roomDb, repo, chatId, timeline } = setup(t)
+  const captainRoleId = repo.createRole({ chatId, displayName: 'Captain', provider: 'claude', prompt: 'route', isCaptain: true })
+  repo.addParticipant({ chatId, roleId: captainRoleId })
+  const sessions = createSessionStore({ roomDb, repository: repo })
+  const outbox = createOutbox({ roomDb, repository: repo })
+  const runtime = createFakeRuntime({ deferCompletion: true })
+  const engine = createEngine({ roomDb, repository: repo, timeline, sessions, outbox, runtime })
+  const reviewRow = timeline.append({ chatId, authorType: 'system', authorId: 'system',
+    kind: 'captain_review', content: 'review body', audience: 'captain', status: 'done' })
+  const reply = engine.queueReply({ chatId, roleId: captainRoleId, trigger: reviewRow })
+  const pending = engine.startReply(reply.id)
+  await pending.launched
+  assert.equal(runtime.starts[0].prompt.includes('review body'), true)
+  runtime.finish({ status: 'done', text: 'ok' }, reply.id)
+  await pending.done
+  roomDb.close()
+})
+
+test('completion watermark does not jump over an in-flight peer reply', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const roomDb = openRoomDatabase({ directory })
+  const repo = createRoomRepository(roomDb)
+  const roomId = repo.createRoom({ name: 'R', workspace: directory })
+  const chatId = repo.createChat({ roomId, title: 'C' })
+  const a = repo.createRole({ chatId, displayName: 'A', provider: 'claude', prompt: 'p' })
+  const b = repo.createRole({ chatId, displayName: 'B', provider: 'claude', prompt: 'p' })
+  repo.addParticipant({ chatId, roleId: a }); repo.addParticipant({ chatId, roleId: b })
+  const timeline = createTimeline({ roomDb, repository: repo })
+  const sessions = createSessionStore({ roomDb, repository: repo })
+  const outbox = createOutbox({ roomDb, repository: repo })
+  const runtime = createFakeRuntime({ deferCompletion: true })
+  const engine = createEngine({ roomDb, repository: repo, timeline, sessions, outbox, runtime })
+
+  const first = engine.submitUserMessage({ chatId, content: '@B @A hi' })
+  const pendingB = engine.startReply(first.replies[0].id)
+  const pendingA = engine.startReply(first.replies[1].id)
+  await Promise.all([pendingA.launched, pendingB.launched])
+  runtime.finish({ status: 'done', text: 'a done' }, first.replies[1].id)
+  await pendingA.done
+  assert.equal(sessions.getParticipantLastSeq({ chatId, roleId: a }), 1)
+  runtime.finish({ status: 'done', text: 'b done' }, first.replies[0].id)
+  await pendingB.done
+
+  const second = engine.submitUserMessage({ chatId, content: '@A again' })
+  const pendingA2 = engine.startReply(second.replies[0].id)
+  await pendingA2.launched
+  assert.equal(runtime.starts.at(-1).prompt.includes('b done'), true)
+  runtime.finish({ status: 'done', text: 'ok' }, second.replies[0].id)
+  await pendingA2.done
+  roomDb.close()
+})

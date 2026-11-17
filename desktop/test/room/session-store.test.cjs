@@ -35,6 +35,27 @@ test('reuses a matching chat session and preserves participant watermark on rota
   roomDb.close()
 })
 
+test('changing configuration rotates the previous active session', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const roomDb = openRoomDatabase({ directory })
+  const repo = createRoomRepository(roomDb)
+  const roomId = repo.createRoom({ name: 'R', workspace: directory })
+  const chatId = repo.createChat({ roomId, title: 'C' })
+  const roleId = repo.createRole({ chatId, displayName: 'A', provider: 'claude', prompt: 'p1' })
+  repo.addParticipant({ chatId, roleId })
+  const store = createSessionStore({ roomDb, repository: repo })
+  const base = { scopeType: 'chat', scopeId: chatId, roleId, provider: 'claude', promptRevision: 1,
+    permissionMode: 'read-only', workspaceRef: directory, model: 'claude', thinkingLevel: 'off', created: () => {} }
+  const first = store.ensureSession(base)
+  const second = store.ensureSession({ ...base, promptRevision: 2 })
+  assert.notEqual(second.sessionId, first.sessionId)
+  assert.equal(roomDb.database.prepare('SELECT state FROM sessions WHERE id = ?').get(first.sessionId).state, 'rotated')
+  const third = store.ensureSession(base)
+  assert.notEqual(third.sessionId, first.sessionId)
+  roomDb.close()
+})
+
 test('creates and reuses a task-lane session', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))

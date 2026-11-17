@@ -124,14 +124,17 @@ function createEngine({ roomDb, repository, timeline, sessions, outbox, runtime,
             if (row.authorType === 'system') return 'system'
             return participants.find(participant => participant.roleId === row.authorId)?.displayName ?? row.authorId
           }
-          const prompt = briefing({
+          const briefingResult = briefing({
             chatTitle: chat.title,
             me: role.id,
             lastSeq,
             rows: timeline.after(reply.chatId, lastSeq),
             trigger,
             nameOf,
-          }).text
+            viewerIsCaptain: role.isCaptain === true,
+          })
+          const prompt = briefingResult.text
+          const watermark = briefingResult.seen
           const controller = new AbortController()
           handle = runtime.start({
             runId: reply.id,
@@ -156,7 +159,7 @@ function createEngine({ roomDb, repository, timeline, sessions, outbox, runtime,
               thinking: outcome.thinking ?? '',
               data: outcome.activity ?? null,
             })
-            sessions.setParticipantLastSeq({ chatId: reply.chatId, roleId: role.id, seq: reply.seq })
+            sessions.setParticipantLastSeq({ chatId: reply.chatId, roleId: role.id, seq: watermark })
             resolveDone()
           }).catch(error => {
             try {
@@ -199,6 +202,7 @@ function createEngine({ roomDb, repository, timeline, sessions, outbox, runtime,
         byRole.get(reply.authorId).push(reply)
       }
       const launches = []
+      const errors = []
       for (const list of byRole.values()) {
         const chain = (async () => {
           for (const reply of list) {
@@ -208,9 +212,10 @@ function createEngine({ roomDb, repository, timeline, sessions, outbox, runtime,
             await pending.done
           }
         })()
-        chain.catch(() => { /* individual reply failure is surfaced on its row */ })
+        chain.catch(error => errors.push(error))
       }
       await Promise.all(launches)
+      if (errors.length > 0) throw errors[0]
     },
 
     async stopReply({ replyId }) {

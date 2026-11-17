@@ -26,12 +26,25 @@ test('mcp server lists and calls the bound tools', async t => {
   })
   dispatcher.bindRun('run1', { chatId, roleId, allowedTools: ['echo'] })
   const server = await createMcpHttpServer({ dispatcher, runId: 'run1' })
-  const client = new Client({ name: 'test', version: '1.0.0' })
-  await client.connect(new StreamableHTTPClientTransport(new URL(server.url)))
+  let client
+  t.after(async () => {
+    try { await client?.close() } catch { /* best effort */ }
+    try { await server.close() } catch { /* best effort */ }
+  })
+  assert.equal(typeof server.token, 'string')
+  const unauthorized = await fetch(server.url, { method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }) })
+  assert.equal(unauthorized.status, 401)
+  client = new Client({ name: 'test', version: '1.0.0' })
+  await client.connect(new StreamableHTTPClientTransport(new URL(server.url), {
+    requestInit: { headers: { Authorization: `Bearer ${server.token}` } },
+  }))
   const tools = await client.listTools()
   assert.equal(tools.tools.some(tool => tool.name === 'echo'), true)
   const result = await client.callTool({ name: 'echo', arguments: { x: 1 } })
   assert.deepEqual(result.structuredContent, { args: { x: 1 } })
+  assert.equal(typeof result._meta?.callId, 'string')
   await client.close()
   await server.close()
   roomDb.close()

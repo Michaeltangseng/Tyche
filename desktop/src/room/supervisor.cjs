@@ -1,11 +1,14 @@
-function createSupervisor({ captainReview, now = () => Date.now(), tickMs = 60_000, debounceMs = 150 }) {
+function createSupervisor({ captainReview, startReplies = null, now = () => Date.now(), tickMs = 60_000, debounceMs = 150 }) {
   const timers = new Map()
   let interval = null
 
   function tick(chatId) {
     try {
       captainReview.review({ chatId })
-      captainReview.deliver({ chatId })
+      const delivered = captainReview.deliver({ chatId })
+      if (startReplies && delivered.length > 0) {
+        Promise.resolve(startReplies(chatId)).catch(() => { /* launch errors stay on the reply row */ })
+      }
     } catch { /* supervisor retries on the next domain change or tick */ }
   }
 

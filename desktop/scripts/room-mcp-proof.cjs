@@ -62,7 +62,9 @@ async function main() {
 
     server = await createMcpHttpServer({ dispatcher, runId: task.runId })
     client = new Client({ name: 'room-mcp-proof', version: '1.0.0' })
-    await client.connect(new StreamableHTTPClientTransport(new URL(server.url)))
+    await client.connect(new StreamableHTTPClientTransport(new URL(server.url), {
+      requestInit: { headers: { Authorization: `Bearer ${server.token}` } },
+    }))
     const listed = await client.listTools()
     const toolNames = listed.tools.map(tool => tool.name).sort()
     const mention = await client.callTool({ name: 'mention', arguments: { names: ['B'], text: 'please review' } })

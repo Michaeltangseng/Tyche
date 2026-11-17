@@ -20,9 +20,10 @@ function createFakeRuntime({ deferCompletion = false } = {}) {
     return { launch, completion }
   }
 
-  function finish(outcome) {
-    for (const item of pending) item.resolveCompletion(outcome)
-    pending = []
+  function finish(outcome, runId = null) {
+    const matched = runId ? pending.filter(item => item.input.runId === runId) : pending
+    for (const item of matched) item.resolveCompletion(outcome)
+    pending = pending.filter(item => !matched.includes(item))
   }
 
   function fail(error) {
