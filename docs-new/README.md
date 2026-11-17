@@ -1,5 +1,7 @@
 # Meldwork 项目室 v2 设计
 
+> 已被 [`docs-new2/`](../docs-new2/README.md) 取代。本目录保留为 v2 的历史设计与实施记录；项目室的新架构方向以 `docs-new2/` 为准。
+
 ## 结论
 
 项目室应从“固定检查点推进器”转为“可动态编程的多 Agent 群聊”。一个项目室属于一个 `Room`，每次团队协作记录是一个独立的 `Chat`。用户和 Agent 的消息统一进入 Chat Thread，由一个受平台约束的 Controller Session 理解上下文并提出路由动作；平台负责校验、持久化、执行和恢复；Worker Agent 在自己的原生生态中自治完成任务。
