@@ -965,12 +965,12 @@ watch(() => props.createRequest, (requested) => {
   if (!requested) return
   emit('create-request-consumed')
   startCreating()
-}, { immediate: true })
+}, { immediate: true, flush: 'post' })
 
 watch(() => props.openRequest, (request) => {
   if (!request?.roomId) return
   void openRoom(request.roomId, request.chatId)
-}, { immediate: true })
+}, { immediate: true, flush: 'post' })
 
 watch([creating, settingsOpen, chatSettingsOpen, roleSettingsOpen], (values) => {
   document.body.classList.toggle('room-overlay-open', values.some(Boolean))

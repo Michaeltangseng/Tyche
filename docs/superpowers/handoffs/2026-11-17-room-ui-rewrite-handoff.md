@@ -34,12 +34,12 @@
 
 验证状态：
 
-- **250/250** focused desktop tests：room + shell + preload/main security + trace。
+- **259/259** focused desktop tests：room + shell + preload/main security + trace。
 - **109/109** `main-security.test.cjs`（删除旧 room-engine 后从基线 7/110 恢复）。
 - **96/96** room domain + team-room IPC + preload security。
 - **30/30** invocation/permission/write/lease workspace tests。
 - Claude / Codex service-driven OAR smoke：均 `ok: true`、`engineDriven: true`、`serviceDriven: true`（Slice 0 之前）。
-- 前端：build / build:desktop 通过；Node 22 全量 **103 failed / 373 passed**，与 HEAD 基线减去已删除测试一致（剩余失败均为基线已有的 App 旧断言漂移）。
+- 前端：build / build:desktop 通过；Node 22 全量 **103 failed / 375 passed**，与 HEAD 基线减去已删除测试一致（剩余失败均为基线已有的 App 旧断言漂移）。
 - 未跑：desktop 全量 suite、pack、Electron 43/Node 24、真实 Electron 窗口手工验收。
 
 新 room domain 已具备：
@@ -210,13 +210,22 @@ eta 的缺口 / 不照搬：
 - 仅保留两套数据源之外的共享 CSS 类名（`project-room-*` 仍被团队项目室侧栏和文件抽屉复用）；旧 i18n 字符串暂留，切片 3 会用到 trace/diff 文案。
 - 现在只有一套 Room UI、一套数据源、一套状态机。
 
-### Slice 5：硬化
+### Slice 5：硬化（下一步，人工/环境敏感）
 
-- Electron 43 / Node 24、asar/打包、全量测试。
-- Windows 硬崩治理（wrapper 目前 POSIX）。
-- runtime_events 保留策略、Trace UI 授权。
-- 非 OAR provider（Gemini/DeepSeek/Mimo/ZCode/Hermes/WorkBuddy/OpenClaw/OpenCodeReview）仍走旧层，单独评估。
-- POC YOLO 语义生产化复核。
+- **Electron 43 / Node 24**：当前 `electron@39.8.10` 内置 Node 22.22.1；OAR 声明 `engines.node >=24`。功能已实测可用，但生产应升级。需要下载，命令交给所有者：
+  ```bash
+  cd desktop
+  npm install --save-dev electron@43.8.10 --registry=https://registry.npmmirror.com
+  ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ npm install
+  npm run build:native
+  ```
+  升级后必须重跑 `electron .` 手工验收与 `npm run pack`。
+- **真实 Electron 窗口验收**：新建 Room → 选目录/角色 → 发消息 → 流式 → create_task/finish_task → Report/验收 → Captain review → Attention → 文件抽屉/trace。当前自动化只覆盖 unit/Vue 测试与 OAR service smoke。
+- **Windows**：PID wrapper/sweep 仅 POSIX；adapter 已在 Windows 跳过 wrapper（不会尝试执行 `.sh`），但硬崩后进程组回收需要单独实现 taskkill/process tree。
+- **runtime_events 保留**：host 启动时按 30 天 / 每 chat 5000 条裁剪；可在 `runtime-events.prune()` 调整。
+- **Trace UI 授权**：`teamRoom.runtimeEvents` 由 main 校验 room/chat 归属；payload 经过 `runtime-event-view` allowlist/redaction。新增 trace 字段时必须同步更新 allowlist 测试。
+- **非 OAR provider**：Gemini/DeepSeek/Mimo/ZCode/Hermes/WorkBuddy/OpenClaw/OpenCodeReview 目前只支持旧 local-workspace 路径；新 room runtime adapter 只支持 Claude/Codex，单独评估。
+- **POC YOLO 复核**：Chat/Task 当前 `bypassPermissions` / `danger-full-access`；Room `write_authorized` 只是 UI/host 标志，尚未接到执行租约。生产前必须重新评估 Chat 只读、Task 写入租约、per-seat 权限。
 
 ## 5. 第一刀的具体文件清单（Slice 0）
 
@@ -297,7 +306,7 @@ npm --prefix desktop run pack
 
 - [ ] 读本文 + `docs-new2/09-ui-direction.md` + `2026-11-17-meldwork-room-v2-handoff.md`。
 - [ ] `git log -16 --oneline` 确认 `28a439d` 及之前 commit；分支 `project-room`。
-- [ ] 跑 focused desktop 测试确认 **269/269**（room + shell + security + trace）。
+- [ ] 跑 focused desktop 测试确认 **259/259**（room + shell + security + trace）。
 - [x] Slice 0：删除旧 Project Room preview（`dfe4c09`）。
 - [x] Slice 1：Room host + IPC + preload（`24f14ed`）。
 - [x] Slice 2：RoomWorkspace 新数据层（核心，`5c81260`）。

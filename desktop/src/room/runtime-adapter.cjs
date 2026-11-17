@@ -123,7 +123,10 @@ function createOarRuntimeAdapter({
       throw adapterError('ROOM_RUNTIME_INSTALLATION_UNAVAILABLE', `${provider} has no installation probe`)
     }
     const executable = await resolveExecutable(provider)
-    const useWrapper = Boolean(runtimeWrapperPath && runtimeStateDir && executable)
+    // The PID-record wrapper is POSIX-only. Windows still runs the runtime,
+    // but crash recovery has to wait for a native process-tree implementation.
+    const useWrapper = process.platform !== 'win32'
+      && Boolean(runtimeWrapperPath && runtimeStateDir && executable)
     const command = useWrapper ? runtimeWrapperPath : executable
     const baseEnv = {
       ...env,

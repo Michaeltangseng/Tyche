@@ -670,6 +670,7 @@ function createRoomHost({
     if (!started) {
       started = (async () => {
         await service.startupSweep
+        try { service.runtimeEvents.prune() } catch { /* retention is best-effort */ }
         service.requestTick()
         service.requestLiveness()
       })()

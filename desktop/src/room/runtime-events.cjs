@@ -81,6 +81,33 @@ function createRuntimeEvents({ roomDb, now = () => Date.now(), maxPayloadBytes =
       `).all(...parameters, bounded).map(eventView)
     },
 
+    /**
+     * Keep the trace useful without letting it grow forever. Age-based
+     * deletion runs first, then each chat keeps its newest events.
+     */
+    prune({ keepPerChat = 5000, maxAgeDays = 30, nowMs = now() } = {}) {
+      const keep = Math.max(100, Math.min(100_000, Number(keepPerChat) || 5000))
+      const days = Math.max(1, Math.min(3650, Number(maxAgeDays) || 30))
+      const cutoff = new Date(nowMs - days * 24 * 60 * 60 * 1000).toISOString()
+      const expired = database.prepare(
+        'DELETE FROM runtime_events WHERE created_at < ?',
+      ).run(cutoff)
+      let trimmed = 0
+      const chatIds = database.prepare('SELECT DISTINCT chat_id FROM runtime_events').all()
+      for (const row of chatIds) {
+        trimmed += database.prepare(`
+          DELETE FROM runtime_events
+          WHERE id IN (
+            SELECT id FROM runtime_events
+            WHERE chat_id = ?
+            ORDER BY created_at DESC, rowid DESC
+            LIMIT -1 OFFSET ?
+          )
+        `).run(row.chat_id, keep).changes
+      }
+      return { expired: expired.changes, trimmed }
+    },
+
     count({ runId = null, chatId = null } = {}) {
       const clauses = []
       const parameters = []

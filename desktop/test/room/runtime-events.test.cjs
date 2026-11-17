@@ -50,3 +50,26 @@ test('runtime events truncate oversized payloads and filter by run', t => {
 
   roomDb.close()
 })
+
+test('runtime event retention drops expired rows and keeps the newest per chat', t => {
+  const { roomDb, chatId } = setup(t)
+  const events = createRuntimeEvents({ roomDb })
+  events.record({ runId: 'old', chatId, mode: 'chat', event: { kind: 'turn_ended', seq: 1 } })
+  roomDb.database.prepare(
+    "UPDATE runtime_events SET created_at = '2000-01-01T00:00:00.000Z' WHERE run_id = 'old'",
+  ).run()
+  for (let index = 0; index < 105; index += 1) {
+    events.record({
+      runId: `run-${index}`,
+      chatId,
+      mode: 'chat',
+      event: { kind: 'tool_call_started', seq: index + 2 },
+    })
+  }
+  assert.equal(events.count({ chatId }), 106)
+  const result = events.prune({ keepPerChat: 100, maxAgeDays: 30 })
+  assert.equal(result.expired, 1)
+  assert.equal(result.trimmed, 5)
+  assert.equal(events.count({ chatId }), 100)
+  roomDb.close()
+})
