@@ -153,3 +153,21 @@ test('comment_task dedupes by caller key or source and text', async t => {
   assert.equal(roomDb.database.prepare('SELECT COUNT(*) AS n FROM task_runs WHERE task_id = ?').get(created.taskId).n, 3)
   roomDb.close()
 })
+
+test('task numbers are allocated per room, not per chat', t => {
+  const { roomDb, repo, roomId, chatId, roleId, queue } = setup(t)
+  const first = queue.createTask({ chatId, roleId, title: 'One', description: 'D', acceptance: 'A' })
+  const otherChat = repo.createChat({ roomId, title: 'Other' })
+  const otherRole = repo.createRole({ chatId: otherChat, displayName: 'B', provider: 'claude', prompt: 'p' })
+  repo.addParticipant({ chatId: otherChat, roleId: otherRole })
+  const second = queue.createTask({
+    chatId: otherChat,
+    roleId: otherRole,
+    title: 'Two',
+    description: 'D',
+    acceptance: 'A',
+  })
+  assert.equal(queue.getTask(first.taskId).number, 1)
+  assert.equal(queue.getTask(second.taskId).number, 2)
+  roomDb.close()
+})

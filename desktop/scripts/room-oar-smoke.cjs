@@ -167,9 +167,13 @@ async function main() {
       SELECT COUNT(*) AS n FROM captain_reviews WHERE chat_id = ? AND status = 'completed'
     `).get(chatId).n
 
+    // Only the review row + its reviewReply are required not to advance
+    // activity. A later public post_in_chat is public by design.
+    const activityAfterReview = service.timeline.activitySeq(chatId)
+    result.activityStable = activityBefore === activityAfterReview
+
     await service.waitForChatIdle({ chatId, timeoutMs: 8 * 60 * 1000 })
-    const activityAfter = service.timeline.activitySeq(chatId)
-    result.activityStable = activityBefore === activityAfter
+    result.activityAfterChat = service.timeline.activitySeq(chatId)
 
     const task = roomDb.database.prepare('SELECT * FROM tasks WHERE id = ?').get(taskRow.id)
     const run = roomDb.database.prepare('SELECT * FROM task_runs WHERE id = ?').get(result.runId)

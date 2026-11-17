@@ -643,7 +643,8 @@ eta 是三层，不是一层：
 - `desktop/src/room/room-service.cjs` 装配 domain、tools、adapter、supervisor、recovery；domain commit 150ms debounce 启动 queued replies + pump task runs；`startQueuedReplies` 按角色串行；`close()` 停 timer、`disposeAll` adapter。
 - OAR smoke 现在走 room service：Claude/Codex 均 `ok: true`、`engineDriven: true`、`serviceDriven: true`；`startedRuns: 0` 表示 liveness 已经自动 pump 了 Task。
 - `runtime_events`（schema v3）：OAR 非增量事件按 run/chat/task 持久化，payload 16KB 截断；文本 delta 留在 reply 行。
-- 测试：18 个 room 测试文件，**53/53 pass**。
+- 测试：18 个 room 测试文件，**57/57 pass**。
+- Deferred minors（三项）：Task number per Room；progress → in_progress；accept_task 校验最新 required run 的 ready report/required artifacts。
 - 剩余：OAR 硬崩孤儿、Trace UI/保留策略、Electron 43/打包、非 OAR provider。
 
 ## 9. 参考文件

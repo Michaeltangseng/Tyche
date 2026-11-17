@@ -201,7 +201,11 @@ function createSettlement({ roomDb, repository, timeline, now = () => Date.now()
         database.prepare('UPDATE reports SET artifact_ids_json = ? WHERE id = ?')
           .run(JSON.stringify(artifactIds), report.id)
       }
-      const nextStatus = report.kind === 'ready' ? 'in_review' : 'blocked'
+      const nextStatus = report.kind === 'ready'
+        ? 'in_review'
+        : report.kind === 'progress'
+          ? 'in_progress'
+          : 'blocked'
       database.prepare(`
         UPDATE task_runs SET status = 'completed', outcome = 'known', snapshot_state = ?, ended_at = ?
         WHERE id = ?
@@ -220,12 +224,28 @@ function createSettlement({ roomDb, repository, timeline, now = () => Date.now()
       }
       const task = loadTask(taskId)
       if (!task) throw new Error('ROOM_TASK_NOT_FOUND')
-      const settled = database.prepare(`
-        SELECT 1 AS settled FROM task_runs r
-        JOIN reports p ON p.run_id = r.id
-        WHERE r.task_id = ? AND r.status = 'completed' AND r.outcome = 'known' LIMIT 1
+      if (task.status !== 'in_review') throw new Error('ROOM_TASK_NOT_SETTLED')
+      // The acceptance gate belongs to the latest required run, not to any
+      // earlier completed run: a later progress/failed run must block it.
+      const latestRequired = database.prepare(`
+        SELECT * FROM task_runs
+        WHERE task_id = ? AND required = 1
+        ORDER BY queued_at DESC, rowid DESC LIMIT 1
       `).get(taskId)
-      if (task.status !== 'in_review' || !settled) throw new Error('ROOM_TASK_NOT_SETTLED')
+      if (!latestRequired || latestRequired.status !== 'completed' || latestRequired.outcome !== 'known') {
+        throw new Error('ROOM_TASK_NOT_SETTLED')
+      }
+      const latestReport = database.prepare(`
+        SELECT * FROM reports WHERE run_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1
+      `).get(latestRequired.id)
+      if (!latestReport || latestReport.kind !== 'ready') throw new Error('ROOM_TASK_NOT_SETTLED')
+      const requiredArtifacts = parseJson(task.required_artifact_ids_json, [])
+      if (requiredArtifacts.length > 0) {
+        const reportArtifacts = new Set(parseJson(latestReport.artifact_ids_json, []))
+        if (requiredArtifacts.some(artifactId => !reportArtifacts.has(artifactId))) {
+          throw new Error('ROOM_TASK_ARTIFACTS_MISSING')
+        }
+      }
       roomDb.withTransaction(() => {
         database.prepare(`
           INSERT INTO user_commands (id, chat_id, type, payload_json, status, result_json, created_at)

@@ -18,7 +18,7 @@
 
 | 项目 | 结果 |
 | --- | --- |
-| `desktop/test/room` 18 个测试文件 | **53 tests / 53 pass / 0 fail** |
+| `desktop/test/room` 18 个测试文件 | **57 tests / 57 pass / 0 fail** |
 | Claude Code resume proof | `resumed: true`, `remembered: true`, session ref 稳定 |
 | Codex resume proof | `resumed: true`, `remembered: true`, session ref 稳定 |
 | MCP tool loop proof | `create_task` / `finish_task` / `mention` list + call 成功，`ok: true` |
@@ -94,6 +94,7 @@ desktop/scripts/
 14. **领域幂等**：`domain_idempotency` 表（schema v2）；`create_task` 唯一 per assignment+source；无 assignment 时按 run+args；`comment_task` 支持调用方 `idempotency_key`，缺省按 source+text。
 15. **Room service / liveness**：`room-service.cjs` 装配 domain、tools、adapter、supervisor、recovery；domain commit 150ms debounce 启动 queued replies + pump runs；`startQueuedReplies` 按角色串行；`close()` 停 timer、`disposeAll` adapter。
 16. **Runtime events**：schema v3 `runtime_events`；OAR 非增量事件（tool/turn/usage/failure/exit）按 run/chat/task 持久化，payload 16KB 截断；文本 delta 留在 reply 行；trace 写失败不影响 run。
+17. **Deferred minors（三项）**：Task number 按 Room 分配；`progress` 报告映射 `in_progress`；`accept_task` 校验最新 required run 的 ready report 和 required artifacts。
 
 ## 必须守住的语义
 
@@ -160,18 +161,18 @@ dispatcher 的 `callId` 幂等只覆盖“客户端复用 callId”的情况。`
 
 ### Deferred minors
 
-- `comment_task` 续跑使用评论者 lane，而不是 Task executor lane。
-- `acceptTask` 只校验“有 completed run + report”，未校验最新 required run 的 ready report/artifacts。
-- `progress` 报告把 Task 映射成 `blocked`，spec 是 `in_progress`。
-- Task number 按 Chat 分配，spec 说按 Room。
-- recovery 的 Attention 只覆盖有 write scope 的 run，未覆盖 unknown effects。
+- `comment_task` 续跑使用评论者 lane，而不是 Task executor lane。（未做）
+- ~~`acceptTask` 只校验“有 completed run + report”，未校验最新 required run 的 ready report/artifacts~~ **已完成（2026-11-17）**：最新 required run + ready report + required artifacts。
+- ~~`progress` 报告把 Task 映射成 `blocked`~~ **已完成**：`progress` → `in_progress`。
+- ~~Task number 按 Chat 分配~~ **已完成**：按 Room 分配。
+- recovery 的 Attention 只覆盖有 write scope 的 run，未覆盖 unknown effects。（未做）
 
 ## 验证命令
 
 ```bash
 cd desktop
 
-# 小范围 room 测试（当前 53/53）
+# 小范围 room 测试（当前 57/57）
 node --test test/room/db.test.cjs test/room/repository.test.cjs test/room/timeline.test.cjs \
   test/room/session-store.test.cjs test/room/routing.test.cjs test/room/briefing.test.cjs \
   test/room/effects.test.cjs test/room/engine.test.cjs test/room/dispatcher.test.cjs \

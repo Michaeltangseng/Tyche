@@ -102,3 +102,57 @@ test('finish_task tool claims through the bound run', async t => {
   assert.equal(result.task.status, 'in_progress')
   roomDb.close()
 })
+
+test('a progress report keeps the task in_progress', t => {
+  const { roomDb, settlement, taskId, runId } = seedRunningRun(t, { writeScopes: [] })
+  const claim = settlement.claim({ runId, taskId, status: 'progress', summary: 'half' })
+  const settled = settlement.settle({
+    runId,
+    exit: { observed: true, code: 0 },
+    snapshot: { state: 'not_applicable' },
+  })
+  assert.equal(claim.report.kind, 'progress')
+  assert.equal(settled.task.status, 'in_progress')
+  assert.equal(settled.run.status, 'completed')
+  roomDb.close()
+})
+
+test('accept_task requires the latest required run to have a ready report', t => {
+  const { roomDb, queue, settlement, taskId, runId, roleId } = seedRunningRun(t, { writeScopes: [] })
+  settlement.claim({ runId, taskId, status: 'progress', summary: 'half' })
+  settlement.settle({ runId, exit: { observed: true, code: 0 }, snapshot: { state: 'not_applicable' } })
+  assert.equal(queue.getTask(taskId).status, 'in_progress')
+  assert.throws(() => settlement.acceptTask({ taskId, commandId: 'p1' }), /ROOM_TASK_NOT_SETTLED/)
+
+  const continuation = queue.enqueueRun({ taskId, roleId, required: true })
+  roomDb.database.prepare("UPDATE task_runs SET status = 'running', started_at = 't2' WHERE id = ?")
+    .run(continuation.id)
+  settlement.claim({ runId: continuation.id, taskId, status: 'ready', summary: 'done' })
+  settlement.settle({
+    runId: continuation.id,
+    exit: { observed: true, code: 0 },
+    snapshot: { state: 'not_applicable' },
+  })
+  assert.equal(settlement.acceptTask({ taskId, commandId: 'p2' }).status, 'done')
+  roomDb.close()
+})
+
+test('accept_task checks required artifacts in the latest ready report', t => {
+  const { roomDb, settlement, taskId, runId } = seedRunningRun(t, { writeScopes: [] })
+  roomDb.database.prepare('UPDATE tasks SET required_artifact_ids_json = ? WHERE id = ?')
+    .run(JSON.stringify(['artifact-1']), taskId)
+  settlement.claim({ runId, taskId, status: 'ready', summary: 'done' })
+  settlement.settle({
+    runId,
+    exit: { observed: true, code: 0 },
+    snapshot: { state: 'not_applicable' },
+  })
+  assert.throws(
+    () => settlement.acceptTask({ taskId, commandId: 'a1' }),
+    /ROOM_TASK_ARTIFACTS_MISSING/,
+  )
+  roomDb.database.prepare('UPDATE reports SET artifact_ids_json = ? WHERE run_id = ?')
+    .run(JSON.stringify(['artifact-1']), runId)
+  assert.equal(settlement.acceptTask({ taskId, commandId: 'a2' }).status, 'done')
+  roomDb.close()
+})

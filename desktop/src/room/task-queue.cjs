@@ -124,7 +124,11 @@ function createTaskQueue({ roomDb, repository, timeline, outbox, now = () => Dat
         }
       }
       return roomDb.withTransaction(() => {
-        const next = database.prepare('SELECT COALESCE(MAX(number), 0) + 1 AS number FROM tasks WHERE chat_id = ?').get(chatId).number
+        const next = database.prepare(`
+          SELECT COALESCE(MAX(t.number), 0) + 1 AS number
+          FROM tasks t JOIN chats c ON c.id = t.chat_id
+          WHERE c.room_id = ?
+        `).get(chat.roomId).number
         const taskId = crypto.randomUUID()
         const createdAt = at()
         database.prepare(`
