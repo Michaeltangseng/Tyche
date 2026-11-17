@@ -7,7 +7,7 @@
  * authorized trace endpoint.
  *
  * Field names are snake_case so the room UI consumes the domain ledger
- * directly; the old room-engine data source is replaced, not adapted.
+ * directly.
  */
 const path = require('node:path')
 

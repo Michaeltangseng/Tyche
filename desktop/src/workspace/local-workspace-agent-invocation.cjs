@@ -17,10 +17,6 @@ const {
   requireTerminalAgentResult,
 } = require('../agents/agent-runtime-contract.cjs')
 const {
-  nativePermissionAllowsExec,
-  nativePermissionAllowsWrite,
-} = require('../agents/native-permission-modes.cjs')
-const {
   cleanupStagedAgentInputs,
   stageAgentInputs,
 } = require('../agents/agent-input-staging.cjs')
@@ -120,20 +116,6 @@ function isolatedInvocationContext(context) {
     contextPackId,
     policy: ['isolated', 'frozen'].includes(context?.sessionPolicy) ? context.sessionPolicy : '',
   }
-}
-
-function projectRoomPromptContext(context) {
-  if (!['project-room', 'room'].includes(context?.sessionPolicy)) return null
-  const promptOverride = typeof context.promptOverride === 'string'
-    ? context.promptOverride
-    : ''
-  const contextPackId = normalizeContextPackId(context.contextPackId)
-  if (!promptOverride || promptOverride.includes('\u0000')
-      || Buffer.byteLength(promptOverride) > MAX_ISOLATED_PROMPT_BYTES
-      || !contextPackId) {
-    throw new Error('LOCAL_RUN_ISOLATED_CONTEXT_INVALID')
-  }
-  return { promptOverride, contextPackId }
 }
 
 function deliveredPackedContext(packedContext, promptMode) {
@@ -298,9 +280,7 @@ class LocalWorkspaceAgentInvocation {
     const activeRun = this.activeRuns.get(group.id)
     const taskId = cleanText(activeRun?.taskId || context.taskId || threadRootId, 120)
     if (!taskId) throw new Error('LOCAL_RUN_TASK_INVALID')
-    // v2 owns its captured prompt and permissions; its hash is not a legacy
-    // ContextPack record and must not resolve through the group store.
-    if (context.sessionPolicy !== 'room') group = taskPermissionGroup(group, this.state(), taskId,
+    group = taskPermissionGroup(group, this.state(), taskId,
       activeRun?.contextPackId || context.contextPackId, this.getContextPack)
     // Every conversation, group or direct, is its own execution surface. The
     // writer lease is scoped to the conversation, so a writable chat never
@@ -315,19 +295,13 @@ class LocalWorkspaceAgentInvocation {
       .update(`conversation\u0000${group.id}${proposalScope}`)
       .digest('hex')
     const writerKind = cleanText(context.singleWriterKind || context.writerKind, 80)
-    const projectRoomInvocation = ['project-room', 'room'].includes(context.sessionPolicy)
-    const permissionMode = projectRoomInvocation
-      ? (['workspace-write', 'read-exec'].includes(context.permissionMode)
-        ? context.permissionMode
-        : 'read-only')
-      : (group.allowWrite === true
-        && (context.permissionMode == null || context.permissionMode === 'workspace-write')
-        && (!writerKind || writerKind === kind)
-        && isolatedInvocationContext(context)?.policy !== 'isolated'
-        && !isCodeReviewAgentKind(kind)
-        ? 'workspace-write' : 'read-only')
+    const permissionMode = group.allowWrite === true
+      && (context.permissionMode == null || context.permissionMode === 'workspace-write')
+      && (!writerKind || writerKind === kind)
+      && isolatedInvocationContext(context)?.policy !== 'isolated'
+      && !isCodeReviewAgentKind(kind)
+      ? 'workspace-write' : 'read-only'
     context = { ...context, permissionMode }
-    const leasePermissionMode = projectRoomInvocation && context.sessionPolicy !== 'room' ? 'read-only' : permissionMode
     const agentController = new AbortController()
     const registration = { agentRunId: '' }
     let queuedAbortHandler = null
@@ -361,16 +335,15 @@ class LocalWorkspaceAgentInvocation {
       return await this.runScheduler.withLease({
         taskId,
         workspaceKey,
-        permissionMode: leasePermissionMode,
-        workdirRoot: leasePermissionMode === 'workspace-write' ? workdirRoot : '',
-        exclusiveRoot: context.sessionPolicy === 'room',
+        permissionMode,
+        workdirRoot: permissionMode === 'workspace-write' ? workdirRoot : '',
         signal: agentController.signal,
       }, async (lease) => {
         if (signal && queuedAbortHandler) {
           signal.removeEventListener('abort', queuedAbortHandler)
           queuedAbortHandler = null
         }
-        const result = await this.invokeLeased(
+        return await this.invokeLeased(
           group,
           kind,
           mode,
@@ -379,12 +352,6 @@ class LocalWorkspaceAgentInvocation {
           context,
           { agentController, registration, lease },
         )
-        // v2 captures output versions while this invocation still owns its
-        // directory lease, before another writer can change those files.
-        if (context.sessionPolicy === 'room' && typeof context.onInvocationCompleted === 'function') {
-          await context.onInvocationCompleted(result)
-        }
-        return result
       })
     } catch (error) {
       if (permissionMode === 'workspace-write'
@@ -403,7 +370,6 @@ class LocalWorkspaceAgentInvocation {
       this.unregisterAgentController?.(
         activeRun, kind, registration.agentRunId, agentController,
       )
-      if (context.sessionPolicy === 'room') this.activeAgentSnapshots.delete(`${group.id}:active:${kind}`)
     }
   }
 
@@ -464,36 +430,27 @@ class LocalWorkspaceAgentInvocation {
     await revalidateApprovedSkills()
     const reviewOnly = isCodeReviewAgentKind(kind)
     const invocationContext = isolatedInvocationContext(context)
-    const projectRoomContext = projectRoomPromptContext(context)
-    const projectRoom = Boolean(projectRoomContext)
     const isolated = invocationContext?.policy === 'isolated'
     const frozen = invocationContext?.policy === 'frozen'
     const internal = context.internal === true
     if (internal && !isolated) throw new Error('LOCAL_RUN_INTERNAL_CONTEXT_INVALID')
-    const nativePermission = projectRoom ? cleanText(context.nativePermission, 80) : ''
-    const nativeWrite = Boolean(nativePermission && nativePermissionAllowsWrite(kind, nativePermission))
-    const nativeExec = Boolean(nativePermission && nativePermissionAllowsExec(kind, nativePermission))
-    const requestedPermission = projectRoom && nativePermission
-      ? (nativeWrite ? 'workspace-write' : (nativeExec ? 'read-exec' : 'read-only'))
-      : (context.permissionMode == null
-        ? (group.allowWrite === true ? 'workspace-write' : 'read-only')
-        : (['workspace-write', 'read-exec'].includes(context.permissionMode)
-          ? context.permissionMode
-          : 'read-only'))
+    const requestedPermission = context.permissionMode == null
+      ? (group.allowWrite === true ? 'workspace-write' : 'read-only')
+      : (['workspace-write', 'read-exec'].includes(context.permissionMode)
+        ? context.permissionMode
+        : 'read-only')
     const writerKind = cleanText(context.singleWriterKind || context.writerKind, 80)
     const writerAllowed = !writerKind || writerKind === kind
     const supportsWorkspaceWrite = agentRuntimeCapabilities(kind, { agent })
       .permissionModes.includes('workspace-write')
-    const allowWrite = projectRoom
-      ? nativeWrite && writerAllowed && !reviewOnly && !isolated
-      : (group.allowWrite === true
-        && requestedPermission === 'workspace-write'
-        && writerAllowed
-        && supportsWorkspaceWrite
-        && !reviewOnly
-        && !isolated)
+    const allowWrite = group.allowWrite === true
+      && requestedPermission === 'workspace-write'
+      && writerAllowed
+      && supportsWorkspaceWrite
+      && !reviewOnly
+      && !isolated
     const readExec = !allowWrite
-      && (projectRoom ? nativeExec : requestedPermission === 'read-exec')
+      && requestedPermission === 'read-exec'
       && !reviewOnly
       && !isolated
     const skillInputTypes = new Set(['text'])
@@ -525,7 +482,7 @@ class LocalWorkspaceAgentInvocation {
             cleanText(context.phase, 40) || 'response',
           ])).slice(0, 48)}`
         : '')
-    if (!isolated && !frozen && context.sessionPolicy !== 'room') {
+    if (!isolated && !frozen) {
       const requiredContext = this.packedPromptContext(
         group.id, '', threadRootId, context.contextOptions || {},
       )
@@ -554,34 +511,17 @@ class LocalWorkspaceAgentInvocation {
     const idempotencyMode = agent.idempotencyMode === 'durable' ? 'durable' : 'none'
     // Isolated invocations must see only their approved prompt, so they never
     // resume or persist the conversation's native session.
-    const projectRoomSessionKey = projectRoom ? cleanText(context.sessionKey, 240) : ''
-    if (projectRoom && !projectRoomSessionKey) {
-      throw new Error('LOCAL_RUN_ISOLATED_CONTEXT_INVALID')
-    }
-    const saveProjectRoomSession = projectRoom && context.saveSession !== false
     const session = new InvocationSession({
-      resolved: projectRoom
-        ? (saveProjectRoomSession
-          ? this.sessionState(
-              group, kind, context.sessionThreadRootId || threadRootId, taskId,
-              { sessionKey: projectRoomSessionKey },
-            )
-          : {
-              key: projectRoomSessionKey,
-              sessionRef: '',
-              sessionMeta: {},
-              provenance: createdSessionProvenance(taskId, true),
-            })
-        : (reviewOnly || isolated
-          ? {
-              key: this.sessionKey(group.id, kind),
-              sessionRef: '',
-              sessionMeta: {},
-              provenance: createdSessionProvenance(taskId, true),
-            }
-          : this.sessionState(
-              group, kind, context.sessionThreadRootId || threadRootId, taskId,
-            )),
+      resolved: reviewOnly || isolated
+        ? {
+            key: this.sessionKey(group.id, kind),
+            sessionRef: '',
+            sessionMeta: {},
+            provenance: createdSessionProvenance(taskId, true),
+          }
+        : this.sessionState(
+            group, kind, context.sessionThreadRootId || threadRootId, taskId,
+          ),
       group,
       kind,
       taskId,
@@ -659,8 +599,8 @@ class LocalWorkspaceAgentInvocation {
     const sessionContextOptions = (!isolated && !frozen && promptMode === 'continuation' && sameTaskSession)
       ? { ...(context.contextOptions || {}), afterMessageId: session.meta.lastDeliveredMessageId || '' }
       : (context.contextOptions || {})
-    const fixedPrompt = projectRoom ? projectRoomContext.promptOverride : v4Prompt
-    let packedContext = isolated || frozen || projectRoom
+    const fixedPrompt = v4Prompt
+    let packedContext = isolated || frozen
       ? {
           text: fixedPrompt,
           sourceMessageIds: context.snapshotSourceMessageIds || [],
@@ -671,7 +611,7 @@ class LocalWorkspaceAgentInvocation {
             includedCount: 0,
             omittedCount: 0,
             charCount: fixedPrompt.length,
-            contextPackId: projectRoomContext?.contextPackId || invocationContext.contextPackId,
+            contextPackId: invocationContext.contextPackId,
             contextPackState: 'captured',
           },
           currentTaskText: fixedPrompt,
@@ -682,20 +622,19 @@ class LocalWorkspaceAgentInvocation {
       : this.packedPromptContext(
           group.id, transcriptAfterKind, threadRootId, sessionContextOptions,
         )
-    if (!isolated && !frozen && !projectRoom) {
+    if (!isolated && !frozen) {
       packedContext = withCollaborationPackage(
         packedContext, context.collaborationPackage,
       )
+      assertRequiredContextFits(packedContext)
     }
-    if (!isolated && !frozen && !projectRoom) assertRequiredContextFits(packedContext)
     let deliveredContext = deliveredPackedContext(packedContext, promptMode)
     const harness = this.ensureRunHarness(group, activeRun, threadRootId)
     const harnessRun = harness?.beginAgent(kind, round, deliveredContext.sourceMessageIds, {
       turnSeq: context.turnSeq,
     })
     let deliveryContext = {
-      contextPackId: projectRoomContext?.contextPackId
-        || invocationContext?.contextPackId
+      contextPackId: invocationContext?.contextPackId
         || activeRun?.contextPackId
         || '',
       deliveryRecordIds: [],
@@ -935,12 +874,8 @@ class LocalWorkspaceAgentInvocation {
       return finished.capsule
     }
     try {
-      // Project-room calls carry their own durable state in the project
-      // engine and do not own a chat run controller, so there is no run-ledger
-      // record to checkpoint here.
       const persisted = this.checkpointRun(group.id, activeRun)
-      if (!['project-room', 'room'].includes(context.sessionPolicy)
-          && this.hasRunLedger() && persisted !== true) {
+      if (this.hasRunLedger() && persisted !== true) {
         throw new Error('LOCAL_RUN_PERSIST_FAILED')
       }
       if (typeof context.onLeaseAcquired === 'function') {
@@ -962,7 +897,7 @@ class LocalWorkspaceAgentInvocation {
       stagedInputs = isolated
         ? null
         : stageAgentInputs(group.workdir, context.attachmentSnapshots || [], nativeImageLimit)
-      const preferencesText = isolated || projectRoom
+      const preferencesText = isolated
         ? ''
         : workPreferencesPrompt(this.state().workPreferences)
       const buildPrompt = (afterKind, contextPackage) => [assembleInvocationPrompt({
@@ -974,8 +909,7 @@ class LocalWorkspaceAgentInvocation {
         activeRun,
         isolated,
         frozen,
-        projectRoom,
-        v4Prompt: projectRoom ? projectRoomContext.promptOverride : v4Prompt,
+        v4Prompt,
         promptMode,
         afterKind,
         packed: contextPackage,
@@ -1091,9 +1025,8 @@ class LocalWorkspaceAgentInvocation {
         return prompt
       }
       traceSink = null
-      const traceRunId = activeRun?.runId || (projectRoom ? String(context.traceRunId || '') : '')
-      const traceAgentRunId = harnessRun?.agentRunId
-        || (projectRoom ? String(context.traceAgentRunId || '') : '')
+      const traceRunId = activeRun?.runId || ''
+      const traceAgentRunId = harnessRun?.agentRunId || ''
       if (this.tracesRoot && traceRunId && traceAgentRunId) {
         try {
           traceSink = createTraceSink({
@@ -1123,7 +1056,7 @@ class LocalWorkspaceAgentInvocation {
         onSessionRef: (nextSessionRef, metadata = {}) => {
           if (agentCallbacksClosed || agentController.signal.aborted) return
           watchdog.progress()
-          if (reviewOnly || isolated || (projectRoom && !saveProjectRoomSession)) return
+          if (reviewOnly || isolated) return
           session.adopt(nextSessionRef, metadata)
         },
         onSessionInvalidated: () => {
@@ -1131,7 +1064,6 @@ class LocalWorkspaceAgentInvocation {
           return { prompt: rebuildFreshSession() }
         },
         signal: agentController.signal,
-        nativePermission: nativePermission || undefined,
         sandbox: allowWrite ? 'workspace-write' : (readExec ? 'read-exec' : 'read-only'),
         ...(traceSink ? { traceSink } : {}),
         ...(context.watchdog && Object.hasOwn(context.watchdog, 'hardLimitMs')
@@ -1143,12 +1075,12 @@ class LocalWorkspaceAgentInvocation {
               spawnFn: createManagedSpawn({
                 registry: this.processRegistry,
                 invocation: {
-                  invocationId: activeRun?.runId || (projectRoom ? context.traceRunId || null : null),
+                  invocationId: activeRun?.runId || null,
                   groupId: group.id,
                   projectId: group.projectId || null,
                   workdir: group.workdir,
                   permission: allowWrite ? 'workspace-write' : 'read-exec',
-                  claims: context.sessionPolicy === 'room' ? (invocation.lease?.claims || []) : [],
+                  claims: invocation.lease?.claims || [],
                   agentKind: kind,
                 },
                 supervisorPath: this.managedSupervisorPath,
@@ -1492,7 +1424,7 @@ class LocalWorkspaceAgentInvocation {
       const reportedOutcomeRefs = !internal
         ? normalizeOutcomeRefs(result.outcomeRefs, context.v4 === true ? { strict: true } : {})
         : {}
-      const capturedOutcomeRefs = internal || context.sessionPolicy === 'room'
+      const capturedOutcomeRefs = internal
         ? { artifactIds: [], evidenceIds: [] }
         : this.recordAgentOutcomes({
             groupId: group.id,
@@ -1567,7 +1499,7 @@ class LocalWorkspaceAgentInvocation {
             pendingMessage.metadata,
           )
         : null
-      if (!reviewOnly && !isolated && !(projectRoom && !saveProjectRoomSession)) {
+      if (!reviewOnly && !isolated) {
         session.complete(result.sessionRef, {
           promptChars: prompt.length,
           replyChars: reply.text.length,

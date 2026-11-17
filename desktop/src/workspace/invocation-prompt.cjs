@@ -18,17 +18,13 @@ const RESPONSE_SCOPE_INSTRUCTION = [
 //    the workspace prompt for the current mode.
 // Staged attachments and harness recovery instructions are appended to both.
 function assembleInvocationPrompt({
-  group, kind, mode, threadRootId, context, activeRun, isolated, frozen, projectRoom,
+  group, kind, mode, threadRootId, context, activeRun, isolated, frozen,
   v4Prompt, promptMode, afterKind, packed, session, stagedInputs, promptFor, agentLabel,
 }) {
   // Frozen and isolated prompts are fixed text. Staged attachments are the
   // only thing added to a frozen one, so the Agent can open the user's files.
   if (isolated || frozen) {
     return [v4Prompt, stagedAgentInputPrompt(stagedInputs)].filter(Boolean).join('\n\n')
-  }
-  if (projectRoom) {
-    return [context.promptOverride, stagedAgentInputPrompt(stagedInputs)]
-      .filter(Boolean).join('\n\n')
   }
   const runtimeInstruction = cleanText(context.runtimeInstruction, 3000)
   const regenerationInstruction = cleanText(context.regenerationInstruction, 3000)

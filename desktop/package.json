@@ -13,7 +13,7 @@
     "build:frontend": "npm --prefix ../frontend run build:desktop",
     "build:native": "node scripts/build-native.cjs",
     "dev": "npm run build:native && npm run build:frontend && electron .",
-    "smoke:room": "electron scripts/smoke-room.cjs",
+    "smoke:room": "node scripts/room-oar-smoke.cjs --run --provider claude",
     "connector:conformance": "node --test test/agents/connectors/agent-connector-manifest.test.cjs test/agents/connectors/agent-connector-registry.test.cjs test/agents/connectors/agent-connector-runtime.test.cjs test/agents/connectors/agent-connector-instance-store.test.cjs test/agents/connectors/agent-connector-package-store.test.cjs test/agents/connectors/agent-connector-sdk.test.cjs test/agents/connectors/agent-connector-local.test.cjs test/security/main-security.test.cjs test/security/preload-security.test.cjs",
     "eval:deterministic": "node scripts/run-evals.cjs --suite deterministic",
     "eval:provider": "node scripts/run-evals.cjs --suite provider",

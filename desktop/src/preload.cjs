@@ -133,36 +133,6 @@ if (isLocalDocument) Object.assign(desktopApi, {
       return () => ipcRenderer.removeListener('team-room:changed', listener)
     },
   }),
-  room: Object.freeze({
-    listRooms: () => ipcRenderer.invoke('room:list', {}),
-    permissionModes: () => ipcRenderer.invoke('room:permission-modes', {}),
-    createChat: input => ipcRenderer.invoke('room:chat-create', input),
-    deleteChat: input => ipcRenderer.invoke('room:chat-delete', input),
-    deleteRoom: input => ipcRenderer.invoke('room:room-delete', input),
-    artifactDiff: input => ipcRenderer.invoke('room:artifact-diff', input),
-    bootstrap: input => ipcRenderer.invoke('room:bootstrap', input),
-    snapshot: input => ipcRenderer.invoke('room:snapshot', input),
-    chatMessages: input => ipcRenderer.invoke('room:chat-messages', input),
-    filesList: input => ipcRenderer.invoke('room:files-list', input),
-    filesRead: input => ipcRenderer.invoke('room:files-read', input),
-    submitMessage: input => ipcRenderer.invoke('room:message-submit', input),
-    applyUserCommand: input => ipcRenderer.invoke('room:user-command', input),
-    updateSkillBindings: input => ipcRenderer.invoke('room:skill-bindings-update', input),
-    skills: kind => ipcRenderer.invoke('local-agent-installer:skills', kind),
-    listStaleAssignments: input => ipcRenderer.invoke('room:assignments-stale', input),
-    assignmentTrace: input => ipcRenderer.invoke('room:assignment-trace', input),
-    assignmentTraceBlob: input => ipcRenderer.invoke('room:assignment-trace-blob', input),
-    onChanged: callback => {
-      const listener = (_event, payload) => callback(payload)
-      ipcRenderer.on('room:changed', listener)
-      return () => ipcRenderer.removeListener('room:changed', listener)
-    },
-    onAssignmentEvent: callback => {
-      const listener = (_event, payload) => callback(payload)
-      ipcRenderer.on('room:assignment-event', listener)
-      return () => ipcRenderer.removeListener('room:assignment-event', listener)
-    },
-  }),
   trace: Object.freeze({
     page: input => ipcRenderer.invoke('trace:page', input),
     blob: input => ipcRenderer.invoke('trace:blob', input),

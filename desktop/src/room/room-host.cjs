@@ -21,7 +21,7 @@ const {
   listDirectory,
   resolveForRead,
   trimUtf8Buffer,
-} = require('../room-engine/workdir-access.cjs')
+} = require('./workdir-access.cjs')
 const { resolveRoot } = require('../runs/path-claims.cjs')
 
 const MAX_MESSAGE_LENGTH = 100_000

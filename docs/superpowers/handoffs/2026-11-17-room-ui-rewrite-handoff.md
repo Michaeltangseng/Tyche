@@ -8,13 +8,13 @@
 
 ## 0. 一句话
 
-**后端已经闭环；旧 Project Room preview 已删除（`dfe4c09`）；`RoomWorkspace` 仍跑在旧 `room-engine` 上。下一步做 Room host/IPC/preload，把数据层接到新 room domain，最后删旧 `room-engine`。保留视觉外壳，不保留旧 contract。**
+**后端已经闭环；旧 Project Room preview 与旧 `room-engine` 均已删除；`RoomWorkspace` 已直接跑在新 room domain 上。下一步补 eta 借鉴的流式/trace/usage/Task 板/Artifact 账本（Slice 3），然后做硬化（Slice 5）。保留视觉外壳，不保留旧 contract。**
 
 ## 1. 当前状态
 
 - 仓库：`/Users/limu/Desktop/githubs/29-meldwork/Tyche`
-- 分支：`project-room`；10 个 commit **未 push**
-- 最新 commit：`dfe4c09 refactor: remove the legacy Project Room preview`
+- 分支：`project-room`；12 个 commit **未 push**
+- 最新 commit：`5c81260 feat(room): switch the team room UI to the new domain`（旧 `room-engine` 删除在其后一次提交）
 
 | Commit | 内容 |
 | --- | --- |
@@ -27,15 +27,20 @@
 | `7ba6a66` | mention lane + unknown-effect Attention |
 | `988fab2` | display-safe room read model |
 | `eede08b` | UI 方向与重写 handoff 文档 |
-| `dfe4c09` | **Slice 0：删除旧 Project Room preview** |
+| `dfe4c09` | Slice 0：删除旧 Project Room preview |
+| `24f14ed` | Slice 1：新 room host + team-room IPC + preload |
+| `5c81260` | Slice 2：RoomWorkspace/useRoomWorkspace 切到新 domain；角色 CRUD/Attention/删 Room |
+| 本次提交 | Slice 4：删除旧 `room-engine`、preload `room.*`、RoomAssignmentTrace/RoomArtifactDiff |
 
 验证状态：
 
-- **65/65** room tests（20 个测试文件）。
-- Claude / Codex service-driven OAR smoke：均 `ok: true`、`engineDriven: true`、`serviceDriven: true`。
-- Smoke 含 mention lane：`comment_task` 成功、mention run `completed`、`required=false`、Task 保持 `in_review`。
-- 硬崩治理：wrapper 写入 7 个 PID 记录，close 后 0。
-- 未跑：frontend/desktop 全量测试、pack、Electron 43/Node 24。
+- **250/250** focused desktop tests：room + shell + preload/main security + trace。
+- **109/109** `main-security.test.cjs`（删除旧 room-engine 后从基线 7/110 恢复）。
+- **96/96** room domain + team-room IPC + preload security。
+- **30/30** invocation/permission/write/lease workspace tests。
+- Claude / Codex service-driven OAR smoke：均 `ok: true`、`engineDriven: true`、`serviceDriven: true`（Slice 0 之前）。
+- 前端：build / build:desktop 通过；Node 22 全量 **103 failed / 373 passed**，与 HEAD 基线减去已删除测试一致（剩余失败均为基线已有的 App 旧断言漂移）。
+- 未跑：desktop 全量 suite、pack、Electron 43/Node 24、真实 Electron 窗口手工验收。
 
 新 room domain 已具备：
 
@@ -43,14 +48,17 @@
 - `engine`、`task-queue`、`settlement`、`captain-review`、`supervisor`、`recovery`。
 - `runtime-adapter.cjs`（OAR，Claude/Codex）、per-run MCP、NO_PROXY、YOLO（POC 例外）。
 - `room-service.cjs`（liveness、supervisor、recovery、disposeAll）。
+- `room-host.cjs`：生产装配 + bootstrap/chat/role/message/task/files/write/trace 命令 + 启动 sweep/close。
+- `shell/team-room-ipc.cjs` + preload `teamRoom`：验证过的窄 IPC；旧 `room.*` 已删除。
 - `domain-idempotency.cjs`、`runtime-events.cjs`、`runtime-processes.cjs` + wrapper。
-- `read-model.cjs`：`listRooms` / `snapshot` / `chatMessages`，display-safe snake_case DTO。
+- `read-model.cjs`：`listRooms`（含 chats）/ `snapshot` / `chatMessages`，display-safe snake_case DTO。
 
 UI 现状：
 
-- `RoomWorkspace`（`frontend/src/components/RoomWorkspace.vue`）视觉外壳可用，但数据仍来自旧 `desktop/src/room-engine/`。
-- 旧 Project Room preview（`ProjectRoom*` + `useProjectRoom*`）仍在，绑定 checkpoint/gate/seat/round。
-- 新 room domain **没有 IPC、preload、UI**。
+- `RoomWorkspace`（`frontend/src/components/RoomWorkspace.vue`）保留视觉外壳，数据已来自 `teamRoom` preload / 新 room host。
+- 角色配置、任务/run/report/Captain review/Captain assignment、Attention、文件、写授权、新建/删除 Room/Chat 已接通。
+- 旧 Project Room preview 与旧 `room-engine` 已删除；当前只剩一套 Room UI、一套数据源。
+- 尚未接：流式 process/tool trace、token/context、Task 瀑布图、Artifact 账本、乐观 outbox（Slice 3）。
 
 ## 2. UI 审计结论（详见 `docs-new2/09-ui-direction.md`）
 
@@ -133,7 +141,7 @@ eta 的缺口 / 不照搬：
 - frontend build + 相关 tests 通过。
 - RoomWorkspace 仍能打开（它只依赖 `room` API，不依赖 `project`）。
 
-### Slice 1：新 Room host + IPC + preload
+### Slice 1：新 Room host + IPC + preload（已完成，`24f14ed`）
 
 目标：让新 room domain 成为唯一运行时数据源；不再经过旧 `room-engine`。
 
@@ -165,7 +173,7 @@ eta 的缺口 / 不照搬：
 - `room-engine` 不再被新 UI 调用；旧 IPC/service 在 Slice 4 删除。
 - 不向 renderer 下发 workspace 绝对路径、session/native ref、PID、token、tool 原始 activity。
 
-### Slice 2：重写 `useRoomWorkspace` + `RoomWorkspace` 数据层
+### Slice 2：重写 `useRoomWorkspace` + `RoomWorkspace` 数据层（核心已完成，`5c81260`）
 
 - `useRoomWorkspace.js`（202 行）改为新 read model：`assignments→runs`、`is_controller→is_captain`、`report.run_id`、`attention.options`、`workspace_label/write_authorized`。
 - `RoomWorkspace.vue` 保留视觉外壳；重绑 header/角色 chips/timeline/composer/work panel/settings。
@@ -182,7 +190,7 @@ eta 的缺口 / 不照搬：
 - 不出现 checkpoint/gate/seat/round/controller/pending decision 词汇。
 - frontend tests + build + build:desktop；desktop 相关测试。
 
-### Slice 3：补 eta 借鉴的 UI 能力
+### Slice 3：补 eta 借鉴的 UI 能力（下一步）
 
 - 流式：RuntimeEvent → process box + tool cards + answer；30–60ms 批量；首 token skeleton；重连/interrupted 状态。
 - Tool trace：按 command/diff/write/plan/JSON/图片/子步骤渲染；默认折叠；Transcript 抽屉；失败/权限节点。
@@ -192,11 +200,14 @@ eta 的缺口 / 不照搬：
 - Task 板 + Artifact 账本 + Report 卡；Room 级页面。
 - 乐观 outbox/held messages/草稿恢复（桌面端优先）。
 
-### Slice 4：删除旧 `room-engine`
+### Slice 4：删除旧 `room-engine`（已完成）
 
-- 新 UI 切换后删除 `preload.cjs` 旧 `room.*`、`room-engine/room-ipc.cjs`、`room-engine/room-service.cjs`、controller/assignment-runner/artifact-reader/session-supervisor/旧 trace。
-- 清理旧 room CSS/i18n/tests；删除旧 `RoomAssignmentTrace` 的 assignment contract（保留视觉，改 run trace）。
-- 确保只有一套 Room UI、一套数据源、一套状态机。
+- 删除 `preload.cjs` 旧 `room.*`、`desktop/src/room-engine/` 全部、`scripts/smoke-room.cjs`、`test/room-engine/`。
+- `RoomAssignmentTrace.vue`、`RoomArtifactDiff.vue` 及其测试删除；新 trace/artifact 在 Slice 3 重建。
+- `workdir-access.cjs` 移入 `desktop/src/room/`，是新 host 文件读取的唯一共享 helper。
+- `local-workspace-agent-invocation` 删除 `project-room`/`room` session policy 分支。
+- 仅保留两套数据源之外的共享 CSS 类名（`project-room-*` 仍被团队项目室侧栏和文件抽屉复用）；旧 i18n 字符串暂留，切片 3 会用到 trace/diff 文案。
+- 现在只有一套 Room UI、一套数据源、一套状态机。
 
 ### Slice 5：硬化
 
@@ -242,11 +253,11 @@ frontend/src/__tests__/meldwork/projectRoom*.spec.js
 
 - **read model roles**：snapshot 返回 room 下所有 chat 的 roles；UI 要按当前 chat 过滤，不要误以为 Room 级角色。
 - **assignments vs runs**：`read-model.assignments` 是 Captain assignment；执行记录是 `runs`。旧 UI 的 `assignments` 概念必须改名。
-- **文件面板**：旧的 `SCHEDULER_CLAIM_ROOT_INVALID` 来自旧 scheduler；新 files API 只读 Room workspace，走安全路径校验，不下发绝对路径。
-- **写授权**：Room 级 opt-in；不要再用 Captain 聊天解释；UI 要有明确开关和只读提示。
-- **usage/context**：OAR 有 usage 事件，但 adapter 目前只收集活动，未持久化 usage；Slice 1 需要定义 Session/Run usage contract。
-- **artifacts**：schema 有表，read model 未返回；没有 producer/diff/accept 命令，需要补。
-- **Captain review**：read model 已返回 `reviews`，UI 完全没渲染；新 UI 必须补。
+- **文件面板**：新 `teamRoom.filesList/filesRead` 按 `roomId` 解析 workspace，只读且不下发绝对路径；旧的 `SCHEDULER_CLAIM_ROOT_INVALID` 路径已删除。
+- **写授权**：Room 级 `write_authorized` 开关已接到 host / UI；POC 下运行时仍是 YOLO，生产前需把该开关接到执行租约。
+- **usage/context**：OAR 有 usage 事件，但 adapter 目前只收集活动，未持久化 usage；Slice 3 需要定义 Session/Run usage contract。
+- **artifacts**：schema 有表，read model 未返回；没有 producer/diff/accept 命令，Slice 3 补。
+- **Captain review**：read model 返回 `reviews`，新 UI 已在工作台渲染。
 - **旧数据迁移**：本阶段不做；旧数据归档/只读；不要双读双写。
 - **Windows**：wrapper/sweep 仅 POSIX；Windows 需另做 taskkill/process tree。
 - **POC YOLO**：Chat/Task 全 YOLO 是临时决定，生产前重新评估 handoff 的 Chat 只读/write 租约。
@@ -284,8 +295,12 @@ npm --prefix desktop run pack
 ## 8. 压缩后恢复清单
 
 - [ ] 读本文 + `docs-new2/09-ui-direction.md` + `2026-11-17-meldwork-room-v2-handoff.md`。
-- [ ] `git log -10 --oneline` 确认 `dfe4c09` 及之前 9 个 commit；分支 `project-room`。
-- [ ] 跑 room 测试确认 **65/65**。
+- [ ] `git log -12 --oneline` 确认 `5c81260` 及之前 commit；分支 `project-room`。
+- [ ] 跑 focused desktop 测试确认 **250/250**（room + shell + security + trace）。
 - [x] Slice 0：删除旧 Project Room preview（`dfe4c09`）。
-- [ ] 下一步：**Slice 1：Room host + IPC + preload**。
-- [ ] 不要恢复旧 `project:*` contract；旧 `room-engine` 只保留到 Slice 4；不要双引擎。
+- [x] Slice 1：Room host + IPC + preload（`24f14ed`）。
+- [x] Slice 2：RoomWorkspace 新数据层（核心，`5c81260`）。
+- [x] Slice 4：删除旧 `room-engine`。
+- [ ] 下一步：**Slice 3：流式/trace/usage/Task 板/Artifact 账本/乐观 outbox**。
+- [ ] Slice 5：Electron 43/Node 24、pack、真实 Electron 手工验收、Windows 崩溃治理、POC YOLO 复核。
+- [ ] 不要恢复旧 `project:*` / `room:*` contract；不要双引擎。

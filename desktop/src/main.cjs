@@ -97,14 +97,6 @@ const {
 const { LocalKnowledgeConnectors } = require('./knowledge/local-knowledge-connectors.cjs')
 const { createRoomHost } = require('./room/room-host.cjs')
 const { registerTeamRoomIpc } = require('./shell/team-room-ipc.cjs')
-const { openRoomDatabase } = require('./room-engine/room-db.cjs')
-const { createRoomRepository } = require('./room-engine/room-repository.cjs')
-const { createRoomService } = require('./room-engine/room-service.cjs')
-const { createControllerAgent } = require('./room-engine/controller-agent.cjs')
-const { createRoomNativeRuntime } = require('./room-engine/native-runtime.cjs')
-const { createArtifactSnapshots } = require('./room-engine/artifact-snapshots.cjs')
-const { createArtifactReader } = require('./room-engine/artifact-reader.cjs')
-const { registerRoomIpc } = require('./room-engine/room-ipc.cjs')
 const { nativeOpenClawOptions } = require('./agents/cli/openclaw-runtime.cjs')
 const { migrateLegacyProductData } = require('./product-data-migration.cjs')
 const LOCAL_AGENT_KINDS = new Set([
@@ -161,9 +153,6 @@ let skillCatalog = null
 let skillTrustStore = null
 let skillSnapshotSelections = null
 let shutdownStarted = false
-let roomEngineDb = null
-let roomEngineService = null
-let disposeRoomIpc = null
 let teamRoomHost = null
 const knowledgeInstallShutdown = new AbortController()
 let quitCleanup = null
@@ -1069,16 +1058,9 @@ function registerIpc() {
     isKnownGroup: groupId => {
       try { return Boolean(workspace?.getGroup?.(groupId)) } catch { return false }
     },
-    isAuthorizedTrace: input => Boolean(roomEngineService?.authorizeTrace?.(input)),
   })
   const traceStore = createTraceStore({ tracesRoot })
   registerTraceIpc({ registerTrustedHandle, reader: roomTraceReader, store: traceStore })
-  disposeRoomIpc = registerRoomIpc({
-    ipcMain,
-    service: roomEngineService,
-    requireRenderer: requireDesktopRenderer,
-    isShuttingDown: () => shutdownStarted,
-  })
   registerTeamRoomIpc({
     registerTrustedHandle,
     getHost: () => teamRoomHost,
@@ -1195,55 +1177,6 @@ if (!hasSingleInstanceLock) {
       // M4/M6 C: protect every known project root, recover the process
       // registry, register residual occupancy, then leave recovery mode.
       const privateRoot = path.join(app.getPath('userData'), 'meldwork-private')
-      roomEngineDb = openRoomDatabase({
-        directory: path.join(privateRoot, 'room-engine'),
-        onCommit: () => {
-          if (mainWindow && !mainWindow.isDestroyed() && isTrustedLocalWebContents(mainWindow.webContents)) {
-            mainWindow.webContents.send('room:changed', {})
-          }
-        },
-      })
-      const roomRepository = createRoomRepository(roomEngineDb)
-      const roomNativeRuntime = createRoomNativeRuntime({ repository: roomRepository, workspace: startupWorkspace,
-        onAssignmentEvent: payload => {
-          if (mainWindow && !mainWindow.isDestroyed()
-              && isTrustedLocalWebContents(mainWindow.webContents)
-              && payload?.assignmentId && payload?.event) {
-            mainWindow.webContents.send('room:assignment-event', payload)
-          }
-        },
-        artifactSnapshots: createArtifactSnapshots({ roomDb: roomEngineDb, repository: roomRepository,
-          directory: path.join(privateRoot, 'room-engine', 'artifacts'), privateRoot: app.getPath('userData'), locale: () => app.getLocale?.() || 'zh' }) })
-      roomEngineService = createRoomService({
-        roomDb: roomEngineDb,
-        repository: roomRepository,
-        readArtifactDiff: createArtifactReader({ roomDb: roomEngineDb, directory: path.join(privateRoot, 'room-engine', 'artifacts') }),
-        getTraceReader: () => roomTraceReader,
-        invokeAgent: roomNativeRuntime.invokeAgent,
-        resolveGroup: roomNativeRuntime.resolveTarget,
-        prepareSkillSelections: (kind, selections) => skillSnapshotSelections.prepare(kind, selections),
-        prepareSkillBindings: async ({ selections, provider, allowedProviders }) => {
-          if (!Array.isArray(selections) || selections.length > 4) throw new Error('ROOM_SKILL_BINDINGS_INVALID')
-          const byKind = new Map()
-          for (const selection of selections) {
-            if (!selection || Object.keys(selection).sort().join(',') !== 'name,namespace,slug,targetKind'
-                || typeof selection.targetKind !== 'string') throw new Error('ROOM_SKILL_BINDINGS_INVALID')
-            const kind = selection.targetKind.trim().toLowerCase()
-            if ((provider && kind !== provider) || (!provider && allowedProviders.length && !allowedProviders.includes(kind))) {
-              throw new Error('ROOM_SKILL_PROVIDER_NOT_ALLOWED')
-            }
-            if (!byKind.has(kind)) byKind.set(kind, [])
-            byKind.get(kind).push({ ...selection, targetKind: kind })
-          }
-          const result = []
-          for (const [kind, items] of byKind) result.push(...await skillSnapshotSelections.prepare(kind, items))
-          return result
-        },
-        autoRunEffects: true,
-        locale: () => app.getLocale?.() || 'zh',
-        getInvocationRecords: runId => startupWorkspace.processRegistry.getInvocationRecords(runId),
-        decideController: createControllerAgent({ repository: roomRepository, invokeAgent: roomNativeRuntime.invokeAgent, resolveGroup: roomNativeRuntime.resolveTarget }),
-      })
       try {
         const recovery = await startupWorkspace.processRegistry.recover()
         for (const result of recovery) {
@@ -1295,9 +1228,6 @@ if (!hasSingleInstanceLock) {
       }
     } finally {
       scheduler.exitRecoveryMode()
-      roomEngineService?.recoverRuntime()
-      roomEngineService?.reconcileProcesses()
-      roomEngineService?.startRuntime()
     }
     if (attachmentStore && attachmentReferences) {
       try {
@@ -1342,10 +1272,6 @@ if (!hasSingleInstanceLock) {
     const installRunning = Boolean(installerState?.canCancel)
     if (installRunning) installer.cancel(installerState.taskId)
     quitCleanup = runQuitCleanup([
-      () => {
-        disposeRoomIpc?.()
-        disposeRoomIpc = null
-      },
       () => channelIngressRuntime?.shutdown(),
       () => cloudAgentBridges?.close(),
       () => cloudAgentRuntime?.shutdown(),
@@ -1360,12 +1286,6 @@ if (!hasSingleInstanceLock) {
       async () => {
         await teamRoomHost?.close()
         teamRoomHost = null
-      },
-      async () => {
-        await roomEngineService?.close()
-        roomEngineDb?.close()
-        roomEngineDb = null
-        roomEngineService = null
       },
     ]).then(() => {
       app.exit(0)

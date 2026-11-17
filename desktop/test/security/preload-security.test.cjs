@@ -95,10 +95,6 @@ test('local preload exposes the local-only Meldwork API', async () => {
     args: [{ roomId: 'room-1' }],
   }])
   invocations.length = 0
-  assert.equal(Object.isFrozen(api.room), true)
-  assert.deepEqual(Object.keys(api.room).sort(), [
-    'applyUserCommand', 'bootstrap', 'listStaleAssignments', 'submitMessage', 'snapshot', 'listRooms', 'permissionModes', 'createChat', 'deleteChat', 'deleteRoom', 'chatMessages', 'filesList', 'filesRead', 'artifactDiff', 'assignmentTrace', 'assignmentTraceBlob', 'onChanged', 'onAssignmentEvent', 'skills', 'updateSkillBindings',
-  ].sort())
   assert.equal('localAgentProvider' in api, false)
   await api.localWorkspace.deleteMessage('group-1', 'message-1')
   assert.deepEqual(invocations, [{
@@ -174,38 +170,46 @@ test('local preload exposes the local-only Meldwork API', async () => {
   ])
 })
 
-test('room preload forwards only user requests and read queries', async () => {
+test('team-room preload forwards only validated domain requests', async () => {
   const { api, invocations } = loadPreload('file:')
-  await api.room.listRooms()
-  await api.room.permissionModes()
-  await api.room.createChat({ roomId: 'room', title: 'Team' })
-  await api.room.deleteChat({ roomId: 'room', chatId: 'chat' })
-  await api.room.deleteRoom({ roomId: 'room' })
-  await api.room.bootstrap({ name: 'Room', workspace: '/tmp/work' })
-  await api.room.snapshot({ roomId: 'room' })
-  await api.room.chatMessages({ roomId: 'room', chatId: 'chat', beforeSequence: 10, limit: 25 })
-  await api.room.filesList({ roomId: 'room', relPath: 'docs' })
-  await api.room.filesRead({ roomId: 'room', relPath: 'docs/README.md' })
-  await api.room.artifactDiff({ roomId: 'room', artifactId: 'artifact' })
-  await api.room.submitMessage({ chatId: 'chat', content: 'hello' })
-  await api.room.applyUserCommand({ type: 'pause_chat', chatId: 'chat' })
-  await api.room.listStaleAssignments({ roomId: 'room', timeoutMs: 1000 })
+  await api.teamRoom.listRooms()
+  await api.teamRoom.bootstrap({ name: 'Room', workspace: '/tmp/work', providers: ['codex'] })
+  await api.teamRoom.snapshot({ roomId: 'room' })
+  await api.teamRoom.chatMessages({ roomId: 'room', chatId: 'chat', beforeSeq: 10, limit: 25 })
+  await api.teamRoom.createChat({ roomId: 'room', title: 'Team' })
+  await api.teamRoom.deleteChat({ roomId: 'room', chatId: 'chat' })
+  await api.teamRoom.deleteRoom({ roomId: 'room' })
+  await api.teamRoom.createRole({ roomId: 'room', chatId: 'chat', displayName: 'Writer', provider: 'codex' })
+  await api.teamRoom.updateRole({ roomId: 'room', roleId: 'role', prompt: 'write' })
+  await api.teamRoom.deleteRole({ roomId: 'room', roleId: 'role' })
+  await api.teamRoom.answerAttention({ roomId: 'room', chatId: 'chat', attentionId: 'a', resolution: 'ok', commandId: 'c' })
+  await api.teamRoom.submitMessage({ roomId: 'room', chatId: 'chat', content: 'hello', clientId: 'c1' })
+  await api.teamRoom.acceptTask({ roomId: 'room', taskId: 'task', commandId: 'c2' })
+  await api.teamRoom.stopReply({ roomId: 'room', replyId: 'reply' })
+  await api.teamRoom.filesList({ roomId: 'room', relPath: 'docs' })
+  await api.teamRoom.filesRead({ roomId: 'room', relPath: 'docs/README.md' })
+  await api.teamRoom.setWriteAuthorized({ roomId: 'room', authorized: true })
+  await api.teamRoom.runtimeEvents({ roomId: 'room', chatId: 'chat', limit: 10 })
   assert.deepEqual(invocations.map(item => item.channel), [
-    'room:list', 'room:permission-modes', 'room:chat-create', 'room:chat-delete', 'room:room-delete',
-    'room:bootstrap', 'room:snapshot', 'room:chat-messages', 'room:files-list', 'room:files-read', 'room:artifact-diff', 'room:message-submit', 'room:user-command', 'room:assignments-stale',
+    'team-room:list', 'team-room:bootstrap', 'team-room:snapshot', 'team-room:chat-messages',
+    'team-room:chat-create', 'team-room:chat-delete', 'team-room:room-delete',
+    'team-room:role-create', 'team-room:role-update', 'team-room:role-delete',
+    'team-room:attention-answer', 'team-room:message-submit', 'team-room:accept-task',
+    'team-room:stop-reply', 'team-room:files-list', 'team-room:files-read',
+    'team-room:write-authorized', 'team-room:runtime-events',
   ])
 })
 
-test('room preload exposes a cancellable change subscription without renderer filters', () => {
+test('team-room preload exposes a cancellable change subscription', () => {
   const { api, listeners } = loadPreload('file:')
   const received = []
-  const unsubscribe = api.room.onChanged(payload => received.push(payload))
-  const listener = listeners.get('room:changed')
+  const unsubscribe = api.teamRoom.onChanged(payload => received.push(payload))
+  const listener = listeners.get('team-room:changed')
   assert.equal(typeof listener, 'function')
   listener({}, { revision: 1 })
   assert.deepEqual(received, [{ revision: 1 }])
   unsubscribe()
-  assert.equal(listeners.has('room:changed'), false)
+  assert.equal(listeners.has('team-room:changed'), false)
 })
 
 test('local preload exposes the complete narrow Knowledge Connector lifecycle', async () => {
