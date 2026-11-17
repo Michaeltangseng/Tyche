@@ -18,7 +18,7 @@
 
 | 项目 | 结果 |
 | --- | --- |
-| `desktop/test/room` 16 个测试文件 | **43 tests / 43 pass / 0 fail** |
+| `desktop/test/room` 16 个测试文件 | **48 tests / 48 pass / 0 fail** |
 | Claude Code resume proof | `resumed: true`, `remembered: true`, session ref 稳定 |
 | Codex resume proof | `resumed: true`, `remembered: true`, session ref 稳定 |
 | MCP tool loop proof | `create_task` / `finish_task` / `mention` list + call 成功，`ok: true` |
@@ -89,6 +89,7 @@ desktop/scripts/
 11. **Captain review**：全局基线 `max(checkpoint, 所有 active assignment 消息 seq)`；目标忙/Task 未结算/run 未结束会挡住；review 行和 review reply 不推进 activity；批量投递同 Chat；投递时写 `start_reply` effect；supervisor 150ms debounce + 60s tick。
 12. **Recovery**：queued 保留；working/waiting → interrupted；starting/running → interrupted/unknown；running effect → unknown；有写 scope 的 run 建 Attention；被中断的 lane `active=0`，`pump` 不启动，必须 `activateLane` 释放。
 13. **真实 CLI 证明**：resume、MCP、模块级 seam 都已跑通（见上表）。
+14. **领域幂等**：`domain_idempotency` 表（schema v2）；`create_task` 唯一 per assignment+source；无 assignment 时按 run+args；`comment_task` 支持调用方 `idempotency_key`，缺省按 source+text。
 
 ## 必须守住的语义
 
@@ -136,6 +137,8 @@ desktop/scripts/
 
 ### Ruling 2：领域幂等仍不完整
 
+> **2026-11-17 更新**：已实现 `domain_idempotency`（schema v2）。`create_task` 唯一 per assignment+source；无 assignment 时按 run+args；`comment_task` 支持调用方 `idempotency_key`，缺省按 source+text。聚焦 room 测试 **48/48**。
+
 dispatcher 的 `callId` 幂等只覆盖“客户端复用 callId”的情况。`create_task` / `comment_task` 还没有 per-assignment+source-message 的领域幂等键；客户端用新 callId 重试仍可能重复。下一步按 `docs-new2/04` §5.1 补。
 
 ### 已修复的 review 问题（不要回退）
@@ -164,7 +167,7 @@ dispatcher 的 `callId` 幂等只覆盖“客户端复用 callId”的情况。`
 ```bash
 cd desktop
 
-# 小范围 room 测试（当前 43/43）
+# 小范围 room 测试（当前 48/48）
 node --test test/room/db.test.cjs test/room/repository.test.cjs test/room/timeline.test.cjs \
   test/room/session-store.test.cjs test/room/routing.test.cjs test/room/briefing.test.cjs \
   test/room/effects.test.cjs test/room/engine.test.cjs test/room/dispatcher.test.cjs \
@@ -213,7 +216,7 @@ npm --prefix desktop run pack
 
 1. **人工集成验证**：按上面的真实证明命令重跑，确认本机 CLI 行为。
 2. **runtime adapter + MCP 注入（POC 已完成）**：`runtime-adapter.cjs` 使用 OAR，`engine.startReply` 和 Task `pump` 已走真实 Claude/Codex；`room-oar-smoke.cjs` 明确 `engineDriven: true`（Claude/Codex 均通过）。下一步是进程治理、事件/Trace 对齐、Electron 43/Node 24 与全量验证。
-3. **领域幂等**：`create_task` / `comment_task` 的 assignment+source message 幂等键。
+3. **领域幂等（已完成）**：`domain_idempotency`（schema v2）；`create_task` per assignment+source，`comment_task` 调用方 key/缺省 source+text；room 测试 48/48。下一步建议先补 OAR 进程治理/事件映射，再进 deferred minors。
 4. **Deferred minors**：按业务优先级补。
 5. **UI/preload/renderer**：在 engine 真实闭环通过后再接。
 6. **旧数据迁移/旧引擎退场**：单独计划；当前切片不碰。

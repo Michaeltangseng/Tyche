@@ -94,3 +94,62 @@ test('pump does not overwrite a run that settled while starting', async t => {
   assert.equal(queue.getTask(task.taskId).status, 'in_review')
   roomDb.close()
 })
+
+test('create_task is idempotent per assignment and source message', async t => {
+  const { roomDb, repo, chatId, roleId, queue } = setup(t)
+  const dispatcher = createToolDispatcher({ roomDb, repository: repo })
+  registerTaskTools({ dispatcher, roomDb, repository: repo, timeline: {}, queueRun: queue })
+  dispatcher.bindRun('run1', {
+    chatId,
+    roleId,
+    allowedTools: ['create_task'],
+    captainAssignmentId: 'assignment-1',
+    rootMessageId: 'message-1',
+  })
+  const args = { title: 'T', description: 'D', acceptance: 'A' }
+  const first = await dispatcher.invoke({ runId: 'run1', callId: 'c1', name: 'create_task', args })
+  const second = await dispatcher.invoke({ runId: 'run1', callId: 'c2', name: 'create_task', args })
+  assert.deepEqual(second, first)
+  assert.equal(roomDb.database.prepare('SELECT COUNT(*) AS n FROM tasks WHERE chat_id = ?').get(chatId).n, 1)
+  assert.equal(roomDb.database.prepare('SELECT COUNT(*) AS n FROM task_runs WHERE task_id = ?').get(first.taskId).n, 1)
+  assert.equal(roomDb.database.prepare("SELECT COUNT(*) AS n FROM domain_idempotency WHERE kind = 'create_task'").get().n, 1)
+  roomDb.close()
+})
+
+test('create_task retries dedupe by run and args without an assignment', async t => {
+  const { roomDb, repo, chatId, roleId, queue } = setup(t)
+  const dispatcher = createToolDispatcher({ roomDb, repository: repo })
+  registerTaskTools({ dispatcher, roomDb, repository: repo, timeline: {}, queueRun: queue })
+  dispatcher.bindRun('run2', { chatId, roleId, allowedTools: ['create_task'] })
+  const args = { title: 'T', description: 'D', acceptance: 'A' }
+  const first = await dispatcher.invoke({ runId: 'run2', callId: 'c1', name: 'create_task', args })
+  const second = await dispatcher.invoke({ runId: 'run2', callId: 'c2', name: 'create_task', args })
+  assert.deepEqual(second, first)
+  assert.equal(roomDb.database.prepare('SELECT COUNT(*) AS n FROM tasks WHERE chat_id = ?').get(chatId).n, 1)
+  roomDb.close()
+})
+
+test('comment_task dedupes by caller key or source and text', async t => {
+  const { roomDb, repo, chatId, roleId, queue } = setup(t)
+  const dispatcher = createToolDispatcher({ roomDb, repository: repo })
+  registerTaskTools({ dispatcher, roomDb, repository: repo, timeline: {}, queueRun: queue })
+  dispatcher.bindRun('run3', { chatId, roleId, allowedTools: ['create_task', 'comment_task'] })
+  const created = await dispatcher.invoke({ runId: 'run3', callId: 'c1', name: 'create_task',
+    args: { title: 'T', description: 'D', acceptance: 'A' } })
+
+  const fallback = { taskId: created.taskId, text: 'more' }
+  const first = await dispatcher.invoke({ runId: 'run3', callId: 'x1', name: 'comment_task', args: fallback })
+  const second = await dispatcher.invoke({ runId: 'run3', callId: 'x2', name: 'comment_task', args: fallback })
+  assert.deepEqual(second, first)
+  assert.equal(roomDb.database.prepare('SELECT COUNT(*) AS n FROM task_activities WHERE task_id = ?').get(created.taskId).n, 1)
+  assert.equal(roomDb.database.prepare('SELECT COUNT(*) AS n FROM task_runs WHERE task_id = ?').get(created.taskId).n, 2)
+
+  const keyed = { taskId: created.taskId, text: 'more', idempotency_key: 'comment-1' }
+  const keyedFirst = await dispatcher.invoke({ runId: 'run3', callId: 'x3', name: 'comment_task', args: keyed })
+  const keyedSecond = await dispatcher.invoke({ runId: 'run3', callId: 'x4', name: 'comment_task', args: keyed })
+  assert.deepEqual(keyedSecond, keyedFirst)
+  assert.notEqual(keyedFirst.activityId, first.activityId)
+  assert.equal(roomDb.database.prepare('SELECT COUNT(*) AS n FROM task_activities WHERE task_id = ?').get(created.taskId).n, 2)
+  assert.equal(roomDb.database.prepare('SELECT COUNT(*) AS n FROM task_runs WHERE task_id = ?').get(created.taskId).n, 3)
+  roomDb.close()
+})
