@@ -34,8 +34,9 @@
 
 验证状态：
 
-- **259/259** focused desktop tests：room + shell + preload/main security + trace。
+- **259/259** focused desktop tests（Node 24.22.3 + Electron 43 环境）：room + shell + preload/main security + trace。
 - **109/109** `main-security.test.cjs`（删除旧 room-engine 后从基线 7/110 恢复）。
+- Electron 43.8.10（Node 24.22.1）启动 smoke 通过；OAR 动态加载、`node:sqlite` 可用。
 - **96/96** room domain + team-room IPC + preload security。
 - **30/30** invocation/permission/write/lease workspace tests。
 - Claude / Codex service-driven OAR smoke：均 `ok: true`、`engineDriven: true`、`serviceDriven: true`（Slice 0 之前）。
@@ -210,20 +211,15 @@ eta 的缺口 / 不照搬：
 - 仅保留两套数据源之外的共享 CSS 类名（`project-room-*` 仍被团队项目室侧栏和文件抽屉复用）；旧 i18n 字符串暂留，切片 3 会用到 trace/diff 文案。
 - 现在只有一套 Room UI、一套数据源、一套状态机。
 
-### Slice 5：硬化（下一步，人工/环境敏感）
+### Slice 5：硬化（进行中，人工/环境敏感）
 
-- **Electron 43 / Node 24**：当前 `electron@39.8.10` 内置 Node 22.22.1；OAR 声明 `engines.node >=24`。功能已实测可用，但生产应升级。需要下载，命令交给所有者：
-  ```bash
-  cd desktop
-  npm install --save-dev electron@43.8.10 --registry=https://registry.npmmirror.com
-  ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ npm install
-  npm run build:native
-  ```
-  升级后必须重跑 `electron .` 手工验收与 `npm run pack`。
-- **真实 Electron 窗口验收**：新建 Room → 选目录/角色 → 发消息 → 流式 → create_task/finish_task → Report/验收 → Captain review → Attention → 文件抽屉/trace。当前自动化只覆盖 unit/Vue 测试与 OAR service smoke。
+- **Electron 43 / Node 24（已完成）**：`electron@43.8.10`（内置 Node 24.22.1），`engines.node >=24`；OAR 在 Electron Node 下可加载，`node:sqlite` 可用。二进制用 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ node node_modules/electron/install.js` 下载。
+- **启动 smoke（已完成）**：`./node_modules/.bin/electron .` 在 Electron 43 下成功启动 main/GPU/network/renderer，无启动异常；仅做了启动/退出，未做完整交互。
+- **真实 Electron 窗口验收（待人工）**：新建 Room → 选目录/角色 → 发消息 → 流式 → create_task/finish_task → Report/验收 → Captain review → Attention → 文件抽屉/trace。
+- **Pack（待人工）**：`npm --prefix desktop run pack`。
 - **Windows**：PID wrapper/sweep 仅 POSIX；adapter 已在 Windows 跳过 wrapper（不会尝试执行 `.sh`），但硬崩后进程组回收需要单独实现 taskkill/process tree。
-- **runtime_events 保留**：host 启动时按 30 天 / 每 chat 5000 条裁剪；可在 `runtime-events.prune()` 调整。
-- **Trace UI 授权**：`teamRoom.runtimeEvents` 由 main 校验 room/chat 归属；payload 经过 `runtime-event-view` allowlist/redaction。新增 trace 字段时必须同步更新 allowlist 测试。
+- **runtime_events 保留（已完成）**：host 启动时按 30 天 / 每 chat 5000 条裁剪；可在 `runtime-events.prune()` 调整。
+- **Trace UI 授权（已完成）**：`teamRoom.runtimeEvents` 由 main 校验 room/chat 归属；payload 经过 `runtime-event-view` allowlist/redaction。新增 trace 字段时必须同步更新 allowlist 测试。
 - **非 OAR provider**：Gemini/DeepSeek/Mimo/ZCode/Hermes/WorkBuddy/OpenClaw/OpenCodeReview 目前只支持旧 local-workspace 路径；新 room runtime adapter 只支持 Claude/Codex，单独评估。
 - **POC YOLO 复核**：Chat/Task 当前 `bypassPermissions` / `danger-full-access`；Room `write_authorized` 只是 UI/host 标志，尚未接到执行租约。生产前必须重新评估 Chat 只读、Task 写入租约、per-seat 权限。
 
@@ -312,5 +308,7 @@ npm --prefix desktop run pack
 - [x] Slice 2：RoomWorkspace 新数据层（核心，`5c81260`）。
 - [x] Slice 4：删除旧 `room-engine`（`09b3191`）。
 - [x] Slice 3：流式/trace/usage/Artifact 账本/乐观 outbox（核心，`28a439d`）。
-- [ ] 下一步：**Slice 5：Electron 43/Node 24、pack、真实 Electron 手工验收、Windows 崩溃治理、POC YOLO 复核**。
+- [x] Slice 5 环境：Electron 43.8.10 / Node 24.22.1、OAR 加载、sqlite、启动 smoke。
+- [ ] 下一步（人工）：**真实 Electron 完整交互验收 + `npm --prefix desktop run pack`**。
+- [ ] 后续：Windows 进程树回收、Role/TaskRun/Room cost 聚合、POC YOLO 生产化复核。
 - [ ] 不要恢复旧 `project:*` / `room:*` contract；不要双引擎。

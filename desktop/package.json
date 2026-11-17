@@ -6,7 +6,7 @@
   "author": "Ryder-MHumble",
   "license": "Apache-2.0",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=24.0.0"
   },
   "main": "src/main.cjs",
   "scripts": {
@@ -37,7 +37,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "electron": "39.8.10",
+    "electron": "43.8.10",
     "electron-builder": "26.15.3"
   },
   "build": {
