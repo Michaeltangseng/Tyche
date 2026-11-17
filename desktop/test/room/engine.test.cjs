@@ -129,3 +129,38 @@ test('completion watermark does not jump over an in-flight peer reply', async t 
   await pendingA2.done
   roomDb.close()
 })
+
+test('finishing a reply preserves existing data flags such as reviewReply', async t => {
+  const { roomDb, chatId, roleId, timeline, outbox, runtime, engine } = setup(t)
+  const trigger = timeline.append({
+    chatId, authorType: 'user', authorId: 'user', content: 'review', status: 'done',
+  })
+  const reply = timeline.append({
+    chatId,
+    authorType: 'agent',
+    authorId: roleId,
+    content: '',
+    replyTo: trigger.id,
+    rootMessageId: trigger.id,
+    status: 'queued',
+    data: { reviewReply: true },
+  })
+  outbox.enqueue({
+    chatId,
+    kind: 'start_reply',
+    payload: { replyId: reply.id, roleId, triggerId: trigger.id },
+    idempotencyKey: `start_reply:${reply.id}`,
+  })
+  const pending = engine.startReply(reply.id)
+  await pending.launched
+  runtime.finish({
+    status: 'done',
+    text: 'ok',
+    activity: [{ name: 'read_chat', status: 'completed' }],
+  })
+  await pending.done
+  const finished = timeline.get(reply.id)
+  assert.equal(finished.data.reviewReply, true)
+  assert.deepEqual(finished.data.activity, [{ name: 'read_chat', status: 'completed' }])
+  roomDb.close()
+})

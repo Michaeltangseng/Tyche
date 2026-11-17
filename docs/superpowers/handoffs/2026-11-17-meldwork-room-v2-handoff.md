@@ -12,7 +12,7 @@
 - 新领域代码：`desktop/src/room/`。
 - 测试：`desktop/test/room/`。
 - 旧引擎：`desktop/src/room-engine/`、`desktop/src/project-room/` **未改动**，不要在新切片里复用它们的 schema。
-- 未做：Renderer/preload/UI、旧数据迁移、旧引擎删除、完整 engine 工具循环、真实 CLI 的 MCP 注入。
+- 未做：Renderer/preload/UI、旧数据迁移、旧引擎删除。engine 工具循环已有 OAR POC（2026-11-17，Claude/Codex `ok: true`、`engineDriven: true`）；生产化（进程治理、事件/Trace 对齐、Electron 43/Node 24、全量验证）未完成。
 
 ## 验证证据（本分支已实际运行）
 
@@ -24,6 +24,8 @@
 | MCP tool loop proof | `create_task` / `finish_task` / `mention` list + call 成功，`ok: true` |
 | Seam smoke Claude | `ok: true`，持久 Chat session、独立 Task session、finish→settlement→in_review、Captain review 全链路 |
 | Seam smoke Codex | `ok: true`，同上 |
+| OAR engine smoke Claude（2026-11-17） | `ok: true`, `engineDriven: true`；assign_in_group/create_task/finish_task 成功，Task `in_review`，Captain review reply |
+| OAR engine smoke Codex（2026-11-17） | `ok: true`, `engineDriven: true`；同上 |
 
 按仓库所有者要求，没有跑全量测试；最终集成阶段由人工验证。不要声称跑过全量。
 
@@ -56,6 +58,7 @@ desktop/src/room/
   captain-review.cjs           assignment 台账、review 生成、批量投递、start_reply effect
   supervisor.cjs               150ms debounce + 60s tick 兜底
   recovery.cjs                 restart 恢复、lane 挂起/激活、process 对账
+  runtime-adapter.cjs          OAR runtime adapter：per-run MCP、dispatcher 绑定、YOLO、NO_PROXY、Task 结算
   tools/
     dispatcher.cjs             register/bindRun/invoke、callId 幂等、args_hash 校验、readOnly 审计
     mcp-server.cjs             Streamable HTTP MCP server、per-run bearer token、callId metadata
@@ -68,6 +71,7 @@ desktop/scripts/
   room-resume-proof.cjs        Claude/Codex resume 证明，写 room-resume-proof.json
   room-mcp-proof.cjs           本地 MCP list/call 证明，写 room-mcp-proof.json
   room-seam-smoke.cjs          模块级真实 CLI 接缝证明，写 room-seam-result.json
+  room-oar-smoke.cjs           engine-driven OAR 接缝证明（真实 Claude/Codex），写 room-oar-result.json
 ```
 
 ## 已实现的能力
@@ -100,9 +104,13 @@ desktop/scripts/
 - MCP 是完整工具循环；文本标记只是受限 fallback；Captain 工具需要 MCP。
 - 不做双引擎长期兼容；旧数据迁移不在这个切片。
 
+> **POC 例外（2026-11-17，用户决定）**：为快速跑通 engine → OAR → MCP → real CLI 闭环，POC 阶段 Chat 和 Task 都使用 OAR 默认 YOLO，暂停“Chat 回复只读 / 写入只在 TaskRun”的限制；`write_scopes` 和 snapshot 仅做占位。生产化前必须重新评估并恢复相应语义。
+
 ## 当前限制（接手第一优先级）
 
-### Ruling 1：engine 还没有接工具循环
+### Ruling 1：engine 工具循环（OAR POC 已接通，生产化未完成）
+
+> **2026-11-17 POC 更新**：`desktop/src/room/runtime-adapter.cjs` + `desktop/scripts/room-oar-smoke.cjs` 已把 `engine.startReply` / Task `pump` → OAR → per-run MCP → 真实 Claude/Codex 接通；两个 provider 都是 `ok: true`、`engineDriven: true`，走完 assign_in_group → create_task → finish_task → settlement → Captain review。下面的“没有”是原始缺口，保留作背景；生产化剩余项见本节末尾。
 
 `engine.startReply` 目前只调用 runtime 的 `start/launch/completion`，没有：
 
@@ -123,6 +131,8 @@ desktop/scripts/
 2. 把 MCP URL/token 注入 Claude Code / Codex 的启动参数或临时配置（需要改 `desktop/src/agents/cli/cli-invocations.cjs` 或 proof 层适配）；
 3. `engine.startReply` 与 Task `pump` 通过 adapter 调用真实 CLI；
 4. 用真实 CLI 重跑 engine 驱动的 seam，替换 marker fallback。
+
+**POC 结果与剩余项（2026-11-17）**：真实 Claude/Codex 均通过；关键配置为 OAR 默认 YOLO、role prompt 通过 `appendSystemPrompt`、per-run MCP server、`NO_PROXY=127.0.0.1,localhost,::1`。仍未生产化：OAR 进程不经过 `managed-spawn`/`process-registry`（硬崩孤儿、重启对账）；OAR Event → room Trace/activity 只是 POC 级映射；非 OAR provider 仍走旧层；Electron 43/Node 24、asar/打包、全量测试未验证。
 
 ### Ruling 2：领域幂等仍不完整
 
@@ -180,6 +190,11 @@ ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/Electron.app/Contents/MacOS/
   scripts/room-seam-smoke.cjs --run --provider claude
 ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron \
   scripts/room-seam-smoke.cjs --run --provider codex
+
+# OAR engine-driven smoke（需要 OAR 0.113+、真实 Claude/Codex；先安装依赖）
+# npm --prefix desktop install --registry=https://registry.npmmirror.com
+node scripts/room-oar-smoke.cjs --run --provider claude
+node scripts/room-oar-smoke.cjs --run --provider codex
 ```
 
 结果文件在 `$MELDWORK_USER_DATA/room-resume-proof.json`、`room-mcp-proof.json`、`room-seam-result.json`。
@@ -197,7 +212,7 @@ npm --prefix desktop run pack
 ## 建议的下一步顺序
 
 1. **人工集成验证**：按上面的真实证明命令重跑，确认本机 CLI 行为。
-2. **runtime adapter + MCP 注入**：新增 `runtime-adapter.cjs`；把 per-run MCP server/token 注入 Claude/Codex；让 `engine.startReply` 和 Task `pump` 走同一条真实运行时路径；重写 `room-seam-smoke`，明确 `engineDriven: true`。
+2. **runtime adapter + MCP 注入（POC 已完成）**：`runtime-adapter.cjs` 使用 OAR，`engine.startReply` 和 Task `pump` 已走真实 Claude/Codex；`room-oar-smoke.cjs` 明确 `engineDriven: true`（Claude/Codex 均通过）。下一步是进程治理、事件/Trace 对齐、Electron 43/Node 24 与全量验证。
 3. **领域幂等**：`create_task` / `comment_task` 的 assignment+source message 幂等键。
 4. **Deferred minors**：按业务优先级补。
 5. **UI/preload/renderer**：在 engine 真实闭环通过后再接。

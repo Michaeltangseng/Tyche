@@ -79,3 +79,18 @@ test('task tools create a task and add a continuation run for a comment', async 
   assert.equal(queue.listRuns(created.taskId).length, 2)
   roomDb.close()
 })
+
+test('pump does not overwrite a run that settled while starting', async t => {
+  const { roomDb, roomId, chatId, roleId, queue } = setup(t, {
+    startRun: async run => {
+      roomDb.database.prepare("UPDATE task_runs SET status = 'completed', outcome = 'known' WHERE id = ?").run(run.id)
+      roomDb.database.prepare("UPDATE tasks SET status = 'in_review' WHERE id = ?").run(run.taskId)
+    },
+  })
+  const task = queue.createTask({ chatId, roleId, title: 'T', description: 'D', acceptance: 'A' })
+  const started = await queue.pump({ roomId })
+  assert.equal(started.length, 1)
+  assert.equal(queue.listRuns(task.taskId)[0].status, 'completed')
+  assert.equal(queue.getTask(task.taskId).status, 'in_review')
+  roomDb.close()
+})

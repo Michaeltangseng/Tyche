@@ -213,7 +213,9 @@ function createTaskQueue({ roomDb, repository, timeline, outbox, now = () => Dat
             acceptance: candidate.acceptance,
             assigneeRoleId: candidate.assignee_role_id,
           })
-          database.prepare("UPDATE task_runs SET status = 'running' WHERE id = ?").run(run.id)
+          // A very fast run may have settled before startRun resolves; never
+          // overwrite a completed/interrupted run with "running".
+          database.prepare("UPDATE task_runs SET status = 'running' WHERE id = ? AND status = 'starting'").run(run.id)
           outbox.succeed(effect.id)
           started.push(runView(database.prepare('SELECT * FROM task_runs WHERE id = ?').get(run.id)))
         } catch (error) {

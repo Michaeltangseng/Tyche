@@ -153,11 +153,16 @@ function createEngine({ roomDb, repository, timeline, sessions, outbox, runtime,
           timeline.transition(reply.id, ['queued'], 'working')
           activeReplies.set(reply.id, { controller, done })
           Promise.resolve(handle.completion).then(outcome => {
+            // Keep flags the reply row was born with (for example reviewReply):
+            // finishing may add activity, but it must not erase audience data.
+            const current = timeline.get(reply.id)
+            const finalData = current?.data && typeof current.data === 'object' ? { ...current.data } : {}
+            if (outcome.activity !== undefined && outcome.activity !== null) finalData.activity = outcome.activity
             timeline.finish(reply.id, {
               status: outcome.status,
               text: outcome.text ?? '',
               thinking: outcome.thinking ?? '',
-              data: outcome.activity ?? null,
+              data: Object.keys(finalData).length > 0 ? finalData : null,
             })
             sessions.setParticipantLastSeq({ chatId: reply.chatId, roleId: role.id, seq: watermark })
             resolveDone()

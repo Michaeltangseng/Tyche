@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "0.23.0",
+    "@botiverse/oar": "0.113.0",
     "@iarna/toml": "^2.2.5",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@streamparser/json": "0.0.22",
