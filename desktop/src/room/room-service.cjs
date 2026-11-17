@@ -24,6 +24,7 @@ const { createSettlement, registerFinishTaskTool } = require('./settlement.cjs')
 const { createCaptainReview } = require('./captain-review.cjs')
 const { createSupervisor } = require('./supervisor.cjs')
 const { recoverOnStart } = require('./recovery.cjs')
+const { createRuntimeEvents } = require('./runtime-events.cjs')
 const { createToolDispatcher } = require('./tools/dispatcher.cjs')
 const { registerMentionTool } = require('./tools/mention.cjs')
 const { registerReadChatTool } = require('./tools/read.cjs')
@@ -54,6 +55,15 @@ function createRoomService({
   const sessionStore = sessions ?? createSessionStore({ roomDb, repository })
   const outboxStore = outbox ?? createOutbox({ roomDb, repository })
   const toolDispatcher = dispatcher ?? createToolDispatcher({ roomDb, repository })
+  const runtimeEvents = createRuntimeEvents({ roomDb, now })
+
+  function recordRuntimeEvent(payload) {
+    // Text/reasoning deltas are already on the reply row; keep the trace small.
+    if (payload?.event?.kind !== 'text_delta' && payload?.event?.kind !== 'reasoning') {
+      try { runtimeEvents.record(payload) } catch { /* trace must not fail a run */ }
+    }
+    try { onEvent(payload) } catch { /* observers are best-effort */ }
+  }
 
   let runtimeAdapter = adapter
   let supervisor = null
@@ -78,7 +88,7 @@ function createRoomService({
     outbox: outboxStore,
     runtime,
     now,
-    onEvent,
+    onEvent: recordRuntimeEvent,
   })
   const queue = createTaskQueue({
     roomDb,
@@ -145,7 +155,7 @@ function createRoomService({
       dispatcher: toolDispatcher,
       settlement,
       onTaskSettled,
-      onEvent,
+      onEvent: recordRuntimeEvent,
       ...adapterOptions,
     })
   }
@@ -278,6 +288,7 @@ function createRoomService({
     review,
     supervisor,
     adapter: runtimeAdapter,
+    runtimeEvents,
     recovery,
     submitUserMessage,
     startQueuedReplies,

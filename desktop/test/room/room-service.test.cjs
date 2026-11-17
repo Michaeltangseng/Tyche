@@ -21,11 +21,12 @@ function setup(t) {
   return { roomDb, repo, roomId, chatId, roleId }
 }
 
-function createFakeAdapter() {
+function createFakeAdapter({ emit = null } = {}) {
   let disposed = 0
   return {
     get disposed() { return disposed },
     start(input) {
+      emit?.(input.onEvent)
       return {
         launch: Promise.resolve({ nativeSessionRef: `native-${input.runId}` }),
         completion: Promise.resolve({ status: 'done', text: 'ok', thinking: '', activity: [] }),
@@ -43,7 +44,12 @@ function createFakeAdapter() {
 
 test('room service starts queued replies through liveness and disposes the adapter', async t => {
   const { roomDb, repo, chatId } = setup(t)
-  const adapter = createFakeAdapter()
+  const adapter = createFakeAdapter({
+    emit: onEvent => {
+      onEvent({ kind: 'text_delta', text: 'hi', seq: 1 })
+      onEvent({ kind: 'tool_call_started', tool: 'read_chat', callId: 'c1', seq: 2 })
+    },
+  })
   const service = createRoomService({
     roomDb,
     repository: repo,
@@ -59,6 +65,12 @@ test('room service starts queued replies through liveness and disposes the adapt
   const { replies } = service.submitUserMessage({ chatId, content: 'hi' })
   await service.waitForChatIdle({ chatId, timeoutMs: 3000 })
   assert.equal(service.timeline.get(replies[0].id).status, 'done')
+
+  const events = service.runtimeEvents.list({ runId: replies[0].id })
+  assert.equal(events.length, 1)
+  assert.equal(events[0].kind, 'tool_call_started')
+  assert.equal(events[0].mode, 'chat')
+  assert.equal(events[0].chatId, chatId)
 
   await service.close()
   assert.equal(adapter.disposed, 1)

@@ -143,7 +143,13 @@ function createEngine({ roomDb, repository, timeline, sessions, outbox, runtime,
             prompt,
             nativeSessionRef: sessionRow?.native_session_ref ?? null,
             signal: controller.signal,
-            onEvent,
+            onEvent: event => onEvent({
+              runId: reply.id,
+              chatId: reply.chatId,
+              roleId: role.id,
+              mode: 'chat',
+              event,
+            }),
           })
           const launchResult = await handle.launch
           if (launchResult?.nativeSessionRef) {

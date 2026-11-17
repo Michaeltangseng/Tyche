@@ -1,4 +1,4 @@
-const ROOM_SCHEMA_VERSION = 2
+const ROOM_SCHEMA_VERSION = 3
 
 const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS rooms (
@@ -315,6 +315,18 @@ const SCHEMA_SQL = `
     created_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS runtime_events (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    task_id TEXT,
+    mode TEXT NOT NULL,
+    seq INTEGER,
+    kind TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS chats_room ON chats(room_id);
   CREATE INDEX IF NOT EXISTS chat_roles_chat ON chat_roles(chat_id);
   CREATE INDEX IF NOT EXISTS messages_chat_seq ON messages(chat_id, seq);
@@ -331,6 +343,8 @@ const SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS captain_assignments_chat ON captain_assignments(chat_id, status);
   CREATE INDEX IF NOT EXISTS tool_calls_run ON tool_calls(run_id);
   CREATE INDEX IF NOT EXISTS domain_idempotency_chat_kind ON domain_idempotency(chat_id, kind);
+  CREATE INDEX IF NOT EXISTS runtime_events_run_seq ON runtime_events(run_id, seq);
+  CREATE INDEX IF NOT EXISTS runtime_events_chat_created ON runtime_events(chat_id, created_at);
 `
 
 function ensureRoomSchema(database) {

@@ -476,7 +476,17 @@ function createOarRuntimeAdapter({
         appendSystemPrompt: rolePrompt(run.roleId),
       })
       tracked = trackSignal(run.id, null)
-      const turn = startTurn({ session, prompt: taskPrompt(task), signal: tracked.signal, onEvent: onTaskEvent })
+      const taskEvent = typeof onTaskEvent === 'function'
+        ? event => onTaskEvent({
+            runId: run.id,
+            taskId: task.id,
+            chatId: task.chatId,
+            roleId: run.roleId,
+            mode: 'task',
+            event,
+          })
+        : null
+      const turn = startTurn({ session, prompt: taskPrompt(task), signal: tracked.signal, onEvent: taskEvent })
       turn.launch.then(({ nativeSessionRef }) => {
         if (nativeSessionRef) {
           try {
