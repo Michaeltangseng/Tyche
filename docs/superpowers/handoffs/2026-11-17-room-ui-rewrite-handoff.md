@@ -270,6 +270,18 @@ frontend/src/__tests__/meldwork/projectRoom*.spec.js
 - **Windows**：wrapper/sweep 仅 POSIX；Windows 需另做 taskkill/process tree。
 - **POC YOLO**：Chat/Task 全 YOLO 是临时决定，生产前重新评估 handoff 的 Chat 只读/write 租约。
 
+### 手动测试反馈修复（2026-11-17）
+
+截图 1-5 暴露的问题与修复：
+
+- Codex 在 Claude 成为 Captain 后仍带旧 Captain 默认提示词，导致拒绝 create_task、直接写文件。现在 bootstrap/createRole/createChat/updateRole 按 `is_captain` 分配 Captain/Worker 默认提示词；host 启动时修复未被自定义的旧默认提示词。
+- `captain_review` 系统行带原始 assignment/task ID，已从时间线过滤；read model 不再下发 review body/data。
+- Captain review 回复被要求输出用户向摘要，不回显内部 ID。
+- Tool trace 现在保留 host 工具名，隐藏 `assign_in_group`/`create_task`/`finish_task` 等内部 JSON 返回，输出上限 2KB。
+- 消息/任务/报告/Attention 文本中的 Room 绝对 workspace 路径替换为目录名。
+- 同毫秒消息按 ledger sequence 排序，避免 UUID 随机顺序。
+- 验证：218 focused desktop tests、12 RoomWorkspace tests；Claude/Codex host smoke 在默认提示词下均 `ok: true`。
+
 ## 7. 验证命令
 
 ```bash
