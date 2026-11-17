@@ -39,7 +39,7 @@
 - Electron 43.8.10（Node 24.22.1）启动 smoke 通过；OAR 动态加载、`node:sqlite` 可用。
 - **96/96** room domain + team-room IPC + preload security。
 - **30/30** invocation/permission/write/lease workspace tests。
-- Claude / Codex service-driven OAR smoke：均 `ok: true`、`engineDriven: true`、`serviceDriven: true`（Slice 0 之前）。
+- Claude / Codex service-driven OAR smoke（Node 24.22.3，Electron 43 升级后）：均 `ok: true`、`engineDriven: true`、`serviceDriven: true`；`assign_in_group → create_task → finish_task → settlement → Captain review → mention lane comment_task` 全链路；wrapper PID 记录 7/9 → 0。
 - 前端：build / build:desktop 通过；Node 22 全量 **103 failed / 375 passed**，与 HEAD 基线减去已删除测试一致（剩余失败均为基线已有的 App 旧断言漂移）。
 - 未跑：desktop 全量 suite、pack、Electron 43/Node 24、真实 Electron 窗口手工验收。
 
