@@ -8,13 +8,13 @@
 
 ## 0. 一句话
 
-**后端已经闭环；UI 仍跑在旧 `room-engine` 上。下一步先删旧 Project Room preview，再把 `RoomWorkspace` 数据层接到新 room domain，最后删旧 `room-engine`。保留视觉外壳，不保留旧 contract。**
+**后端已经闭环；旧 Project Room preview 已删除（`dfe4c09`）；`RoomWorkspace` 仍跑在旧 `room-engine` 上。下一步做 Room host/IPC/preload，把数据层接到新 room domain，最后删旧 `room-engine`。保留视觉外壳，不保留旧 contract。**
 
 ## 1. 当前状态
 
 - 仓库：`/Users/limu/Desktop/githubs/29-meldwork/Tyche`
-- 分支：`project-room`；8 个 commit **未 push**
-- 最新 commit：`988fab2 feat(room): add a display-safe read model for the room UI`
+- 分支：`project-room`；10 个 commit **未 push**
+- 最新 commit：`dfe4c09 refactor: remove the legacy Project Room preview`
 
 | Commit | 内容 |
 | --- | --- |
@@ -26,6 +26,8 @@
 | `a2d5eff` | OAR 硬崩进程治理（wrapper + sweep） |
 | `7ba6a66` | mention lane + unknown-effect Attention |
 | `988fab2` | display-safe room read model |
+| `eede08b` | UI 方向与重写 handoff 文档 |
+| `dfe4c09` | **Slice 0：删除旧 Project Room preview** |
 
 验证状态：
 
@@ -94,7 +96,19 @@ eta 的缺口 / 不照搬：
 
 ## 4. 接下来的实施方向（按顺序）
 
-### Slice 0：删除旧 Project Room preview（先做，独立低风险）
+### Slice 0：删除旧 Project Room preview（已完成，`dfe4c09`）
+
+完成内容：
+
+- 删除 `ProjectRoom*.vue`（9 个）、`useProjectRoom*.js`、对应 10 个前端 spec。
+- 删除 `desktop/src/project-room/`、`shell/project-ipc.cjs`、`shell/workdir-ipc.cjs`、`desktop/test/project-room/`、`fake-agent` fixture。
+- 移除 `project:*` / `workdir:*` IPC 与 preload API、`App.vue` 旧控制器、侧栏 Project rooms/Legacy projects/pending decisions、设置 preview 开关。
+- 移除 workspace JSON 的 `projects[]`、`group.projectId/projectRole`、`projectRooms/pendingDecisions`、旧 project 消息 metadata 与 `insertProjectRoomMessage`。
+- 删除 `projectRoom.*` / `errors.PROJECT_*` / `generalSettings.projectRoom*` 文案与 102 条死 CSS 规则。
+- `workdir-access.cjs` / `shadow-git.cjs` 移到 `desktop/src/room-engine/`（旧 room-engine 仍在使用）；trace `encodeId` 独立到 `runs/trace/trace-ids.cjs`。
+- 验证：frontend build / build:desktop 通过；Node 22 下 frontend 全量 103 failed / 400 passed，等于 HEAD 基线 109 failed 减去已删除的 6 个 ProjectRoom 失败，无新增回归；desktop focused 25/25、room-engine 209/209、room 65/65。
+
+### Slice 0 原始范围（保留供追溯）
 
 目标：把旧 checkpoint/gate/seat/round UI 和入口一次清掉，Team rooms/RoomWorkspace 不受影响。
 
@@ -270,8 +284,8 @@ npm --prefix desktop run pack
 ## 8. 压缩后恢复清单
 
 - [ ] 读本文 + `docs-new2/09-ui-direction.md` + `2026-11-17-meldwork-room-v2-handoff.md`。
-- [ ] `git log -8 --oneline` 确认 `988fab2` 及之前 8 个 commit；分支 `project-room`。
+- [ ] `git log -10 --oneline` 确认 `dfe4c09` 及之前 9 个 commit；分支 `project-room`。
 - [ ] 跑 room 测试确认 **65/65**。
-- [ ] 下一步：**Slice 0 删除旧 Project Room preview**。
-- [ ] 旧 Project Room preview 删除完成后，再进入 Slice 1（Room host/IPC/preload）。
-- [ ] 不要恢复旧 `project:*` / `room-engine` contract；不要双引擎。
+- [x] Slice 0：删除旧 Project Room preview（`dfe4c09`）。
+- [ ] 下一步：**Slice 1：Room host + IPC + preload**。
+- [ ] 不要恢复旧 `project:*` contract；旧 `room-engine` 只保留到 Slice 4；不要双引擎。
