@@ -18,7 +18,7 @@
 
 | 项目 | 结果 |
 | --- | --- |
-| `desktop/test/room` 19 个测试文件 | **62 tests / 62 pass / 0 fail** |
+| `desktop/test/room` 20 个测试文件 | **65 tests / 65 pass / 0 fail** |
 | Claude Code resume proof | `resumed: true`, `remembered: true`, session ref 稳定 |
 | Codex resume proof | `resumed: true`, `remembered: true`, session ref 稳定 |
 | MCP tool loop proof | `create_task` / `finish_task` / `mention` list + call 成功，`ok: true` |
@@ -62,6 +62,7 @@ desktop/src/room/
   room-service.cjs             domain/tools/adapter/supervisor/recovery 装配、liveness、disposeAll
   runtime-events.cjs           bounded runtime_events（schema v3）：tool/turn/usage/failure/exit
   runtime-processes.cjs        wrapper PID 记录、startup/close sweep（POSIX）
+  read-model.cjs               display-safe room snapshot/chatMessages DTO
   meldwork-runtime-wrapper.sh  OAR_*_BIN wrapper：exec 前写 <pid>\t<ps lstart>
   tools/
     dispatcher.cjs             register/bindRun/invoke、callId 幂等、args_hash 校验、readOnly 审计
@@ -100,6 +101,7 @@ desktop/scripts/
 18. **硬崩进程治理（POSIX）**：runtime wrapper 在 `exec` 前写 `<pid>\t<ps lstart>`；service 启动/close sweep 校验 start time、杀进程组、清理记录；Claude/Codex smoke 均 beforeClose=4、afterClose=0。Windows/main wiring 未做。
 19. **Mention lane**：非 executor 的 `comment_task` 在评论者 mention lane 续跑（required=false）；mention lane 只有 mention/read_chat/comment_task；`finish_task` 仅 executor lane；mention run 完成不改变 Task 状态；OAR smoke 真实覆盖（comment_task 成功、mention run completed、Task 保持 in_review）。
 20. **Recovery unknown effects**：running effect → unknown 时为每个 effect 建 `effect_unknown` Attention；start_run payload 解析 task_id。
+21. **UI read model**：`read-model.cjs` 提供 `listRooms` / `snapshot` / `chatMessages`；snake_case DTO，默认只发 public 消息，per-chat 分页；不含 workspace 绝对路径、session/native ref、PID、tool activity；captain 行需 `includeCaptain`。
 
 ## 必须守住的语义
 
@@ -177,14 +179,15 @@ dispatcher 的 `callId` 幂等只覆盖“客户端复用 callId”的情况。`
 ```bash
 cd desktop
 
-# 小范围 room 测试（当前 62/62）
+# 小范围 room 测试（当前 65/65）
 node --test test/room/db.test.cjs test/room/repository.test.cjs test/room/timeline.test.cjs \
   test/room/session-store.test.cjs test/room/routing.test.cjs test/room/briefing.test.cjs \
   test/room/effects.test.cjs test/room/engine.test.cjs test/room/dispatcher.test.cjs \
   test/room/mcp-server.test.cjs test/room/mention.test.cjs test/room/read.test.cjs \
   test/room/task-queue.test.cjs test/room/settlement.test.cjs \
   test/room/captain-review.test.cjs test/room/recovery.test.cjs \
-  test/room/room-service.test.cjs test/room/runtime-events.test.cjs test/room/runtime-processes.test.cjs
+  test/room/room-service.test.cjs test/room/runtime-events.test.cjs test/room/runtime-processes.test.cjs \
+  test/room/read-model.test.cjs
 ```
 
 真实证明（需要本机已安装并登录对应 CLI）：

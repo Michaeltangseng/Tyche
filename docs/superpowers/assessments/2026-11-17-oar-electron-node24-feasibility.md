@@ -648,8 +648,9 @@ eta 是三层，不是一层：
 - 硬崩进程治理（POSIX）：`meldwork-runtime-wrapper.sh` 在 exec 前写 `<pid>\t<ps lstart>`；`runtime-processes.cjs` 启动/close sweep 校验 start time、杀进程组、清理记录；Claude/Codex smoke 均 beforeClose=4、afterClose=0。
 - Mention lane：非 executor 的 `comment_task` 在评论者 mention lane 续跑（required=false）；mention run 完成不改 Task 状态；OAR smoke 真实覆盖。
 - Recovery unknown effects：running effect → unknown 时建 `effect_unknown` Attention。
-- 测试：19 个 room 测试文件，**62/62 pass**。
-- 剩余：Windows 硬崩、main wiring、Trace UI/保留策略、Electron 43/打包、非 OAR provider。
+- UI read model：`read-model.cjs` 输出 display-safe snake_case snapshot（public 消息默认、captain 行需显式开启、无 workspace 绝对路径/session/PID/tool activity）。
+- 测试：20 个 room 测试文件，**65/65 pass**。
+- 剩余：Room host/IPC/preload/main、新 RoomWorkspace、Windows 硬崩、Trace UI/保留策略、Electron 43/打包、非 OAR provider。
 
 ## 9. 参考文件
 
