@@ -254,14 +254,23 @@ describe('team room workspace', () => {
       event: { kind: 'tool_call_started', callId: 'call-1', toolName: 'shell', input: 'ls', seq: 2 },
     })
     await flushPromises()
-    expect(wrapper.get('.room-tool-card').text()).toContain('shell')
+    expect(wrapper.get('.room-tool-card').text()).toContain('Run')
 
     bridge.emitRuntimeEvent({
       runId: 'reply-1', chatId: 'chat-1', roleId: 'worker', mode: 'chat',
-      event: { kind: 'usage', usage: { totalTokens: 1280, context: { percent: 42 } }, seq: 3 },
+      event: {
+        kind: 'usage',
+        usage: { inputTokens: 1200, outputTokens: 340, cachedInputTokens: 8100, context: { percent: 42 } },
+        seq: 3,
+      },
     })
     await flushPromises()
-    expect(wrapper.get('.room-usage-chip').text()).toBe('42%')
+    expect(wrapper.get('.room-turn-usage').text()).toBe('in 1.2k · out 340 · cache 8.1k')
+    expect(wrapper.find('.room-usage-chip').exists()).toBe(false)
+    const rows = wrapper.emitted('usage-change').at(-1)[0]
+    expect(rows.find(row => row.id === 'worker')).toMatchObject({ contextPercent: 42, status: 'working' })
+    await wrapper.get('.room-usage-toggle').trigger('click')
+    expect(wrapper.emitted('toggle-usage')).toHaveLength(1)
   })
 
   it('loads a persisted trace for a completed reply', async () => {
@@ -286,7 +295,29 @@ describe('team room workspace', () => {
     expect(bridge.runtimeEvents).toHaveBeenCalledWith({
       roomId: 'room-1', chatId: 'chat-1', runId: 'reply-1', limit: 1000,
     })
-    expect(trace.text()).toContain('shell')
+    expect(trace.text()).toContain('Run')
+    expect(trace.text()).toContain('1 steps')
+  })
+
+  it('renders a reply as markdown with thinking above the answer', async () => {
+    const snapshot = data()
+    snapshot.messages = [{
+      id: 'reply-1', chat_id: 'chat-1', sequence: 2, author_type: 'agent', author_id: 'worker',
+      author_name: 'Writer', content: '**Done**\n\n| A | B |\n| --- | --- |\n| 1 | 2 |',
+      status: 'done', created_at: '2026-11-15T10:01:00Z',
+    }]
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    bridge.emitRuntimeEvent({
+      runId: 'reply-1', chatId: 'chat-1', roleId: 'worker', mode: 'chat',
+      event: { kind: 'reasoning', text: 'Checking the table', seq: 1 },
+    })
+    await flushPromises()
+    const body = wrapper.get('.room-message-body')
+    expect(body.get('.markdown-body strong').text()).toBe('Done')
+    expect(body.get('table').text()).toContain('A')
+    expect(body.html().indexOf('room-reasoning')).toBeLessThan(body.html().indexOf('markdown-body'))
   })
 
   it('accepts settled tasks and answers open attentions', async () => {

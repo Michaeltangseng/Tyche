@@ -51,9 +51,11 @@
       </div>
 
       <div class="room-header-actions">
-        <span v-if="usageLabel" class="room-usage-chip" :title="t('room.usageContext')">{{ usageLabel }}</span>
         <button v-if="attentions.length" class="room-notice-pill" type="button" @click="scrollToAttention">
           {{ t('room.attentions', { count: attentions.length }) }}
+        </button>
+        <button v-if="snapshot" class="room-icon-button room-usage-toggle" type="button" :aria-pressed="usageOpen" :title="t('room.usagePanel')" :aria-label="t('room.usagePanel')" @click="emit('toggle-usage')">
+          <PulseOutline />
         </button>
         <button v-if="snapshot" class="room-icon-button room-files-toggle" type="button" :aria-pressed="filesOpen" :title="t('room.files')" :aria-label="t('room.files')" @click="emit('toggle-files')">
           <FolderOutline />
@@ -113,14 +115,25 @@
                     <span v-if="entry.isReviewReply" class="room-agent-badge">{{ t('room.reviewReply') }}</span>
                     <time>{{ formatTime(entry.createdAt) }}</time>
                     <span class="room-message-status" :data-status="entry.message.status">{{ statusLabel(entry.message.status) }}</span>
+                    <span v-if="turnUsage(entry.message)" class="room-turn-usage">{{ turnUsage(entry.message) }}</span>
                   </header>
-                  <p v-if="entry.message.content">{{ entry.message.content }}</p>
-                  <p v-else-if="liveFor(entry.message)?.text" class="room-live-output" aria-live="polite">{{ liveFor(entry.message).text }}</p>
-                  <p v-else-if="isWorking(entry.message)" class="room-live-output" aria-live="polite">{{ t('room.liveOutput') }}</p>
                   <details v-if="liveFor(entry.message)?.reasoning" class="room-reasoning">
                     <summary>{{ t('room.thinking') }}</summary>
                     <p>{{ liveFor(entry.message).reasoning }}</p>
                   </details>
+                  <MarkdownMessage
+                    v-if="entry.message.content"
+                    :content="entry.message.content"
+                    :class="{ 'room-message-streaming': isWorking(entry.message) }"
+                  />
+                  <MarkdownMessage
+                    v-else-if="liveFor(entry.message)?.text"
+                    class="room-live-output"
+                    :class="{ 'room-message-streaming': isWorking(entry.message) }"
+                    :content="liveFor(entry.message).text"
+                    aria-live="polite"
+                  />
+                  <p v-else-if="isWorking(entry.message)" class="room-live-output" aria-live="polite">{{ t('room.liveOutput') }}</p>
                   <div v-if="entry.mentions.length" class="room-mention-row">
                     <span v-for="name in entry.mentions" :key="name" class="room-mention-chip">@{{ name }}</span>
                   </div>
@@ -477,11 +490,14 @@ import {
   FolderOutline,
   PencilOutline,
   PersonOutline,
+  PulseOutline,
   TrashOutline,
 } from '@vicons/ionicons5'
 import { agentLogo } from '../catalog.js'
 import { t } from '../i18n.js'
 import { useRoomWorkspace } from '../composables/useRoomWorkspace.js'
+import { agentUsageRows, formatUsageLine } from '../room-usage.js'
+import MarkdownMessage from './MarkdownMessage.vue'
 import RoomRunTrace from './RoomRunTrace.vue'
 
 const props = defineProps({
@@ -491,8 +507,9 @@ const props = defineProps({
   createRequest: { type: Boolean, default: false },
   openRequest: { type: Object, default: null },
   filesOpen: { type: Boolean, default: false },
+  usageOpen: { type: Boolean, default: false },
 })
-const emit = defineEmits(['create-request-consumed', 'active-change', 'toggle-files'])
+const emit = defineEmits(['create-request-consumed', 'active-change', 'toggle-files', 'toggle-usage', 'usage-change'])
 
 const {
   rooms,
@@ -510,7 +527,7 @@ const {
   artifacts,
   messages,
   liveRuns,
-  chatUsage,
+  usageByRun,
   hasOlderMessages,
   loadingOlderMessages,
   busy,
@@ -621,14 +638,19 @@ const entries = computed(() => {
   })
 })
 
-const usageLabel = computed(() => {
-  const usage = chatUsage.value
-  if (!usage) return ''
-  if (usage.context?.percent != null) return `${Math.round(usage.context.percent)}%`
-  if (usage.totalTokens != null) return String(usage.totalTokens)
-  if (usage.context?.tokens != null) return String(usage.context.tokens)
-  return ''
-})
+const agentUsage = computed(() => agentUsageRows({
+  roles: roles.value,
+  messages: messages.value,
+  usageByRun: usageByRun.value,
+  liveRuns: liveRuns.value,
+}))
+
+watch(agentUsage, rows => emit('usage-change', rows), { immediate: true })
+
+function turnUsage(message) {
+  if (message?.author_type !== 'agent') return ''
+  return formatUsageLine(liveFor(message)?.usage || usageByRun.value[message.id])
+}
 
 const workCount = computed(() => (
   tasks.value.length
@@ -1068,7 +1090,7 @@ onBeforeUnmount(() => {
 .room-user-avatar svg { width: 18px; height: 18px; }
 .room-message-body { min-width: 0; max-width: min(760px, calc(100% - 48px)); padding: 4px 2px; }
 .room-message-user .room-message-body { max-width: min(640px, 82%); padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--surface-active) 72%, transparent); }
-.room-message header { display: flex; gap: 10px; align-items: baseline; margin-bottom: 4px; }
+.room-message header { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: baseline; margin-bottom: 4px; }
 .room-message header strong { font-size: var(--text-sm); }
 .room-message time { color: var(--faint); font-size: var(--text-2xs); }
 .room-message p { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.65; }
@@ -1105,7 +1127,15 @@ onBeforeUnmount(() => {
 .room-card form { display: flex; flex-wrap: wrap; gap: 8px; }
 .room-card select { min-width: 0; }
 .room-assignment { padding-top: 8px; margin-top: 8px; border-top: 1px solid var(--border); font-size: var(--text-xs); }
-.room-live-output { max-height: 12rem; overflow: auto; padding: 8px; border-radius: 8px; background: color-mix(in srgb, var(--border) 18%, transparent); white-space: pre-wrap; }
+.room-live-output:not(.markdown-body) { max-height: 12rem; overflow: auto; padding: 8px; border-radius: 8px; background: color-mix(in srgb, var(--border) 18%, transparent); white-space: pre-wrap; }
+.room-message .markdown-body { overflow-wrap: anywhere; line-height: 1.65; }
+.room-message .markdown-body p { margin: 0 0 0.6em; white-space: normal; }
+.room-message .markdown-body p:last-child { margin-bottom: 0; }
+.room-message .markdown-body table { width: 100%; border-collapse: collapse; margin: 0.4em 0 0.8em; font-size: var(--text-xs); }
+.room-message .markdown-body th, .room-message .markdown-body td { padding: 6px 8px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+.room-message .markdown-body th { color: var(--text-soft); font-weight: 600; }
+.room-message-streaming::after { content: ""; display: inline-block; width: 7px; height: 0.95em; margin-left: 3px; background: var(--accent); vertical-align: text-bottom; animation: room-caret 1s steps(1) infinite; }
+@keyframes room-caret { 50% { opacity: 0; } }
 .room-trace-list { padding-left: 18px; }
 .room-trace-list li { margin-bottom: 8px; }
 .room-trace-list span { display: block; color: var(--text-soft); }
@@ -1261,7 +1291,7 @@ body.room-overlay-open { overflow: hidden; }
 </style>
 
 <style scoped>
-.room-usage-chip { padding: 3px 8px; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-size: var(--text-2xs); font-weight: 600; }
+.room-turn-usage { margin-left: auto; color: var(--faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .room-run-trace { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); font-size: var(--text-xs); }
 .room-run-trace > summary { display: flex; gap: 8px; align-items: center; color: var(--text-soft); cursor: pointer; }
 .room-run-trace-count { padding: 1px 6px; border-radius: 999px; background: var(--surface-active); color: var(--faint); font-size: 10px; }

@@ -4,7 +4,7 @@
     :class="{
       'sidebar-collapsed': sidebarCollapsed,
       'trace-panel-open': tracePanelOpen,
-      'project-drawer-open': roomFilesOpen,
+      'project-drawer-open': roomDrawer != null,
     }"
     :style="{ '--project-room-drawer-width': `${roomFilesWidth}px` }"
     :data-theme="theme"
@@ -89,10 +89,13 @@
           :agents="readyAgents"
           :create-request="roomCreateRequest"
           :open-request="teamRoomOpenRequest"
-          :files-open="roomFilesOpen"
+          :files-open="roomDrawer === 'files'"
+          :usage-open="roomDrawer === 'usage'"
           @create-request-consumed="roomCreateRequest = false"
           @active-change="teamRoomNavigation.syncActive"
-          @toggle-files="roomFilesOpen = !roomFilesOpen"
+          @toggle-files="toggleRoomDrawer('files')"
+          @toggle-usage="toggleRoomDrawer('usage')"
+          @usage-change="roomUsage = $event"
         />
 
         <section v-else class="conversation-pane">
@@ -125,12 +128,15 @@
 
       <transition name="project-drawer">
         <RoomFilesDrawer
-          v-if="roomFilesOpen && activeView === 'rooms' && api?.teamRoom && activeTeamRoomId"
+          v-if="roomDrawer && activeView === 'rooms' && api?.teamRoom && activeTeamRoomId"
           :key="activeTeamRoomId"
           :api="api.teamRoom"
           :room-id="activeTeamRoomId"
           :width="roomFilesWidth"
-          @close="roomFilesOpen = false"
+          :panel="roomDrawer"
+          :usage="roomUsage"
+          @close="roomDrawer = null"
+          @switch="roomDrawer = $event"
           @resize="roomFilesWidth = $event"
         />
       </transition>
@@ -439,11 +445,16 @@ const {
 } = teamRoomNavigation
 const roomCreateRequest = ref(false)
 const PROJECT_DRAWER_DEFAULT_WIDTH = 420
-const roomFilesOpen = ref(false)
+const roomDrawer = ref(null)
+const roomUsage = ref([])
 const roomFilesWidth = ref(PROJECT_DRAWER_DEFAULT_WIDTH)
 
+function toggleRoomDrawer(panel) {
+  roomDrawer.value = roomDrawer.value === panel ? null : panel
+}
+
 watch(activeView, (view) => {
-  if (view !== 'rooms') roomFilesOpen.value = false
+  if (view !== 'rooms') roomDrawer.value = null
 })
 
 const sending = computed(() => (

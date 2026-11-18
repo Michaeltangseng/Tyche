@@ -2,25 +2,18 @@
   <details class="room-run-trace" @toggle="onToggle">
     <summary>
       <span>{{ t('room.trace') }}</span>
-      <span v-if="toolCount" class="room-run-trace-count">{{ toolCount }}</span>
-      <span v-if="usageLabel" class="room-run-trace-count">{{ t('room.usageContext') }} {{ usageLabel }}</span>
+      <span v-if="toolCount" class="room-run-trace-count">{{ t('room.traceSteps', { count: toolCount }) }}</span>
+      <span v-if="activityLabel" class="room-run-trace-activity">{{ activityLabel }}</span>
     </summary>
     <p v-if="loading" class="room-muted">{{ t('room.loadingTrace') }}</p>
     <p v-else-if="loadError" class="room-error" role="alert">
       {{ t('room.traceError') }}
       <button class="secondary-button" type="button" @click="load">{{ t('room.refresh') }}</button>
     </p>
-    <p v-else-if="!tools.length && !usage" class="room-muted">{{ t('room.traceEmpty') }}</p>
-    <p v-if="usage" class="room-usage-row">
-      <span v-if="usage.inputTokens != null">{{ t('room.usageInput') }} {{ usage.inputTokens }}</span>
-      <span v-if="usage.outputTokens != null">{{ t('room.usageOutput') }} {{ usage.outputTokens }}</span>
-      <span v-if="usage.totalTokens != null">{{ t('room.usageTotal') }} {{ usage.totalTokens }}</span>
-      <span v-if="usage.context?.percent != null">{{ t('room.usageContext') }} {{ Math.round(usage.context.percent) }}%</span>
-      <span v-else-if="usage.context?.tokens != null">{{ t('room.usageContext') }} {{ usage.context.tokens }}</span>
-    </p>
+    <p v-else-if="!tools.length" class="room-muted">{{ t('room.traceEmpty') }}</p>
     <article v-for="tool in tools" :key="tool.callId" class="room-tool-card" :data-status="tool.status">
       <header>
-        <strong>{{ toolLabel(tool.name) }}</strong>
+        <strong>{{ activityText(tool) }}</strong>
         <span>{{ statusLabel(tool.status) }}</span>
       </header>
       <details v-if="tool.input">
@@ -29,7 +22,13 @@
       </details>
       <details v-if="tool.output">
         <summary>{{ t('room.toolOutput') }}</summary>
-        <pre>{{ tool.output }}</pre>
+        <pre>{{ shownOutput(tool) }}</pre>
+        <button
+          v-if="outputPreview(tool).truncated && !expandedOutputs[tool.callId]"
+          class="secondary-button room-output-more"
+          type="button"
+          @click="expandedOutputs[tool.callId] = true"
+        >{{ t('room.showAllOutput') }}</button>
       </details>
       <p v-if="tool.exitCode !== undefined" class="room-muted">{{ t('room.toolExit', { code: tool.exitCode }) }}</p>
     </article>
@@ -37,8 +36,9 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { t } from '../i18n.js'
+import { previewText, toolActivity } from '../room-usage.js'
 
 const props = defineProps({
   api: { type: Object, required: true },
@@ -51,6 +51,7 @@ const props = defineProps({
 const events = ref([])
 const loading = ref(false)
 const loadError = ref(false)
+const expandedOutputs = reactive({})
 let loaded = false
 
 const tools = computed(() => {
@@ -73,34 +74,37 @@ const tools = computed(() => {
   return [...byCallId.values()]
 })
 
-const usage = computed(() => {
-  if (props.live?.usage) return props.live.usage
-  for (let index = events.value.length - 1; index >= 0; index -= 1) {
-    const payload = events.value[index].payload
-    if (payload?.kind === 'usage' && payload.usage) return payload.usage
-  }
-  return null
-})
-
-const usageLabel = computed(() => {
-  if (!usage.value) return ''
-  if (usage.value.context?.percent != null) return `${Math.round(usage.value.context.percent)}%`
-  if (usage.value.totalTokens != null) return String(usage.value.totalTokens)
-  return ''
-})
-
 const toolCount = computed(() => tools.value.length)
+
+const currentActivity = computed(() => {
+  const list = tools.value
+  if (!list.length) return null
+  const running = [...list].reverse().find(tool => tool.status === 'running')
+  return toolActivity(running || list[list.length - 1])
+})
+
+const activityLabel = computed(() => activityText(currentActivity.value))
+
+function activityText(activity) {
+  if (!activity) return ''
+  const source = activity.verb ? activity : toolActivity(activity)
+  if (source.verb === 'tool') return source.name
+  const label = t(`room.activity.${source.verb}`, { target: source.target || '' }).replace(/\s+$/, '')
+  return source.target ? label : label.replace(/\s+$/, '')
+}
+
+function outputPreview(tool) {
+  return previewText(tool.output)
+}
+
+function shownOutput(tool) {
+  return expandedOutputs[tool.callId] ? String(tool.output ?? '') : outputPreview(tool).text
+}
 
 function statusLabel(status) {
   const key = `room.status.${status || 'unknown'}`
   const label = t(key)
   return label === key ? String(status || '') : label
-}
-
-function toolLabel(name) {
-  return String(name || 'tool')
-    .replace(/^mcp__[^_]+__/, '')
-    .replace(/^tyche_/, '')
 }
 
 async function load() {

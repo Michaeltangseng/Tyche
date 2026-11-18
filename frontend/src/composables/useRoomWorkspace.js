@@ -1,4 +1,5 @@
 import { computed, onScopeDispose, ref, watch } from 'vue'
+import { indexUsageByRun } from '../room-usage.js'
 
 /**
  * Renderer-side room domain adapter.
@@ -19,6 +20,7 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
   const loadingOlderMessages = ref(false)
   const liveRuns = ref({})
   const chatUsage = ref(null)
+  const usageByRun = ref({})
   const optimistic = ref([])
   let generation = 0
   let disposed = false
@@ -86,14 +88,11 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
         limit: 500,
       })
       if (disposed) return null
-      for (let index = (events || []).length - 1; index >= 0; index -= 1) {
-        const payload = events[index]?.payload
-        if (payload?.kind === 'usage' && payload.usage) {
-          chatUsage.value = payload.usage
-          return payload.usage
-        }
-      }
-      return null
+      const indexed = indexUsageByRun(events)
+      usageByRun.value = { ...indexed, ...usageByRun.value }
+      const last = [...(events || [])].reverse().find(event => event?.payload?.kind === 'usage' && event.payload.usage)
+      if (last) chatUsage.value = last.payload.usage
+      return chatUsage.value
     } catch {
       return null
     }
@@ -156,6 +155,7 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
     }
     if (event.kind === 'usage' && event.usage) {
       updateLive(payload.runId, { usage: event.usage, lastSeq })
+      usageByRun.value = { ...usageByRun.value, [payload.runId]: event.usage }
       chatUsage.value = event.usage
       return
     }
@@ -218,6 +218,7 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
     olderMessagesAvailable.value = {}
     liveRuns.value = {}
     chatUsage.value = null
+    usageByRun.value = {}
     optimistic.value = []
     chatId.value = targetChatId || ''
     error.value = false
@@ -506,6 +507,7 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
     messages,
     liveRuns,
     chatUsage,
+    usageByRun,
     hasOlderMessages,
     loadingOlderMessages,
     busy,
