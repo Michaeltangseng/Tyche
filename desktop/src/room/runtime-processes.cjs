@@ -1,7 +1,7 @@
 /**
  * Runtime PID records for crash recovery.
  *
- * OAR spawns the native CLI itself, outside Meldwork's managed-spawn /
+ * OAR spawns the native CLI itself, outside Tyche's managed-spawn /
  * process-registry. An OAR session normally disposes its process; a hard crash
  * leaves the detached process group behind. The runtime wrapper writes
  * <pid>\t<ps lstart> before exec, and sweepRuntimeProcesses() at the next

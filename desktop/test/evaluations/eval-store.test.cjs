@@ -61,7 +61,7 @@ function recordPath(root, category, id) {
 }
 
 test('EvalStore persists immutable cases, results, and matrices with reference checks', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-evals-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-evals-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const store = new EvalStore({ rootPath: path.join(directory, 'evals') })
   let time = 0
@@ -79,7 +79,7 @@ test('EvalStore persists immutable cases, results, and matrices with reference c
 })
 
 test('EvalStore rejects missing references and tampered content', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-evals-tamper-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-evals-tamper-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const store = new EvalStore({ rootPath: path.join(directory, 'evals') })
   let time = 0

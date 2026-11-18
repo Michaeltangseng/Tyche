@@ -88,11 +88,11 @@ function assertSafeOutboundPayload(payload) {
 }
 
 test('new Codex sessions persist and default to the read-only sandbox', (t) => {
-  const previous = process.env.MELDWORK_CODEX_SANDBOX
-  delete process.env.MELDWORK_CODEX_SANDBOX
+  const previous = process.env.TYCHE_CODEX_SANDBOX
+  delete process.env.TYCHE_CODEX_SANDBOX
   t.after(() => {
-    if (previous == null) delete process.env.MELDWORK_CODEX_SANDBOX
-    else process.env.MELDWORK_CODEX_SANDBOX = previous
+    if (previous == null) delete process.env.TYCHE_CODEX_SANDBOX
+    else process.env.TYCHE_CODEX_SANDBOX = previous
   })
   const spec = invocation('codex', '/tmp/codex', '/tmp/work')
   assert.equal(spec.stdin, true)
@@ -114,11 +114,11 @@ test('Codex accepts workspace-write only as an explicit per-call sandbox', () =>
 })
 
 test('unsafe Codex sandbox environment values fall back to read-only', (t) => {
-  const previous = process.env.MELDWORK_CODEX_SANDBOX
-  process.env.MELDWORK_CODEX_SANDBOX = 'danger-full-access'
+  const previous = process.env.TYCHE_CODEX_SANDBOX
+  process.env.TYCHE_CODEX_SANDBOX = 'danger-full-access'
   t.after(() => {
-    if (previous == null) delete process.env.MELDWORK_CODEX_SANDBOX
-    else process.env.MELDWORK_CODEX_SANDBOX = previous
+    if (previous == null) delete process.env.TYCHE_CODEX_SANDBOX
+    else process.env.TYCHE_CODEX_SANDBOX = previous
   })
   const spec = invocation('codex', '/tmp/codex', '/tmp/work')
   assert.ok(spec.args.includes('read-only'))
@@ -196,7 +196,7 @@ test('runtime command summaries retain no command content', () => {
 })
 
 test('runAgent streams sanitized Codex operations and result summaries before the final reply', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-codex-progress-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-codex-progress-'))
   const cli = executable(directory, 'codex-progress.cjs', `
 const events = [
   { type: 'thread.started', thread_id: 'thread-progress' },
@@ -342,7 +342,7 @@ send()
 })
 
 test('legacy CLI terminal paths close start-only tools with the matching non-success status', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-legacy-open-tool-terminal-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-legacy-open-tool-terminal-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
 
   await t.test('failure', async () => {
@@ -411,11 +411,11 @@ setInterval(() => {}, 1000)
 })
 
 test('runAgent never reconstructs a configured credential across any answer-delta split', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-answer-redaction-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-answer-redaction-'))
   const secret = 'provider-secret-value'
   const cli = executable(directory, 'answer-redaction.cjs', `
 const secret = process.env.CONNECTOR_TEST_API_KEY
-const split = Number(process.env.MELDWORK_SECRET_SPLIT)
+const split = Number(process.env.TYCHE_SECRET_SPLIT)
 for (const text of [secret.slice(0, split), secret.slice(split)]) {
   process.stdout.write(JSON.stringify({
     type: 'item.completed', item: { type: 'agent_message', text },
@@ -432,7 +432,7 @@ process.stdout.write(JSON.stringify({ type: 'turn.completed' }) + '\\n')
       'reply',
       directory,
       {
-        env: { CONNECTOR_TEST_API_KEY: secret, MELDWORK_SECRET_SPLIT: String(split) },
+        env: { CONNECTOR_TEST_API_KEY: secret, TYCHE_SECRET_SPLIT: String(split) },
         onEvent: event => events.push(event),
       },
     )
@@ -446,7 +446,7 @@ process.stdout.write(JSON.stringify({ type: 'turn.completed' }) + '\\n')
 })
 
 test('WorkBuddy stream-json emits text and tool lifecycle events before child close', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-workbuddy-stream-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-workbuddy-stream-'))
   const releaseFile = path.join(directory, 'release')
   const cli = executable(directory, 'workbuddy-stream.cjs', `
 const fs = require('node:fs')
@@ -458,7 +458,7 @@ const records = [
     content_block: { type: 'tool_use', id: 'workbuddy-tool-1', name: 'web_search', input: {} } },
     session_id: 'workbuddy-stream-session', parent_tool_use_id: null, uuid: 'tool-start-1' },
   { type: 'stream_event', event: { type: 'content_block_delta', index: 1,
-    delta: { type: 'input_json_delta', partial_json: '{"query":"Meldwork"}' } },
+    delta: { type: 'input_json_delta', partial_json: '{"query":"Tyche"}' } },
     session_id: 'workbuddy-stream-session', parent_tool_use_id: null, uuid: 'tool-update-1' },
   { type: 'user', message: { role: 'user', content: [{ type: 'tool_result',
     tool_use_id: 'workbuddy-tool-1', content: [{ type: 'text', text: 'one result' }],
@@ -466,7 +466,7 @@ const records = [
 ]
 for (const record of records) process.stdout.write(JSON.stringify(record) + '\\n')
 const finish = () => {
-  if (!fs.existsSync(process.env.MELDWORK_TEST_RELEASE_FILE)) return setTimeout(finish, 10)
+  if (!fs.existsSync(process.env.TYCHE_TEST_RELEASE_FILE)) return setTimeout(finish, 10)
   process.stdout.write(JSON.stringify({
     type: 'result', subtype: 'success', is_error: false,
     result: 'streamed reply', session_id: 'workbuddy-stream-session',
@@ -488,7 +488,7 @@ finish()
     'hello',
     directory,
     {
-      env: { MELDWORK_TEST_RELEASE_FILE: releaseFile },
+      env: { TYCHE_TEST_RELEASE_FILE: releaseFile },
       onEvent: event => {
         events.push(event)
         if (event.type === 'tool_result_summary') lifecycleResolve()
@@ -517,7 +517,7 @@ finish()
 })
 
 test('structured terminal output is kept when a CLI exits non-zero after producing a result', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cli-result-before-exit-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cli-result-before-exit-'))
   const cli = executable(directory, 'result-before-exit.cjs', `
 process.stdout.write(JSON.stringify({
   type: 'result', subtype: 'success', is_error: false,
@@ -543,7 +543,7 @@ process.exitCode = 1
 
 for (const exitCode of [0, 1]) {
   test(`WorkBuddy authentication failures classify as auth-required with exit code ${exitCode}`, async (t) => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), `meldwork-workbuddy-auth-${exitCode}-`))
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), `tyche-workbuddy-auth-${exitCode}-`))
     const cli = executable(directory, 'workbuddy-auth-required.cjs', `
   process.stdout.write(JSON.stringify({
     type: 'system', subtype: 'init', session_id: 'workbuddy-auth-session',
@@ -581,7 +581,7 @@ for (const exitCode of [0, 1]) {
 }
 
 test('WorkBuddy reports authentication failure when the CLI exits successfully with only stderr', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-workbuddy-stderr-auth-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-workbuddy-stderr-auth-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const cli = executable(directory, 'workbuddy-stderr-auth.cjs', `
     process.stderr.write('Authentication required. Please use /login command to sign in to your account\\n')
@@ -593,7 +593,7 @@ test('WorkBuddy reports authentication failure when the CLI exits successfully w
 })
 
 test('a completed CLI answer is retained when stderr contains an authentication warning', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-workbuddy-warning-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-workbuddy-warning-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const cli = executable(directory, 'workbuddy-warning.cjs', `
     process.stderr.write('Authentication required for an optional service\\n')
@@ -605,12 +605,12 @@ test('a completed CLI answer is retained when stderr contains an authentication 
 })
 
 test('Gemini profile state retains one real tool lifecycle id and summary', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-gemini-profile-state-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-gemini-profile-state-'))
   const cli = executable(directory, 'gemini-profile-state.cjs', `
 const records = [
   { type: 'init', session_id: 'gemini-profile-session' },
   { type: 'tool_use', tool_name: 'google_search', tool_id: 'gemini-tool-1',
-    parameters: { query: 'Meldwork' } },
+    parameters: { query: 'Tyche' } },
   { type: 'tool_result', tool_id: 'gemini-tool-1', status: 'success', output: 'one result' },
   { type: 'message', role: 'assistant', content: 'Gemini reply', delta: true },
   { type: 'result', status: 'success' },
@@ -636,7 +636,7 @@ for (const record of records) process.stdout.write(JSON.stringify(record) + '\\n
 })
 
 test('final-only profiles warn early but emit the completed answer only after close', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-final-only-profile-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-final-only-profile-'))
   const readyFile = path.join(directory, 'ready')
   const releaseFile = path.join(directory, 'release')
   const cli = executable(directory, 'opencodereview-final-only.cjs', `
@@ -645,9 +645,9 @@ process.stdout.write(JSON.stringify({
   status: 'complete', message: 'Review complete.', comments: [], session_id: 'ocr-run-1',
   manifest: { schema_version: 'ocr.run-manifest/v1', operation: 'review', terminal_state: 'complete' },
 }))
-fs.writeFileSync(process.env.MELDWORK_TEST_READY_FILE, 'ready')
+fs.writeFileSync(process.env.TYCHE_TEST_READY_FILE, 'ready')
 const finish = () => {
-  if (!fs.existsSync(process.env.MELDWORK_TEST_RELEASE_FILE)) return setTimeout(finish, 10)
+  if (!fs.existsSync(process.env.TYCHE_TEST_RELEASE_FILE)) return setTimeout(finish, 10)
 }
 finish()
 `)
@@ -663,8 +663,8 @@ finish()
     directory,
     {
       env: {
-        MELDWORK_TEST_READY_FILE: readyFile,
-        MELDWORK_TEST_RELEASE_FILE: releaseFile,
+        TYCHE_TEST_READY_FILE: readyFile,
+        TYCHE_TEST_RELEASE_FILE: releaseFile,
       },
       onEvent: event => events.push(event),
     },
@@ -714,7 +714,7 @@ test('Hermes starts ACP sessions but keeps unmarked historical sessions on the l
 })
 
 test('Hermes falls back to legacy quiet mode when ACP startup fails before the prompt', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-acp-fallback-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-acp-fallback-'))
   const cli = executable(directory, 'hermes-acp-fallback.cjs', `
 if (process.argv[2] !== 'chat' || !process.argv.includes('--quiet') || process.argv.includes('acp')) {
   process.stderr.write('expected legacy quiet mode')
@@ -757,7 +757,7 @@ process.stdout.write('\\u001b[36mHermes legacy fallback\\u001b[0m\\n')
 })
 
 test('Hermes invalidates a stale ACP session and rebuilds the legacy fallback prompt', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-acp-resume-fallback-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-acp-resume-fallback-'))
   const cli = executable(directory, 'hermes-acp-resume-fallback.cjs', `
 if (process.argv[2] === 'acp') {
   const readline = require('node:readline')
@@ -830,7 +830,7 @@ if (process.argv[2] === 'acp') {
 })
 
 test('runAgent reports minimal legacy payloads before argv and stdin delivery', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-outbound-payload-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-outbound-payload-'))
   const lifecycleFile = path.join(directory, 'lifecycle.log')
   const wireFile = path.join(directory, 'wire.log')
   const codexCli = executable(directory, 'codex-outbound.cjs', `
@@ -840,10 +840,10 @@ process.stdin.setEncoding('utf8')
 process.stdin.on('data', chunk => { prompt += chunk })
 process.stdin.on('end', () => {
   fs.appendFileSync(
-    process.env.MELDWORK_TEST_WIRE_FILE,
+    process.env.TYCHE_TEST_WIRE_FILE,
     JSON.stringify({ args: process.argv.slice(2), stdin: prompt }) + '\\n',
   )
-  fs.appendFileSync(process.env.MELDWORK_TEST_LIFECYCLE_FILE, 'stdin:' + prompt + '\\n')
+  fs.appendFileSync(process.env.TYCHE_TEST_LIFECYCLE_FILE, 'stdin:' + prompt + '\\n')
   const events = [
     { type: 'thread.started', thread_id: 'codex-outbound-session' },
     { type: 'item.completed', item: { type: 'agent_message', text: 'stdin reply' } },
@@ -855,11 +855,11 @@ process.stdin.on('end', () => {
   const workBuddyCli = executable(directory, 'workbuddy-outbound.cjs', `
 const fs = require('node:fs')
 fs.appendFileSync(
-  process.env.MELDWORK_TEST_WIRE_FILE,
+  process.env.TYCHE_TEST_WIRE_FILE,
   JSON.stringify({ args: process.argv.slice(2), stdin: '' }) + '\\n',
 )
 fs.appendFileSync(
-  process.env.MELDWORK_TEST_LIFECYCLE_FILE,
+  process.env.TYCHE_TEST_LIFECYCLE_FILE,
   'argv:' + process.argv.at(-1) + '\\n',
 )
 process.stdout.write(JSON.stringify([
@@ -874,8 +874,8 @@ process.stdout.write(JSON.stringify([
   const options = {
     sandbox: 'read-only',
     env: {
-      MELDWORK_TEST_LIFECYCLE_FILE: lifecycleFile,
-      MELDWORK_TEST_WIRE_FILE: wireFile,
+      TYCHE_TEST_LIFECYCLE_FILE: lifecycleFile,
+      TYCHE_TEST_WIRE_FILE: wireFile,
     },
     onOutboundPayload,
   }
@@ -939,11 +939,11 @@ process.stdout.write(JSON.stringify([
 })
 
 test('legacy outbound callback failure prevents prompt delivery', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-outbound-blocked-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-outbound-blocked-'))
   const deliveryFile = path.join(directory, 'delivered.txt')
   const cli = executable(directory, 'workbuddy-outbound-blocked.cjs', `
 const fs = require('node:fs')
-fs.writeFileSync(process.env.MELDWORK_TEST_DELIVERY_FILE, process.argv.at(-1))
+fs.writeFileSync(process.env.TYCHE_TEST_DELIVERY_FILE, process.argv.at(-1))
 process.stdout.write(JSON.stringify([
   { type: 'result', result: 'unexpected', session_id: 'workbuddy-blocked-session' },
 ]))
@@ -957,7 +957,7 @@ process.stdout.write(JSON.stringify([
       'must not be delivered',
       directory,
       {
-        env: { MELDWORK_TEST_DELIVERY_FILE: deliveryFile },
+        env: { TYCHE_TEST_DELIVERY_FILE: deliveryFile },
         onOutboundPayload: async () => { throw callbackError },
       },
     ),
@@ -967,7 +967,7 @@ process.stdout.write(JSON.stringify([
 })
 
 test('legacy outbound fingerprint uses the command prepared from a Windows shim', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-outbound-windows-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-outbound-windows-'))
   const shim = path.join(directory, 'codex.cmd')
   fs.writeFileSync(
     shim,
@@ -1036,12 +1036,12 @@ test('legacy outbound fingerprint uses the command prepared from a Windows shim'
 })
 
 test('Hermes ACP outbound callback failure cannot fall back to legacy delivery', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-outbound-blocked-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-outbound-blocked-'))
   const deliveryFile = path.join(directory, 'delivered.txt')
   const cli = executable(directory, 'hermes-outbound-blocked.cjs', `
 const fs = require('node:fs')
 if (process.argv[2] !== 'acp') {
-  fs.writeFileSync(process.env.MELDWORK_TEST_DELIVERY_FILE, process.argv.at(-1))
+  fs.writeFileSync(process.env.TYCHE_TEST_DELIVERY_FILE, process.argv.at(-1))
   process.stdout.write('unexpected legacy reply\\n')
   process.exit(0)
 }
@@ -1057,7 +1057,7 @@ input.on('line', (line) => {
   } else if (message.method === 'session/set_mode') {
     send({ jsonrpc: '2.0', id: message.id, result: {} })
   } else if (message.method === 'session/prompt') {
-    fs.writeFileSync(process.env.MELDWORK_TEST_DELIVERY_FILE, 'acp prompt delivered')
+    fs.writeFileSync(process.env.TYCHE_TEST_DELIVERY_FILE, 'acp prompt delivered')
   }
 })
 `)
@@ -1071,7 +1071,7 @@ input.on('line', (line) => {
       'must not be delivered',
       directory,
       {
-        env: { MELDWORK_TEST_DELIVERY_FILE: deliveryFile },
+        env: { TYCHE_TEST_DELIVERY_FILE: deliveryFile },
         onOutboundPayload: async () => {
           callbackCalls += 1
           if (callbackCalls === 1) throw callbackError
@@ -1085,7 +1085,7 @@ input.on('line', (line) => {
 })
 
 test('Hermes ACP streams only the current turn after resume history replay', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-acp-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-acp-'))
   const modeFile = path.join(directory, 'mode.txt')
   const cli = executable(directory, 'hermes-acp.cjs', `
 const fs = require('node:fs')
@@ -1106,7 +1106,7 @@ input.on('line', (line) => {
     })
     send({ jsonrpc: '2.0', id: message.id, result: {} })
   } else if (message.method === 'session/set_mode') {
-    fs.writeFileSync(process.env.MELDWORK_TEST_MODE_FILE, message.params.modeId)
+    fs.writeFileSync(process.env.TYCHE_TEST_MODE_FILE, message.params.modeId)
     send({ jsonrpc: '2.0', id: message.id, result: {} })
   } else if (message.method === 'session/prompt') {
     update(sessionId, {
@@ -1155,7 +1155,7 @@ input.on('line', (line) => {
     {
       sessionRef: 'hermes-session',
       sessionTransport: 'acp',
-      env: { MELDWORK_TEST_MODE_FILE: modeFile },
+      env: { TYCHE_TEST_MODE_FILE: modeFile },
       onEvent: event => events.push(event),
       onSubstantiveActivity: (...args) => { assert.equal(args.length, 0); substantiveUpdates += 1 },
       onSessionRef: (sessionRef, metadata) => sessionMetadata.push({ sessionRef, metadata }),
@@ -1195,7 +1195,7 @@ input.on('line', (line) => {
 })
 
 test('MiMo ACP uses the selected profile for pre-terminal plan, tool, and text events', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-mimo-acp-profile-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-mimo-acp-profile-'))
   const readyFile = path.join(directory, 'ready')
   const releaseFile = path.join(directory, 'release')
   const cli = executable(directory, 'mimo-acp-profile.cjs', `
@@ -1231,9 +1231,9 @@ input.on('line', (line) => {
     update(sessionId, {
       sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'MiMo ACP reply' },
     })
-    fs.writeFileSync(process.env.MELDWORK_TEST_READY_FILE, 'ready')
+    fs.writeFileSync(process.env.TYCHE_TEST_READY_FILE, 'ready')
     const finish = () => {
-      if (!fs.existsSync(process.env.MELDWORK_TEST_RELEASE_FILE)) return setTimeout(finish, 10)
+      if (!fs.existsSync(process.env.TYCHE_TEST_RELEASE_FILE)) return setTimeout(finish, 10)
       send({ jsonrpc: '2.0', id: message.id, result: { stopReason: 'end_turn' } })
     }
     finish()
@@ -1255,8 +1255,8 @@ input.on('line', (line) => {
     directory,
     {
       env: {
-        MELDWORK_TEST_READY_FILE: readyFile,
-        MELDWORK_TEST_RELEASE_FILE: releaseFile,
+        TYCHE_TEST_READY_FILE: readyFile,
+        TYCHE_TEST_RELEASE_FILE: releaseFile,
       },
       onEvent: event => {
         events.push(event)
@@ -1290,7 +1290,7 @@ input.on('line', (line) => {
 })
 
 test('a reused ACP session that refuses before any output is recoverable as stale', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-acp-stale-refusal-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-acp-stale-refusal-'))
   const cli = executable(directory, 'acp-stale-refusal.cjs', `
 const readline = require('node:readline')
 const input = readline.createInterface({ input: process.stdin })
@@ -1323,7 +1323,7 @@ input.on('line', line => {
 })
 
 test('ACP terminal stop reasons preserve exact outcome and failure semantics', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-acp-stop-reasons-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-acp-stop-reasons-'))
   const cli = executable(directory, 'acp-stop-reasons.cjs', `
 const readline = require('node:readline')
 const input = readline.createInterface({ input: process.stdin })
@@ -1413,11 +1413,11 @@ input.on('line', (line) => {
 test('MiMo and OpenCode retry JSON only after ACP setup failure', async (t) => {
   for (const kind of ['mimo', 'opencode']) {
     await t.test(kind, async (t) => {
-      const directory = fs.mkdtempSync(path.join(os.tmpdir(), `meldwork-${kind}-acp-fallback-`))
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), `tyche-${kind}-acp-fallback-`))
       const callsFile = path.join(directory, 'calls.jsonl')
       const cli = executable(directory, `${kind}-fallback.cjs`, `
 const fs = require('node:fs')
-fs.appendFileSync(process.env.MELDWORK_TEST_CALLS_FILE, JSON.stringify(process.argv.slice(2)) + '\\n')
+fs.appendFileSync(process.env.TYCHE_TEST_CALLS_FILE, JSON.stringify(process.argv.slice(2)) + '\\n')
 process.stdout.write(JSON.stringify({
   type: 'text', sessionID: '${kind}-json-session',
   part: { type: 'text', text: '${kind} JSON fallback' },
@@ -1435,7 +1435,7 @@ process.stdout.write(JSON.stringify({
         'hello',
         directory,
         {
-          env: { MELDWORK_TEST_CALLS_FILE: callsFile },
+          env: { TYCHE_TEST_CALLS_FILE: callsFile },
           loadAcpSdkFn: async () => { throw new Error('ACP SDK unavailable') },
           onEvent: event => events.push(event),
         },
@@ -1453,7 +1453,7 @@ process.stdout.write(JSON.stringify({
 test('MiMo and OpenCode preserve resumed sessions through JSON setup fallback', async (t) => {
   for (const kind of ['mimo', 'opencode']) {
     await t.test(kind, async (t) => {
-      const directory = fs.mkdtempSync(path.join(os.tmpdir(), `meldwork-${kind}-resume-fallback-`))
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), `tyche-${kind}-resume-fallback-`))
       const cli = executable(directory, `${kind}-resume-fallback.cjs`, `
 const sessionIndex = process.argv.indexOf('--session')
 const sessionRef = sessionIndex === -1 ? '' : process.argv[sessionIndex + 1]
@@ -1502,7 +1502,7 @@ if (!sessionRef) {
 test('MiMo and OpenCode propagate invalid resumed sessions from JSON setup fallback', async (t) => {
   for (const kind of ['mimo', 'opencode']) {
     await t.test(kind, async (t) => {
-      const directory = fs.mkdtempSync(path.join(os.tmpdir(), `meldwork-${kind}-invalid-fallback-`))
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), `tyche-${kind}-invalid-fallback-`))
       const cli = executable(directory, `${kind}-invalid-fallback.cjs`, `
 const sessionIndex = process.argv.indexOf('--session')
 const sessionRef = sessionIndex === -1 ? '' : process.argv[sessionIndex + 1]
@@ -1540,7 +1540,7 @@ process.stdout.write(JSON.stringify({
 })
 
 test('ACP setup fallback absorbs asynchronous warning callback rejection', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-acp-fallback-async-event-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-acp-fallback-async-event-'))
   const cli = executable(directory, 'acp-fallback-async-event.cjs', `
 process.stdout.write(JSON.stringify({
   type: 'text', sessionID: 'fallback-event-session',
@@ -1578,12 +1578,12 @@ process.stdout.write(JSON.stringify({
 test('MiMo and OpenCode never retry JSON after session prompt delivery', async (t) => {
   for (const kind of ['mimo', 'opencode']) {
     await t.test(kind, async (t) => {
-      const directory = fs.mkdtempSync(path.join(os.tmpdir(), `meldwork-${kind}-acp-no-retry-`))
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), `tyche-${kind}-acp-no-retry-`))
       const callsFile = path.join(directory, 'calls.jsonl')
       const cli = executable(directory, `${kind}-no-retry.cjs`, `
 const fs = require('node:fs')
 const readline = require('node:readline')
-fs.appendFileSync(process.env.MELDWORK_TEST_CALLS_FILE, JSON.stringify(process.argv.slice(2)) + '\\n')
+fs.appendFileSync(process.env.TYCHE_TEST_CALLS_FILE, JSON.stringify(process.argv.slice(2)) + '\\n')
 if (process.argv[2] !== 'acp') {
   process.stdout.write(JSON.stringify({
     type: 'text', sessionID: '${kind}-unexpected-fallback',
@@ -1620,7 +1620,7 @@ if (process.argv[2] !== 'acp') {
           'hello',
           directory,
           {
-            env: { MELDWORK_TEST_CALLS_FILE: callsFile },
+            env: { TYCHE_TEST_CALLS_FILE: callsFile },
             onEvent: event => events.push(event),
           },
         ),
@@ -1739,7 +1739,7 @@ test('image capability rejects unsupported Agents and malformed paths before spa
 })
 
 test('runAgent enables Hermes non-interactive execution only for workspace write mode', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-env-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-env-'))
   const resultFile = path.join(directory, 'hermes-env-result.json')
   const cli = executable(directory, 'hermes-env.cjs', `
 const fs = require('node:fs')
@@ -1775,7 +1775,7 @@ process.stderr.write('session_id: hermes-env-session\\n')
 })
 
 test('Hermes legacy recovery reads both watermark and final from the selected native directory', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-home-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-home-'))
   const cli = executable(directory, 'hermes-home.cjs', `
 process.stdout.write('quiet fallback')
 process.stderr.write('session_id: selected-home-session\\n')
@@ -1801,7 +1801,7 @@ process.stderr.write('session_id: selected-home-session\\n')
 })
 
 test('runAgent rejects a zero-exit Hermes failed turn without a session', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-failed-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-failed-'))
   const cli = executable(directory, 'hermes-failed.cjs', `
 process.stdout.write('Provider said: Connection error.\\n\\nYour request was not processed. Send it again if you still want me to carry it out.')
 `)
@@ -1813,7 +1813,7 @@ process.stdout.write('Provider said: Connection error.\\n\\nYour request was not
 })
 
 test('runAgent restores the Hermes session id reported on successful stderr', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-session-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-session-'))
   const cli = executable(directory, 'hermes-session.cjs', `
 process.stdout.write('Hermes reply')
 process.stderr.write('diagnostic\\nsession_id: hermes-session-123\\n')
@@ -1840,7 +1840,7 @@ process.stderr.write('diagnostic\\nsession_id: hermes-session-123\\n')
 })
 
 test('legacy profile restores Session/final after close without review-diff progress', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-final-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-final-'))
   const readyFile = path.join(directory, 'ready')
   const releaseFile = path.join(directory, 'release')
   const cli = executable(directory, 'hermes-final.cjs', `
@@ -1976,7 +1976,7 @@ test('Hermes final lookup accepts post-watermark stop and length rows through a 
 })
 
 test('runAgent falls back to Hermes quiet stdout when no post-watermark final exists', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-no-final-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-no-final-'))
   const processProgress = Array.from({ length: 10 }, () => '┊ review diff').join('\n')
   const cli = executable(directory, 'hermes-no-final.cjs', `
 process.stdout.write('Hermes quiet fallback')
@@ -2018,7 +2018,7 @@ process.stderr.write(${JSON.stringify(`${processProgress}\nsession_id: hermes-se
 })
 
 test('runAgent persists the Hermes session before falling back from a throwing final lookup', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-lookup-failure-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-lookup-failure-'))
   const cli = executable(directory, 'hermes-lookup-failure.cjs', `
 process.stdout.write('process output only')
 process.stderr.write('session_id: hermes-session-lookup-failure\\n')
@@ -2052,7 +2052,7 @@ process.stderr.write('session_id: hermes-session-lookup-failure\\n')
 })
 
 test('runAgent still starts Hermes and uses quiet stdout when the pre-run watermark is unavailable', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-no-watermark-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-no-watermark-'))
   const cli = executable(directory, 'hermes-no-watermark.cjs', `
 process.stdout.write('\\u001b[36mHermes quiet fallback\\u001b[0m\\n')
 process.stderr.write('session_id: hermes-session-no-watermark\\n')
@@ -2086,29 +2086,29 @@ test('OpenClaw terminal profile accumulates JSON output as reply text', () => {
     payloads: [{ text: '第一段' }, { text: '第二段' }],
     meta: { aborted: false, completion: { stopReason: 'stop' } },
   })
-  assert.deepEqual(profileOutput('openclaw', raw, 'agent:main:desktop-meldwork-group-openclaw'), {
+  assert.deepEqual(profileOutput('openclaw', raw, 'agent:main:desktop-tyche-group-openclaw'), {
     text: '第一段\n第二段',
-    sessionRef: 'agent:main:desktop-meldwork-group-openclaw',
+    sessionRef: 'agent:main:desktop-tyche-group-openclaw',
     outcome: 'completed',
   })
 })
 
 test('OpenClaw ACP binds the stable group Session key without prefixing cwd', () => {
   const spec = invocation(
-    'openclaw', '/tmp/openclaw', '/tmp/work', 'agent:main:desktop-meldwork-group-openclaw',
+    'openclaw', '/tmp/openclaw', '/tmp/work', 'agent:main:desktop-tyche-group-openclaw',
   )
   assert.deepEqual(spec.args, [
     '--no-color', '--log-level', 'info',
-    'acp', '--session', 'agent:main:desktop-meldwork-group-openclaw',
+    'acp', '--session', 'agent:main:desktop-tyche-group-openclaw',
     '--no-prefix-cwd', '--verbose',
   ])
   assert.equal(spec.eventTransport, 'acp')
   assert.equal(spec.openClawGateway, true)
-  assert.equal(spec.publicSessionRef, 'agent:main:desktop-meldwork-group-openclaw')
+  assert.equal(spec.publicSessionRef, 'agent:main:desktop-tyche-group-openclaw')
 })
 
 test('runAgent uses the app-signed OpenClaw workspace', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-workspace-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-workspace-'))
   const workdir = path.join(directory, 'workspace')
   fs.mkdirSync(workdir)
   const cli = executable(directory, 'openclaw-workspace.cjs', `
@@ -2143,7 +2143,7 @@ process.stdout.write(JSON.stringify({
 })
 
 test('OpenClaw keeps the re-signed runtime guard when ACP setup falls back to legacy', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-acp-fallback-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-acp-fallback-'))
   const workdir = path.join(directory, 'workspace')
   const stoppedFile = path.join(directory, 'gateway-stopped')
   const healthProbeFile = path.join(directory, 'gateway-health-probe.json')
@@ -2224,7 +2224,7 @@ process.stdout.write(JSON.stringify({
 test('MiMo and OpenCode keep running after a step that ended in tool calls', async (t) => {
   for (const kind of ['mimo', 'opencode']) {
     await t.test(kind, async (t) => {
-      const directory = fs.mkdtempSync(path.join(os.tmpdir(), `meldwork-${kind}-multistep-`))
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), `tyche-${kind}-multistep-`))
       const cli = executable(directory, `${kind}-multistep.cjs`, `
 const send = value => process.stdout.write(JSON.stringify(value) + '\\n')
 send({ type: 'step_start', sessionID: '${kind}-multistep-session', part: { type: 'step-start' } })
@@ -2254,7 +2254,7 @@ setTimeout(() => {
 })
 
 test('a CLI that exits before reading its prompt reports its own error, not a broken pipe', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-codex-early-exit-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-codex-early-exit-'))
   // Codex reads the prompt from stdin. A CLI that rejects the run at startup
   // exits at once; a prompt larger than the pipe buffer then hits EPIPE.
   const cli = executable(directory, 'codex-early-exit.cjs', `
@@ -2275,7 +2275,7 @@ process.exit(1)
 })
 
 test('a CLI that stays alive without reading its prompt still fails as a send failure', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-codex-no-reader-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-codex-no-reader-'))
   const cli = executable(directory, 'codex-no-reader.cjs', `
 // Closes its input without reading it, then idles.
 require('node:fs').closeSync(0)

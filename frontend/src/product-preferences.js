@@ -1,7 +1,7 @@
 const LEGACY_PRODUCT_STEM = ['round', 'relay'].join('')
 
 function storageKey(name) {
-  return `meldwork-${name}`
+  return `tyche-${name}`
 }
 
 export function readProductPreference(name) {

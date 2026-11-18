@@ -11,7 +11,7 @@ const {
 const { stableKnowledgeSourceId } = require('../../src/knowledge/knowledge-connector-contract.cjs')
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-knowledge-fs-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-knowledge-fs-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const rootPath = path.join(directory, 'vault')
   fs.mkdirSync(path.join(rootPath, 'notes'), { recursive: true })

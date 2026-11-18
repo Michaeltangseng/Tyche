@@ -153,7 +153,7 @@ function normalizeRole(input, index, providers) {
 
 function runtimeWrapperFile() {
   const directory = __dirname.replace(/app\.asar(?=[\\/])/, 'app.asar.unpacked')
-  return path.join(directory, 'meldwork-runtime-wrapper.sh')
+  return path.join(directory, 'tyche-runtime-wrapper.sh')
 }
 
 function createRoomHost({

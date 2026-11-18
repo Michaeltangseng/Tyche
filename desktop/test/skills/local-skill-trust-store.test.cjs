@@ -9,7 +9,7 @@ const { LocalSkillTrustStore } = require('../../src/skills/local-skill-trust-sto
 function manifest() {
   return {
     schemaVersion: 1,
-    recordType: 'meldwork-skill-manifest',
+    recordType: 'tyche-skill-manifest',
     identity: { id: 'global/review', version: '1.0.0' },
     origin: { type: 'local-unsigned', publisher: 'Local author' },
     agents: [{ kind: 'codex', minVersion: '0.100.0', maxVersion: '1.0.0' }],
@@ -23,7 +23,7 @@ function manifest() {
 }
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-skill-trust-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-skill-trust-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const storagePath = path.join(directory, 'private', 'trust.jsonl')
   let tick = 0

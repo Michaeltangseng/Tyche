@@ -235,7 +235,7 @@ Report
 - A CLI that does not support MCP uses a strict text-marker fallback:
 
 ```text
-[[MELDWORK_REPORT:{"kind":"ready","summary":"...","evidence":[],"artifacts":[]}]]
+[[TYCHE_REPORT:{"kind":"ready","summary":"...","evidence":[],"artifacts":[]}]]
 ```
 
 - Only the last marker is accepted. Fields, kind, summary, and Artifact ownership are checked strictly.
@@ -281,7 +281,7 @@ Agent tools cannot exist only in a document. There must be an explicit channel.
 ### 5.2 Fallback: strict text marker (restricted degradation)
 
 ```text
-[[MELDWORK_TOOL:{"name":"mention","callId":"...","args":{"names":["reviewer"],"text":"..."}}]]
+[[TYCHE_TOOL:{"name":"mention","callId":"...","args":{"names":["reviewer"],"text":"..."}}]]
 ```
 
 - **A marker is not the equivalent of MCP.** Each reply applies only the last complete marker. There is no tool result returned, so it cannot `create_task` and then `comment_task`, and it cannot keep deciding after `list_tasks` or `get_task`.

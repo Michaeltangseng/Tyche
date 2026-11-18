@@ -17,7 +17,7 @@
       >
         <img :src="productMark" alt="" />
         <span>
-          <strong>Meldwork</strong>
+          <strong>Tyche</strong>
           <small>{{ t('app.localWorkspace') }}</small>
         </span>
       </button>

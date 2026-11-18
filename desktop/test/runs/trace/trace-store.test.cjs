@@ -14,7 +14,7 @@ const {
 } = require('../../../src/runs/trace/trace-store.cjs')
 
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-trace-store-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-trace-store-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   return {
     root,

@@ -16,7 +16,7 @@ const { LocalWorkspaceAutoRunner } = require('../../src/workspace/local-workspac
 const { fixture: workspaceFixture } = require('../support/local-workspace-test-helpers.cjs')
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-v4-convergence-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-v4-convergence-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const contentBlobStore = new ContentBlobStore({
     rootPath: path.join(directory, 'content-blobs'),
@@ -47,8 +47,8 @@ function storedOutput(fixtureValue, content, producer = {}) {
     kind: 'observation',
     level: 'observed',
     subject: { type: 'artifact', artifactId: artifact.artifactId },
-    summary: 'Meldwork captured the concrete Agent output.',
-    recordedBy: { kind: 'system', actorId: 'meldwork-main' },
+    summary: 'Tyche captured the concrete Agent output.',
+    recordedBy: { kind: 'system', actorId: 'tyche-main' },
     refs: [
       { type: 'artifact', artifactId: artifact.artifactId },
       { type: 'blob', contentRef, contentHash: contentRef.hash },
@@ -67,7 +67,7 @@ test('candidate evidence binds the exact artifact content reference', t => {
     kind: 'observation', level: 'observed',
     subject: { type: 'artifact', artifactId: output.artifact.artifactId },
     summary: 'An observation with a different content reference.',
-    recordedBy: { kind: 'system', actorId: 'meldwork-outcome-recorder' },
+    recordedBy: { kind: 'system', actorId: 'tyche-outcome-recorder' },
     refs: [{ type: 'blob', contentRef: alternateRef, contentHash: alternateRef.hash }],
   })
   assert.equal(value.runner.v4EvidenceSupportsArtifact(
@@ -164,7 +164,7 @@ function reviewEvidenceBoundary(fixtureValue, reviewedOutput, label) {
       artifactId: reviewedOutput.artifact.artifactId,
     },
     summary: `${label} reported Evidence ${index + 1}.`,
-    recordedBy: { kind: 'system', actorId: 'meldwork-main' },
+    recordedBy: { kind: 'system', actorId: 'tyche-main' },
     refs: [
       { type: 'artifact', artifactId: reviewedOutput.artifact.artifactId },
       {
@@ -710,7 +710,7 @@ test('V4 acceptance requires the exact candidate Finding and complete required p
   ), { message: 'LOCAL_RUN_V4_REVIEW_FINDING_INVALID' })
 
   const legacyMarker = structuredClone(records.slice(0, -1))
-  legacyMarker[4].receipt.conclusion = '[[MELDWORK_CONSENSUS:agree]]'
+  legacyMarker[4].receipt.conclusion = '[[TYCHE_CONSENSUS:agree]]'
   assert.equal(value.runner.v4Acceptance(
     legacyMarker, targetKinds, 'codex', ['hermes'], options,
   ).accepted, false)

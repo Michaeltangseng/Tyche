@@ -14,8 +14,8 @@ const MIGRATIONS = Object.freeze([
 function migrationFailure({ cause, failedStep, failedMove, completed, rolledBack, rollbackFailures }) {
   const recoveryRequired = rollbackFailures.length > 0
   const code = recoveryRequired
-    ? 'MELDWORK_PRODUCT_DATA_MIGRATION_RECOVERY_REQUIRED'
-    : 'MELDWORK_PRODUCT_DATA_MIGRATION_FAILED'
+    ? 'TYCHE_PRODUCT_DATA_MIGRATION_RECOVERY_REQUIRED'
+    : 'TYCHE_PRODUCT_DATA_MIGRATION_FAILED'
   const error = new Error(code, { cause })
   error.code = code
   error.diagnostic = Object.freeze({
@@ -42,7 +42,7 @@ function migrateLegacyProductData(userData, options = {}) {
   const renameSync = typeof options.renameSync === 'function' ? options.renameSync : fs.renameSync
   const plan = MIGRATIONS.map(([legacySuffix, currentSuffix]) => ({
     source: path.join(root, `${LEGACY_PRODUCT_STEM}-${legacySuffix}`),
-    destination: path.join(root, `meldwork-${currentSuffix}`),
+    destination: path.join(root, `tyche-${currentSuffix}`),
   }))
   const migrated = []
   const completed = []
@@ -63,8 +63,8 @@ function migrateLegacyProductData(userData, options = {}) {
           if (!sourceExists && destinationExists) {
             renameSync(completedMove.destination, completedMove.source)
           } else if (!(sourceExists && !destinationExists)) {
-            throw Object.assign(new Error('MELDWORK_PRODUCT_DATA_MIGRATION_ROLLBACK_CONFLICT'), {
-              code: 'MELDWORK_PRODUCT_DATA_MIGRATION_ROLLBACK_CONFLICT',
+            throw Object.assign(new Error('TYCHE_PRODUCT_DATA_MIGRATION_ROLLBACK_CONFLICT'), {
+              code: 'TYCHE_PRODUCT_DATA_MIGRATION_ROLLBACK_CONFLICT',
             })
           }
           rolledBack.push(completedMove)

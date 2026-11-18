@@ -41,7 +41,7 @@ test('a Bearer token split across two pushes stays redacted', () => {
 })
 
 test('a known value split at every position is redacted', () => {
-  const secret = 'meldwork-test-secret-1234567890'
+  const secret = 'tyche-test-secret-1234567890'
   for (let index = 1; index < secret.length; index += 1) {
     const { output } = run(splitAt(`before ${secret} after`, index + 7), {
       knownValues: [secret],

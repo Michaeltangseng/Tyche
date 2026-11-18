@@ -29,8 +29,8 @@ test('Natural handoff tells every participant to return control to the outer sch
       {}, kind, 'discussion', { taskText: 'Collaborate on the task.' }, [], kinds,
       { allowRouting: true, ownerKind: kinds[0] },
     )
-    assert.match(prompt, /Selected peers are external Meldwork participants/u)
-    assert.match(prompt, /Meldwork dispatches requested peers only after this invocation completes/u)
+    assert.match(prompt, /Selected peers are external Tyche participants/u)
+    assert.match(prompt, /Tyche dispatches requested peers only after this invocation completes/u)
     assert.match(prompt, /Put the request in your final response and finish this invocation/u)
   }
 })

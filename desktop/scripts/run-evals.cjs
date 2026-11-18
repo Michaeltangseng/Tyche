@@ -78,7 +78,7 @@ function fixtureObservation(evalCase, omitCheckIds) {
 }
 
 function providerExecutor(adapterPath) {
-  if (process.env.MELDWORK_EVAL_PROVIDER !== '1') {
+  if (process.env.TYCHE_EVAL_PROVIDER !== '1') {
     throw new Error('EVAL_PROVIDER_OPT_IN_REQUIRED')
   }
   if (!adapterPath) throw new Error('EVAL_PROVIDER_ADAPTER_REQUIRED')
@@ -94,7 +94,7 @@ async function main() {
   const corpusPath = path.resolve(argumentValue('--corpus')
     || path.join(__dirname, '../test/fixtures/eval-deterministic-v1.json'))
   const corpus = validateCorpus(loadJson(corpusPath))
-  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-eval-run-'))
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-eval-run-'))
   const storeRoot = argumentValue('--store-root')
     ? path.resolve(argumentValue('--store-root'))
     : temporaryRoot

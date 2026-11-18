@@ -51,10 +51,10 @@ function loadPreload(protocol) {
   return { api: exposed, exposedName, invocations, listeners }
 }
 
-test('local preload exposes the local-only Meldwork API', async () => {
+test('local preload exposes the local-only Tyche API', async () => {
   const { api, exposedName, invocations } = loadPreload('file:')
 
-  assert.equal(exposedName, 'meldworkDesktop')
+  assert.equal(exposedName, 'tycheDesktop')
   assert.equal(Object.isFrozen(api), true)
   assert.equal(api.localOnly, true)
   assert.equal(api.platform, process.platform)
@@ -589,7 +589,7 @@ test('local preload rejects unbounded or unsupported renderer attachment payload
 test('remote preload does not expose local credentials, workspace, or installer APIs', () => {
   const { api, exposedName } = loadPreload('https:')
 
-  assert.equal(exposedName, 'meldworkDesktop')
+  assert.equal(exposedName, 'tycheDesktop')
   assert.equal(api.isDesktop, true)
   assert.equal(api.localOnly, true)
   assert.equal('getAuthToken' in api, false)

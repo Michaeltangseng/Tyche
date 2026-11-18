@@ -7,7 +7,7 @@ const { openRoomDatabase } = require('../../src/room/db.cjs')
 const { createRoomRepository } = require('../../src/room/repository.cjs')
 
 test('creates room, chat, role, prompt revision and participant', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
   const repo = createRoomRepository(roomDb)

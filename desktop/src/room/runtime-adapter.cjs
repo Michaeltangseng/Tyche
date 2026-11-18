@@ -21,7 +21,7 @@ const { createMcpHttpServer } = require('./tools/mcp-server.cjs')
 
 const SUPPORTED_PROVIDERS = new Set(['claude', 'codex'])
 const LOOPBACK_NO_PROXY = '127.0.0.1,localhost,::1'
-const MCP_SERVER_NAME = 'meldwork'
+const MCP_SERVER_NAME = 'tyche'
 
 function adapterError(code, message, cause) {
   const error = new Error(message || code)
@@ -132,8 +132,8 @@ function createOarRuntimeAdapter({
       ...env,
       ...(command ? { [`OAR_${provider.toUpperCase()}_BIN`]: command } : {}),
       ...(useWrapper ? {
-        MELDWORK_RUNTIME_BIN: executable,
-        MELDWORK_ROOM_STATE_DIR: runtimeStateDir,
+        TYCHE_RUNTIME_BIN: executable,
+        TYCHE_ROOM_STATE_DIR: runtimeStateDir,
       } : {}),
       NO_PROXY: LOOPBACK_NO_PROXY,
       no_proxy: LOOPBACK_NO_PROXY,
@@ -148,7 +148,7 @@ function createOarRuntimeAdapter({
       )
     }
     const sessionEnv = useWrapper && runId
-      ? { ...baseEnv, MELDWORK_ROOM_RUN_ID: runId }
+      ? { ...baseEnv, TYCHE_ROOM_RUN_ID: runId }
       : baseEnv
     return { runtime, installation, sessionEnv }
   }
@@ -334,7 +334,7 @@ function createOarRuntimeAdapter({
   function taskPrompt(task, laneKind = 'executor') {
     if (laneKind !== 'executor') {
       return [
-        "You are participating in a task's mention lane in the Meldwork room.",
+        "You are participating in a task's mention lane in the Tyche room.",
         `Task id: ${task.id}`,
         `Task #${task.number}: ${task.title ?? ''}`,
         `Description: ${task.description ?? ''}`,
@@ -345,7 +345,7 @@ function createOarRuntimeAdapter({
       ].join('\n')
     }
     return [
-      'You are the assigned agent for a task in the Meldwork room.',
+      'You are the assigned agent for a task in the Tyche room.',
       `Task id: ${task.id}`,
       `Task #${task.number}: ${task.title ?? ''}`,
       `Description: ${task.description ?? ''}`,

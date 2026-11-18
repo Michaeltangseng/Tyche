@@ -8,7 +8,7 @@ const { automaticPermissionResponse } = require('../../../src/agents/agent-permi
 const { executable, within, readWhenReady } = require('../../support/cli-adapters-test-helpers.cjs')
 
 test('Kimi read-only queries use manual mode and still reject writes', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-kimi-query-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-kimi-query-'))
   t.after(async () => { await adapters.shutdownAcpSessionRuntime(); fs.rmSync(directory, { recursive: true, force: true }) })
   const cli = executable(directory, 'kimi', `
 const send = value => console.log(JSON.stringify(value))
@@ -35,7 +35,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line',line=>
 })
 
 for (const callback of [false, true]) test(`Kimi plan review refuses and exits instead of revising without feedback: ${callback}`, async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-kimi-plan-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-kimi-plan-'))
   t.after(async () => { await adapters.shutdownAcpSessionRuntime(); fs.rmSync(directory, { recursive: true, force: true }) })
   const selected = path.join(directory, 'selected')
   const cli = executable(directory, 'kimi', `

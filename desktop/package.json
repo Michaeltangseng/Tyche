@@ -1,5 +1,5 @@
 {
-  "name": "meldwork-desktop",
+  "name": "tyche-desktop",
   "version": "1.0.9",
   "private": true,
   "description": "A local-first desktop workspace for multi-Agent collaboration",
@@ -42,14 +42,14 @@
     "electron-builder": "26.15.3"
   },
   "build": {
-    "appId": "com.rydersun.meldwork",
-    "productName": "Meldwork",
-    "artifactName": "Meldwork-${version}-${arch}.${ext}",
+    "appId": "com.rydersun.tyche",
+    "productName": "Tyche",
+    "artifactName": "Tyche-${version}-${arch}.${ext}",
     "afterPack": "scripts/after-pack.cjs",
     "afterAllArtifactBuild": "scripts/after-all-artifact-build.cjs",
     "asarUnpack": [
       "src/agents/cli/deepseek-*.yml",
-      "src/room/meldwork-runtime-wrapper.sh"
+      "src/room/tyche-runtime-wrapper.sh"
     ],
     "files": [
       "src/**/*",
@@ -62,8 +62,8 @@
     ],
     "extraResources": [
       {
-        "from": "native/build/meldwork-supervisor",
-        "to": "bin/meldwork-supervisor"
+        "from": "native/build/tyche-supervisor",
+        "to": "bin/tyche-supervisor"
       },
       {
         "from": "../LICENSE",
@@ -84,7 +84,7 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "icon": "../frontend/public/logos/meldwork-app.png",
+      "icon": "../frontend/public/logos/tyche-app.png",
       "target": [
         "dmg",
         "zip"

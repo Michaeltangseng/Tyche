@@ -158,7 +158,7 @@ function receipt(phase, prompt) {
   }
 }
 function finish(message, sessionId, phase, prompt) {
-  const body = 'hermes ' + phase + '\\n[[MELDWORK_COLLABORATION:'
+  const body = 'hermes ' + phase + '\\n[[TYCHE_COLLABORATION:'
     + JSON.stringify(receipt(phase, prompt)) + ']]'
   update(sessionId, {
     sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: body },
@@ -177,7 +177,7 @@ input.on('line', line => {
   } else if (message.method === 'session/prompt') {
     const prompt = JSON.stringify(message.params || {})
     const phase = prompt.match(/Phase: ([a-z-]+)/)?.[1] || 'proposal'
-    if (phase === process.env.MELDWORK_TEST_PERMISSION_PHASE) {
+    if (phase === process.env.TYCHE_TEST_PERMISSION_PHASE) {
       pendingPrompt = { message, sessionId, phase, prompt }
       permissionId += 1
       send({
@@ -227,7 +227,7 @@ function nativeWorkspaceOptions(options, cli, permissionPhase, calls) {
     if (agent.kind === 'hermes') {
       return adapters.runAgent(agent, prompt, workdir, {
         ...runOptions,
-        env: { MELDWORK_TEST_PERMISSION_PHASE: permissionPhase },
+        env: { TYCHE_TEST_PERMISSION_PHASE: permissionPhase },
       })
     }
     return {
@@ -291,7 +291,7 @@ async function createManualPermissionRestart(t, restartOptions = {}) {
   )
 
   const workspaceBytes = fs.readFileSync(options.storagePath)
-  const gateStorePath = path.join(directory, 'meldwork-private', 'human-gates.json')
+  const gateStorePath = path.join(directory, 'tyche-private', 'human-gates.json')
   const gateBytes = fs.readFileSync(gateStorePath)
   assert.equal(JSON.parse(gateBytes).gates.find(gate => (
     gate.gateId === originalGate.gateId
@@ -587,7 +587,7 @@ async function createAutoPermissionRestart(t, beforeApproval = null) {
   }, 'Auto native read-only settled peers')
   const gatedSlot = waiting.orchestration.slots.find(slot => slot.agentKind === 'hermes')
   const workspaceBytes = fs.readFileSync(options.storagePath)
-  const gateStorePath = path.join(directory, 'meldwork-private', 'human-gates.json')
+  const gateStorePath = path.join(directory, 'tyche-private', 'human-gates.json')
   const gateBytes = fs.readFileSync(gateStorePath)
 
   await adapters.shutdownAcpSessionRuntime()
@@ -717,7 +717,7 @@ test('Auto V4 synthesis native ACP permission restart enters existing recovery G
   assert.equal(originalAttempt.leaseAcquired, true)
 
   const workspaceBytes = fs.readFileSync(options.storagePath)
-  const gateStorePath = path.join(directory, 'meldwork-private', 'human-gates.json')
+  const gateStorePath = path.join(directory, 'tyche-private', 'human-gates.json')
   const gateBytes = fs.readFileSync(gateStorePath)
   await adapters.shutdownAcpSessionRuntime()
   await send.catch(() => {})

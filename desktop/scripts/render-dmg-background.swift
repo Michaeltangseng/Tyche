@@ -42,7 +42,7 @@ source.draw(
 let centered = NSMutableParagraphStyle()
 centered.alignment = .center
 
-let title = "INSTALL MELDWORK" as NSString
+let title = "INSTALL TYCHE" as NSString
 title.draw(
     in: NSRect(x: 0, y: 712, width: 1280, height: 52),
     withAttributes: [
@@ -53,7 +53,7 @@ title.draw(
     ]
 )
 
-let explanation = "DRAG MELDWORK INTO APPLICATIONS  /  YOUR WORKSPACE STAYS LOCAL" as NSString
+let explanation = "DRAG TYCHE INTO APPLICATIONS  /  YOUR WORKSPACE STAYS LOCAL" as NSString
 explanation.draw(
     in: NSRect(x: 0, y: 675, width: 1280, height: 30),
     withAttributes: [

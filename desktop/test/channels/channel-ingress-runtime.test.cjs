@@ -11,7 +11,7 @@ const { ChannelInboxStore } = require('../../src/channels/channel-inbox-store.cj
 const { ChannelIngressRuntime } = require('../../src/channels/channel-ingress-runtime.cjs')
 
 function fixture(t, Store = ChannelInboxStore) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-channel-runtime-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-channel-runtime-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   let now = 10_000
   const storagePath = path.join(directory, 'private', 'channel-inbox.json')

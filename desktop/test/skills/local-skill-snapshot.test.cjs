@@ -32,7 +32,7 @@ function makeWritable(filename) {
 }
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-skill-snapshot-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-skill-snapshot-'))
   t.after(() => {
     makeWritable(directory)
     fs.rmSync(directory, { recursive: true, force: true })

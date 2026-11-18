@@ -20,7 +20,7 @@ export function useOnboarding({ refreshAgents }) {
 
   const onboardingSlides = computed(() => [
     {
-      image: publicAsset('onboarding/discover-local-agents-meldwork.png'),
+      image: publicAsset('onboarding/discover-local-agents-tyche.png'),
       title: t('onboarding.discoverTitle'),
       body: t('onboarding.discoverBody'),
     },

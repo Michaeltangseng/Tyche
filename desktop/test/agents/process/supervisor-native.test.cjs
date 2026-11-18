@@ -6,7 +6,7 @@ const os = require('node:os')
 const path = require('node:path')
 
 const DESKTOP = path.join(__dirname, '..', '..', '..')
-const SUPERVISOR = path.join(DESKTOP, 'native', 'build', 'meldwork-supervisor')
+const SUPERVISOR = path.join(DESKTOP, 'native', 'build', 'tyche-supervisor')
 const BUILD_SCRIPT = path.join(DESKTOP, 'scripts', 'build-native.cjs')
 const AGENT = path.join(__dirname, '..', '..', 'fixtures', 'agents', 'supervisor-agent.cjs')
 
@@ -65,7 +65,7 @@ function fileSize(filename) {
 }
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-supervisor-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-supervisor-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   return directory
 }
@@ -134,7 +134,7 @@ function event(state, key) {
 function testEnvironment(out, overrides = {}) {
   return {
     PATH: '/usr/bin:/bin',
-    MELDWORK_CONTAINER: `supervisor-test-${process.pid}-${Date.now()}`,
+    TYCHE_CONTAINER: `supervisor-test-${process.pid}-${Date.now()}`,
     OUT: out,
     MODE: 'normal',
     LOOPS: '3',
@@ -258,7 +258,7 @@ test('passes the go environment to the Agent exactly', async (t) => {
   const out = fixture(t)
   const environment = {
     PATH: '/usr/bin:/bin',
-    MELDWORK_CONTAINER: `supervisor-env-${process.pid}-${Date.now()}`,
+    TYCHE_CONTAINER: `supervisor-env-${process.pid}-${Date.now()}`,
     CUSTOM: 'value',
     EMPTY: '',
   }
@@ -289,10 +289,10 @@ test('an execve failure is reported as an Agent exit code 127', async (t) => {
   const state = startSupervisor(t)
   const message = {
     go: {
-      command: '/nonexistent/meldwork-supervisor-agent',
+      command: '/nonexistent/tyche-supervisor-agent',
       args: [],
       cwd: out,
-      env: { PATH: '/usr/bin:/bin', MELDWORK_CONTAINER: 'exec-failure' },
+      env: { PATH: '/usr/bin:/bin', TYCHE_CONTAINER: 'exec-failure' },
     },
   }
   state.channel.write(`${JSON.stringify(message)}\n`)

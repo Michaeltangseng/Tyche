@@ -72,7 +72,7 @@ function scoringFor(evalCase, observation) {
 function deterministicReview(scoring) {
   return Object.freeze({
     reviewerKind: 'deterministic',
-    reviewerId: 'meldwork-eval-v1',
+    reviewerId: 'tyche-eval-v1',
     blinded: false,
     score: scoring.deterministicScore,
     evidenceRefs: scoring.checks.filter(check => check.passed).map(check => check.checkId),

@@ -10,7 +10,7 @@ const { createToolDispatcher } = require('../../src/room/tools/dispatcher.cjs')
 const { registerReadChatTool } = require('../../src/room/tools/read.cjs')
 
 test('read_chat returns a page and sees messages appended after a prior call', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
   const repo = createRoomRepository(roomDb)
@@ -33,7 +33,7 @@ test('read_chat returns a page and sees messages appended after a prior call', a
 })
 
 test('read_chat paginates with beforeSeq', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
   const repo = createRoomRepository(roomDb)
@@ -53,7 +53,7 @@ test('read_chat paginates with beforeSeq', async t => {
 })
 
 test('read_chat hides captain-only rows from non-captains', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
   const repo = createRoomRepository(roomDb)

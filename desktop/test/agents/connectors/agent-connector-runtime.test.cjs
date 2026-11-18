@@ -154,7 +154,7 @@ test('discovers and runs an approved external Connector with trusted durable pro
 
 test('Connector attachment limits match workspace submission', async t => {
   const { MAX_MESSAGE_ATTACHMENTS } = require('../../../src/workspace/local-workspace-message-records.cjs')
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-connector-files-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-connector-files-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const filename = path.join(directory, 'file.pdf')
   fs.writeFileSync(filename, '%PDF-1.7\n')
@@ -439,7 +439,7 @@ test('another input declaration cannot disguise an ordinary file', async () => {
 })
 
 test('an image-only Connector rejects non-image path inputs before running', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-connector-image-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-connector-image-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const image = path.join(directory, 'image.png')
   const disguised = path.join(directory, 'disguised.png')
@@ -467,7 +467,7 @@ test('an image-only Connector rejects non-image path inputs before running', asy
 })
 
 test('Connector file objects cannot disguise media or claim a different media type', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-connector-mime-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-connector-mime-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const image = path.join(directory, 'image.png')
   const pdf = path.join(directory, 'document.pdf')

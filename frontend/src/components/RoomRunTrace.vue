@@ -100,7 +100,7 @@ function statusLabel(status) {
 function toolLabel(name) {
   return String(name || 'tool')
     .replace(/^mcp__[^_]+__/, '')
-    .replace(/^meldwork_/, '')
+    .replace(/^tyche_/, '')
 }
 
 async function load() {

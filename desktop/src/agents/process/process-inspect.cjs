@@ -85,7 +85,7 @@ async function processProgramName(pid, options = {}) {
 async function readEnvironmentMarker(pid, marker, options = {}) {
   if (!validPid(pid) || typeof marker !== 'string' || !marker) return 'unreadable'
   const platform = options.platform || process.platform
-  const needle = `MELDWORK_CONTAINER=${marker}`
+  const needle = `TYCHE_CONTAINER=${marker}`
   if (platform === 'darwin') {
     const run = options.execFileFn || execFileAsync
     try {

@@ -2,8 +2,6 @@
 
 Tyche 是一个本地优先的桌面工作区，用来把你电脑上已经在用的 Agent 放进同一个房间。你选定一个本地目录，为对话配置角色，这些 Agent 就共享一条时间线：看见彼此的工作、自己建立任务，并留下可以验收的报告。房间、对话和运行记录都保存在这台电脑上。
 
-本项目基于开源项目 [meldwork](https://github.com/Ryder-Sun/Meldwork) 开发。
-
 <p align="center">
   <a href="architecture.md"><img src="https://img.shields.io/badge/架构-文档-8B5CF6?style=plastic" alt="项目架构文档" height="26"></a>
   &nbsp; <a href="LICENSE"><img src="https://img.shields.io/badge/许可-Apache--2.0-14B8A6?style=plastic" alt="Apache License 2.0" height="26"></a>

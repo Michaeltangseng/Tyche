@@ -109,7 +109,7 @@ function release(go) {
   released = true
   const env = { ...(go.env || {}) }
   delete env.ELECTRON_RUN_AS_NODE
-  if (!env.MELDWORK_CONTAINER) env.MELDWORK_CONTAINER = crypto.randomBytes(16).toString('hex')
+  if (!env.TYCHE_CONTAINER) env.TYCHE_CONTAINER = crypto.randomBytes(16).toString('hex')
   agentChild = spawn(go.command, go.args || [], {
     cwd: go.cwd,
     env,

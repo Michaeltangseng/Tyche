@@ -77,7 +77,7 @@ function resultInput(evalCase) {
     ],
     reviewerEvidence: [{
       reviewerKind: 'deterministic',
-      reviewerId: 'meldwork-eval-v1',
+      reviewerId: 'tyche-eval-v1',
       blinded: false,
       score: 100,
       evidenceRefs: ['artifact', 'evidence', 'facts', 'coverage'],

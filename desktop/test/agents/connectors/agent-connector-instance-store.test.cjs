@@ -19,7 +19,7 @@ function fakeSafeStorage(available = true) {
 }
 
 function fixture(t, safeStorage = fakeSafeStorage()) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-agent-connector-store-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-agent-connector-store-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const instanceStoragePath = path.join(directory, 'instances.json')
   const credentialStoragePath = path.join(directory, 'private', 'credentials.json')

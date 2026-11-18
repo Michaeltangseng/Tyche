@@ -10,7 +10,7 @@ const { invocation } = require('../../../src/agents/cli/cli-invocations.cjs')
 const { registerDesktopIpc } = require('../../../src/shell/main-ipc.cjs')
 
 function fixture(t, objectFormat = false) {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-workbuddy-runtime-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-workbuddy-runtime-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const models = [
     { id: 'text', name: 'Text model', apiKey: 'synthetic-native-key', url: 'https://model.example/v1', supportsToolCall: true },

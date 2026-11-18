@@ -30,10 +30,10 @@ if (!process.argv.includes('--run') || !['claude', 'codex'].includes(provider)) 
 }
 
 function userDataDirectory() {
-  if (process.env.MELDWORK_USER_DATA) return process.env.MELDWORK_USER_DATA
-  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', 'Meldwork')
-  if (process.platform === 'win32') return path.join(process.env.APPDATA || os.homedir(), 'Meldwork')
-  return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'meldwork')
+  if (process.env.TYCHE_USER_DATA) return process.env.TYCHE_USER_DATA
+  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', 'Tyche')
+  if (process.platform === 'win32') return path.join(process.env.APPDATA || os.homedir(), 'Tyche')
+  return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'tyche')
 }
 
 function parseMarker(text, marker) {
@@ -69,7 +69,7 @@ function parseMarker(text, marker) {
 async function main() {
   const userData = userDataDirectory()
   fs.mkdirSync(userData, { recursive: true, mode: 0o700 })
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), `meldwork-room-seam-${provider}-`))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), `tyche-room-seam-${provider}-`))
   const workdir = path.join(root, 'project')
   fs.mkdirSync(workdir, { recursive: true, mode: 0o700 })
   const resultPath = path.join(userData, 'room-seam-result.json')
@@ -131,12 +131,12 @@ async function main() {
     if (first.sessionRef) sessions.saveNativeRef({ sessionId: chatSession.sessionId, nativeSessionRef: first.sessionRef })
     const second = await invoke(
       'What codeword did I ask you to remember? Reply with the codeword, then on a new line output exactly one line with no code fence: '
-      + 'MELDWORK_CREATE_TASK {"title":"Seam task","description":"Confirm ALPHA","acceptance":"Report ALPHA"}',
+      + 'TYCHE_CREATE_TASK {"title":"Seam task","description":"Confirm ALPHA","acceptance":"Report ALPHA"}',
       first.sessionRef || '',
     )
     result.chatSessionReused = Boolean(first.sessionRef && second.sessionRef && first.sessionRef === second.sessionRef)
     result.chatRemembered = /\bALPHA\b/i.test(String(second.text || ''))
-    const createMarker = parseMarker(second.text, 'MELDWORK_CREATE_TASK')
+    const createMarker = parseMarker(second.text, 'TYCHE_CREATE_TASK')
     result.createMarker = createMarker
     if (!createMarker) throw new Error('SEAM_CREATE_MARKER_MISSING')
 
@@ -155,12 +155,12 @@ async function main() {
     const taskResult = await invoke(
       'You are the worker for a read-only task. Task: Seam task. Description: Confirm ALPHA. Acceptance: Report ALPHA. '
       + 'You have no write tools. Reply with exactly one line and no code fence: '
-      + 'MELDWORK_FINISH_TASK {"status":"ready","summary":"ALPHA"}',
+      + 'TYCHE_FINISH_TASK {"status":"ready","summary":"ALPHA"}',
       null,
     )
     if (taskResult.sessionRef) sessions.saveNativeRef({ sessionId: taskSession.sessionId, nativeSessionRef: taskResult.sessionRef })
     result.taskSessionSeparate = Boolean(taskResult.sessionRef && taskResult.sessionRef !== second.sessionRef)
-    const finishMarker = parseMarker(taskResult.text, 'MELDWORK_FINISH_TASK')
+    const finishMarker = parseMarker(taskResult.text, 'TYCHE_FINISH_TASK')
     result.finishMarker = finishMarker
     if (!finishMarker) throw new Error('SEAM_FINISH_MARKER_MISSING')
     sessions.setLaneLastSeq({ taskId: task.taskId, roleId: workerRoleId, seq: 1 })

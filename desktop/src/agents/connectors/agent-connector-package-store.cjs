@@ -102,7 +102,7 @@ const packageContentSchema = z.strictObject({
     return
   }
   if (manifest.invocation.recipeId !== value.provider.id
-      || manifest.upstream.id !== 'meldwork-sdk'
+      || manifest.upstream.id !== 'tyche-sdk'
       || !isUpstreamVersionCompatible(manifest, AGENT_CONNECTOR_SDK_VERSION)) {
     context.addIssue({ code: 'custom', message: 'provider and manifest mismatch' })
     return

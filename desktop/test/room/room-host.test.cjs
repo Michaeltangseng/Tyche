@@ -19,7 +19,7 @@ function fakeAdapter() {
 }
 
 function createHost(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-host-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-host-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const workspace = path.join(root, 'workspace')
   fs.mkdirSync(workspace, { recursive: true })
@@ -33,7 +33,7 @@ function createHost(t) {
 }
 
 test('the production host assembles the OAR adapter by default', async (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-host-oar-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-host-oar-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const host = createRoomHost({
     privateRoot: path.join(root, 'private'),
@@ -42,7 +42,7 @@ test('the production host assembles the OAR adapter by default', async (t) => {
   t.after(() => host.close())
   assert.equal(typeof host.service.adapter.start, 'function')
   assert.equal(typeof host.service.adapter.startTaskRun, 'function')
-  assert.equal(fs.existsSync(path.join(__dirname, '..', '..', 'src', 'room', 'meldwork-runtime-wrapper.sh')), true)
+  assert.equal(fs.existsSync(path.join(__dirname, '..', '..', 'src', 'room', 'tyche-runtime-wrapper.sh')), true)
   await host.start()
 })
 
@@ -305,7 +305,7 @@ test('a room with running work cannot be deleted', (t) => {
 })
 
 test('live runtime events are sanitized before reaching the host observer', async (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-host-events-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-host-events-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const workspace = path.join(root, 'workspace')
   fs.mkdirSync(workspace, { recursive: true })

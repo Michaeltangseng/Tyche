@@ -9,11 +9,11 @@ const { createHttpOutboundPayload, createSshOutboundPayload } = require('../../c
 const { atomicWritePrivateFile } = require('../../security/private-file.cjs')
 const { createAgentConnectorManifest } = require('../connectors/agent-connector-manifest.cjs')
 
-const BRIDGE_PROTOCOL = 'meldwork-agent-bridge'
+const BRIDGE_PROTOCOL = 'tyche-agent-bridge'
 const BRIDGE_VERSION = 1
 const BRIDGE_RECIPE_ID = 'external.cloud-agent-bridge'
 const SSH_RECIPE_ID = 'external.cloud-agent-ssh'
-const BRIDGE_UPSTREAM_ID = 'meldwork-cloud'
+const BRIDGE_UPSTREAM_ID = 'tyche-cloud'
 const BRIDGE_UPSTREAM_VERSION = '1.0.0'
 const BRIDGE_ID = /^cloud-bridge-[a-f0-9]{24}$/
 const PUBLIC_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/
@@ -28,10 +28,10 @@ const { AGENT_PROFILES } = require('../cli/cli-discovery.cjs')
 const SSH_AGENT_DEFINITIONS = Object.entries(AGENT_PROFILES).map(([id, profile]) => ({ id, ...profile }))
 const SSH_DISCOVERY_COMMAND = SSH_AGENT_DEFINITIONS.flatMap(definition =>
   (definition.commands || [definition.id]).map(command =>
-    `if command -v ${command} >/dev/null 2>&1; then meldwork_version="$(${command} --version 2>/dev/null | head -n 1)"; if [ -n "$meldwork_version" ]; then printf '__MELDWORK_CLI__${definition.id}\\t%s\\n' "$meldwork_version"; fi; fi`),
+    `if command -v ${command} >/dev/null 2>&1; then tyche_version="$(${command} --version 2>/dev/null | head -n 1)"; if [ -n "$tyche_version" ]; then printf '__TYCHE_CLI__${definition.id}\\t%s\\n' "$tyche_version"; fi; fi`),
 ).join('; ')
 const SSH_CODEX_COMMAND = 'exec codex exec --json --skip-git-repo-check --sandbox read-only -'
-const SSH_TUNNEL_READY = 'MELDWORK_AGENT_BRIDGE_READY'
+const SSH_TUNNEL_READY = 'TYCHE_AGENT_BRIDGE_READY'
 const SSH_BRIDGE_SCRIPT = fs.readFileSync(require.resolve('./cloud-agent-bridge-server.cjs'), 'utf8')
 
 function loginShellCommand(command) {
@@ -205,7 +205,7 @@ function manifestFor(record, agent) {
     },
     outboundDestinations: ssh || tunnel ? [] : [record.address],
     credentials: { mode: 'none', slots: [] },
-    license: 'LicenseRef-Meldwork-NC',
+    license: 'LicenseRef-Tyche-NC',
   })
 }
 
@@ -338,7 +338,7 @@ class CloudAgentBridgeStore {
 
   async probe(address) {
     const normalizedAddress = normalizeAddress(address)
-    return normalizeProbe(await this.request('/.well-known/meldwork-agent-bridge', { address: normalizedAddress }))
+    return normalizeProbe(await this.request('/.well-known/tyche-agent-bridge', { address: normalizedAddress }))
   }
 
   async sshCommand(address, command, input = '', signal) {
@@ -410,7 +410,7 @@ class CloudAgentBridgeStore {
       '-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', '-o', 'StrictHostKeyChecking=yes',
       '-L', `127.0.0.1:${localPort}:127.0.0.1:${remotePort}`,
       ...(parsed.port === 22 ? [] : ['-p', String(parsed.port)]),
-      parsed.host, loginShellCommand(`MELDWORK_AGENT_BRIDGE_PORT=${remotePort} exec node -`),
+      parsed.host, loginShellCommand(`TYCHE_AGENT_BRIDGE_PORT=${remotePort} exec node -`),
     ]
     const child = this.spawn('ssh', args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
     child.stderr.resume()
@@ -470,7 +470,7 @@ class CloudAgentBridgeStore {
     const output = String(result.stdout || '')
     const found = new Map()
     for (const line of output.split(/\r?\n/)) {
-      const match = line.match(/^__MELDWORK_CLI__([a-z]+)\t.*?\b(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\b/)
+      const match = line.match(/^__TYCHE_CLI__([a-z]+)\t.*?\b(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\b/)
       if (match && !found.has(match[1])) found.set(match[1], match[2])
     }
     // Older SSH integrations returned only Codex's unprefixed version.
@@ -557,7 +557,7 @@ class CloudAgentBridgeStore {
     const bridgeId = existing?.bridgeId || bridgeIdFor(`ssh-tunnel:${sshAddress.address}`)
     const endpoint = await this.ensureSshTunnel({ bridgeId, address: sshAddress.address })
     try {
-      const probe = normalizeProbe(await this.request('/.well-known/meldwork-agent-bridge', { address: endpoint }))
+      const probe = normalizeProbe(await this.request('/.well-known/tyche-agent-bridge', { address: endpoint }))
       const record = this.normalizeRecord({
         bridgeId,
         transport: 'ssh-tunnel',
@@ -592,14 +592,14 @@ class CloudAgentBridgeStore {
         let probe
         if (current.transport === 'ssh-tunnel') {
           current.endpoint = await this.ensureSshTunnel(current)
-          probe = normalizeProbe(await this.request('/.well-known/meldwork-agent-bridge', {
+          probe = normalizeProbe(await this.request('/.well-known/tyche-agent-bridge', {
             address: current.endpoint,
           }))
           current.available = true
         } else if (current.transport === 'ssh') {
           try {
             current.endpoint = await this.ensureSshTunnel(current)
-            probe = normalizeProbe(await this.request('/.well-known/meldwork-agent-bridge', {
+            probe = normalizeProbe(await this.request('/.well-known/tyche-agent-bridge', {
               address: current.endpoint,
             }))
             current.transport = 'ssh-tunnel'

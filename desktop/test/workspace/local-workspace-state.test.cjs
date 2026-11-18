@@ -25,7 +25,7 @@ test('snapshot exposes only the newest bound run outcome without private ledger 
 })
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-workspace-state-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-workspace-state-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   return path.join(directory, 'workspace.json')
 }
@@ -111,7 +111,7 @@ test('v3 workspace files are written back as v4 with a one-time v3 backup', (t) 
 
   saveWorkspaceState(storagePath, loaded.state)
   assert.equal(JSON.parse(fs.readFileSync(storagePath, 'utf8')).version, 4)
-  const backupPath = path.join(path.dirname(storagePath), 'meldwork-workspace.v3.backup.json')
+  const backupPath = path.join(path.dirname(storagePath), 'tyche-workspace.v3.backup.json')
   assert.equal(fs.readFileSync(backupPath, 'utf8'), original)
 
   fs.writeFileSync(backupPath, 'keep-me')
@@ -126,7 +126,7 @@ test('a new workspace is saved as v4 without creating a v3 backup', (t) => {
   })
   assert.equal(JSON.parse(fs.readFileSync(storagePath, 'utf8')).version, 4)
   assert.equal(fs.existsSync(
-    path.join(path.dirname(storagePath), 'meldwork-workspace.v3.backup.json'),
+    path.join(path.dirname(storagePath), 'tyche-workspace.v3.backup.json'),
   ), false)
 })
 
@@ -136,7 +136,7 @@ test('a new workspace is saved as v4 without creating a v3 backup', (t) => {
 
 test('a real v3 workspace fixture upgrades without losing groups, messages, or sessions', (t) => {
   const storagePath = fixture(t)
-  const fixturePath = path.join(__dirname, '..', 'fixtures', 'meldwork-workspace-v3.json')
+  const fixturePath = path.join(__dirname, '..', 'fixtures', 'tyche-workspace-v3.json')
   const original = fs.readFileSync(fixturePath, 'utf8')
   fs.writeFileSync(storagePath, original)
 
@@ -165,6 +165,6 @@ test('a real v3 workspace fixture upgrades without losing groups, messages, or s
   assert.equal(saved.groups.length, 4)
   assert.equal(saved.messages.length, 6)
   assert.deepEqual(saved.sessions, loaded.state.sessions)
-  const backupPath = path.join(path.dirname(storagePath), 'meldwork-workspace.v3.backup.json')
+  const backupPath = path.join(path.dirname(storagePath), 'tyche-workspace.v3.backup.json')
   assert.equal(fs.readFileSync(backupPath, 'utf8'), original)
 })

@@ -52,7 +52,7 @@ test('stopping unlimited discussion persists partial proposal output before remo
 })
 
 function decisionReply(text, status = 'completed', extra = {}) {
-  return `${text}\n\n[[MELDWORK_COLLABORATION:${JSON.stringify({
+  return `${text}\n\n[[TYCHE_COLLABORATION:${JSON.stringify({
     summary: 'Task progress judged by the delivery owner.',
     taskDecision: {
       status, reason: text,
@@ -518,7 +518,7 @@ test('Natural discussion accepts a fenced, loosely written owner receipt instead
     ...options, runLedger: ledger, naturalAgentResponses: true,
     runAgent: async (_agent, prompt) => ({ outcome: 'completed', text: naturalPhase(prompt) === 'proposal'
       ? 'Initial answer.'
-      : 'The final answer is 42.\n\n```\n[[MELDWORK_COLLABORATION:{"summary":"Answered","taskDecision":{"status":"Done","reason":"Answered the question.","deliverables":"The answer in this message","extra":true},}]]\n```' }),
+      : 'The final answer is 42.\n\n```\n[[TYCHE_COLLABORATION:{"summary":"Answered","taskDecision":{"status":"Done","reason":"Answered the question.","deliverables":"The answer in this message","extra":true},}]]\n```' }),
   })
   await workspace.refreshAgents()
   const group = workspace.createGroup({ name: 'Loose receipt', agentKinds: ['codex'], workdir: directory, allowWrite: false })
@@ -526,7 +526,7 @@ test('Natural discussion accepts a fenced, loosely written owner receipt instead
   assert.equal(ledger.get(controller.runId).status, 'completed')
   const reply = workspace.snapshot().messages.filter(message => message.role === 'agent').at(-1)
   assert.match(reply.content, /The final answer is 42\./)
-  assert.doesNotMatch(reply.content, /MELDWORK_COLLABORATION/)
+  assert.doesNotMatch(reply.content, /TYCHE_COLLABORATION/)
   assert.equal(ledger.get(controller.runId).agentRuns.at(-1).context.taskDecision.status, 'completed')
 })
 
@@ -538,7 +538,7 @@ test('Natural discussion never completes a failure that claims completion withou
     ...options, runLedger: ledger, naturalAgentResponses: true,
     runAgent: async (_agent, prompt) => ({ outcome: 'completed', text: naturalPhase(prompt) === 'proposal'
       ? 'I cannot access the required files.'
-      : 'I cannot access the required files.\n[[MELDWORK_COLLABORATION:{"summary":"No access","taskDecision":{"status":"completed","reason":"No access"}}]]' }),
+      : 'I cannot access the required files.\n[[TYCHE_COLLABORATION:{"summary":"No access","taskDecision":{"status":"completed","reason":"No access"}}]]' }),
   })
   await workspace.refreshAgents()
   const group = workspace.createGroup({ name: 'Missing deliverable', agentKinds: ['codex'], workdir: directory, allowWrite: false })
@@ -663,7 +663,7 @@ for (const discussionStyle of ['agent-led', 'sequential']) {
       ...options, runLedger: ledger, naturalAgentResponses: true,
       runAgent: async (_agent, prompt) => ({ outcome: 'completed', text: naturalPhase(prompt) === 'proposal'
         ? 'The required file is unavailable.'
-        : 'The required file is unavailable.\n[[MELDWORK_COLLABORATION:{"summary":"No access","taskDecision":{"status":"completed","reason":"Done","deliverables":["answer"],"blockers":["No permission to access the file"]}}]]' }),
+        : 'The required file is unavailable.\n[[TYCHE_COLLABORATION:{"summary":"No access","taskDecision":{"status":"completed","reason":"Done","deliverables":["answer"],"blockers":["No permission to access the file"]}}]]' }),
     })
     await workspace.refreshAgents()
     const group = workspace.createGroup({ name: 'Contradictory receipt', agentKinds: ['codex'], workdir: directory, allowWrite: false })
@@ -696,7 +696,7 @@ for (const discussionStyle of ['agent-led', 'sequential']) {
       ...options, runLedger: ledger, naturalAgentResponses: true,
       runAgent: async (_agent, prompt) => ({ outcome: 'completed', text: naturalPhase(prompt) === 'proposal'
         ? 'I checked the workspace.'
-        : 'I checked the workspace.\n[[MELDWORK_COLLABORATION:{"summary":"Checked","taskDecision":{"status":"completed","reason":"I cannot complete the task.","deliverables":["answer"]}}]]' }),
+        : 'I checked the workspace.\n[[TYCHE_COLLABORATION:{"summary":"Checked","taskDecision":{"status":"completed","reason":"I cannot complete the task.","deliverables":["answer"]}}]]' }),
     })
     await workspace.refreshAgents()
     const group = workspace.createGroup({ name: 'Failure reason', agentKinds: ['codex'], workdir: directory, allowWrite: false })

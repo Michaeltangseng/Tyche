@@ -11,7 +11,7 @@ const { createTaskQueue } = require('../../src/room/task-queue.cjs')
 const { recoverOnStart, reconcileProcess, activateLane } = require('../../src/room/recovery.cjs')
 
 test('restart keeps queued, interrupts working, marks runs unknown, and never replays unknown effects', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
   const repo = createRoomRepository(roomDb)

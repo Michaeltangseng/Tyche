@@ -26,7 +26,7 @@ test('keeps the ledger facade limited to RunLedger', () => {
 })
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-run-ledger-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-run-ledger-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   return {
     directory,

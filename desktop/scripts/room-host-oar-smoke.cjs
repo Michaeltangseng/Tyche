@@ -38,7 +38,7 @@ async function waitFor(check, timeoutMs, label) {
 }
 
 async function main() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), `meldwork-room-host-${provider}-`))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), `tyche-room-host-${provider}-`))
   const workspace = path.join(root, 'workspace')
   fs.mkdirSync(workspace, { recursive: true })
   const privateRoot = path.join(root, 'private')

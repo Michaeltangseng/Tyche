@@ -6,7 +6,7 @@ const path = require('node:path')
 const { nativeAuthIdentityFiles, nativeConfigEnvironment, nativeIdentityDirectory, nativeProjectConfigPaths, validateNativeConfigDirectory } = require('../../src/agents/native-config-directory.cjs')
 
 test('Gemini native configuration respects Windows directory case rules', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-gemini-case-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-gemini-case-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const directory = path.join(home, '.GEMINI')
   fs.mkdirSync(directory)
@@ -22,7 +22,7 @@ test('Gemini native configuration respects Windows directory case rules', t => {
 })
 
 test('OpenClaw selects its native state directory without changing other Agents', t => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-config-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-config-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   assert.throws(() => validateNativeConfigDirectory('openclaw', root), { message: 'LOCAL_NATIVE_CONFIG_INVALID' })
   fs.mkdirSync(path.join(root, 'agents'))
@@ -34,7 +34,7 @@ test('OpenClaw selects its native state directory without changing other Agents'
 })
 
 test('OpenClaw native root follows home and state overrides and legacy fallback', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-home-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-home-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const customHome = path.join(home, 'other-home')
   fs.mkdirSync(customHome)
@@ -49,7 +49,7 @@ test('OpenClaw native root follows home and state overrides and legacy fallback'
 })
 
 test('OpenCodeReview selects its native configuration directory and parent home', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-ocr-config-home-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-ocr-config-home-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const directory = path.join(home, '.opencodereview')
   fs.mkdirSync(directory)
@@ -81,7 +81,7 @@ test('OpenCodeReview selects its native configuration directory and parent home'
 test('OpenCodeReview verification changes when native credentials or configuration change', t => {
   const { NATIVE_AUTH_IDENTITY_FILES } = require('../../src/agents/native-config-directory.cjs')
   const { agentVerificationIdentity } = require('../../src/workspace/agent-verification-identity.cjs')
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-ocr-identity-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-ocr-identity-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const directory = path.join(home, '.opencodereview')
   fs.mkdirSync(directory)
@@ -105,7 +105,7 @@ test('OpenCodeReview verification changes when native credentials or configurati
 })
 
 test('Zcode selects only a native .zcode/cli directory and derives its process home', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-zcode-config-home-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-zcode-config-home-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const selected = path.join(home, '.zcode', 'cli')
   fs.mkdirSync(selected, { recursive: true })
@@ -132,7 +132,7 @@ test('Zcode selects only a native .zcode/cli directory and derives its process h
 })
 
 test('Qwen selects a native .qwen directory and derives its process home', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-qwen-config-home-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-qwen-config-home-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const selected = path.join(home, '.qwen')
   fs.mkdirSync(selected)
@@ -168,7 +168,7 @@ test('Zcode authentication identity follows the target Windows profile', () => {
 })
 
 test('Zcode CA bundle changes invalidate verification and relative paths are tracked', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-zcode-ca-identity-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-zcode-ca-identity-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const filename = path.join(home, 'ca.pem')
   fs.writeFileSync(filename, 'first certificate')
@@ -190,7 +190,7 @@ const { nativeCredentialState } = require('../../src/agents/local-agent-readines
 const { loadWorkspaceState, saveWorkspaceState } = require('../../src/workspace/local-workspace-state.cjs')
 
 test('validates a selected native directory and scopes it to the owning Agent', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-native-config-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-native-config-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   assert.throws(() => validateNativeConfigDirectory('hermes', directory), { message: 'LOCAL_NATIVE_CONFIG_INVALID' })
   fs.writeFileSync(path.join(directory, 'config.yaml'), 'model: native\n')
@@ -220,7 +220,7 @@ test('native identity directories follow shell overrides and known defaults', ()
 test('verification tracks the native files used by credential readiness', t => {
   const { NATIVE_CONFIG_IDENTITY_DIRECTORY } = require('../../src/agents/native-config-directory.cjs')
   const { agentVerificationIdentity } = require('../../src/workspace/agent-verification-identity.cjs')
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-native-identity-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-native-identity-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   for (const [kind, files] of Object.entries({
     hermes: ['config.json'], codex: ['config.json', '.env'],
@@ -239,7 +239,7 @@ test('verification tracks the native files used by credential readiness', t => {
 })
 
 test('MiMo validates its selected native configuration directory', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-mimo-config-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-mimo-config-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   assert.throws(() => validateNativeConfigDirectory('mimo', directory), { message: 'LOCAL_NATIVE_CONFIG_INVALID' })
   fs.writeFileSync(path.join(directory, 'mimocode.jsonc'), '{"model":"custom/model"}')
@@ -321,7 +321,7 @@ test('project config identities retain only relative CLI paths', () => {
 test('Hermes project verification follows a relative Google Cloud credentials directory', t => {
   const { NATIVE_PROJECT_CONFIG_PATHS } = require('../../src/agents/native-config-directory.cjs')
   const { projectVerificationIdentity } = require('../../src/workspace/agent-verification-identity.cjs')
-  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-gcloud-project-'))
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-gcloud-project-'))
   t.after(() => fs.rmSync(workdir, { recursive: true, force: true }))
   const filename = path.join(workdir, 'gcloud', 'application_default_credentials.json')
   fs.mkdirSync(path.dirname(filename))
@@ -338,7 +338,7 @@ test('Hermes project verification follows a relative Google Cloud credentials di
 test('Google Cloud ADC directories participate in Gemini, Pi and OpenCode verification', t => {
   const { NATIVE_AUTH_IDENTITY_FILES, NATIVE_PROJECT_CONFIG_PATHS } = require('../../src/agents/native-config-directory.cjs')
   const { agentVerificationIdentity, projectVerificationIdentity } = require('../../src/workspace/agent-verification-identity.cjs')
-  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-gcloud-identities-'))
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-gcloud-identities-'))
   t.after(() => fs.rmSync(workdir, { recursive: true, force: true }))
   const root = path.join(workdir, 'gcloud')
   const filename = path.join(root, 'application_default_credentials.json')
@@ -363,7 +363,7 @@ test('Google Cloud ADC directories participate in Gemini, Pi and OpenCode verifi
 test('Hermes verification tracks native cloud credential files', t => {
   const { NATIVE_AUTH_IDENTITY_FILES } = require('../../src/agents/native-config-directory.cjs')
   const { agentVerificationIdentity } = require('../../src/workspace/agent-verification-identity.cjs')
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-cloud-identity-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-cloud-identity-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const filename = path.join(home, 'vertex.json')
   fs.writeFileSync(filename, 'first')
@@ -392,7 +392,7 @@ test('Pi and Claude identity tracks explicitly selected absolute cloud credentia
 })
 
 test('default AWS credential updates change Pi and Claude verification identity', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-aws-identity-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-aws-identity-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const filename = path.join(home, '.aws', 'credentials')
   fs.mkdirSync(path.dirname(filename), { recursive: true })
@@ -412,7 +412,7 @@ test('default AWS credential updates change Pi and Claude verification identity'
 })
 
 test('AWS CA bundle changes invalidate Bedrock Agent verification and relative paths are tracked', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-aws-ca-identity-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-aws-ca-identity-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const filename = path.join(home, 'ca.pem')
   fs.writeFileSync(filename, 'first certificate')
@@ -437,7 +437,7 @@ test('AWS CA bundle changes invalidate Bedrock Agent verification and relative p
 })
 
 test('native TLS bundle changes invalidate Agent and workspace verification', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-native-ca-identity-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-native-ca-identity-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const absolute = path.join(home, 'absolute.pem')
   const relative = path.join(home, 'relative.pem')
@@ -458,7 +458,7 @@ test('native TLS bundle changes invalidate Agent and workspace verification', t 
 })
 
 test('MiMo recent model changes invalidate verification identity', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-mimo-model-identity-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-mimo-model-identity-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const filename = path.join(home, '.local', 'state', 'mimocode', 'model.json')
   fs.mkdirSync(path.dirname(filename), { recursive: true })
@@ -473,7 +473,7 @@ test('MiMo recent model changes invalidate verification identity', t => {
 })
 
 test('OpenCode recent models and provider metadata changes invalidate verification identity', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-opencode-model-identity-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-opencode-model-identity-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const filename = path.join(home, '.local', 'state', 'opencode', 'model.json')
   fs.mkdirSync(path.dirname(filename), { recursive: true })
@@ -526,7 +526,7 @@ test('Qwen authentication identity tracks its native user and system settings', 
 test('Qwen verification changes when native folder trust changes', t => {
   const { NATIVE_AUTH_IDENTITY_FILES } = require('../../src/agents/native-config-directory.cjs')
   const { agentVerificationIdentity } = require('../../src/workspace/agent-verification-identity.cjs')
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-qwen-trust-identity-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-qwen-trust-identity-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   fs.mkdirSync(path.join(home, '.qwen'))
   const filename = path.join(home, '.qwen', 'trustedFolders.json')
@@ -540,7 +540,7 @@ test('Qwen verification changes when native folder trust changes', t => {
 
 test('Qwen and Gemini project verification track environment files above the Git root', t => {
   const { projectVerificationIdentity } = require('../../src/workspace/agent-verification-identity.cjs')
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-qwen-project-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-qwen-project-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const repository = path.join(root, 'repository')
   const workdir = path.join(repository, 'nested')
@@ -559,7 +559,7 @@ test('Qwen and Gemini project verification track environment files above the Git
 
 test('DeepSeek verification tracks its native and working-directory dotenv files', t => {
   const { agentVerificationIdentity, projectVerificationIdentity } = require('../../src/workspace/agent-verification-identity.cjs')
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-dsh-verification-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-dsh-verification-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const native = path.join(root, 'native')
   const workdir = path.join(root, 'work')
@@ -581,7 +581,7 @@ test('DeepSeek verification tracks its native and working-directory dotenv files
 test('Qwen verification identity changes when its native environment file changes', t => {
   const { NATIVE_AUTH_IDENTITY_FILES } = require('../../src/agents/native-config-directory.cjs')
   const { agentVerificationIdentity } = require('../../src/workspace/agent-verification-identity.cjs')
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-qwen-identity-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-qwen-identity-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const filename = path.join(home, '.qwen', '.env')
   fs.mkdirSync(path.dirname(filename), { recursive: true })
@@ -594,7 +594,7 @@ test('Qwen verification identity changes when its native environment file change
 })
 
 test('a selected native directory survives workspace restart', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-native-config-restart-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-native-config-restart-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   fs.writeFileSync(path.join(directory, 'config.yaml'), 'model: native\n')
   const selected = validateNativeConfigDirectory('hermes', directory)
@@ -607,7 +607,7 @@ test('a selected native directory survives workspace restart', t => {
 })
 
 test('Hermes accepts a native directory configured through .env alone', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-env-config-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-env-config-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   fs.writeFileSync(path.join(directory, '.env'), 'OPENAI_API_KEY=synthetic-secret\n')
   const selected = validateNativeConfigDirectory('hermes', directory)
@@ -619,7 +619,7 @@ test('Hermes accepts a native directory configured through .env alone', t => {
 })
 
 test('DeepSeek Harness accepts its native profiles directory and scopes DSH_HOME', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-dsh-config-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-dsh-config-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   assert.throws(() => validateNativeConfigDirectory('deepseek', directory), { message: 'LOCAL_NATIVE_CONFIG_INVALID' })
   fs.mkdirSync(path.join(directory, 'profiles'))
@@ -630,7 +630,7 @@ test('DeepSeek Harness accepts its native profiles directory and scopes DSH_HOME
 })
 
 test('Kimi accepts a credentials-only native directory', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-kimi-config-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-kimi-config-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   assert.throws(() => validateNativeConfigDirectory('kimi', directory), { message: 'LOCAL_NATIVE_CONFIG_INVALID' })
   fs.mkdirSync(path.join(directory, 'credentials'))
@@ -639,7 +639,7 @@ test('Kimi accepts a credentials-only native directory', t => {
 })
 
 test('Gemini selected .gemini directory maps to its native home and preserves symlinks', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-gemini-config-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-gemini-config-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const actual = path.join(directory, 'actual'); fs.mkdirSync(actual)
   fs.writeFileSync(path.join(actual, 'settings.json'), '{}')
@@ -667,7 +667,7 @@ for (const [kind, key, file] of [
   ['opencode', 'OPENCODE_CONFIG_DIR', 'opencode.jsonc'],
 ]) {
   test(`${kind} uses its selected native configuration directory`, t => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), `meldwork-${kind}-config-`))
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), `tyche-${kind}-config-`))
     t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
     fs.writeFileSync(path.join(directory, file), '')
     const selected = validateNativeConfigDirectory(kind, directory)

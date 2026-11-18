@@ -8,7 +8,7 @@ const { RunScheduler } = require('../../src/runs/run-scheduler.cjs')
 const { makeClaim } = require('../../src/runs/path-claims.cjs')
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-scheduler-contract-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-scheduler-contract-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   return directory
 }

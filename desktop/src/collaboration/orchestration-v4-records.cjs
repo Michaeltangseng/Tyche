@@ -2622,7 +2622,7 @@ function buildCollaborationPackage(receipts, options = {}) {
 
 function collaborationPackageIndexText(targetKinds) {
   const kinds = uniqueIds(targetKinds || [], MAX_V4_SLOTS)
-  return ['MELDWORK_V4_COLLABORATION_PACKAGE_V1', ...kinds.map(kind => `[index] ${kind}`)]
+  return ['TYCHE_V4_COLLABORATION_PACKAGE_V1', ...kinds.map(kind => `[index] ${kind}`)]
     .join('\n')
 }
 
@@ -2639,8 +2639,8 @@ function parseResultCollaboration(result, options = {}) {
 function parseCollaborationText(input, options = {}) {
   const text = typeof input === 'string' ? input : ''
   if (!text) return { text: '', collaboration: null }
-  const marker = text.match(/\[\[MELDWORK_COLLABORATION(?:_JSON)?:(\{[\s\S]*?\})\]\]/iu)
-    || text.match(/\[\[MELDWORK_COLLABORATION(?:_JSON)?\]\]([\s\S]*?)\[\[\/MELDWORK_COLLABORATION(?:_JSON)?\]\]/iu)
+  const marker = text.match(/\[\[TYCHE_COLLABORATION(?:_JSON)?:(\{[\s\S]*?\})\]\]/iu)
+    || text.match(/\[\[TYCHE_COLLABORATION(?:_JSON)?\]\]([\s\S]*?)\[\[\/TYCHE_COLLABORATION(?:_JSON)?\]\]/iu)
   if (!marker) return { text, collaboration: null }
   let value
   try {

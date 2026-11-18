@@ -3,8 +3,8 @@ const { V4_RECEIPT_MARKER_PREFIX } = require('./collaboration-receipt.cjs')
 // Control markers an Agent appends to its answer. They steer the harness and
 // must never reach the user's screen, even while the answer is still streaming.
 const CONSENSUS_MARKERS = Object.freeze([
-  '[[MELDWORK_CONSENSUS:agree]]',
-  '[[MELDWORK_CONSENSUS:continue]]',
+  '[[TYCHE_CONSENSUS:agree]]',
+  '[[TYCHE_CONSENSUS:continue]]',
 ])
 
 function escapeRegExp(value) {

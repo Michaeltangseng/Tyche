@@ -2,7 +2,7 @@ const crypto = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
 
-const OUTPUT_DIRECTORY = '.meldwork-output'
+const OUTPUT_DIRECTORY = '.tyche-output'
 const MAX_MEDIA_BYTES = 128 * 1024 * 1024
 const POLL_INTERVAL_MS = 10_000
 const PROVIDER_ATTEMPTS = 3

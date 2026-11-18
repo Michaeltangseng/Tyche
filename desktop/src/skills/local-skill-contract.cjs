@@ -14,7 +14,7 @@ const {
 const { canonicalJson } = require('../collaboration/outcome-records.cjs')
 const { redactSecrets } = require('../security/secret-redaction.cjs')
 
-const LOCAL_SKILL_MANIFEST_FILENAME = 'meldwork.skill.json'
+const LOCAL_SKILL_MANIFEST_FILENAME = 'tyche.skill.json'
 const LOCAL_SKILL_MANIFEST_VERSION = 1
 const LOCAL_SKILL_PROVENANCE_VERSION = 1
 const MAX_MANIFEST_BYTES = 256 * 1024
@@ -79,7 +79,7 @@ const credentialSchema = z.strictObject({
 })
 const manifestSchema = z.strictObject({
   schemaVersion: z.literal(LOCAL_SKILL_MANIFEST_VERSION),
-  recordType: z.literal('meldwork-skill-manifest'),
+  recordType: z.literal('tyche-skill-manifest'),
   identity: z.strictObject({
     id: safeText(240),
     version: semverSchema,

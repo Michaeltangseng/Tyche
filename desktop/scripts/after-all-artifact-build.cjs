@@ -56,7 +56,7 @@ function parseAttachedVolume(plist, workDir, run = execFileSync) {
 function repointDmgBackground(dmgPath, options = {}) {
   const run = options.execFile || execFileSync
   const pythonPath = options.pythonPath || findBundledPython(options.cacheRoot)
-  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-dmg-'))
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-dmg-'))
   const readWriteDmg = path.join(workDir, 'writable.dmg')
   const repackedDmg = `${dmgPath}.repacked-${process.pid}.dmg`
   let device
@@ -72,7 +72,7 @@ function repointDmgBackground(dmgPath, options = {}) {
 
     const backgroundPath = path.join(
       attached.mountPath,
-      'Meldwork.app',
+      'Tyche.app',
       'Contents',
       'Resources',
       'dmg-background.tiff',

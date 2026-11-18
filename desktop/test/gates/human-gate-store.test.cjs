@@ -16,7 +16,7 @@ const {
 const { HumanGateStore } = require('../../src/gates/human-gate-store.cjs')
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-human-gates-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-human-gates-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const contentBlobStore = new ContentBlobStore({ rootPath: path.join(directory, 'blobs') })
   const storagePath = path.join(directory, 'gates.json')
@@ -136,14 +136,14 @@ test('accepts one idempotent decision and rejects conflicting decisions', (t) =>
   }))
   const systemRejected = decideHumanGateRecord(withoutReject, {
     status: 'rejected',
-    optionId: 'meldwork-system-reject',
-    actorId: 'meldwork-system',
+    optionId: 'tyche-system-reject',
+    actorId: 'tyche-system',
     decidedAt: '2026-08-04T00:01:00.000Z',
   })
   assert.equal(systemRejected.status, 'rejected')
   assert.throws(() => decideHumanGateRecord(withoutReject, {
     status: 'rejected',
-    optionId: 'meldwork-system-reject',
+    optionId: 'tyche-system-reject',
     actorId: 'local-user',
     decidedAt: '2026-08-04T00:01:00.000Z',
   }), { message: 'HUMAN_GATE_DECISION_INVALID' })

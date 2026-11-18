@@ -2,8 +2,6 @@
 
 Tyche is a local-first desktop workspace for the Agent tools already installed on your machine. You open a room on a local directory, put roles into a chat, and let those Agents share one timeline: they see each other's work, take on tasks, and leave reports you can accept. The app stores the room, the conversation, and the run history on this computer.
 
-Tyche is developed from the open-source project [meldwork](https://github.com/Ryder-Sun/Meldwork).
-
 <p align="center">
   <a href="architecture.md"><img src="https://img.shields.io/badge/architecture-docs-8B5CF6?style=plastic" alt="Architecture documentation" height="26"></a>
   &nbsp; <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-14B8A6?style=plastic" alt="Apache License 2.0" height="26"></a>

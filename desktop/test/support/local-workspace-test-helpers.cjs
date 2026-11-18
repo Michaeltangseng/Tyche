@@ -3,7 +3,7 @@ const os = require('node:os')
 const path = require('node:path')
 
 function fixture() {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-workspace-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-workspace-'))
   let id = 0
   let runId = 0
   const calls = []

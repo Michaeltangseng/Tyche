@@ -697,10 +697,10 @@ test('task graph counts only evidence recorded by the current run or trusted mai
     current: { kind: 'agent', runId: 'run', agentRunId: 'agent-run', agentKind: 'codex' },
     otherRun: { kind: 'agent', runId: 'other', agentRunId: 'agent-run', agentKind: 'codex' },
     otherAgent: { kind: 'agent', runId: 'run', agentRunId: 'agent-run', agentKind: 'hermes' },
-    trusted: { kind: 'system', actorId: 'meldwork-main' },
+    trusted: { kind: 'system', actorId: 'tyche-main' },
     untrusted: { kind: 'system', actorId: 'other-system' },
-    indirect: { kind: 'system', actorId: 'meldwork-main' },
-    mismatch: { kind: 'system', actorId: 'meldwork-main' },
+    indirect: { kind: 'system', actorId: 'tyche-main' },
+    mismatch: { kind: 'system', actorId: 'tyche-main' },
   }
   const runner = { ...taskGraphMethods,
     v4ArtifactIdentity: () => ({ artifact: { contentRef: { hash: 'hash' }, producedBy: {
@@ -1186,9 +1186,9 @@ test('task graph runs independent branches in parallel and completes from typed 
   assert.deepEqual(calls.map(call => call.agent.kind), [
     'codex', 'hermes', 'workbuddy', 'kimi',
   ])
-  assert.equal(calls.every(call => !call.prompt.includes('MELDWORK_CONSENSUS')), true)
+  assert.equal(calls.every(call => !call.prompt.includes('TYCHE_CONSENSUS')), true)
   assert.equal(calls[2].runOptions.sessionRef, '')
-  assert.match(calls[2].prompt, /MELDWORK_TASK_GRAPH_V1/)
+  assert.match(calls[2].prompt, /TYCHE_TASK_GRAPH_V1/)
   assert.match(calls[2].prompt, /\[conflict\]/)
   assert.equal(calls[3].runOptions.sessionRef, '')
 
@@ -1461,7 +1461,7 @@ test('auto send preflights atomically, persists one root, and starts at round on
       await firstCallGate.promise
     }
     return {
-      text: `${agent.kind} agrees\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} agrees\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -1515,7 +1515,7 @@ test('auto send preflights atomically, persists one root, and starts at round on
     threadRootId: run.threadRootId,
   })), [{ mode: 'auto', currentRound: 1, maxRounds: 2, threadRootId: root.id }])
   assert.equal(calls.length, 1)
-  assert.match(calls[0].prompt, /MELDWORK_CONSENSUS/)
+  assert.match(calls[0].prompt, /TYCHE_CONSENSUS/)
   assert.doesNotMatch(JSON.stringify(active), /sessionRef/)
 
   const pending = workspace.activeRuns.get(group.id).promise
@@ -1523,7 +1523,7 @@ test('auto send preflights atomically, persists one root, and starts at round on
   await pending
 
   assert.deepEqual(calls.map(call => call.agent.kind), ['codex', 'hermes'])
-  assert.equal(calls.every(call => call.prompt.includes('MELDWORK_CONSENSUS')), true)
+  assert.equal(calls.every(call => call.prompt.includes('TYCHE_CONSENSUS')), true)
   assert.deepEqual(calls.map(call => call.runOptions.attachments), [
     [path.join(directory, 'attachments', 'auto-send-image.png')],
     [path.join(directory, 'attachments', 'auto-send-image.png')],
@@ -1555,7 +1555,7 @@ test('automatic Primary Reviewer Arbiter flow uses selective typed collaboration
   options.runAgent = async (agent, prompt, workdir, runOptions) => {
     calls.push({ agent, prompt, workdir, runOptions })
     return {
-      text: `${conclusions[agent.kind]}\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${conclusions[agent.kind]}\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: `${agent.kind}-session`,
     }
   }
@@ -1619,7 +1619,7 @@ test('unlimited automatic discussion continues past a finite cap until consensus
     }
     const agreed = calls.length > 2
     return {
-      text: `${agent.kind} response\n[[MELDWORK_CONSENSUS:${agreed ? 'agree' : 'continue'}]]`,
+      text: `${agent.kind} response\n[[TYCHE_CONSENSUS:${agreed ? 'agree' : 'continue'}]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -1668,7 +1668,7 @@ test('unlimited automatic discussion gives every Agent an adversarial review con
   options.runAgent = async (agent, prompt, workdir, runOptions) => {
     calls.push({ agent, prompt, workdir, runOptions })
     return {
-      text: `${agent.kind} agrees\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} agrees\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -1691,7 +1691,7 @@ test('unlimited automatic discussion gives every Agent an adversarial review con
     'codex', 'hermes', 'codex', 'hermes',
   ])
   for (const call of calls) {
-    assert.match(call.prompt, /MELDWORK_UNLIMITED_REVIEW_V1/)
+    assert.match(call.prompt, /TYCHE_UNLIMITED_REVIEW_V1/)
     assert.match(call.prompt, /Do not accept another Agent's claim without independent support/)
     assert.match(call.prompt, /Complete at least one full cross-review pass before declaring consensus/)
     assert.match(call.prompt, /Raise every material defect immediately/)
@@ -4656,11 +4656,11 @@ test('task graph reviewer does not resume the same Agent primary session', async
   await workspace.activeRuns.get(group.id).promise
   assert.equal(calls.length, 2)
   assert.equal(calls[1].runOptions.sessionRef, '')
-  assert.match(calls[1].prompt, /MELDWORK_TASK_GRAPH_V1/)
+  assert.match(calls[1].prompt, /TYCHE_TASK_GRAPH_V1/)
   assert.match(calls[1].prompt, /Role: reviewer/)
   assert.match(calls[1].prompt, /Verified outcome content:/)
   assert.match(calls[1].prompt, /Evidence .*\(.*\)/)
-  for (const call of calls) assert.match(call.prompt, /Meldwork records your completed response as an Artifact/)
+  for (const call of calls) assert.match(call.prompt, /Tyche records your completed response as an Artifact/)
   assert.match(calls[1].prompt, /A completed result/)
   assert.equal(ledger.list(group.id)[0].orchestration.taskGraph.terminalState, 'accepted')
 })
@@ -4701,7 +4701,7 @@ test('unlimited task graphs give isolated reviewers the adversarial review contr
     'codex', 'hermes', 'workbuddy', 'kimi',
   ])
   for (const call of calls) {
-    assert.match(call.prompt, /MELDWORK_UNLIMITED_REVIEW_V1/)
+    assert.match(call.prompt, /TYCHE_UNLIMITED_REVIEW_V1/)
     assert.match(call.prompt, /Raise every material defect immediately/)
   }
 })
@@ -4712,7 +4712,7 @@ test('bounded automatic discussion does not use the unlimited adversarial review
   options.runAgent = async (agent, prompt, workdir, runOptions) => {
     calls.push({ agent, prompt, workdir, runOptions })
     return {
-      text: `${agent.kind} agrees\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} agrees\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -4733,7 +4733,7 @@ test('bounded automatic discussion does not use the unlimited adversarial review
 
   assert.equal(calls.length, 2)
   for (const call of calls) {
-    assert.doesNotMatch(call.prompt, /MELDWORK_UNLIMITED_REVIEW_V1/)
+    assert.doesNotMatch(call.prompt, /TYCHE_UNLIMITED_REVIEW_V1/)
   }
 })
 
@@ -4745,7 +4745,7 @@ test('unlimited automatic discussion stops at the mandatory Agent-attempt circui
   options.runAgent = async (agent, prompt, workdir, runOptions) => {
     calls.push({ agent, prompt, workdir, runOptions })
     return {
-      text: `${agent.kind} keeps going\n[[MELDWORK_CONSENSUS:continue]]`,
+      text: `${agent.kind} keeps going\n[[TYCHE_CONSENSUS:continue]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -4832,7 +4832,7 @@ test('later group rounds use a compact Harness continuation instead of the boots
     calls.push({ agent, prompt, workdir, runOptions })
     const consensus = calls.length > 2 ? 'agree' : 'continue'
     return {
-      text: `${agent.kind} round ${calls.length}\n[[MELDWORK_CONSENSUS:${consensus}]]`,
+      text: `${agent.kind} round ${calls.length}\n[[TYCHE_CONSENSUS:${consensus}]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -5065,10 +5065,10 @@ test('automatic dialogue continues complete rounds until every Agent agrees', as
   const { directory, calls, options } = fixture()
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const replies = [
-    'Codex still has one edge case.\n[[MELDWORK_CONSENSUS:continue]]',
-    'Hermes agrees that clarification is needed.\n[[MELDWORK_CONSENSUS:continue]]',
-    'Codex accepts the current conclusion.\n[[MELDWORK_CONSENSUS:agree]]',
-    'Hermes accepts the current conclusion.\n[[MELDWORK_CONSENSUS:agree]]',
+    'Codex still has one edge case.\n[[TYCHE_CONSENSUS:continue]]',
+    'Hermes agrees that clarification is needed.\n[[TYCHE_CONSENSUS:continue]]',
+    'Codex accepts the current conclusion.\n[[TYCHE_CONSENSUS:agree]]',
+    'Hermes accepts the current conclusion.\n[[TYCHE_CONSENSUS:agree]]',
   ]
   options.runAgent = async (agent, prompt, workdir, runOptions) => {
     calls.push({ agent, prompt, workdir, runOptions })
@@ -5092,7 +5092,7 @@ test('automatic dialogue continues complete rounds until every Agent agrees', as
   assert.deepEqual(calls.map(call => call.runOptions.sessionRef), [
     '', '', 'codex-session', 'hermes-session',
   ])
-  assert.equal(calls.every(call => call.prompt.includes('[[MELDWORK_CONSENSUS:agree]]')), true)
+  assert.equal(calls.every(call => call.prompt.includes('[[TYCHE_CONSENSUS:agree]]')), true)
   assert.deepEqual(
     workspace.snapshot().messages.filter(message => message.role === 'agent')
       .map(message => message.threadRootId),
@@ -5140,7 +5140,7 @@ test('automatic dialogue persists attempts beyond the live Harness window', asyn
     calls.push({ agent, prompt, workdir, runOptions })
     const consensus = calls.length > 60 ? 'agree' : 'continue'
     return {
-      text: `${agent.kind} round result\n[[MELDWORK_CONSENSUS:${consensus}]]`,
+      text: `${agent.kind} round result\n[[TYCHE_CONSENSUS:${consensus}]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -5180,7 +5180,7 @@ test('automatic dialogue reuses Kimi ACP sessions across rounds', async (t) => {
       await runOptions.onSessionRef(sessionRef, { transport: 'acp' })
     }
     return {
-      text: `${agent.kind} ${consensus}\n[[MELDWORK_CONSENSUS:${consensus}]]`,
+      text: `${agent.kind} ${consensus}\n[[TYCHE_CONSENSUS:${consensus}]]`,
       sessionRef,
     }
   }
@@ -5221,7 +5221,7 @@ test('automatic dialogue keeps Hermes on one persistent ACP session across round
       await runOptions.onSessionRef(sessionRef, { transport: 'acp' })
     }
     return {
-      text: `${agent.kind} ${consensus}\n[[MELDWORK_CONSENSUS:${consensus}]]`,
+      text: `${agent.kind} ${consensus}\n[[TYCHE_CONSENSUS:${consensus}]]`,
       sessionRef,
     }
   }
@@ -5264,7 +5264,7 @@ test('automatic dialogue keeps an active Agent runnable through a transient cata
     }
     const count = calls.filter(call => call.agent.kind === agent.kind).length
     return {
-      text: `${agent.kind} ${count > 1 ? 'agree' : 'continue'}\n[[MELDWORK_CONSENSUS:${count > 1 ? 'agree' : 'continue'}]]`,
+      text: `${agent.kind} ${count > 1 ? 'agree' : 'continue'}\n[[TYCHE_CONSENSUS:${count > 1 ? 'agree' : 'continue'}]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -5289,7 +5289,7 @@ test('automatic dialogue queues only the explicitly targeted group members', asy
   options.runAgent = async (agent, prompt, workdir, runOptions) => {
     calls.push({ agent, prompt, workdir, runOptions })
     return {
-      text: `${agent.kind} agrees\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} agrees\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: `${agent.kind}-session`,
     }
   }
@@ -5352,7 +5352,7 @@ test('automatic dialogue falls back to staged image files beyond native limits',
   options.runAgent = async (agent, prompt, workdir, runOptions) => {
     calls.push({ agent, prompt, workdir, runOptions })
     return {
-      text: `${agent.kind} reply\n[[MELDWORK_CONSENSUS:continue]]`,
+      text: `${agent.kind} reply\n[[TYCHE_CONSENSUS:continue]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -5384,7 +5384,7 @@ test('automatic dialogue falls back to staged image files beyond native limits',
   const hermesCalls = calls.filter(call => call.agent.kind === 'hermes')
   assert.equal(hermesCalls.every(call => call.runOptions.skills === undefined), true)
   assert.equal(hermesCalls.every(call => /global\/research: Research/.test(call.prompt)), true)
-  assert.equal(hermesCalls.every(call => /\.meldwork-input\/\.run-[^/]+\/1-detail\.png/.test(call.prompt)), true)
+  assert.equal(hermesCalls.every(call => /\.tyche-input\/\.run-[^/]+\/1-detail\.png/.test(call.prompt)), true)
 })
 
 test('automatic dialogue rejects unequal image context before starting any Agent', async (t) => {
@@ -5415,12 +5415,12 @@ test('automatic dialogue requires one final standalone consensus marker', async 
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const replies = [
     [
-      'Codex quoted [[MELDWORK_CONSENSUS:agree]] but still has a reservation.',
-      '[[MELDWORK_CONSENSUS:agree]]',
+      'Codex quoted [[TYCHE_CONSENSUS:agree]] but still has a reservation.',
+      '[[TYCHE_CONSENSUS:agree]]',
     ].join('\n'),
-    'Hermes accepts the current conclusion.\n[[MELDWORK_CONSENSUS:agree]]',
-    'Codex has resolved the reservation.\n[[MELDWORK_CONSENSUS:agree]]',
-    'Hermes confirms the final conclusion.\n[[MELDWORK_CONSENSUS:agree]]',
+    'Hermes accepts the current conclusion.\n[[TYCHE_CONSENSUS:agree]]',
+    'Codex has resolved the reservation.\n[[TYCHE_CONSENSUS:agree]]',
+    'Hermes confirms the final conclusion.\n[[TYCHE_CONSENSUS:agree]]',
   ]
   options.runAgent = async (agent, prompt, workdir, runOptions) => {
     calls.push({ agent, prompt, workdir, runOptions })
@@ -5441,7 +5441,7 @@ test('automatic dialogue requires one final standalone consensus marker', async 
 
   assert.deepEqual(calls.map(call => call.agent.kind), ['codex', 'hermes', 'codex', 'hermes'])
   assert.equal(workspace.snapshot().messages.some(message => (
-    message.content.includes('[[MELDWORK_CONSENSUS:')
+    message.content.includes('[[TYCHE_CONSENSUS:')
   )), false)
   assert.equal(workspace.snapshot().messages.some(message => (
     message.system?.key === 'system.autoRoundLimit'
@@ -5454,7 +5454,7 @@ test('automatic dialogue does not count an incomplete Agent turn as agreement', 
   options.runAgent = async (agent, prompt, workdir, runOptions) => {
     calls.push({ agent, prompt, workdir, runOptions })
     return {
-      text: `${agent.kind} agrees.\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} agrees.\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
       outcome: calls.length !== 1 ? 'completed' : 'partial',
     }
@@ -5485,7 +5485,7 @@ test('stopping automatic dialogue cancels the active round without a limit messa
     calls.push({ agent, prompt, workdir, runOptions })
     if (calls.length < 3) {
       return {
-        text: `${agent.kind} continue\n[[MELDWORK_CONSENSUS:continue]]`,
+        text: `${agent.kind} continue\n[[TYCHE_CONSENSUS:continue]]`,
         sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
       }
     }
@@ -5540,7 +5540,7 @@ test('automatic HTTP 401 completes without a retry delay or recovery handoff', a
     calls.push({ agent, prompt, workdir, runOptions })
     if (agent.kind !== 'hermes') {
       return {
-        text: 'codex agrees\n[[MELDWORK_CONSENSUS:agree]]',
+        text: 'codex agrees\n[[TYCHE_CONSENSUS:agree]]',
         sessionRef: runOptions.sessionRef || 'codex-session',
       }
     }
@@ -5591,7 +5591,7 @@ test('per-Agent retry restarts only the interrupted Agent attempt', async (t) =>
       })
     }
     return {
-      text: `${agent.kind} agrees\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} agrees\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -5645,7 +5645,7 @@ test('per-Agent cancel preserves the Task and lets later Agents continue', async
       })
     }
     return {
-      text: `${agent.kind} agrees\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} agrees\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -5691,7 +5691,7 @@ test('per-Agent replace makes the selected Agent take over the interrupted slot'
       })
     }
     return {
-      text: `${agent.kind} agrees\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} agrees\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -5742,7 +5742,7 @@ test('automatic dialogue honors bounded Retry-After backoff and recovers', async
       })
     }
     return {
-      text: `${agent.kind} agrees\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} agrees\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -5782,7 +5782,7 @@ test('automatic dialogue retries an ambiguous 403 and network errors without tou
     calls.push({ agent, prompt, workdir, runOptions })
     if (agent.kind === 'hermes' && failures.length) throw failures.shift()
     return {
-      text: `${agent.kind} agrees\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} agrees\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -5824,7 +5824,7 @@ test('automatic dialogue retries one protocol failure without removing the Agent
       throw new Error('LOCAL_AGENT_PROCESS_FAILED')
     }
     return {
-      text: `${agent.kind} agrees\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} agrees\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -5867,7 +5867,7 @@ test('write-capable unknown outcomes wait for approval before replaying', async 
       }
     }
     return {
-      text: `${agent.kind} agrees\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} agrees\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -5923,7 +5923,7 @@ test('automatic dialogue exhausts bounded transient retries before continuing', 
       throw Object.assign(new Error('Provider temporarily unavailable'), { statusCode: 503 })
     }
     return {
-      text: `${agent.kind} agrees\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} agrees\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -5964,7 +5964,7 @@ test('automatic dialogue fails HTTP 401 once, pauses the Agent for the run, and 
       throw agentRuntimeError('LOCAL_AGENT_AUTH_REQUIRED', 'HTTP 401: Invalid token')
     }
     return {
-      text: `${agent.kind} agrees\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} agrees\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -6068,7 +6068,7 @@ test('automatic dialogue does not send an authentication recovery handoff to ano
       }
     }
     return {
-      text: `${agent.kind} ${prompt.includes('Harness recovery task') ? 'repaired auth' : 'agrees'}\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} ${prompt.includes('Harness recovery task') ? 'repaired auth' : 'agrees'}\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -6106,7 +6106,7 @@ test('automatic dialogue keeps a failed authentication slot out of later group c
     }
     const recovery = prompt.includes('Harness recovery task')
     return {
-      text: `${agent.kind} ${recovery ? 'repaired auth' : 'agrees'}\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} ${recovery ? 'repaired auth' : 'agrees'}\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-task-session`,
     }
   }
@@ -6147,7 +6147,7 @@ test('automatic dialogue persists one failed 401 attempt and pauses the Agent fo
       throw agentRuntimeError('LOCAL_AGENT_AUTH_REQUIRED', 'HTTP 401: Invalid token')
     }
     return {
-      text: `${agent.kind} ${prompt.includes('Harness recovery task') ? 'checked auth' : 'agrees'}\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} ${prompt.includes('Harness recovery task') ? 'checked auth' : 'agrees'}\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -6218,7 +6218,7 @@ test('automatic dialogue treats an adapter-classified 403 sign-in failure as ter
       throw agentRuntimeError('LOCAL_AGENT_AUTH_REQUIRED', 'HTTP 403: Provider rejected the request')
     }
     return {
-      text: `${agent.kind} agrees\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} agrees\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -6262,7 +6262,7 @@ test('automatic dialogue recovers repeated protocol failures without removing th
       throw new Error('LOCAL_AGENT_PROCESS_FAILED')
     }
     return {
-      text: `${agent.kind} reply\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} reply\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -6325,7 +6325,7 @@ test('automatic dialogue retains a streamed conclusion while isolating the faile
       throw new Error('LOCAL_AGENT_PROCESS_FAILED')
     }
     return {
-      text: `${agent.kind} continue\n[[MELDWORK_CONSENSUS:continue]]`,
+      text: `${agent.kind} continue\n[[TYCHE_CONSENSUS:continue]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -6408,7 +6408,7 @@ test('automatic dialogue reuses a session captured before a successful protocol 
       throw new Error('LOCAL_AGENT_PROCESS_FAILED')
     }
     return {
-      text: `${agent.kind} reply\n[[MELDWORK_CONSENSUS:${calls.length > 2 ? 'agree' : 'continue'}]]`,
+      text: `${agent.kind} reply\n[[TYCHE_CONSENSUS:${calls.length > 2 ? 'agree' : 'continue'}]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -6439,7 +6439,7 @@ test('automatic dialogue defaults to six rounds and hides consensus markers at t
   options.runAgent = async (agent, prompt, workdir, runOptions) => {
     calls.push({ agent, prompt, workdir, runOptions })
     return {
-      text: `${agent.kind} has not agreed.\n[[MELDWORK_CONSENSUS:continue]]`,
+      text: `${agent.kind} has not agreed.\n[[TYCHE_CONSENSUS:continue]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -6461,7 +6461,7 @@ test('automatic dialogue defaults to six rounds and hides consensus markers at t
     'codex', 'hermes', 'codex', 'hermes', 'codex', 'hermes',
   ])
   assert.equal(workspace.snapshot().messages.some(message => (
-    message.content.includes('[[MELDWORK_CONSENSUS:')
+    message.content.includes('[[TYCHE_CONSENSUS:')
   )), false)
   const limit = workspace.snapshot().messages.find(message => (
     message.system?.key === 'system.autoRoundLimit'
@@ -6483,7 +6483,7 @@ test('automatic dialogue accepts legacy maxTurns as a round limit', async (t) =>
   options.runAgent = async (agent, prompt, workdir, runOptions) => {
     calls.push({ agent, prompt, workdir, runOptions })
     return {
-      text: `${agent.kind} continue\n[[MELDWORK_CONSENSUS:continue]]`,
+      text: `${agent.kind} continue\n[[TYCHE_CONSENSUS:continue]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -6507,7 +6507,7 @@ test('automatic dialogue caps both round parameters at ten', async (t) => {
   options.runAgent = async (agent, prompt, workdir, runOptions) => {
     calls.push({ agent, prompt, workdir, runOptions })
     return {
-      text: `${agent.kind} agrees\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} agrees\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -6533,7 +6533,7 @@ test('automatic dialogue has no total runtime limit', async (t) => {
     calls.push({ agent, prompt, workdir, runOptions })
     if (calls.length === 1) await new Promise(resolve => setTimeout(resolve, 20))
     return {
-      text: `${agent.kind} agrees\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} agrees\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -6596,7 +6596,7 @@ test('automatic dialogue requires a topic root and accepts an explicit one', asy
   const { directory, options } = fixture()
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   options.runAgent = async (agent, prompt, workdir, runOptions) => ({
-    text: `${agent.kind} agrees.\n[[MELDWORK_CONSENSUS:agree]]`,
+    text: `${agent.kind} agrees.\n[[TYCHE_CONSENSUS:agree]]`,
     sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
   })
   const workspace = new LocalWorkspace(options)

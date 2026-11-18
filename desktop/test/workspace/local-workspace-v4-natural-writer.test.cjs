@@ -9,7 +9,7 @@ const { fixture } = require('../support/local-workspace-test-helpers.cjs')
 
 function reply(text, prompt = '') {
   const reviewedVersion = prompt.match(/Candidate version: ([a-f0-9]{64})/)?.[1]
-  return `${text}\n\n[[MELDWORK_COLLABORATION:${JSON.stringify({ summary: text,
+  return `${text}\n\n[[TYCHE_COLLABORATION:${JSON.stringify({ summary: text,
     taskDecision: { status: 'completed', reason: text, deliverables: ['result.txt read back as OK'],
       ...(reviewedVersion ? { reviewedVersion } : {}) },
   })}]]`
@@ -88,7 +88,7 @@ for (const writerKind of ['hermes', '']) {
       const discussion = prompt.includes('Continue from the available peer responses')
       calls.push({ kind: agent.kind, discussion, sandbox: runOptions.sandbox })
       if (discussion && writerKind && agent.kind !== writerKind && !prompt.includes('Candidate version:')) {
-        return { text: `The writable participant should deliver the update.\n\n[[MELDWORK_COLLABORATION:${JSON.stringify({ summary: 'Writer needed.',
+        return { text: `The writable participant should deliver the update.\n\n[[TYCHE_COLLABORATION:${JSON.stringify({ summary: 'Writer needed.',
           taskDecision: { status: 'continue', reason: 'Hand over delivery to the writable participant.', deliverables: [], handoffTo: writerKind, nextKinds: [writerKind] },
         })}]]`, sessionRef: `${agent.kind}-session` }
       }

@@ -12,7 +12,7 @@ test('plain answers pass through untouched', () => {
 })
 
 test('receipt mode hides the receipt however the stream is chunked', () => {
-  const receipt = '[[MELDWORK_COLLABORATION:{"summary":"done"}]]'
+  const receipt = '[[TYCHE_COLLABORATION:{"summary":"done"}]]'
   const text = `Here is the answer.\n\n${receipt}`
   for (let size = 1; size <= text.length; size += 1) {
     const chunks = text.match(new RegExp(`[\\s\\S]{1,${size}}`, 'g'))
@@ -28,7 +28,7 @@ test('receipt mode hides the receipt however the stream is chunked', () => {
 test('receipt mode removes consensus markers but keeps the surrounding text', () => {
   const filter = createAnswerMarkerFilter({ mode: 'receipt' })
   assert.equal(
-    streamed(filter, ['Agreed.', ' [[MELDWORK_CONSENSUS:agree]]', ' Next steps follow.']),
+    streamed(filter, ['Agreed.', ' [[TYCHE_CONSENSUS:agree]]', ' Next steps follow.']),
     'Agreed.  Next steps follow.',
   )
 })
@@ -37,7 +37,7 @@ test('marker matching is case-insensitive and never shifts on special characters
   const filter = createAnswerMarkerFilter({ mode: 'receipt' })
   // "ß" upper-cases to two letters, which used to misalign the cut position.
   assert.equal(
-    streamed(filter, ['Straße im Süden. [[meldwork_collaboration:{"summary":"x"}]]'], 'Straße im Süden.'),
+    streamed(filter, ['Straße im Süden. [[tyche_collaboration:{"summary":"x"}]]'], 'Straße im Süden.'),
     'Straße im Süden. ',
   )
 })
@@ -46,18 +46,18 @@ test('a held fragment that turns out to be real text is released at the end', ()
   const filter = createAnswerMarkerFilter({ mode: 'receipt' })
   assert.equal(streamed(filter, ['Use brackets like [[MELD']), 'Use brackets like [[MELD')
   const dropped = createAnswerMarkerFilter({ mode: 'receipt' })
-  assert.equal(streamed(dropped, ['Answer.', '[[MELDWORK_COLL'], 'Answer.'), 'Answer.')
+  assert.equal(streamed(dropped, ['Answer.', '[[TYCHE_COLL'], 'Answer.'), 'Answer.')
 })
 
 test('auto mode hides consensus markers only', () => {
   const filter = createAnswerMarkerFilter({ mode: 'auto' })
   assert.equal(
-    streamed(filter, ['One.', ' [[MELDWORK_CONSENS', 'US:continue]]', ' Two.']),
+    streamed(filter, ['One.', ' [[TYCHE_CONSENS', 'US:continue]]', ' Two.']),
     'One.  Two.',
   )
   const receiptText = createAnswerMarkerFilter({ mode: 'auto' })
   assert.equal(
-    streamed(receiptText, ['[[MELDWORK_COLLABORATION:{}]] stays']),
-    '[[MELDWORK_COLLABORATION:{}]] stays',
+    streamed(receiptText, ['[[TYCHE_COLLABORATION:{}]] stays']),
+    '[[TYCHE_COLLABORATION:{}]] stays',
   )
 })

@@ -27,7 +27,7 @@ function normalizeRelativePath(value) {
 }
 
 function probeCaseSensitivity(directory) {
-  const token = `meldwork-case-${crypto.randomBytes(8).toString('hex')}a`
+  const token = `tyche-case-${crypto.randomBytes(8).toString('hex')}a`
   const filename = path.join(directory, token)
   const upper = path.join(directory, token.toUpperCase())
   try {

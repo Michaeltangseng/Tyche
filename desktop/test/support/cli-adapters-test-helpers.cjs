@@ -10,7 +10,7 @@ function executable(directory, name, source) {
 }
 
 function workBuddyInstall(t, bundles) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-workbuddy-layout-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-workbuddy-layout-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   fs.mkdirSync(path.join(root, 'bin'))
   fs.mkdirSync(path.join(root, 'dist'))

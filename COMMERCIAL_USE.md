@@ -1,8 +1,7 @@
 # Commercial use
 
 Source code and documentation in this repository are licensed under
-[Apache License 2.0](LICENSE). Tyche is developed from the open-source project
-meldwork, which is also Apache-2.0. Commercial use, private use, modification,
+[Apache License 2.0](LICENSE). Commercial use, private use, modification,
 redistribution, and inclusion in paid products or services are permitted under
 the license terms. No separate commercial authorization or license fee is
 required.

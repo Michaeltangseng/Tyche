@@ -328,7 +328,7 @@ class LocalWorkspaceAgentInvocation {
         } catch (error) {
           // Read-only invocations keep their previous behavior; record the
           // unresolved directory for diagnostics only.
-          console.warn('[meldwork] read-only workdir unresolved', group.id,
+          console.warn('[tyche] read-only workdir unresolved', group.id,
             error?.code || error?.message || error)
         }
       }
@@ -1377,7 +1377,7 @@ class LocalWorkspaceAgentInvocation {
         result = requireTerminalAgentResult(result)
       } catch (error) {
         if (agent.connectorInstanceId && result?.outcome === 'failed' && result.failure?.retryable === false) {
-          Object.defineProperty(error, Symbol.for('meldwork.connector-nonretryable'), { value: true })
+          Object.defineProperty(error, Symbol.for('tyche.connector-nonretryable'), { value: true })
         }
         throw error
       }
@@ -1550,9 +1550,9 @@ class LocalWorkspaceAgentInvocation {
             const pendingExit = runPromise.then(() => undefined, lateError => {
               if (lateError?.code !== 'LOCAL_AGENT_TERMINATION_FAILED'
                   && lateError?.message !== 'LOCAL_AGENT_TERMINATION_FAILED') return undefined
-              return lateError[Symbol.for('meldwork.pending-process-exit')] || new Promise(() => {})
+              return lateError[Symbol.for('tyche.pending-process-exit')] || new Promise(() => {})
             })
-            Object.defineProperty(failure, Symbol.for('meldwork.pending-process-exit'), { value: pendingExit })
+            Object.defineProperty(failure, Symbol.for('tyche.pending-process-exit'), { value: pendingExit })
           }
           stop = resolveInvocationStop({
             caughtError: failure,

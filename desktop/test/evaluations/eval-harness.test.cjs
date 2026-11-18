@@ -85,7 +85,7 @@ test('one versioned case runs against individual Agents and an orchestration wor
   ])
   assert.equal(results.every(result => result.durationMs === 5), true)
   assert.equal(results.every(result => result.scoring.overallScore === 100), true)
-  assert.equal(results.every(result => result.reviewerEvidence[0].reviewerId === 'meldwork-eval-v1'), true)
+  assert.equal(results.every(result => result.reviewerEvidence[0].reviewerId === 'tyche-eval-v1'), true)
 })
 
 test('model review is explicitly identified and cannot hide deterministic failures', async () => {

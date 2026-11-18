@@ -14,7 +14,7 @@ const { createSettlement } = require('../../src/room/settlement.cjs')
 const { createRoomReadModel } = require('../../src/room/read-model.cjs')
 
 function setup(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-read-model-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-read-model-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
   const repo = createRoomRepository(roomDb)

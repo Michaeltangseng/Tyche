@@ -113,17 +113,17 @@ test('host tool results are hidden while the tool name is preserved', () => {
   const started = sanitizeRuntimeEvent(payload({
     kind: 'tool_call_started',
     callId: 'call-1',
-    tool: { name: 'mcp__meldwork__post_in_chat' },
+    tool: { name: 'mcp__tyche__post_in_chat' },
     input: '{"text":"hello"}',
   }))
-  assert.equal(started.event.toolName, 'mcp__meldwork__post_in_chat')
+  assert.equal(started.event.toolName, 'mcp__tyche__post_in_chat')
 
   const ended = sanitizeRuntimeEvent(payload({
     kind: 'tool_call_ended',
     callId: 'call-1',
-    toolName: 'mcp__meldwork__post_in_chat',
+    toolName: 'mcp__tyche__post_in_chat',
     content: [{ type: 'text', text: '{"id":"message-1","chatId":"chat-1","audience":"chat"}' }],
   }))
-  assert.equal(ended.event.toolName, 'mcp__meldwork__post_in_chat')
+  assert.equal(ended.event.toolName, 'mcp__tyche__post_in_chat')
   assert.equal(ended.event.output, '')
 })

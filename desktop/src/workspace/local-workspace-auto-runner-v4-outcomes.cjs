@@ -16,7 +16,7 @@ const v4OutcomeMethods = {
       return (acceptance.requiredEvidenceKinds || []).every(kind => receipt.evidenceIds.some(evidenceId => {
         const evidence = this.v4EvidenceRecord(evidenceId)
         if (['test-result', 'file-hash'].includes(kind)
-            && (evidence.recordedBy?.kind !== 'system' || evidence.recordedBy.actorId !== 'meldwork-main'
+            && (evidence.recordedBy?.kind !== 'system' || evidence.recordedBy.actorId !== 'tyche-main'
               || !['observed', 'reproduced'].includes(evidence.level))) return false
         return evidence.kind === kind && receipt.artifactIds.some(artifactId => {
           const { contentHash } = this.v4ArtifactIdentity(artifactId)
@@ -179,7 +179,7 @@ const v4OutcomeMethods = {
       const evidenceBindings = evidences.map((evidence) => {
         const recorder = evidence.recordedBy || {}
         const recorderBound = recorder.kind === 'system'
-          ? recorder.actorId === 'meldwork-main'
+          ? recorder.actorId === 'tyche-main'
           : recorder.kind === 'agent'
             && recorder.runId === runId
             && recorder.agentRunId === agentRunId
@@ -272,7 +272,7 @@ const v4OutcomeMethods = {
         return receipt.evidenceIds.some((evidenceId) => {
           const evidence = this.v4EvidenceRecord(evidenceId)
           return evidence.recordedBy?.kind === 'system'
-            && evidence.recordedBy.actorId === 'meldwork-main'
+            && evidence.recordedBy.actorId === 'tyche-main'
             && evidence.subject?.type === 'artifact'
             && evidence.subject.artifactId === artifactId
             && evidence.refs.some(reference => (

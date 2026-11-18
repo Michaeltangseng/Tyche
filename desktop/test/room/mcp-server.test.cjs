@@ -11,7 +11,7 @@ const { createToolDispatcher } = require('../../src/room/tools/dispatcher.cjs')
 const { createMcpHttpServer } = require('../../src/room/tools/mcp-server.cjs')
 
 test('mcp server lists and calls the bound tools', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
   const repo = createRoomRepository(roomDb)

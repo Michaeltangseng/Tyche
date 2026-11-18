@@ -332,7 +332,7 @@ async function assertScenario(options, dir) {
 }
 
 async function runOrchestrator(options) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-spike0-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-spike0-'))
   const args = [
     __filename,
     '--role', 'main',

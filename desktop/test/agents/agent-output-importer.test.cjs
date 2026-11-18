@@ -27,9 +27,9 @@ const MP4 = Buffer.concat([Buffer.alloc(4), Buffer.from('ftypisom'), Buffer.allo
 const READ_SIZE = 128 * 1024
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-agent-output-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-agent-output-'))
   const workdir = path.join(directory, 'workspace')
-  const output = path.join(workdir, '.meldwork-output')
+  const output = path.join(workdir, '.tyche-output')
   fs.mkdirSync(output, { recursive: true })
   let sequence = 0
   const store = new AttachmentStore({
@@ -175,11 +175,11 @@ test('captures changed artifact types as deterministic workspace-relative snapsh
 
   assert.deepEqual(
     artifacts.map(item => item.locationRef.path),
-    [...expected.keys()].map(value => `.meldwork-output/${value}`),
+    [...expected.keys()].map(value => `.tyche-output/${value}`),
   )
   assert.equal(artifacts.some(item => item.name === 'mtime-only.md'), false)
   artifacts.forEach((artifact) => {
-    const relativePath = artifact.locationRef.path.slice('.meldwork-output/'.length)
+    const relativePath = artifact.locationRef.path.slice('.tyche-output/'.length)
     const [type, mediaType, bytes] = expected.get(relativePath)
     assert.equal(artifact.type, type)
     assert.equal(artifact.mediaType, mediaType)
@@ -333,7 +333,7 @@ test('reported paths import only files written during the run, outside input sta
   fs.writeFileSync(existing, PNG)
   const old = new Date(Date.now() - 60 * 60 * 1000)
   fs.utimesSync(existing, old, old)
-  const staged = path.join(workdir, '.meldwork-input', '.run-1', 'input.png')
+  const staged = path.join(workdir, '.tyche-input', '.run-1', 'input.png')
   fs.mkdirSync(path.dirname(staged), { recursive: true })
   fs.writeFileSync(staged, PNG)
   const baseline = captureAgentOutputState(workdir)

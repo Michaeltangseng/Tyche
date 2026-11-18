@@ -10,7 +10,7 @@ const { redactChildSecrets } = require('../../../src/agents/cli/cli-runtime-even
 const { nativeCredentialState } = require('../../../src/agents/local-agent-readiness.cjs')
 
 test('Qwen resolves the selected home for its model credential and local .env', t => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-qwen-selected-home-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-qwen-selected-home-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const selected = path.join(root, 'selected')
   fs.mkdirSync(path.join(selected, '.qwen'), { recursive: true })
@@ -31,7 +31,7 @@ test('Qwen resolves the selected home for its model credential and local .env', 
 })
 
 test('Qwen captures only the selected model credential and redacts it', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-qwen-env-key-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-qwen-env-key-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   fs.mkdirSync(path.join(home, '.qwen'))
   fs.writeFileSync(path.join(home, '.qwen', 'settings.json'), JSON.stringify({
@@ -68,7 +68,7 @@ test('Qwen captures only the selected model credential and redacts it', t => {
 })
 
 test('Qwen does not read a project credential declaration when folder trust denies it', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-qwen-trust-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-qwen-trust-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const workdir = path.join(home, 'project')
   fs.mkdirSync(path.join(home, '.qwen'))
@@ -86,7 +86,7 @@ test('Qwen does not read a project credential declaration when folder trust deni
 })
 
 test('Qwen follows native folder trust defaults and rejects malformed trust files', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-qwen-default-trust-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-qwen-default-trust-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const workdir = path.join(home, 'project')
   fs.mkdirSync(path.join(home, '.qwen'))
@@ -106,7 +106,7 @@ test('Qwen follows native folder trust defaults and rejects malformed trust file
 })
 
 test('Qwen system configuration takes precedence and unsafe credential names are rejected', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-qwen-env-precedence-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-qwen-env-precedence-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const workdir = path.join(home, 'project')
   fs.mkdirSync(path.join(workdir, '.qwen'), { recursive: true })
@@ -129,7 +129,7 @@ test('Qwen system configuration takes precedence and unsafe credential names are
 })
 
 test('Qwen readiness follows the selected standard provider credential', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-qwen-standard-provider-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-qwen-standard-provider-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   fs.mkdirSync(path.join(home, '.qwen'))
   const settings = path.join(home, '.qwen', 'settings.json')
@@ -146,7 +146,7 @@ test('Qwen readiness follows the selected standard provider credential', t => {
 })
 
 test('Qwen OAuth readiness ignores unrelated provider keys', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-qwen-oauth-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-qwen-oauth-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.qwen')
   fs.mkdirSync(root)
@@ -161,7 +161,7 @@ test('Qwen OAuth readiness ignores unrelated provider keys', t => {
 })
 
 test('Qwen infers native auth from complete environment combinations', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-qwen-env-auth-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-qwen-env-auth-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const env = { HOME: home, QWEN_CODE_SYSTEM_SETTINGS_PATH: path.join(home, 'missing.json'),
     OPENAI_API_KEY: 'unrelated', OPENAI_MODEL: 'model', OPENAI_BASE_URL: 'https://example.test' }

@@ -116,7 +116,7 @@ function acpTransportError(diagnostic) {
 
 // Returns the message to deliver, or null for traffic that is safe to ignore.
 // A newer Agent can send updates and notifications this client does not know;
-// failing the whole turn over them would break Meldwork on every Agent upgrade,
+// failing the whole turn over them would break Tyche on every Agent upgrade,
 // so only messages that decide what is executed or approved stay strict.
 function validateAcpInboundMessage(message, validators, replyState, protocolLabel) {
   if (!message || typeof message !== 'object' || Array.isArray(message)
@@ -606,7 +606,7 @@ function runtimeSignature(agent, workdir, spec, profile, childEnv) {
         : '',
     environment,
     secretEnvironmentKeys: nativeSecretEnvKeys(childEnv[SECRET_ENV_KEYS]),
-    redactionSecrets: childEnv[Symbol.for('meldwork.project-secret-values')] || [],
+    redactionSecrets: childEnv[Symbol.for('tyche.project-secret-values')] || [],
   })).digest('hex')
 }
 
@@ -727,7 +727,7 @@ async function createAcpRuntime(input) {
     async requestPermission(params) {
       const turn = runtime.activeTurn
       if (turn?.completion?.completed) return { outcome: { outcome: 'cancelled' } }
-      // DeepSeek escalation can escape its sandbox. Meldwork's selected
+      // DeepSeek escalation can escape its sandbox. Tyche's selected
       // workspace mode is the entire grant for this process.
       if (runtime.agent.kind === 'deepseek') {
         return selectedPermissionOutcome(permissionRejection(params?.options))

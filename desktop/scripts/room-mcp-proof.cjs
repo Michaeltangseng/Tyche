@@ -17,16 +17,16 @@ const { registerMentionTool } = require('../src/room/tools/mention.cjs')
 const { registerTaskTools } = require('../src/room/tools/tasks.cjs')
 
 function userDataDirectory() {
-  if (process.env.MELDWORK_USER_DATA) return process.env.MELDWORK_USER_DATA
-  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', 'Meldwork')
-  if (process.platform === 'win32') return path.join(process.env.APPDATA || os.homedir(), 'Meldwork')
-  return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'meldwork')
+  if (process.env.TYCHE_USER_DATA) return process.env.TYCHE_USER_DATA
+  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', 'Tyche')
+  if (process.platform === 'win32') return path.join(process.env.APPDATA || os.homedir(), 'Tyche')
+  return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'tyche')
 }
 
 async function main() {
   const userData = userDataDirectory()
   fs.mkdirSync(userData, { recursive: true, mode: 0o700 })
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-mcp-proof-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-mcp-proof-'))
   const roomDb = openRoomDatabase({ directory })
   let server
   let client

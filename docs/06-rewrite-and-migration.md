@@ -68,8 +68,8 @@ Deletion list:
 
 ### 2.1 New database
 
-- New ledger: `userData/meldwork-private/room/room.sqlite`
-- Old ledgers: `userData/meldwork-private/room-engine/` and `meldwork-workspace.json`
+- New ledger: `userData/tyche-private/room/room.sqlite`
+- Old ledgers: `userData/tyche-private/room-engine/` and `tyche-workspace.json`
 - The new architecture reads and writes only the new ledger. After migration, the old ledgers are archived read-only and no longer take part in the runtime.
 - New code directory: `desktop/src/room/`. The old `room-engine/` is only a reference for the historical implementation.
 

@@ -1,7 +1,7 @@
 // Pure text classifiers for local Agent failure diagnostics.
 //
 // Agent CLIs report failures as free text on stderr or inside structured error
-// results. Classification decides whether Meldwork retries, asks the user to
+// results. Classification decides whether Tyche retries, asks the user to
 // sign in again, or rebuilds a native session, so every rule here errs on the
 // side of "ambiguous": only explicit login and API-key statements count as a
 // definitive authentication failure. A bare 403, a proxy refusal, or a word

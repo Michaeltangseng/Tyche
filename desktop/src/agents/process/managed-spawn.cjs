@@ -5,7 +5,7 @@ const { spawn } = require('node:child_process')
 
 const inspector = require('./process-inspect.cjs')
 
-const MANAGED_PROCESS = Symbol.for('meldwork.managed-process')
+const MANAGED_PROCESS = Symbol.for('tyche.managed-process')
 const CONTROL_DRAIN_TIMEOUT_MS = 5000
 
 function managedError(code) {
@@ -284,7 +284,7 @@ function createManagedSpawn({
     if (!registry) throw managedError('LOCAL_MANAGED_PROCESS_UNAVAILABLE')
     assertSupervisor(supervisorPath)
     const marker = crypto.randomBytes(16).toString('hex')
-    const env = { ...(options.env || process.env), MELDWORK_CONTAINER: marker }
+    const env = { ...(options.env || process.env), TYCHE_CONTAINER: marker }
     const supervisor = spawn(supervisorPath, [], {
       cwd: options.cwd,
       detached: true,

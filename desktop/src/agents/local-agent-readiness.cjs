@@ -50,7 +50,7 @@ const SHELL_ENV_TIMEOUT_MS = 10000
 // When the shell does not answer and nothing better is known, retry soon
 // instead of pinning the bare app environment for the whole cache window.
 const SHELL_ENV_FAILURE_TTL_MS = 5000
-const SHELL_ENV_MARKER = '__MELDWORK_NATIVE_ENV_V1__'
+const SHELL_ENV_MARKER = '__TYCHE_NATIVE_ENV_V1__'
 const SHELL_ENV_KEYS = Object.freeze([...new Set([
   'PATH',
   ...CONFIG_DIRECTORY_ENV_KEYS,
@@ -637,7 +637,7 @@ function nativeShellCommand(shellName, extraEnvKeys = []) {
   const keys = [...SHELL_ENV_KEYS, ...nativeSecretEnvKeys(extraEnvKeys)].join(' ')
   // Enumerate names only; do not dump unrelated values or depend on Electron RunAsNode.
   const regionNames = shellName === 'zsh'
-    ? 'for __meldwork_region in ${(k)parameters[(I)VERTEX_REGION_*]}; do [[ ${(tP)__meldwork_region} == *export* ]] && builtin print -r -- "$__meldwork_region"; done'
+    ? 'for __tyche_region in ${(k)parameters[(I)VERTEX_REGION_*]}; do [[ ${(tP)__tyche_region} == *export* ]] && builtin print -r -- "$__tyche_region"; done'
     : [
         'if [ -n "${BASH_VERSION-}" ]; then',
         '  builtin compgen -e VERTEX_REGION_',
@@ -646,24 +646,24 @@ function nativeShellCommand(shellName, extraEnvKeys = []) {
         'fi',
       ].join('\n')
   const exportedCheck = shellName === 'zsh'
-    ? '[[ ${(tP)__meldwork_key} == *export* ]]'
+    ? '[[ ${(tP)__tyche_key} == *export* ]]'
     : shellName === 'bash'
-      ? '__meldwork_decl=$(declare -p "$__meldwork_key" 2>/dev/null); __meldwork_flags=${__meldwork_decl#declare -}; __meldwork_flags=${__meldwork_flags%% *}; case "$__meldwork_flags" in *x*) true ;; *) false ;; esac'
-      : '/usr/bin/printenv "$__meldwork_key" >/dev/null 2>&1'
+      ? '__tyche_decl=$(declare -p "$__tyche_key" 2>/dev/null); __tyche_flags=${__tyche_decl#declare -}; __tyche_flags=${__tyche_flags%% *}; case "$__tyche_flags" in *x*) true ;; *) false ;; esac'
+      : '/usr/bin/printenv "$__tyche_key" >/dev/null 2>&1'
   return [
     `printf '${SHELL_ENV_MARKER}\\0'`,
-    `for __meldwork_key in ${keys} $(${regionNames}); do`,
-    '  case "$__meldwork_key" in ""|*[!A-Za-z0-9_]*) continue ;; esac',
-    '  case "$__meldwork_key" in VERTEX_REGION_*)',
-    '    __meldwork_model=${__meldwork_key#VERTEX_REGION_}',
-    '    case "$__meldwork_model" in ""|*[!A-Z0-9_]*) continue ;; esac',
-    '    [ ${#__meldwork_model} -le 120 ] || continue ;;',
+    `for __tyche_key in ${keys} $(${regionNames}); do`,
+    '  case "$__tyche_key" in ""|*[!A-Za-z0-9_]*) continue ;; esac',
+    '  case "$__tyche_key" in VERTEX_REGION_*)',
+    '    __tyche_model=${__tyche_key#VERTEX_REGION_}',
+    '    case "$__tyche_model" in ""|*[!A-Z0-9_]*) continue ;; esac',
+    '    [ ${#__tyche_model} -le 120 ] || continue ;;',
     '  esac',
-    '  eval "__meldwork_value=\\${$__meldwork_key-}"',
+    '  eval "__tyche_value=\\${$__tyche_key-}"',
     `  if ${exportedCheck}; then`,
-    "    printf '%s=%s\\0' \"$__meldwork_key\" \"$__meldwork_value\"",
+    "    printf '%s=%s\\0' \"$__tyche_key\" \"$__tyche_value\"",
     '  else',
-    "    printf '!%s\\0' \"$__meldwork_key\"",
+    "    printf '!%s\\0' \"$__tyche_key\"",
     '  fi',
     'done',
   ].join('\n')

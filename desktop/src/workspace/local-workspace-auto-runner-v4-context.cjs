@@ -241,7 +241,7 @@ const v4ContextMethods = {
   v4SanitizeDeliveryText(value, limit = 6000, options = {}) {
     const privateWrapper = '(?:private[ _-]?(?:reasoning|thoughts?)|analysis|chain[ _-]?of[ _-]?thought|cot)'
     const privateHeading = '(?:private[ _-]?(?:reasoning|thoughts?)|chain[ _-]?of[ _-]?thought|cot)'
-    const stripped = this.v4StripMeldworkControls(
+    const stripped = this.v4StripTycheControls(
       options.workspaceRoot
         ? peerCollaborationText(value, { workspaceRoot: options.workspaceRoot })
         : publicCollaborationText(value, Number.MAX_SAFE_INTEGER),
@@ -271,8 +271,8 @@ const v4ContextMethods = {
       .slice(0, maximum)
   },
 
-  v4StripMeldworkControls(text) {
-    const marker = '[[MELDWORK_'
+  v4StripTycheControls(text) {
+    const marker = '[[TYCHE_'
     const source = String(text || '')
     const upper = source.toUpperCase()
     let cursor = 0
@@ -330,7 +330,7 @@ const v4ContextMethods = {
       if (planHash) supportCounts.set(planHash, (supportCounts.get(planHash) || 0) + 1)
     }
     const lines = [
-      'MELDWORK_V4_RESPONSIBILITY_CANDIDATES_V1',
+      'TYCHE_V4_RESPONSIBILITY_CANDIDATES_V1',
       'Fields: h=planHash;s=support;f=finalizer;v=verifiers;a=[t=taskId,o=owner,r=role,x=objective,y=expectedOutput,i=inputRefs,a=artifactRefs,d=dependencies]',
     ]
     const append = (line) => {
@@ -344,7 +344,7 @@ const v4ContextMethods = {
       const text = value => {
         const raw = String(value || '')
         const sanitized = this.v4SanitizeDeliveryText(raw, 2000)
-        if (/\[\[MELDWORK_/iu.test(raw) || sanitized !== raw) safe = false
+        if (/\[\[TYCHE_/iu.test(raw) || sanitized !== raw) safe = false
         return sanitized
       }
       const values = value => Array.isArray(value) ? value.map(text) : []
@@ -381,7 +381,7 @@ const v4ContextMethods = {
         const body = this.v4SanitizeDeliveryText(content, limit)
         if (artifact.producedBy?.agentKind !== proposalKind || !body) continue
         return [
-          'MELDWORK_V4_ASSIGNED_PROPOSAL_V1',
+          'TYCHE_V4_ASSIGNED_PROPOSAL_V1',
           `Proposal Agent: ${proposalKind}`,
           `Proposal Artifact: ${artifactId}`,
           'Proposal body excerpt:',

@@ -34,7 +34,7 @@ function seedTaskInProgress(roomDb, chatId, roleId) {
 }
 
 test('captain review waits for settlement and review traffic does not advance activity', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
   const repo = createRoomRepository(roomDb)
@@ -73,7 +73,7 @@ test('captain review waits for settlement and review traffic does not advance ac
 })
 
 test('review baseline includes every active assignment message', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
   const repo = createRoomRepository(roomDb)
@@ -100,7 +100,7 @@ test('review baseline includes every active assignment message', t => {
 })
 
 test('assign_in_group writes one message, one assignment, and target queued replies; rejects self', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
   const repo = createRoomRepository(roomDb)

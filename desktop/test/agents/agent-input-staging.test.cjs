@@ -11,7 +11,7 @@ const {
 } = require('../../src/agents/agent-input-staging.cjs')
 
 test('stages non-image inputs as temporary relative paths and cleans them up', (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-agent-input-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-agent-input-'))
   const sourceRoot = path.join(directory, 'private')
   const workdir = path.join(directory, 'workspace')
   fs.mkdirSync(sourceRoot)
@@ -30,18 +30,18 @@ test('stages non-image inputs as temporary relative paths and cleans them up', (
 
   assert.deepEqual(staged.nativeImagePaths, [imagePath])
   assert.equal(staged.files.length, 1)
-  assert.match(staged.files[0].relativePath, /^\.meldwork-input\/\.run-[^/]+\/1-private report\.pdf$/)
+  assert.match(staged.files[0].relativePath, /^\.tyche-input\/\.run-[^/]+\/1-private report\.pdf$/)
   assert.equal(path.isAbsolute(staged.files[0].relativePath), false)
   assert.equal(prompt.includes(sourceRoot), false)
   assert.match(prompt, /private report\.pdf/)
   assert.equal(fs.readFileSync(path.join(workdir, staged.files[0].relativePath), 'utf8'), '%PDF-1.7\n')
 
   cleanupStagedAgentInputs(staged)
-  assert.equal(fs.existsSync(path.join(workdir, '.meldwork-input')), false)
+  assert.equal(fs.existsSync(path.join(workdir, '.tyche-input')), false)
 })
 
 test('stages images beyond the native limit as temporary file inputs', (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-agent-input-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-agent-input-'))
   const sourceRoot = path.join(directory, 'private')
   const workdir = path.join(directory, 'workspace')
   fs.mkdirSync(sourceRoot)
@@ -67,7 +67,7 @@ test('stages images beyond the native limit as temporary file inputs', (t) => {
 test('rejects unsafe staged sources without leaving an input directory', {
   skip: process.platform === 'win32',
 }, (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-agent-input-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-agent-input-'))
   const workdir = path.join(directory, 'workspace')
   const source = path.join(directory, 'source.pdf')
   const link = path.join(directory, 'link.pdf')
@@ -79,5 +79,5 @@ test('rejects unsafe staged sources without leaving an input directory', {
   assert.throws(() => stageAgentInputs(workdir, [{
     path: link, name: 'report.pdf', mimeType: 'application/pdf', size: 9,
   }]), { message: 'LOCAL_ATTACHMENT_STAGE_UNAVAILABLE' })
-  assert.equal(fs.existsSync(path.join(workdir, '.meldwork-input')), false)
+  assert.equal(fs.existsSync(path.join(workdir, '.tyche-input')), false)
 })

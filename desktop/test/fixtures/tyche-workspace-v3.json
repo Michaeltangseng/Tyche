@@ -1,0 +1,116 @@
+{
+  "version": 3,
+  "groups": [
+    {
+      "id": "group-1",
+      "name": "Group 1",
+      "topic": "Topic 1",
+      "agentKinds": [
+        "claude",
+        "gemini"
+      ],
+      "workdir": "/tmp/tyche-fixture-project",
+      "allowWrite": true,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "group-2",
+      "name": "Group 2",
+      "topic": "Topic 2",
+      "agentKinds": [
+        "claude"
+      ],
+      "workdir": "/tmp/tyche-fixture-project",
+      "allowWrite": true,
+      "createdAt": "2026-01-02T00:00:00.000Z",
+      "updatedAt": "2026-01-02T00:00:00.000Z",
+      "conversationType": "direct",
+      "directAgentKind": "claude"
+    },
+    {
+      "id": "group-3",
+      "name": "Group 3",
+      "topic": "Topic 3",
+      "agentKinds": [
+        "claude"
+      ],
+      "workdir": "/tmp/tyche-fixture-project",
+      "allowWrite": true,
+      "createdAt": "2026-01-03T00:00:00.000Z",
+      "updatedAt": "2026-01-03T00:00:00.000Z",
+      "conversationType": "direct",
+      "directAgentKind": "claude"
+    },
+    {
+      "id": "group-4",
+      "name": "Group 4",
+      "topic": "Topic 4",
+      "agentKinds": [
+        "gemini"
+      ],
+      "workdir": "/tmp/tyche-fixture-project",
+      "allowWrite": true,
+      "createdAt": "2026-01-04T00:00:00.000Z",
+      "updatedAt": "2026-01-04T00:00:00.000Z",
+      "conversationType": "direct",
+      "directAgentKind": "gemini"
+    }
+  ],
+  "messages": [
+    {
+      "id": "message-1",
+      "groupId": "group-4",
+      "role": "user",
+      "content": "User message 1",
+      "createdAt": "2026-01-02T00:00:00.000Z"
+    },
+    {
+      "id": "message-2",
+      "groupId": "group-4",
+      "role": "agent",
+      "content": "Agent message 2",
+      "createdAt": "2026-01-02T00:00:01.000Z",
+      "agentKind": "gemini",
+      "elapsedMs": 4812
+    },
+    {
+      "id": "message-3",
+      "groupId": "group-4",
+      "role": "user",
+      "content": "User message 3",
+      "createdAt": "2026-01-02T00:00:02.000Z"
+    },
+    {
+      "id": "message-4",
+      "groupId": "group-4",
+      "role": "agent",
+      "content": "Agent message 4",
+      "createdAt": "2026-01-02T00:00:03.000Z",
+      "agentKind": "gemini",
+      "elapsedMs": 18111
+    },
+    {
+      "id": "message-5",
+      "groupId": "group-4",
+      "role": "user",
+      "content": "User message 5",
+      "createdAt": "2026-01-02T00:00:04.000Z"
+    },
+    {
+      "id": "message-6",
+      "groupId": "group-4",
+      "role": "agent",
+      "content": "Agent message 6",
+      "createdAt": "2026-01-02T00:00:05.000Z",
+      "agentKind": "gemini",
+      "elapsedMs": 8652
+    }
+  ],
+  "sessions": {
+    "group-4:gemini": "fixture-session-1"
+  },
+  "sessionMeta": {},
+  "agentPreferences": {},
+  "agentRuntime": {}
+}

@@ -11,7 +11,7 @@ const { createOutbox } = require('../../src/room/effects.cjs')
 const { createTaskQueue } = require('../../src/room/task-queue.cjs')
 
 test('reuses a matching chat session and preserves participant watermark on rotation', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
   const repo = createRoomRepository(roomDb)
@@ -36,7 +36,7 @@ test('reuses a matching chat session and preserves participant watermark on rota
 })
 
 test('changing configuration rotates the previous active session', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
   const repo = createRoomRepository(roomDb)
@@ -57,7 +57,7 @@ test('changing configuration rotates the previous active session', t => {
 })
 
 test('creates and reuses a task-lane session', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
   const repo = createRoomRepository(roomDb)

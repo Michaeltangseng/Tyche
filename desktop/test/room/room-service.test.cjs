@@ -10,7 +10,7 @@ const { createTimeline } = require('../../src/room/timeline.cjs')
 const { createRoomService } = require('../../src/room/room-service.cjs')
 
 function setup(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-service-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-service-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
   const repo = createRoomRepository(roomDb)

@@ -5,7 +5,7 @@ const path = require('node:path')
 const test = require('node:test')
 const { openRoomDatabase, ROOM_SCHEMA_VERSION } = require('../../src/room/db.cjs')
 
-function tempDirectory() { return fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-')) }
+function tempDirectory() { return fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-')) }
 
 test('room database creates private schema and version 1', t => {
   const directory = tempDirectory()

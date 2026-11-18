@@ -78,7 +78,7 @@ test('default discovery passes only each Agent native environment to version and
 test('discovery scans version-manager directories once per pass and rescans on refresh', async () => {
   let scans = 0
   const options = {
-    platform: 'linux', home: '/tmp/meldwork-discovery-test', env: { PATH: '' },
+    platform: 'linux', home: '/tmp/tyche-discovery-test', env: { PATH: '' },
     readdirFn: () => { scans++; return [] },
     accessFn: async () => { throw new Error('not found') },
     execFileFn: async () => { throw new Error('not found') },
@@ -130,11 +130,11 @@ test('a WorkBuddy build that ships only the lite bundle is probed through it', a
     Object.hasOwn((await probe('claude', liteOnly)).probeEnv, 'CODEBUDDY_FORCE_LITE_WB_BUNDLE'),
     false,
   )
-  assert.deepEqual(launchEnvironment('workbuddy', path.join(os.tmpdir(), 'meldwork-no-such-cli')), {})
+  assert.deepEqual(launchEnvironment('workbuddy', path.join(os.tmpdir(), 'tyche-no-such-cli')), {})
   assert.deepEqual(launchEnvironment('workbuddy', ''), {})
 
   if (process.platform !== 'win32') {
-    const linkDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-workbuddy-link-'))
+    const linkDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-workbuddy-link-'))
     t.after(() => fs.rmSync(linkDirectory, { recursive: true, force: true }))
     const link = path.join(linkDirectory, 'codebuddy')
     fs.symlinkSync(liteOnly, link)
@@ -347,7 +347,7 @@ test('capability probe cache expires when the system clock moves backwards', asy
 })
 
 test('capability probe cache does not survive native configuration file changes', async t => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-capability-config-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-capability-config-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const config = path.join(root, 'settings.json')
   fs.writeFileSync(config, '{}')
@@ -369,7 +369,7 @@ test('capability probe cache does not survive native configuration file changes'
 })
 
 test('capability probe cache follows native authentication files outside the config directory', async t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-capability-auth-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-capability-auth-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const data = path.join(home, 'data')
   const auth = path.join(data, 'opencode', 'auth.json')
@@ -497,7 +497,7 @@ test('Pi protocol alone does not mark an unidentified version compatible', async
 })
 
 test('Pi JSON probe closes stdin before waiting for a session event', { skip: process.platform === 'win32' }, async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-pi-probe-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-pi-probe-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const launcher = executable(directory, 'pi', `
 if (process.argv.includes('--help')) {
@@ -866,7 +866,7 @@ test('Linux executable resolution uses an allowlisted environment in the fallbac
       HOME: '/home/ryder',
       LANG: 'zh_CN.UTF-8',
       PATH: '/usr/bin:/bin',
-      MELDWORK_PRIVATE_VALUE: 'desktop-private-value',
+      TYCHE_PRIVATE_VALUE: 'desktop-private-value',
       OPENAI_API_KEY: 'provider-secret',
     },
     accessFn: async (candidate) => {
@@ -878,7 +878,7 @@ test('Linux executable resolution uses an allowlisted environment in the fallbac
       assert.equal(options.env.HOME, '/home/ryder')
       assert.equal(options.env.LANG, 'zh_CN.UTF-8')
       assert.match(options.env.PATH, /\/usr\/bin:\/bin/)
-      assert.equal(options.env.MELDWORK_PRIVATE_VALUE, undefined)
+      assert.equal(options.env.TYCHE_PRIVATE_VALUE, undefined)
       assert.equal(options.env.OPENAI_API_KEY, undefined)
       return { stdout: `${expected}\n`, stderr: '' }
     },
@@ -1577,7 +1577,7 @@ test('Agent detection passes scoped native and system environment to version com
       HOME: '/Users/Ryder',
       LANG: 'zh_CN.UTF-8',
       PATH: '/custom/bin',
-      MELDWORK_PRIVATE_VALUE: 'desktop-private-value',
+      TYCHE_PRIVATE_VALUE: 'desktop-private-value',
       OPENAI_API_KEY: 'provider-secret',
       https_proxy: 'http://proxy.example:3128',
       NO_PROXY: 'localhost,127.0.0.1',
@@ -1603,7 +1603,7 @@ test('Agent detection passes scoped native and system environment to version com
     assert.equal(env.HOME, '/Users/Ryder')
     assert.equal(env.LANG, 'zh_CN.UTF-8')
     assert.match(env.PATH, /\/custom\/bin/)
-    assert.equal(env.MELDWORK_PRIVATE_VALUE, undefined)
+    assert.equal(env.TYCHE_PRIVATE_VALUE, undefined)
     assert.equal(env.OPENAI_API_KEY, 'provider-secret')
     assert.equal(env.https_proxy, 'http://proxy.example:3128')
     assert.equal(env.NO_PROXY, 'localhost,127.0.0.1')
@@ -1818,7 +1818,7 @@ test('runAgent hides executable paths from spawn failures', async () => {
 test('runAgent escalates cancellation when the CLI ignores SIGTERM', {
   skip: process.platform === 'win32',
 }, async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cli-abort-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cli-abort-'))
   const readyFile = path.join(directory, 'ready')
   const cli = executable(directory, 'ignore-term.cjs', `
 const fs = require('node:fs')
@@ -1872,7 +1872,7 @@ test('runAgent converts a closed stdin pipe into a bounded send failure', async 
 test('runAgent cancellation closes pipes inherited by a descendant process', {
   skip: process.platform === 'win32',
 }, async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cli-tree-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cli-tree-'))
   const readyFile = path.join(directory, 'ready.json')
   const cli = executable(directory, 'spawn-descendant.cjs', `
 const fs = require('node:fs')

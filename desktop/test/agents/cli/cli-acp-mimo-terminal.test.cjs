@@ -7,7 +7,7 @@ const adapters = require('../../../src/agents/cli/cli-adapters.cjs')
 const { executable, within } = require('../../support/cli-adapters-test-helpers.cjs')
 
 for (const latePermission of [false, true]) test(`MiMo drains the exact message tail and rejects late authority: ${latePermission}`, async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-mimo-terminal-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-mimo-terminal-'))
   t.after(async () => { await adapters.shutdownAcpSessionRuntime(); fs.rmSync(directory, { recursive: true, force: true }) })
   const cli = executable(directory, 'mimo', `
 const send = value => console.log(JSON.stringify(value))
@@ -19,7 +19,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line',line=>
  else if(m.method==='session/new')send({jsonrpc:'2.0',id:m.id,result:{sessionId}})
  else if(m.method==='session/set_mode')send({jsonrpc:'2.0',id:m.id,result:{}})
  else if(m.method==='session/prompt'){
-   delta('answer-1','MELDWORK')
+   delta('answer-1','TYCHE')
    send({jsonrpc:'2.0',id:m.id,result:{stopReason:'end_turn'}})
    setTimeout(()=>{
      delta('answer-1','_OK')
@@ -34,6 +34,6 @@ require('node:readline').createInterface({input:process.stdin}).on('line',line=>
     sandbox: 'workspace-write', onPermissionRequest: async () => { approvals++; return { status: 'approved', optionId: 'allow' } },
   }), 10000)
   if (latePermission) await assert.rejects(run, { code: 'LOCAL_AGENT_PERMISSION_TERMINAL_RACE' })
-  else assert.equal((await run).text, 'MELDWORK_OK')
+  else assert.equal((await run).text, 'TYCHE_OK')
   assert.equal(approvals, 0)
 })

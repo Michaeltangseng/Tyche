@@ -175,7 +175,7 @@ const taskGraphMethods = {
 
   taskGraphPrompt(node, objective, collaborationPackage, unlimitedRounds = false) {
     return [
-      'MELDWORK_TASK_GRAPH_V1',
+      'TYCHE_TASK_GRAPH_V1',
       `Node: ${node.nodeId}`,
       `Role: ${node.role}`,
       `Objective: ${objective}`,
@@ -183,7 +183,7 @@ const taskGraphMethods = {
       `Acceptance criteria: ${this.taskGraphAcceptanceCriteria(node).join(' | ')}`,
       unlimitedReviewContract(unlimitedRounds),
       collaborationPackage.text,
-      'Meldwork records your completed response as an Artifact and associated Evidence. Do not search for, invent, or output internal Artifact or Evidence IDs.',
+      'Tyche records your completed response as an Artifact and associated Evidence. Do not search for, invent, or output internal Artifact or Evidence IDs.',
       'Return the requested result directly. Completion is evaluated from durable typed records; do not emit a consensus marker.',
     ].join('\n')
   },
@@ -259,7 +259,7 @@ const taskGraphMethods = {
       try {
         const record = this.v4EvidenceRecord(id)
         const recorder = record.recordedBy || {}
-        const authorized = recorder.kind === 'system' ? recorder.actorId === 'meldwork-main'
+        const authorized = recorder.kind === 'system' ? recorder.actorId === 'tyche-main'
           : recorder.kind === 'agent' && recorder.runId === controller?.runId
             && recorder.agentRunId === result?.message?.trace?.agentRunId
             && recorder.agentKind === node.agentKind
@@ -570,7 +570,7 @@ const taskGraphMethods = {
         runtimeInstruction: isolated ? '' : [
           `Execute task-graph node ${node.nodeId} as ${node.role}.`,
           `Expected output: ${node.expectedOutput}`,
-          'Meldwork records your completed response as an Artifact and associated Evidence. Do not search for, invent, or output internal Artifact or Evidence IDs.',
+          'Tyche records your completed response as an Artifact and associated Evidence. Do not search for, invent, or output internal Artifact or Evidence IDs.',
           'Do not emit a consensus marker.',
         ].join('\n'),
         ...(isolated ? {

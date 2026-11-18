@@ -6,18 +6,18 @@ const SHA256 = /^[a-f0-9]{64}$/
 const V4_AGENT_PHASES = new Set([
   'proposal', 'discussion', 'challenge', 'work', 'synthesis', 'verification',
 ])
-const V4_RECEIPT_MARKER_PREFIX = '[[MELDWORK_COLLABORATION'
-const V4_RECEIPT_MARKER = /\s*\[\[MELDWORK_COLLABORATION(?:_JSON)?:([\s\S]*?)\]\]/i
-const V4_RECEIPT_BLOCK = /\s*\[\[MELDWORK_COLLABORATION(?:_JSON)?\]\]([\s\S]*?)\[\[\/MELDWORK_COLLABORATION(?:_JSON)?\]\]/i
-const LEGACY_CONSENSUS_MARKER = /^\s*\[\[MELDWORK_CONSENSUS:(?:agree|continue)\]\]\s*$/gim
+const V4_RECEIPT_MARKER_PREFIX = '[[TYCHE_COLLABORATION'
+const V4_RECEIPT_MARKER = /\s*\[\[TYCHE_COLLABORATION(?:_JSON)?:([\s\S]*?)\]\]/i
+const V4_RECEIPT_BLOCK = /\s*\[\[TYCHE_COLLABORATION(?:_JSON)?\]\]([\s\S]*?)\[\[\/TYCHE_COLLABORATION(?:_JSON)?\]\]/i
+const LEGACY_CONSENSUS_MARKER = /^\s*\[\[TYCHE_CONSENSUS:(?:agree|continue)\]\]\s*$/gim
 const V4_RECEIPT_MAX_TEXT = 800
 const V4_RECEIPT_MAX_ITEMS = 16
 const V4_RECEIPT_MAX_BYTES = 16 * 1024
 
 function isV4InternalProtocolCommentary(value) {
   const text = String(value || '').replace(/\s+/g, ' ').trim()
-  if (!text || text.length > 4000 || /\[\[MELDWORK_COLLABORATION/i.test(text)) return false
-  const mentionsControl = /(?:\breceipt\b|structured marker|MELDWORK framework|ExitPlanMode|\u7ed3\u6784\u5316\s*receipt|receipt\s*\u6807\u8bb0)/i.test(text)
+  if (!text || text.length > 4000 || /\[\[TYCHE_COLLABORATION/i.test(text)) return false
+  const mentionsControl = /(?:\breceipt\b|structured marker|TYCHE framework|ExitPlanMode|\u7ed3\u6784\u5316\s*receipt|receipt\s*\u6807\u8bb0)/i.test(text)
   const describesInternalProcess = /(?:coordination\/self-introduction|not a code implementation task|no plan file|implementation planning|plan mode|waiting for (?:the )?(?:next|subsequent).*(?:phase|instruction)|\u534f\u4f5c\u534f\u8c03\u7c7b\u6587\u672c\u4ea7\u51fa|\u975e\u4ee3\u7801\u5b9e\u73b0\u4efb\u52a1|\u6267\u884c\u8ba1\u5212\u6d41\u7a0b|\u4e0d\u8c03\u7528\s*ExitPlanMode|\u672c\u8f6e\u4ea4\u4ed8|\u7b49\u5f85\u540e\u7eed.*(?:\u9636\u6bb5|\u6307\u4ee4))/i.test(text)
   return mentionsControl && describesInternalProcess
 }
@@ -106,10 +106,10 @@ function parseV4CollaborationReceiptStrict(result, required = false, expectedPha
       }
     }
     text = rawText.slice(0, markerStart) + (trailingVisibleText ? `\n\n${trailingVisibleText}` : '')
-  } else if (/\[\[MELDWORK_COLLABORATION/i.test(rawText)) {
+  } else if (/\[\[TYCHE_COLLABORATION/i.test(rawText)) {
     if (!lenient) throw new Error('LOCAL_RUN_COLLABORATION_RECEIPT_INVALID')
     unreadableReceipt = true
-    text = rawText.slice(0, rawText.search(/\[\[MELDWORK_COLLABORATION/i))
+    text = rawText.slice(0, rawText.search(/\[\[TYCHE_COLLABORATION/i))
   }
   if (unreadableReceipt) receipt = null
   if (lenient && receipt && typeof receipt === 'object' && !Array.isArray(receipt)) {
@@ -263,7 +263,7 @@ function parseV4CollaborationReceipt(result, required = false, expectedPhase = '
       throw error
     }
     const rawText = typeof result?.text === 'string' ? result.text : ''
-    const markerIndex = rawText.search(/\[\[MELDWORK_COLLABORATION/i)
+    const markerIndex = rawText.search(/\[\[TYCHE_COLLABORATION/i)
     const visibleText = (markerIndex >= 0 ? rawText.slice(0, markerIndex) : rawText)
       .replace(LEGACY_CONSENSUS_MARKER, '')
       .replace(/\n{3,}/g, '\n\n')

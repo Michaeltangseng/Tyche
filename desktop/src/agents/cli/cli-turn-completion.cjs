@@ -3,7 +3,7 @@ const { randomUUID } = require('node:crypto')
 // A contribution ends only on an explicit, invocation-specific signal from
 // the assistant. Tool output and acknowledgements cannot finish a turn.
 function createTurnCompletion() {
-  const marker = `[[MELDWORK_TURN_DONE:${randomUUID()}]]`
+  const marker = `[[TYCHE_TURN_DONE:${randomUUID()}]]`
   let text = ''
   let delivered = 0
   let completed = false

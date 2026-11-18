@@ -101,7 +101,7 @@ test('readEnvironmentMarker reads ps output on macOS', async () => {
     execFileFn: async (file, args) => {
       assert.equal(file, 'ps')
       assert.deepEqual(args, ['-wwE', '-o', 'command=', '-p', '100'])
-      return { stdout: `/usr/bin/agent MELDWORK_CONTAINER=${marker} PATH=/usr/bin\n` }
+      return { stdout: `/usr/bin/agent TYCHE_CONTAINER=${marker} PATH=/usr/bin\n` }
     },
   })
   assert.equal(present, 'present')
@@ -132,13 +132,13 @@ test('readEnvironmentMarker reads /proc on Linux', async () => {
   const marker = 'marker-linux'
   const present = await readEnvironmentMarker(100, marker, {
     platform: 'linux',
-    readFileFn: () => Buffer.from(`PATH=/usr/bin\0MELDWORK_CONTAINER=${marker}\0`),
+    readFileFn: () => Buffer.from(`PATH=/usr/bin\0TYCHE_CONTAINER=${marker}\0`),
   })
   assert.equal(present, 'present')
 
   const absent = await readEnvironmentMarker(100, marker, {
     platform: 'linux',
-    readFileFn: () => Buffer.from('PATH=/usr/bin\0MELDWORK_CONTAINER=other\0'),
+    readFileFn: () => Buffer.from('PATH=/usr/bin\0TYCHE_CONTAINER=other\0'),
   })
   assert.equal(absent, 'absent')
 
@@ -151,9 +151,9 @@ test('readEnvironmentMarker reads /proc on Linux', async () => {
 
 test('reads a real child process start time, group and environment marker', async (t) => {
   if (process.platform === 'win32') return t.skip('POSIX process inspection is not available on Windows')
-  const marker = `meldwork-inspect-${process.pid}-${Date.now()}`
+  const marker = `tyche-inspect-${process.pid}-${Date.now()}`
   const child = spawn('sleep', ['5'], {
-    env: { ...process.env, MELDWORK_CONTAINER: marker },
+    env: { ...process.env, TYCHE_CONTAINER: marker },
     stdio: 'ignore',
   })
   let exited = false

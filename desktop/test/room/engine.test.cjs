@@ -12,7 +12,7 @@ const { createEngine } = require('../../src/room/engine.cjs')
 const { createFakeRuntime } = require('./helpers/fake-runtime.cjs')
 
 function setup(t, { deferCompletion = true } = {}) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
   const repo = createRoomRepository(roomDb)
@@ -96,7 +96,7 @@ test('the captain receives captain-only review rows in its briefing', async t =>
 })
 
 test('completion watermark does not jump over an in-flight peer reply', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-room-v2-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
   const repo = createRoomRepository(roomDb)

@@ -271,4 +271,4 @@ if (isLocalDocument) Object.assign(desktopApi, {
   }),
 })
 
-contextBridge.exposeInMainWorld('meldworkDesktop', Object.freeze(desktopApi))
+contextBridge.exposeInMainWorld('tycheDesktop', Object.freeze(desktopApi))

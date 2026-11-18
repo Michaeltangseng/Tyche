@@ -52,8 +52,8 @@ function git(gitDir, workTree, args, { input } = {}) {
     '-c', 'core.quotepath=false',
     '-c', 'core.fsmonitor=false',
     '-c', 'gc.auto=0',
-    '-c', 'user.name=Meldwork',
-    '-c', 'user.email=meldwork@localhost',
+    '-c', 'user.name=Tyche',
+    '-c', 'user.email=tyche@localhost',
     ...args,
   ]
   return execFileSync('git', fullArgs, {
@@ -123,7 +123,7 @@ function isLfsPath(root, relativePath) {
 
 function placeholderText({ reason, mode, size, sha256 }) {
   return [
-    'meldwork-placeholder 1',
+    'tyche-placeholder 1',
     `reason ${reason}`,
     `mode ${mode}`,
     `size ${size}`,
@@ -166,7 +166,7 @@ function snapshot(root, shadow, effectId, { placeholderCandidates = [] } = {}) {
   }
   const tree = git(shadow, root, ['write-tree']).trim()
   const commit = git(shadow, root, ['commit-tree', tree, '-m', `spike:${effectId}`]).trim()
-  const ref = `refs/meldwork/effects/${encodeId(effectId)}`
+  const ref = `refs/tyche/effects/${encodeId(effectId)}`
   git(shadow, root, ['update-ref', ref, commit])
   return {
     effectId,
@@ -258,7 +258,7 @@ function measureLargeBinary(baseDir) {
     fileBytes: LARGE_FILE_BYTES,
     first,
     second,
-    placeholderIsText: placeholderBlob.includes('meldwork-placeholder 1'),
+    placeholderIsText: placeholderBlob.includes('tyche-placeholder 1'),
     placeholderBlob: placeholderBlob.slice(0, 300),
     diskUsageKb: diskUsageKb(shadow),
   }
@@ -280,7 +280,7 @@ function measureLfs(baseDir) {
     root,
     first,
     second,
-    placeholderIsText: placeholderBlob.includes('meldwork-placeholder 1'),
+    placeholderIsText: placeholderBlob.includes('tyche-placeholder 1'),
     placeholderBlob: placeholderBlob.slice(0, 300),
     diskUsageKb: diskUsageKb(shadow),
   }
@@ -317,7 +317,7 @@ function measureRawBytes(baseDir) {
 
 function main() {
   const gitVersion = execFileSync('git', ['--version'], { encoding: 'utf8' }).trim()
-  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-shadow-spike-'))
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-shadow-spike-'))
   const summary = {
     gitVersion,
     meetsMinimumGit: (() => {

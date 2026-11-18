@@ -142,9 +142,9 @@ function queueTeamRoomRuntimeEvent(payload) {
 // taking the app down, so instability reports have evidence.
 function recordMainProcessFault(kind, detail) {
   const text = String(detail?.stack || detail?.message || detail || '').slice(0, 4000)
-  console.error(`[meldwork] ${kind}`, text)
+  console.error(`[tyche] ${kind}`, text)
   try {
-    const file = path.join(app.getPath('userData'), 'meldwork-diagnostics.log')
+    const file = path.join(app.getPath('userData'), 'tyche-diagnostics.log')
     try {
       if (fs.statSync(file).size > 1024 * 1024) fs.renameSync(file, `${file}.1`)
     } catch { /* first entry */ }
@@ -241,8 +241,8 @@ function offlinePath() {
 
 function appIconPath() {
   return app.isPackaged
-    ? path.join(__dirname, '../frontend/logos/meldwork-app.png')
-    : path.resolve(__dirname, '../../frontend/public/logos/meldwork-app.png')
+    ? path.join(__dirname, '../frontend/logos/tyche-app.png')
+    : path.resolve(__dirname, '../../frontend/public/logos/tyche-app.png')
 }
 
 function appIconImage() {
@@ -480,7 +480,7 @@ async function resolveProjectEnvironmentIdentities(workdir, kinds) {
 }
 
 function workspaceStoragePath(userData = app.getPath('userData')) {
-  return path.join(userData, 'meldwork-workspace.json')
+  return path.join(userData, 'tyche-workspace.json')
 }
 
 function notifyWorkspaceChanged(snapshot) {
@@ -577,7 +577,7 @@ async function runCoreAgent(agent, prompt, workdir, options = {}) {
     if (agent.kind !== 'codex' || !/^custom-[a-f0-9]{16}$/.test(String(connectorInstanceId || ''))) {
       throw new Error('AGENT_CONNECTOR_CREDENTIAL_ISOLATION_UNSUPPORTED')
     }
-    const privateRoot = path.join(app.getPath('userData'), 'meldwork-private')
+    const privateRoot = path.join(app.getPath('userData'), 'tyche-private')
     const connectorRoot = path.join(privateRoot, 'connector-native')
     const instanceRoot = path.join(connectorRoot, connectorInstanceId)
     for (const directory of [privateRoot, connectorRoot, instanceRoot]) ensurePrivateDirectory(directory)
@@ -713,7 +713,7 @@ async function requestLocalSkillTrust({ binding, coordinates, manifest }) {
 
 function createWorkspace() {
   cloudAgentStartRetry?.cancel()
-  const privateRoot = path.join(app.getPath('userData'), 'meldwork-private')
+  const privateRoot = path.join(app.getPath('userData'), 'tyche-private')
   ensurePrivateDirectory(privateRoot)
   const contentBlobStore = new ContentBlobStore({
     rootPath: path.join(privateRoot, 'content-blobs'),
@@ -755,7 +755,7 @@ function createWorkspace() {
     contentBlobStore,
   })
   const runLedger = new RunLedger({
-    storagePath: path.join(app.getPath('userData'), 'meldwork-run-ledger.json'),
+    storagePath: path.join(app.getPath('userData'), 'tyche-run-ledger.json'),
   })
   const runtime = new CloudAgentRuntime({
     runLedger,
@@ -777,13 +777,13 @@ function createWorkspace() {
     storagePath: path.join(privateRoot, 'process-registry.json'),
   })
   const managedSupervisorPath = app.isPackaged
-    ? path.join(process.resourcesPath, 'bin', 'meldwork-supervisor')
-    : path.join(__dirname, '..', 'native', 'build', 'meldwork-supervisor')
+    ? path.join(process.resourcesPath, 'bin', 'tyche-supervisor')
+    : path.join(__dirname, '..', 'native', 'build', 'tyche-supervisor')
   const localWorkspace = new LocalWorkspace({
     storagePath: workspaceStoragePath(),
     processRegistry,
     managedSupervisorPath,
-    tracesRoot: path.join(app.getPath('userData'), 'meldwork-private', 'traces'),
+    tracesRoot: path.join(app.getPath('userData'), 'tyche-private', 'traces'),
     onTraceAppended: payload => traceAppendedNotifier.notify(payload),
     contentBlobStore,
     contextPackStore: new ContextPackStore({
@@ -932,7 +932,7 @@ function initializeWorkspace() {
   workspace = next
   try {
     cleanupOrphanTraces(
-      path.join(app.getPath('userData'), 'meldwork-private', 'traces'),
+      path.join(app.getPath('userData'), 'tyche-private', 'traces'),
       groupId => Boolean(next.getGroup(groupId)),
     )
   } catch { /* orphan cleanup is best effort */ }
@@ -951,7 +951,7 @@ function createWindow(startupError = workspaceStartupError) {
     height: 920,
     minWidth: 980,
     minHeight: 680,
-    title: 'Meldwork',
+    title: 'Tyche',
     icon: appIconImage() || appIconPath(),
     backgroundColor: process.platform === 'darwin' ? '#e7edef' : '#f3f6f8',
     ...(process.platform === 'darwin' ? {
@@ -1077,7 +1077,7 @@ function registerIpc() {
     })).env,
     skillCatalog,
   })
-  const tracesRoot = path.join(app.getPath('userData'), 'meldwork-private', 'traces')
+  const tracesRoot = path.join(app.getPath('userData'), 'tyche-private', 'traces')
   roomTraceReader = createTraceReader({
     tracesRoot,
     isKnownGroup: groupId => {
@@ -1103,7 +1103,7 @@ if (!hasSingleInstanceLock) {
     try {
       ensurePrivateDirectory(app.getPath('userData'))
     } catch (error) {
-      console.error('MELDWORK_PRIVATE_DIRECTORY_UNAVAILABLE', { code: String(error?.code || '') })
+      console.error('TYCHE_PRIVATE_DIRECTORY_UNAVAILABLE', { code: String(error?.code || '') })
       app.quit()
       return
     }
@@ -1111,7 +1111,7 @@ if (!hasSingleInstanceLock) {
       migrateLegacyProductData(app.getPath('userData'))
     } catch (error) {
       console.error(
-        'MELDWORK_PRODUCT_DATA_MIGRATION_ABORTED',
+        'TYCHE_PRODUCT_DATA_MIGRATION_ABORTED',
         error?.diagnostic || { status: 'failed', code: String(error?.code || '') },
       )
       app.quit()
@@ -1119,21 +1119,21 @@ if (!hasSingleInstanceLock) {
     }
     const attachmentReferences = persistedAttachmentReferences(workspaceStoragePath())
     customAgentStore = new CustomAgentStore({
-      storagePath: path.join(app.getPath('userData'), 'meldwork-custom-agents.json'),
+      storagePath: path.join(app.getPath('userData'), 'tyche-custom-agents.json'),
       environment: async () => (await nativeShellEnvironment()).env,
     })
     cloudAgentBridges = new CloudAgentBridgeStore({
-      storagePath: path.join(app.getPath('userData'), 'meldwork-cloud-agent-bridges.json'),
+      storagePath: path.join(app.getPath('userData'), 'tyche-cloud-agent-bridges.json'),
       fetch: globalThis.fetch,
     })
     // The shared Provider store was removed; drop any legacy encrypted
     // credentials so they do not linger on disk unread.
     try {
       const { rmSync } = require('node:fs')
-      rmSync(path.join(app.getPath('userData'), 'meldwork-provider.json'), { force: true })
+      rmSync(path.join(app.getPath('userData'), 'tyche-provider.json'), { force: true })
     } catch { /* best-effort cleanup */ }
     knowledgeBaseStore = new KnowledgeBaseStore({
-      storagePath: path.join(app.getPath('userData'), 'meldwork-knowledge-base.json'),
+      storagePath: path.join(app.getPath('userData'), 'tyche-knowledge-base.json'),
     })
     try {
       attachmentStore = new AttachmentStore({
@@ -1201,7 +1201,7 @@ if (!hasSingleInstanceLock) {
       }
       // M4/M6 C: protect every known project root, recover the process
       // registry, register residual occupancy, then leave recovery mode.
-      const privateRoot = path.join(app.getPath('userData'), 'meldwork-private')
+      const privateRoot = path.join(app.getPath('userData'), 'tyche-private')
       try {
         const recovery = await startupWorkspace.processRegistry.recover()
         for (const result of recovery) {
@@ -1212,22 +1212,22 @@ if (!hasSingleInstanceLock) {
             try {
               claims = [await makeClaim({ root: residual.workdir, path: '', mode: 'exclusive' })]
             } catch (error) {
-              console.warn('[meldwork] residual workdir could not be claimed',
+              console.warn('[tyche] residual workdir could not be claimed',
                 result.recordId, error?.code || error?.message || error)
             }
           }
           if (claims.length) {
             scheduler.registerResidual({ residualId: result.recordId, claims })
           } else {
-            console.warn('[meldwork] residual has no writable claim', result.recordId)
+            console.warn('[tyche] residual has no writable claim', result.recordId)
           }
         }
         const residuals = scheduler.snapshot().residuals
         if (residuals.length) {
-          console.warn('[meldwork] managed process residuals require review', residuals)
+          console.warn('[tyche] managed process residuals require review', residuals)
         }
       } catch (recoveryError) {
-        console.warn('[meldwork] managed process recovery failed',
+        console.warn('[tyche] managed process recovery failed',
           recoveryError?.message || recoveryError)
       }
       try {
@@ -1247,7 +1247,7 @@ if (!hasSingleInstanceLock) {
         })
         await teamRoomHost.start()
       } catch (error) {
-        console.warn('[meldwork] team room startup failed',
+        console.warn('[tyche] team room startup failed',
           error?.code || error?.message || error)
         try { await teamRoomHost?.close() } catch { /* host may be partially assembled */ }
         teamRoomHost = null

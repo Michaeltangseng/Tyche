@@ -29,7 +29,7 @@ for (const workflow of ['direct', 'manual', 'legacy-auto', 'agent-led', 'sequent
       runAgent: async (agent, prompt) => {
         calls.push({ kind: agent.kind, prompt })
         const text = 'The configured Providers do not offer the required media model.'
-        const receipt = natural ? `\n[[MELDWORK_COLLABORATION:${JSON.stringify({
+        const receipt = natural ? `\n[[TYCHE_COLLABORATION:${JSON.stringify({
           summary: text,
           taskDecision: { status: 'completed', reason: 'The requested explanation is delivered.',
             deliverables: ['Explanation in this response.'], nextKinds: [] },
@@ -60,7 +60,7 @@ for (const workflow of ['direct', 'manual', 'legacy-auto', 'agent-led', 'sequent
       assert.ok(calls.slice(before).every(call => call.kind === 'hermes' && call.prompt.includes(text)))
     }
     assert.equal(mediaCalls, 0)
-    assert.ok(calls.every(call => !/Meldwork generated|shared media generator was unavailable/.test(call.prompt)))
+    assert.ok(calls.every(call => !/Tyche generated|shared media generator was unavailable/.test(call.prompt)))
     const replies = workspace.snapshot().messages.filter(message => message.role === 'agent')
     assert.ok(replies.length >= requests.length)
     assert.ok(replies.every(message => message.content === 'The configured Providers do not offer the required media model.'))

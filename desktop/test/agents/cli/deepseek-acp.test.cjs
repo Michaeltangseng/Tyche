@@ -8,7 +8,7 @@ const { childEnvironment } = require('../../../src/agents/cli/cli-process-suppor
 const { executable } = require('../../support/cli-adapters-test-helpers.cjs')
 
 test('DeepSeek ACP keeps mode-bound sessions, resumes, and rejects escalations', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-dsh-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-dsh-'))
   const cli = executable(directory, 'dsh.cjs', `
 const readline = require('node:readline')
 const input = readline.createInterface({ input: process.stdin })
@@ -62,7 +62,7 @@ input.on('line', line => {
 })
 
 test('DeepSeek invocation pins policy and preserves only its allowed native environment', (t) => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-dsh-invocation-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-dsh-invocation-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const env = { DSH_HOME: home }
   const read = invocation('deepseek', '/bin/dsh', '/tmp', '', { sandbox: 'read-only', env })
@@ -85,7 +85,7 @@ test('DeepSeek invocation pins policy and preserves only its allowed native envi
 })
 
 test('DeepSeek honors an explicitly configured ACP provider and its declared credential', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-dsh-native-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-dsh-native-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   fs.mkdirSync(path.join(home, 'profiles', 'acp'), { recursive: true })
   fs.writeFileSync(path.join(home, 'profiles', 'acp', 'cordis.patch.yml'), [
@@ -114,7 +114,7 @@ test('DeepSeek honors an explicitly configured ACP provider and its declared cre
 })
 
 test('DeepSeek uses the default model only without an explicit native selection', t => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-dsh-default-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-dsh-default-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const env = { DSH_HOME: root }
   const options = { sandbox: 'read-only', env }
@@ -126,7 +126,7 @@ test('DeepSeek uses the default model only without an explicit native selection'
 })
 
 test('DeepSeek native official provider retains its bundled API key declaration', t => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-dsh-official-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-dsh-official-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const { deepseekNativeConfig } = require('../../../src/agents/cli/deepseek-native-config.cjs')
   const { nativeCredentialEnvironment } = require('../../../src/agents/agent-native-environment.cjs')
@@ -146,7 +146,7 @@ test('DeepSeek native official provider retains its bundled API key declaration'
 })
 
 test('DeepSeek ACP uses the native selected provider in both permission modes', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-dsh-native-acp-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-dsh-native-acp-'))
   fs.mkdirSync(path.join(directory, 'profiles', 'acp'), { recursive: true })
   fs.writeFileSync(path.join(directory, 'profiles', 'acp', 'cordis.patch.yml'), [
     '- id: llm-pi-ai', '  config:', '    providers:', '      custom:', '        apiKeyEnv: CUSTOM_DSH_KEY',
@@ -178,14 +178,14 @@ input.on('line', line => {
 })
 
 test('DeepSeek restarts its persistent ACP process after native model configuration changes', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-dsh-native-reload-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-dsh-native-reload-'))
   fs.mkdirSync(path.join(directory, 'profiles', 'acp'), { recursive: true })
   const config = path.join(directory, 'profiles', 'acp', 'cordis.patch.yml')
   const writeConfig = model => fs.writeFileSync(config, `- id: acp\n  config:\n    provider: custom\n    model: ${model}\n`)
   writeConfig('first-model')
   const cli = executable(directory, 'reload-dsh.cjs', `
 const fs = require('node:fs')
-fs.appendFileSync(process.env.MELDWORK_TEST_START_FILE, 'start\\n')
+fs.appendFileSync(process.env.TYCHE_TEST_START_FILE, 'start\\n')
 const readline = require('node:readline')
 const send = message => process.stdout.write(JSON.stringify(message) + '\\n')
 readline.createInterface({ input: process.stdin }).on('line', line => {
@@ -203,7 +203,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   const starts = path.join(directory, 'starts')
   const agent = { kind: 'deepseek', executable: cli }
   const options = { sandbox: 'read-only', acpPersistenceKey: 'reload-test',
-    env: { DSH_HOME: directory, MELDWORK_TEST_START_FILE: starts } }
+    env: { DSH_HOME: directory, TYCHE_TEST_START_FILE: starts } }
   const first = await runAgent(agent, 'first', directory, options)
   writeConfig('second-model')
   await assert.rejects(runAgent(agent, 'second', directory, { ...options, sessionRef: first.sessionRef }),

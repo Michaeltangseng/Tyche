@@ -16,7 +16,7 @@ const { fixture: workspaceFixture, deferred } = require('../support/local-worksp
 function skillManifest(overrides = {}) {
   return {
     schemaVersion: 1,
-    recordType: 'meldwork-skill-manifest',
+    recordType: 'tyche-skill-manifest',
     identity: { id: 'global/review', version: '1.0.0' },
     origin: { type: 'local-unsigned', publisher: 'Local author' },
     agents: [{ kind: 'codex', minVersion: '0.100.0', maxVersion: '1.0.0' }],
@@ -45,13 +45,13 @@ function removeFixture(directory) {
 }
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-skill-selections-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-skill-selections-'))
   t.after(() => removeFixture(directory))
   const skillDirectory = path.join(directory, 'home', '.codex', 'skills', 'review')
   fs.mkdirSync(path.join(skillDirectory, 'references'), { recursive: true })
   fs.writeFileSync(path.join(skillDirectory, 'SKILL.md'), '# Original Skill\n')
   fs.writeFileSync(
-    path.join(skillDirectory, 'meldwork.skill.json'),
+    path.join(skillDirectory, 'tyche.skill.json'),
     `${JSON.stringify(skillManifest())}\n`,
   )
   fs.writeFileSync(path.join(skillDirectory, 'references', 'rules.md'), 'Original rules\n')
@@ -224,7 +224,7 @@ for (const revokeAt of ['queued', 'after-lease', 'never']) test(`a queued Skill 
 test('rejects missing manifests and manifest upgrades that are not explicitly approved', async (t) => {
   const { approvals, catalog, selections, skillDirectory } = fixture(t)
   const selected = catalog.list('codex').skills[0]
-  fs.rmSync(path.join(skillDirectory, 'meldwork.skill.json'))
+  fs.rmSync(path.join(skillDirectory, 'tyche.skill.json'))
   await assert.rejects(
     selections.prepare('codex', [selected]),
     { message: 'LOCAL_SKILL_MANIFEST_MISSING' },

@@ -103,7 +103,7 @@ test('Hermes native streaming keeps deltas, tools, final text and session identi
 })
 
 test('native Hermes streaming and Zcode JSON execute through the process adapter', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-native-formats-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-native-formats-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   for (const kind of ['zcode', 'hermes']) {
     const cli = executable(directory, `${kind}.cjs`, `

@@ -36,7 +36,7 @@ test('login shell proxy and CA settings survive credential probes and actual chi
     NODE_EXTRA_CA_CERTS: '/certs/trusted.pem',
   }
   const shell = await resolveNativeShellEnvironment({
-    cache: false, platform: 'linux', shell: '/bin/sh', home: '/tmp/meldwork-network-test', env: source,
+    cache: false, platform: 'linux', shell: '/bin/sh', home: '/tmp/tyche-network-test', env: source,
     execFileFn: async (_file, args, options) => {
       assert.equal(options.env.http_proxy, source.http_proxy)
       return promisify(execFile)('/bin/sh', ['-c', `HTTPS_PROXY=''; export HTTPS_PROXY\n${args[1]}`], {
@@ -49,7 +49,7 @@ test('login shell proxy and CA settings survive credential probes and actual chi
   for (const key of ['http_proxy', 'NO_PROXY', 'NODE_EXTRA_CA_CERTS']) assert.equal(shell.env[key], source[key])
   let probed = false
   await resolveNativeCredentialState('claude', {
-    executable: '/tmp/claude-network-test', home: '/tmp/meldwork-network-test', env: shell.env,
+    executable: '/tmp/claude-network-test', home: '/tmp/tyche-network-test', env: shell.env,
     execFileFn: async (_file, _args, options) => {
       probed = true
       assert.equal(options.env.http_proxy, source.http_proxy)

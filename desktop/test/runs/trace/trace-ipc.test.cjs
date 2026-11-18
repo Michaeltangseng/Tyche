@@ -12,7 +12,7 @@ const { createTraceReader } = require('../../../src/runs/trace/trace-reader.cjs'
 const { createTraceSink } = require('../../../src/runs/trace/trace-writer.cjs')
 
 function makeReader(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-trace-ipc-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-trace-ipc-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const tracesRoot = path.join(root, 'traces')
   const sink = createTraceSink({

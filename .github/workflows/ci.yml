@@ -53,8 +53,8 @@ jobs:
         shell: pwsh
         run: |
           $env:ELECTRON_RUN_AS_NODE = '1'
-          $env:MELDWORK_TEST_PACKAGED_APP = (Resolve-Path 'desktop/dist/win-unpacked/resources/app.asar').Path
-          & 'desktop/dist/win-unpacked/Meldwork.exe' --test desktop/test/agents/cli/windows-process-tree.test.cjs
+          $env:TYCHE_TEST_PACKAGED_APP = (Resolve-Path 'desktop/dist/win-unpacked/resources/app.asar').Path
+          & 'desktop/dist/win-unpacked/Tyche.exe' --test desktop/test/agents/cli/windows-process-tree.test.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   private-file-portability:
@@ -99,7 +99,7 @@ jobs:
         run: npm test
 
       - name: Check website and release licensing consistency
-        run: node --test ../meldwork-landing/test/landing.test.cjs
+        run: node --test ../tyche-landing/test/landing.test.cjs
 
       - name: Build web application
         run: npm run build

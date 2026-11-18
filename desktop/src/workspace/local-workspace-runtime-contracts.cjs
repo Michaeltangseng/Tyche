@@ -8,8 +8,8 @@ const {
   isSupportedAgentKind,
 } = require('./local-workspace-contracts.cjs')
 
-const AUTO_CONSENSUS_MARKER = /\[\[MELDWORK_CONSENSUS:(agree|continue)\]\]/gi
-const AUTO_FINAL_CONSENSUS_MARKER = /(?:^|\r?\n)[ \t]*\[\[MELDWORK_CONSENSUS:(agree|continue)\]\][ \t]*$/i
+const AUTO_CONSENSUS_MARKER = /\[\[TYCHE_CONSENSUS:(agree|continue)\]\]/gi
+const AUTO_FINAL_CONSENSUS_MARKER = /(?:^|\r?\n)[ \t]*\[\[TYCHE_CONSENSUS:(agree|continue)\]\][ \t]*$/i
 const DEFAULT_RUN_SILENCE_WARNING_MS = 20 * 1000
 // Inactivity windows for one Agent turn. Real CLIs regularly think, run builds
 // or wait on slow providers for several minutes; the former 3/5 minute limits
@@ -67,7 +67,7 @@ function terminalMessageContentLimit(role, agentKind, systemKey) {
 
 function terminalStatusPrefix(label, status, reason = '') {
   const agent = cleanText(label, MAX_SYSTEM_PARAM_TEXT_CHARS)
-  if (status === 'interrupted') return `${agent} was interrupted when Meldwork closed.`
+  if (status === 'interrupted') return `${agent} was interrupted when Tyche closed.`
   if (status === 'stopped') return `${agent} was stopped.`
   return `${agent} failed: ${cleanText(reason, MAX_SYSTEM_PARAM_TEXT_CHARS)}`
 }

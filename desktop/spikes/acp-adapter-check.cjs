@@ -6,7 +6,7 @@
 // 用法：
 //   node acp-adapter-check.cjs --adapter claude --checks permissions --mode read-exec
 //   node acp-adapter-check.cjs --adapter codex --checks permissions,session,cancel
-//   ACP_SPIKE_DIR=/tmp/meldwork-acp-spike node acp-adapter-check.cjs ...
+//   ACP_SPIKE_DIR=/tmp/tyche-acp-spike node acp-adapter-check.cjs ...
 //
 // 客户端使用桌面端已有的 @agentclientprotocol/sdk 0.23.0；适配器自己带 SDK 2.x。
 // 两边 PROTOCOL_VERSION 都是 1，这次实测同时验证线协议兼容性。
@@ -28,7 +28,7 @@ const SDK_PATH = process.env.ACP_SDK_PATH
 const SDK = require(SDK_PATH)
 const { ClientSideConnection, PROTOCOL_VERSION, ndJsonStream } = SDK
 
-const ACP_DIR = process.env.ACP_SPIKE_DIR || '/tmp/meldwork-acp-spike'
+const ACP_DIR = process.env.ACP_SPIKE_DIR || '/tmp/tyche-acp-spike'
 const ADAPTER_PATHS = {
   claude: path.join(ACP_DIR, 'node_modules', '@agentclientprotocol', 'claude-agent-acp', 'dist', 'index.js'),
   codex: path.join(ACP_DIR, 'node_modules', '@agentclientprotocol', 'codex-acp', 'dist', 'index.js'),
@@ -201,7 +201,7 @@ function fileText(dir, name) {
 }
 
 async function permissionsCheck(adapter, mode, timeoutMs, sessionMode = null) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `meldwork-acp-${adapter}-${mode}-`))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `tyche-acp-${adapter}-${mode}-`))
   fs.writeFileSync(path.join(dir, 'sample.txt'), 'ALPHA\n')
   fs.writeFileSync(path.join(dir, 'edit-me.txt'), 'OLD\n')
   const runtime = startAdapter(adapter, dir, mode)
@@ -249,7 +249,7 @@ async function permissionsCheck(adapter, mode, timeoutMs, sessionMode = null) {
 }
 
 async function sessionCheck(adapter, mode, timeoutMs, sessionMode = null) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `meldwork-acp-session-${adapter}-`))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `tyche-acp-session-${adapter}-`))
   const result = { adapter, mode, dir, first: null, resumed: null, error: null }
   let firstRuntime = null
   let secondRuntime = null
@@ -301,8 +301,8 @@ async function sessionCheck(adapter, mode, timeoutMs, sessionMode = null) {
 }
 
 async function cancelCheck(adapter, mode, timeoutMs, sessionMode = null) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `meldwork-acp-cancel-${adapter}-`))
-  const marker = `meldwork-acp-cancel-${Date.now()}`
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `tyche-acp-cancel-${adapter}-`))
+  const marker = `tyche-acp-cancel-${Date.now()}`
   const runtime = startAdapter(adapter, dir, 'read-exec')
   const result = { adapter, mode, dir, marker, promptResult: null, cancelledAt: null, error: null }
   try {
@@ -350,10 +350,10 @@ function listProcesses(marker) {
 }
 
 async function longrunCheck(adapter, mode, sessionMode, minutes, waitMs) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `meldwork-acp-longrun-${adapter}-`))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `tyche-acp-longrun-${adapter}-`))
   const runtime = startAdapter(adapter, dir, mode)
   const result = { adapter, mode, minutes, startedAt: new Date().toISOString(), status: 'starting', error: null }
-  const statusPath = path.join(os.tmpdir(), `meldwork-acp-longrun-${adapter}.json`)
+  const statusPath = path.join(os.tmpdir(), `tyche-acp-longrun-${adapter}.json`)
   fs.writeFileSync(statusPath, JSON.stringify(result, null, 2))
   try {
     const { sessionId } = await initialize(runtime, dir, sessionMode)
@@ -408,7 +408,7 @@ async function longrunCheck(adapter, mode, sessionMode, minutes, waitMs) {
 }
 
 async function usageCheck(adapter, mode, timeoutMs, sessionMode = null) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `meldwork-acp-usage-${adapter}-`))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `tyche-acp-usage-${adapter}-`))
   const runtime = startAdapter(adapter, dir, mode)
   const result = { adapter, mode, dir, usage: [], error: null }
   try {

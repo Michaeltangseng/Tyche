@@ -13,7 +13,7 @@ const {
 const FIXED_NOW = new Date('2026-11-14T01:00:00.000Z')
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-process-registry-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-process-registry-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   return {
     directory,

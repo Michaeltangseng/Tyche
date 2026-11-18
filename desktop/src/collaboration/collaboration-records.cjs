@@ -566,7 +566,7 @@ function peerCollaborationText(value, options = {}) {
 
 function collaborationPackageText(handoff, entries) {
   const lines = [
-    'MELDWORK_COLLABORATION_PACKAGE_V1',
+    'TYCHE_COLLABORATION_PACKAGE_V1',
     `Role: ${handoff.destination.role}`,
     `Objective: ${handoff.objective}`,
     `Expected output: ${handoff.expectedOutput}`,

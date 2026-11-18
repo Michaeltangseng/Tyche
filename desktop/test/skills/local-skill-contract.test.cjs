@@ -13,7 +13,7 @@ const {
 function manifest(overrides = {}) {
   return {
     schemaVersion: 1,
-    recordType: 'meldwork-skill-manifest',
+    recordType: 'tyche-skill-manifest',
     identity: { id: 'global/review', version: '1.2.3' },
     origin: { type: 'local-unsigned', publisher: 'Local author' },
     agents: [{ kind: 'codex', minVersion: '0.130.0', maxVersion: '0.200.0' }],

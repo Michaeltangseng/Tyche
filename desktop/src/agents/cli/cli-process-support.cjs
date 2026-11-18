@@ -21,7 +21,7 @@ const { validateOpenClawRuntimeGuard } = require('./openclaw-runtime.cjs')
 
 const TERMINATE_GRACE_MS = 500
 const KILL_SETTLE_MS = 500
-const MANAGED_PROCESS = Symbol.for('meldwork.managed-process')
+const MANAGED_PROCESS = Symbol.for('tyche.managed-process')
 const OPENCODE_READ_ONLY_PERMISSION = JSON.stringify({
   '*': 'deny',
   read: 'allow',
@@ -37,7 +37,7 @@ const OPENCLAW_RUNTIME_PATH_KEYS = Object.freeze([
   'OPENCLAW_CONFIG_PATH',
   'OPENCLAW_WORKSPACE_DIR',
 ])
-const TEST_RUNTIME_ENV = /^(?:CONNECTOR_TEST_|MELDWORK_TEST_)/
+const TEST_RUNTIME_ENV = /^(?:CONNECTOR_TEST_|TYCHE_TEST_)/
 const BLOCKED_RUNTIME_ENV = /^(?:NODE_OPTIONS|NODE_PATH|LD_PRELOAD|LD_LIBRARY_PATH|DYLD_|ELECTRON_RUN_AS_NODE)$/
 
 function agentExecutionError(code, diagnostic = '') {
@@ -68,7 +68,7 @@ function terminateWindowsProcessTree(child, spawnFn, timeoutMs = TERMINATE_GRACE
               resolveExit()
             }
           })
-          Object.defineProperty(failure, Symbol.for('meldwork.pending-process-exit'), { value: pending })
+          Object.defineProperty(failure, Symbol.for('tyche.pending-process-exit'), { value: pending })
         }
         reject(failure)
       } else resolve()
@@ -191,7 +191,7 @@ function childEnvironment(agent, workdir, options, platform) {
     : {}
   const openCodeSafetyEnv = {}
   // ACP has no terminal UI for question/plan transitions. Match the native
-  // headless runner: return the answer to Meldwork instead of waiting forever.
+  // headless runner: return the answer to Tyche instead of waiting forever.
   const headlessPermissions = { question: 'deny', plan_enter: 'deny', plan_exit: 'deny' }
   if (agent.kind === 'opencode') {
     openCodeSafetyEnv.OPENCODE_PERMISSION = JSON.stringify({
@@ -230,27 +230,27 @@ function childEnvironment(agent, workdir, options, platform) {
   if (agent.kind === 'hermes') {
     const home = platform === 'win32' ? (childEnv.USERPROFILE || childEnv.HOME) : childEnv.HOME
     const secrets = hermesConfigSecrets({ env: childEnv, home, platform, declaredKeys: nativeKeys })
-    Object.defineProperty(childEnv, Symbol.for('meldwork.project-secret-values'), { value: secrets })
+    Object.defineProperty(childEnv, Symbol.for('tyche.project-secret-values'), { value: secrets })
   }
   if (agent.kind === 'deepseek') {
     const home = platform === 'win32' ? (childEnv.USERPROFILE || childEnv.HOME) : childEnv.HOME
     const secrets = deepseekNativeSecrets({ env: childEnv, home, workdir })
-    Object.defineProperty(childEnv, Symbol.for('meldwork.project-secret-values'), { value: secrets })
+    Object.defineProperty(childEnv, Symbol.for('tyche.project-secret-values'), { value: secrets })
   }
   if (agent.kind === 'qwen') {
     const home = platform === 'win32' ? (childEnv.USERPROFILE || childEnv.HOME) : childEnv.HOME
     const secrets = qwenConfigSecrets({ home, env: childEnv, workdir, platform })
-    Object.defineProperty(childEnv, Symbol.for('meldwork.project-secret-values'), { value: secrets })
+    Object.defineProperty(childEnv, Symbol.for('tyche.project-secret-values'), { value: secrets })
   }
   if (agent.kind === 'mimo') {
     const home = platform === 'win32' ? (childEnv.USERPROFILE || childEnv.HOME) : childEnv.HOME
     const secrets = mimoConfigSecrets({ home, env: childEnv, workdir })
-    Object.defineProperty(childEnv, Symbol.for('meldwork.project-secret-values'), { value: secrets })
+    Object.defineProperty(childEnv, Symbol.for('tyche.project-secret-values'), { value: secrets })
   }
   if (agent.kind === 'opencode') {
     const home = platform === 'win32' ? (childEnv.USERPROFILE || childEnv.HOME) : childEnv.HOME
     const { configs } = opencodeConfigLayers({ home, env: childEnv, workdir })
-    Object.defineProperty(childEnv, Symbol.for('meldwork.project-secret-values'), { value: configSecrets(configs) })
+    Object.defineProperty(childEnv, Symbol.for('tyche.project-secret-values'), { value: configSecrets(configs) })
   }
   if (agent.kind === 'claude' && typeof workdir === 'string' && path.isAbsolute(workdir)) {
     const secrets = new Set()
@@ -276,7 +276,7 @@ function childEnvironment(agent, workdir, options, platform) {
         }
       } catch { /* The CLI reports invalid or unreadable native settings. */ }
     }
-    Object.defineProperty(childEnv, Symbol.for('meldwork.project-secret-values'), { value: [...secrets] })
+    Object.defineProperty(childEnv, Symbol.for('tyche.project-secret-values'), { value: [...secrets] })
   }
   return childEnv
 }

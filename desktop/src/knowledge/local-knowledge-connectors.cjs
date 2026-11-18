@@ -27,10 +27,10 @@ const CITATION_ID = /^knowledge-citation-[a-f0-9]{64}$/
 const PUBLIC_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/
 const MAX_SELECTIONS = 128
 const DEFAULT_MEMORY_DOCUMENTS = Object.freeze([Object.freeze({
-  locator: 'meldwork/connector-runtime.md',
-  title: 'Meldwork Connector Runtime',
+  locator: 'tyche/connector-runtime.md',
+  title: 'Tyche Connector Runtime',
   mediaType: 'text/markdown',
-  content: 'Meldwork runs local Agent and Knowledge Connectors in the Electron main process.',
+  content: 'Tyche runs local Agent and Knowledge Connectors in the Electron main process.',
 })])
 
 function connectorError(code) {
@@ -170,7 +170,7 @@ class LocalKnowledgeConnectors {
       instanceId: 'memory-local-runtime',
       connectorId: DEFAULT_MEMORY_CONNECTOR_ID,
       accountId: 'local-user',
-      label: 'Meldwork Local Memory',
+      label: 'Tyche Local Memory',
       scope: { scopeId: 'memory-local-runtime', kind: 'memory' },
       accessMode: 'read-only',
       snapshotCapability: 'immutable',

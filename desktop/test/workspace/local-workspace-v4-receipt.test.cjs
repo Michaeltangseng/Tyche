@@ -82,7 +82,7 @@ test('V4 test-result and file-hash requirements reject Agent-authored claims', (
   assert.equal(runner.v4WorkAcceptanceSatisfied(assignment, receipt), false)
   recordedBy = { kind: 'system', actorId: 'untrusted-system' }
   assert.equal(runner.v4WorkAcceptanceSatisfied(assignment, receipt), false)
-  recordedBy = { kind: 'system', actorId: 'meldwork-main' }
+  recordedBy = { kind: 'system', actorId: 'tyche-main' }
   level = 'declared'
   assert.equal(runner.v4WorkAcceptanceSatisfied(assignment, receipt), false)
   level = 'observed'
@@ -179,11 +179,11 @@ function runtimeReceiptFor(agentKind, phase, prompt, summary) {
 }
 
 function blockMarker(receipt) {
-  return `[[MELDWORK_COLLABORATION]]\n${JSON.stringify(receipt)}\n[[/MELDWORK_COLLABORATION]]`
+  return `[[TYCHE_COLLABORATION]]\n${JSON.stringify(receipt)}\n[[/TYCHE_COLLABORATION]]`
 }
 
 function inlineMarker(receipt) {
-  return `[[MELDWORK_COLLABORATION:${JSON.stringify(receipt)}]]`
+  return `[[TYCHE_COLLABORATION:${JSON.stringify(receipt)}]]`
 }
 
 test('V4 challenge receipts normalize a finalizer assignment role to integrator', () => {
@@ -308,7 +308,7 @@ test('V4 names every Artifact whose body is omitted by the delivery budget', asy
 
   assert.ok(context.length <= 900)
   for (const artifact of artifacts) assert.match(context, new RegExp(artifact.artifactId))
-  assert.match(context, /MELDWORK_V4_OMITTED_ARTIFACT_BODIES_V1/)
+  assert.match(context, /TYCHE_V4_OMITTED_ARTIFACT_BODIES_V1/)
   assert.match(context, /reason=budget/)
 })
 
@@ -352,7 +352,7 @@ test('V4 receipt parser accepts only the phase receipt shape and strips its cont
   )
   assert.throws(
     () => parseV4CollaborationReceipt({
-      text: 'Visible proposal\n[[MELDWORK_COLLABORATION:not-json]]',
+      text: 'Visible proposal\n[[TYCHE_COLLABORATION:not-json]]',
     }, true, 'proposal'),
     /LOCAL_RUN_COLLABORATION_RECEIPT_INVALID/,
   )
@@ -387,13 +387,13 @@ test('V4 receipt parser accepts only the phase receipt shape and strips its cont
 test('V4 strips WorkBuddy protocol commentary around a valid terminal receipt', () => {
   const receipt = receiptFor('proposal', 'Independent proposal.')
   const englishMeta = [
-    'This task is a coordination/self-introduction request within the MELDWORK framework, not a code implementation task.',
+    'This task is a coordination/self-introduction request within the TYCHE framework, not a code implementation task.',
     "I've provided my introduction and the structured receipt marker above.",
     'No plan file or implementation planning is needed for this response.',
   ].join(' ')
   const chineseMeta = [
     '我已完成本阶段的提案输出（上方含结构化 receipt 标记）。',
-    '鉴于本次 MELDWORK 任务为协作协调类文本产出，非代码实现任务，无需进入执行计划流程，故不调用 ExitPlanMode。',
+    '鉴于本次 TYCHE 任务为协作协调类文本产出，非代码实现任务，无需进入执行计划流程，故不调用 ExitPlanMode。',
     '我的提案与 receipt 标记即为本轮交付，等待后续质询/验证阶段的指令。',
   ].join('')
 
@@ -427,7 +427,7 @@ test('Manual concurrent proposals preserve a valid visible response when a CLI o
     dependencies: [],
   })
   const malformed = parseV4CollaborationReceipt({
-    text: 'A complete streamed response.\n\n[[MELDWORK_COLLABORATION:{"version":1',
+    text: 'A complete streamed response.\n\n[[TYCHE_COLLABORATION:{"version":1',
   }, true, 'proposal', { allowMissingProposalReceipt: true })
   assert.equal(malformed.text, 'A complete streamed response.')
   assert.deepEqual(malformed.collaboration, {
@@ -478,7 +478,7 @@ test('Natural V4 prompts carry task context without exposing the receipt templat
   assert.match(prompt, /requested output format, including JSON, XML or exact text/)
   assert.doesNotMatch(
     prompt,
-    /current collaboration phase|your role|Receipt JSON shape|MELDWORK_COLLABORATION|MELDWORK_V4_FROZEN_SNAPSHOT_V1/i,
+    /current collaboration phase|your role|Receipt JSON shape|TYCHE_COLLABORATION|TYCHE_V4_FROZEN_SNAPSHOT_V1/i,
   )
 })
 
@@ -552,8 +552,8 @@ test('V4 preserves responsibility endorsements and assigned work item receipts',
 
 test('V4 rejects nonterminal collaboration controls case-insensitively', () => {
   for (const control of [
-    '[[meldwork_collaboration:not-json]]',
-    '[[Meldwork_Collaboration:{"summary":"not-terminal"}]]',
+    '[[tyche_collaboration:not-json]]',
+    '[[Tyche_Collaboration:{"summary":"not-terminal"}]]',
   ]) {
     assert.throws(
       () => parseV4CollaborationReceipt({
@@ -589,7 +589,7 @@ test('V4 streams split receipts without exposing controls and commits the comple
       ? 'Visible synthesis conclusion.'
       : `${agent.kind} ${phase} visible body.`
     const legacyConsensus = phase === 'proposal' && agent.kind === 'codex'
-      ? '\n[[MELDWORK_CONSENSUS:agree]]'
+      ? '\n[[TYCHE_CONSENSUS:agree]]'
       : ''
     const receipt = runtimeReceiptFor(
       agent.kind, phase, prompt, `${agent.kind} ${phase} summary.`,
@@ -626,7 +626,7 @@ test('V4 streams split receipts without exposing controls and commits the comple
     .join('')
   const verifierKind = phaseCalls.find(call => call.phase === 'verification')?.agentKind
   assert.ok(verifierKind)
-  assert.doesNotMatch(answerDeltas, /MELDWORK_COLLABORATION|MELDWORK_CONSENSUS|"phase"|"summary"/)
+  assert.doesNotMatch(answerDeltas, /TYCHE_COLLABORATION|TYCHE_CONSENSUS|"phase"|"summary"/)
   assert.equal(answerDeltas, [
     'codex proposal visible body.\n\n',
     'hermes proposal visible body.\n',
@@ -866,7 +866,7 @@ test('V4 persists bounded per-session delivery acknowledgement after the invocat
   const challengeCalls = calls.filter(call => call.phase === 'challenge')
   assert.equal(challengeCalls.length, 2)
   assert.ok(challengeCalls.every(call => call.sessionRef.endsWith('-native-session')))
-  assert.ok(challengeCalls.every(call => call.prompt.includes('MELDWORK_V4_COLLABORATION_PACKAGE_V1')))
+  assert.ok(challengeCalls.every(call => call.prompt.includes('TYCHE_V4_COLLABORATION_PACKAGE_V1')))
   const deliveryState = active.orchestration.deliveryState || []
   assert.ok(deliveryState.length >= 2)
   assert.ok(deliveryState.every(entry => entry.status === 'acknowledged'))
@@ -900,7 +900,7 @@ process.stdin.on('end', () => {
     verdict: 'support',
     summary: 'Unicode payload verified.',
   })
-  const text = 'CLI verified the exact payload.\\n[[MELDWORK_COLLABORATION:' + receipt + ']]'
+  const text = 'CLI verified the exact payload.\\n[[TYCHE_COLLABORATION:' + receipt + ']]'
   for (const event of [
     { type: 'thread.started', thread_id: 'codex-v4-unicode-session' },
     { type: 'item.completed', item: { type: 'agent_message', text } },

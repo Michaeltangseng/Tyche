@@ -21,7 +21,7 @@
   <div class="conversation-timeline">
     <div ref="messageScroller" class="message-scroll" @scroll="handleMessageScroll">
     <section v-if="conversationEmptyVisible" class="conversation-empty">
-      <img class="conversation-empty-wordmark" :src="productWordmark" alt="Meldwork" />
+      <img class="conversation-empty-wordmark" :src="productWordmark" alt="Tyche" />
       <Transition name="empty-showcase" mode="out-in">
         <div :key="emptyShowcaseIndex" class="conversation-empty-copy" aria-live="polite">
           <strong>{{ t(`conversation.emptyShowcase.${emptyShowcaseIndex}.title`) }}</strong>

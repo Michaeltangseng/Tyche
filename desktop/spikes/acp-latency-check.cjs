@@ -26,7 +26,7 @@ const SDK_PATH = process.env.ACP_SDK_PATH
 const SDK = require(SDK_PATH)
 const { ClientSideConnection, PROTOCOL_VERSION, ndJsonStream } = SDK
 
-const ACP_DIR = process.env.ACP_SPIKE_DIR || '/tmp/meldwork-acp-spike'
+const ACP_DIR = process.env.ACP_SPIKE_DIR || '/tmp/tyche-acp-spike'
 const ADAPTER_PATHS = {
   claude: path.join(ACP_DIR, 'node_modules', '@agentclientprotocol', 'claude-agent-acp', 'dist', 'index.js'),
   codex: path.join(ACP_DIR, 'node_modules', '@agentclientprotocol', 'codex-acp', 'dist', 'index.js'),
@@ -307,7 +307,7 @@ async function measureTarget(name, runs, timeoutMs) {
       return { target: name, available: false, reason: `deepseek 不可用：${error.code || error.message}` }
     }
   }
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `meldwork-acp-latency-${name}-`))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `tyche-acp-latency-${name}-`))
   const result = {
     target: name,
     available: true,

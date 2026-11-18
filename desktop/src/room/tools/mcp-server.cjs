@@ -11,7 +11,7 @@ function createMcpHttpServer({ dispatcher, runId, host = '127.0.0.1', port = 0 }
 
   function buildServer() {
     const server = new Server(
-      { name: 'meldwork-room', version: '1.0.0' },
+      { name: 'tyche-room', version: '1.0.0' },
       { capabilities: { tools: {} } },
     )
     server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: dispatcher.listTools(runId) }))

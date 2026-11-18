@@ -50,7 +50,7 @@ function stageAgentInputs(workdir, attachments = [], nativeImageLimit = attachme
   try {
     const workdirRealPath = fs.realpathSync(path.resolve(workdir))
     if (!fs.statSync(workdirRealPath).isDirectory()) throw new Error('invalid workdir')
-    const root = path.join(workdirRealPath, '.meldwork-input')
+    const root = path.join(workdirRealPath, '.tyche-input')
     try {
       fs.mkdirSync(root, { mode: DIRECTORY_MODE })
     } catch (error) {

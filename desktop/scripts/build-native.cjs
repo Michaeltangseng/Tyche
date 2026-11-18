@@ -5,9 +5,9 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const DESKTOP_ROOT = path.resolve(__dirname, '..')
-const SOURCE = path.join(DESKTOP_ROOT, 'native', 'supervisor', 'meldwork-supervisor.c')
+const SOURCE = path.join(DESKTOP_ROOT, 'native', 'supervisor', 'tyche-supervisor.c')
 const OUTPUT_DIR = path.join(DESKTOP_ROOT, 'native', 'build')
-const OUTPUT = path.join(OUTPUT_DIR, 'meldwork-supervisor')
+const OUTPUT = path.join(OUTPUT_DIR, 'tyche-supervisor')
 const COMMON_FLAGS = ['-std=c99', '-O2', '-Wall', '-Wextra', '-Werror']
 
 function run(command, args) {
@@ -32,8 +32,8 @@ function build() {
   }
   fs.mkdirSync(OUTPUT_DIR, { recursive: true })
   if (process.platform === 'darwin') {
-    const arm64 = path.join(OUTPUT_DIR, 'meldwork-supervisor.arm64')
-    const x86_64 = path.join(OUTPUT_DIR, 'meldwork-supervisor.x86_64')
+    const arm64 = path.join(OUTPUT_DIR, 'tyche-supervisor.arm64')
+    const x86_64 = path.join(OUTPUT_DIR, 'tyche-supervisor.x86_64')
     try {
       run('clang', [...COMMON_FLAGS, '-arch', 'arm64', SOURCE, '-o', arm64])
       run('clang', [...COMMON_FLAGS, '-arch', 'x86_64', SOURCE, '-o', x86_64])

@@ -11,7 +11,7 @@ const {
 } = require('../../../src/agents/process/managed-spawn.cjs')
 
 const DESKTOP = path.join(__dirname, '..', '..', '..')
-const SUPERVISOR = path.join(DESKTOP, 'native', 'build', 'meldwork-supervisor')
+const SUPERVISOR = path.join(DESKTOP, 'native', 'build', 'tyche-supervisor')
 const AGENT = path.join(__dirname, '..', '..', 'fixtures', 'agents', 'supervisor-agent.cjs')
 
 function delay(ms) {
@@ -19,7 +19,7 @@ function delay(ms) {
 }
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-managed-spawn-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-managed-spawn-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   return directory
 }
@@ -157,7 +157,7 @@ test('normal run reports exit, close and container-empty in order', async (t) =>
   assert.deepEqual(state.registry.calls.markEnded, ['record-1'])
 
   const recordedEnvironment = JSON.parse(fs.readFileSync(path.join(state.out, 'env.json'), 'utf8'))
-  assert.equal(recordedEnvironment.MELDWORK_CONTAINER, begin.containerMarker)
+  assert.equal(recordedEnvironment.TYCHE_CONTAINER, begin.containerMarker)
   assert.equal(recordedEnvironment.CUSTOM, 'value')
   assert.equal(recordedEnvironment.PATH, '/usr/bin:/bin')
 
@@ -241,7 +241,7 @@ test('a missing supervisor fails closed with LOCAL_MANAGED_PROCESS_UNAVAILABLE',
   const spawnFn = createManagedSpawn({
     registry: fakeRegistry(),
     invocation: { workdir: '/tmp', permission: 'workspace-write' },
-    supervisorPath: '/nonexistent/meldwork-supervisor',
+    supervisorPath: '/nonexistent/tyche-supervisor',
     platform: process.platform,
   })
   assert.throws(

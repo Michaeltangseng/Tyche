@@ -54,7 +54,7 @@ test('a proposal is independent, uses authorized native tools and carries no rec
   assert.match(prompt, /user enabled workspace writes/i)
   assert.match(prompt, /including network research, commands and configured plugins/)
   assert.match(prompt, /answering the same task independently/)
-  assert.doesNotMatch(prompt, /MELDWORK_COLLABORATION/)
+  assert.doesNotMatch(prompt, /TYCHE_COLLABORATION/)
   assert.doesNotMatch(prompt, /delivery owner/)
 })
 
@@ -77,7 +77,7 @@ test('the delivery owner and a peer get different responsibilities', () => {
   assert.equal(ownerSection({ kind: 'hermes', ownerKind: '' }), '')
 })
 
-test('sequential discussions leave routing to Meldwork, agent-led ones list the valid peers', () => {
+test('sequential discussions leave routing to Tyche, agent-led ones list the valid peers', () => {
   assert.match(routingSection({ activeKinds: KINDS, allowRouting: false }), /speaks in order each round/)
   const routed = routingSection({ activeKinds: KINDS, allowRouting: true })
   assert.match(routed, /@codex, @hermes, @kimi/)
@@ -93,13 +93,13 @@ test('the example receipt names a real peer only when the Agent may route', () =
 test('only the designated writer is told about the deliverable folder', () => {
   const writer = writerSection({ kind: 'codex', writerKind: 'codex', group: GROUP })
   assert.match(writer, /user enabled workspace writes/i)
-  assert.match(writer, /\.meldwork-output\//)
+  assert.match(writer, /\.tyche-output\//)
   const peer = writerSection({ kind: 'hermes', writerKind: 'codex', group: GROUP })
   assert.match(peer, /Workspace writes are assigned to @codex/)
-  assert.doesNotMatch(peer, /\.meldwork-output/)
+  assert.doesNotMatch(peer, /\.tyche-output/)
   assert.doesNotMatch(
     writerSection({ kind: 'codex', writerKind: 'codex', group: { allowWrite: false } }),
-    /\.meldwork-output/,
+    /\.tyche-output/,
   )
   assert.equal(writerSection({ kind: 'codex', writerKind: '', group: GROUP }), '')
 })

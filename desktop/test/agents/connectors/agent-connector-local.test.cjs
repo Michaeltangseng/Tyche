@@ -34,7 +34,7 @@ function fakeSafeStorage() {
 }
 
 function fixture(t, options = {}) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-agent-connectors-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-agent-connectors-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const calls = []
   const instanceStoragePath = path.join(directory, 'instances.json')
@@ -273,7 +273,7 @@ test('runs a Codex Agent discovered through SSH without declaring an HTTP outbou
 })
 
 test('delegated local Connector receives a streaming profile event before completion', async (t) => {
-  const releaseFile = path.join(os.tmpdir(), `meldwork-connector-release-${process.pid}-${Date.now()}`)
+  const releaseFile = path.join(os.tmpdir(), `tyche-connector-release-${process.pid}-${Date.now()}`)
   t.after(async () => {
     try { fs.writeFileSync(releaseFile, 'release') } catch { /* test cleanup */ }
     await new Promise(resolve => setTimeout(resolve, 30))

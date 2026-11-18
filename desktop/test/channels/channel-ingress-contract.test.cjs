@@ -27,7 +27,7 @@ function verifiedEvent(overrides = {}) {
       taskKey: 'issue-42',
       title: 'Fix the failing build',
       request: 'Diagnose the build failure and report the verified result.',
-      context: [{ label: 'repository', value: 'Ryder-MHumble/Meldwork' }],
+      context: [{ label: 'repository', value: 'Ryder-MHumble/Tyche' }],
     },
     ...overrides,
   }

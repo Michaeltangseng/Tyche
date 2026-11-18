@@ -12,7 +12,7 @@ const { groupEmpty, processStartTime } = require('../../src/agents/process/proce
 test('sweep stops a recorded detached runtime group and forgets its pid file', {
   skip: process.platform === 'win32',
 }, async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-runtime-processes-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-runtime-processes-'))
   const previous = process.env.LC_ALL
   process.env.LC_ALL = 'C'
   const child = spawn('sleep', ['60'], { detached: true, stdio: 'ignore' })
@@ -38,7 +38,7 @@ test('sweep stops a recorded detached runtime group and forgets its pid file', {
 test('sweep never signals a reused pid', {
   skip: process.platform === 'win32',
 }, async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-runtime-processes-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-runtime-processes-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const file = pidFilePath(directory, 'run-2')
   fs.writeFileSync(file, `${process.pid}\tMon Jan  1 00:00:00 2000\n`)

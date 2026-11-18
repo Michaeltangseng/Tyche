@@ -10,7 +10,7 @@ const { HumanGateCoordinator } = require('../../src/gates/human-gate-coordinator
 const { HumanGateStore } = require('../../src/gates/human-gate-store.cjs')
 
 function fixture(t, callbacks = {}) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-human-gate-coordinator-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-human-gate-coordinator-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const contentBlobStore = new ContentBlobStore({ rootPath: path.join(directory, 'blobs') })
   const store = new HumanGateStore({
@@ -123,7 +123,7 @@ test('aborting a waiter rejects the request and durably selects a reject option'
   assert.deepEqual(coordinator.list().find(gate => gate.gateId === pending.gateId)?.decision, {
     status: 'rejected',
     optionId: 'reject-once',
-    actorId: 'meldwork-system',
+    actorId: 'tyche-system',
     decidedAt: '2026-08-04T00:00:00.000Z',
   })
 })
@@ -142,8 +142,8 @@ test('restart reconciliation durably rejects a pending gate without a live Run w
   assert.equal(restarted.list({ pendingOnly: true }).length, 0)
   assert.deepEqual(reconciled.decision, {
     status: 'rejected',
-    optionId: 'meldwork-system-reject',
-    actorId: 'meldwork-system',
+    optionId: 'tyche-system-reject',
+    actorId: 'tyche-system',
     decidedAt: '2026-08-04T00:01:00.000Z',
   })
 })
@@ -269,7 +269,7 @@ test('expires a live Gate through the same durable rejection continuation', asyn
   })
 
   assert.equal(decision.status, 'rejected')
-  assert.equal(decision.actorId, 'meldwork-system')
+  assert.equal(decision.actorId, 'tyche-system')
   assert.equal(coordinator.list({ pendingOnly: true }).length, 0)
   assert.equal(resumed.length, 1)
 })
@@ -294,6 +294,6 @@ test('restart reconciliation expires a resumable orphan exactly once', async (t)
   restarted.reconcileOrphans()
 
   assert.equal(expired.status, 'rejected')
-  assert.equal(expired.decision.actorId, 'meldwork-system')
+  assert.equal(expired.decision.actorId, 'tyche-system')
   assert.equal(resumed, 1)
 })

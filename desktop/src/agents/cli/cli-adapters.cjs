@@ -21,7 +21,7 @@ const {
   readHermesMessageWatermark,
   redactChildSecrets,
   runtimeCommandSummary,
-  stripExactMeldworkPromptEcho,
+  stripExactTychePromptEcho,
   structuredCliError,
 } = require('./cli-runtime-events.cjs')
 const {
@@ -328,7 +328,7 @@ async function runAgent(agent, prompt, workdir, options = {}) {
       callback()
     }
     const signalProcessTree = (signal) => {
-      if (child[Symbol.for('meldwork.managed-process')]) {
+      if (child[Symbol.for('tyche.managed-process')]) {
         // Managed children must stop through the supervisor's fd 3 protocol;
         // signalling the supervisor directly would skip its finalKill report.
         try {
@@ -530,7 +530,7 @@ async function runAgent(agent, prompt, workdir, options = {}) {
         })
         result = {
           ...result,
-          text: stripExactMeldworkPromptEcho(result.text, prompt),
+          text: stripExactTychePromptEcho(result.text, prompt),
         }
         if (progress.length) result.progress = progress
         const redactedText = redactChildSecrets(result.text, childEnv)

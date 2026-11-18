@@ -36,7 +36,7 @@ const OPENCLAW_RUNTIME_PATH_ENV_KEYS = Object.freeze([
   'OPENCLAW_WORKSPACE_DIR',
 ])
 const OPENCLAW_RUNTIME_CREDENTIAL_KEYS = new Set([
-  'MELDWORK_OPENCLAW_NATIVE_API_KEY',
+  'TYCHE_OPENCLAW_NATIVE_API_KEY',
   'OPENCLAW_GATEWAY_TOKEN',
 ])
 const issuedOpenClawRuntimeGuards = new WeakSet()
@@ -497,7 +497,7 @@ function nativeOpenClawOptions({
         [providerId]: {
           baseUrl: baseUrl.replace(/\/+$/, ''),
           apiKey: {
-            source: 'env', provider: 'default', id: 'MELDWORK_OPENCLAW_NATIVE_API_KEY',
+            source: 'env', provider: 'default', id: 'TYCHE_OPENCLAW_NATIVE_API_KEY',
           },
           api,
           models: [model],
@@ -515,7 +515,7 @@ function nativeOpenClawOptions({
       controlUi: { enabled: false },
     },
   }
-  const credentialKey = 'MELDWORK_OPENCLAW_NATIVE_API_KEY'
+  const credentialKey = 'TYCHE_OPENCLAW_NATIVE_API_KEY'
   const openClawRuntimeGuard = writeRuntimeConfig(
     runtimePathsResult,
     config,

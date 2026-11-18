@@ -9,7 +9,7 @@ const { createRoomRepository } = require('../../src/room/repository.cjs')
 const { createRuntimeEvents } = require('../../src/room/runtime-events.cjs')
 
 function setup(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-runtime-events-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-runtime-events-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
   const repo = createRoomRepository(roomDb)

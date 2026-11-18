@@ -17,7 +17,7 @@ const {
 } = require('../../src/agents/local-agent-readiness.cjs')
 
 test('DeepSeek recognizes its native default-route credential without exposing it', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-dsh-ready-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-dsh-ready-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.dsh')
   fs.mkdirSync(root)
@@ -73,7 +73,7 @@ test('OpenCodeReview receives its native Anthropic configuration without exposin
 })
 
 test('OpenCodeReview readiness reads the selected native home', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-ocr-readiness-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-ocr-readiness-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const selected = path.join(home, 'selected')
   fs.mkdirSync(path.join(selected, '.opencodereview'), { recursive: true })
@@ -85,7 +85,7 @@ test('OpenCodeReview readiness reads the selected native home', t => {
 })
 
 test('OpenCodeReview requires a complete native endpoint for non-provider configurations', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-ocr-endpoint-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-ocr-endpoint-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.opencodereview')
   fs.mkdirSync(root)
@@ -101,7 +101,7 @@ test('OpenCodeReview requires a complete native endpoint for non-provider config
 })
 
 test('OpenCodeReview does not treat another provider credential as the selected provider', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-ocr-provider-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-ocr-provider-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.opencodereview')
   fs.mkdirSync(root)
@@ -137,7 +137,7 @@ test('OpenCodeReview does not treat another provider credential as the selected 
 })
 
 test('OpenCodeReview uses the native Responses API key independently of the Chat Completions key', async t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-ocr-responses-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-ocr-responses-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.opencodereview')
   fs.mkdirSync(root)
@@ -158,7 +158,7 @@ test('OpenCodeReview uses the native Responses API key independently of the Chat
 
 test('OpenCodeReview selects only the native key for its configured preset', async t => {
   const { ocrDeclaredCredentialKeys } = require('../../src/agents/cli/ocr-provider-environment.cjs')
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-ocr-native-key-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-ocr-native-key-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.opencodereview')
   fs.mkdirSync(root)
@@ -185,7 +185,7 @@ test('OpenCodeReview selects only the native key for its configured preset', asy
 })
 
 test('OpenCodeReview probes native provider names before trusting a custom credential', async t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-ocr-provider-list-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-ocr-provider-list-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.opencodereview')
   fs.mkdirSync(root)
@@ -237,7 +237,7 @@ test('Qwen receives native Anthropic, Gemini and Vertex model environment', asyn
 })
 
 test('Gemini uses its shell-selected native home for readiness and execution', async t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-gemini-native-home-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-gemini-native-home-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const selected = path.join(home, 'selected')
   const selectedConfig = path.join(selected, '.gemini')
@@ -269,7 +269,7 @@ test('Qwen retains its native system settings and authentication selection', asy
 })
 
 test('OpenCode detects native API credentials in its selected XDG data directory', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-opencode-auth-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-opencode-auth-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const data = path.join(home, 'native-data')
   const dir = path.join(data, 'opencode'); fs.mkdirSync(dir, { recursive: true })
@@ -288,7 +288,7 @@ test('OpenCode detects native API credentials in its selected XDG data directory
 })
 
 test('Pi captures only environment references declared by its selected native models configuration', async t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-pi-declared-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-pi-declared-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const selected = path.join(home, 'selected')
   fs.mkdirSync(selected)
@@ -310,7 +310,7 @@ test('Pi captures only environment references declared by its selected native mo
 })
 
 test('Pi built-in provider credentials survive shell discovery and reach only Pi', async t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-pi-builtin-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-pi-builtin-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.pi', 'agent')
   fs.mkdirSync(root, { recursive: true })
@@ -332,7 +332,7 @@ test('Pi built-in provider credentials survive shell discovery and reach only Pi
 })
 
 test('Pi captures its native GitHub Copilot token from the login shell', async t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-pi-copilot-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-pi-copilot-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.pi', 'agent')
   fs.mkdirSync(root, { recursive: true })
@@ -351,7 +351,7 @@ test('Pi captures its native GitHub Copilot token from the login shell', async t
 })
 
 test('Pi Cloudflare readiness and execution retain required account and gateway settings', async t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-pi-cloudflare-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-pi-cloudflare-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.pi', 'agent')
   fs.mkdirSync(root, { recursive: true })
@@ -384,7 +384,7 @@ test('Pi Cloudflare readiness and execution retain required account and gateway 
 })
 
 test('Pi retains more than 32 environment references from its native models configuration', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-pi-many-keys-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-pi-many-keys-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.pi', 'agent')
   fs.mkdirSync(root, { recursive: true })
@@ -396,7 +396,7 @@ test('Pi retains more than 32 environment references from its native models conf
 })
 
 test('Pi model readiness resolves native credential references without running commands or using another provider', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-pi-provider-readiness-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-pi-provider-readiness-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.pi', 'agent'); fs.mkdirSync(root, { recursive: true })
   const models = path.join(root, 'models.json')
@@ -415,7 +415,7 @@ test('Pi model readiness resolves native credential references without running c
 })
 
 test('Pi authentication readiness checks the selected native provider', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-pi-auth-provider-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-pi-auth-provider-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.pi', 'agent'); fs.mkdirSync(root, { recursive: true })
   const settings = path.join(root, 'settings.json')
@@ -438,7 +438,7 @@ test('Pi authentication readiness checks the selected native provider', t => {
 })
 
 test('Zcode captures credentials only for configured native models', async t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-zcode-declared-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-zcode-declared-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const dir = path.join(home, '.zcode', 'cli'); fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({
@@ -457,7 +457,7 @@ test('Zcode captures credentials only for configured native models', async t => 
 })
 
 test('Zcode readiness checks only the selected native provider', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-zcode-selected-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-zcode-selected-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const dir = path.join(home, '.zcode', 'cli')
   fs.mkdirSync(dir, { recursive: true })
@@ -483,7 +483,7 @@ test('Zcode readiness checks only the selected native provider', t => {
 })
 
 test('Zcode checks the selected environment model without a configuration file', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-zcode-env-only-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-zcode-env-only-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const options = { home, env: { HOME: home, ZCODE_MODEL: 'selected/model', OTHER_API_KEY: 'unrelated' },
     nativeCredentialKeys: ['OTHER_API_KEY'] }
@@ -493,7 +493,7 @@ test('Zcode checks the selected environment model without a configuration file',
 })
 
 test('Zcode discovers native project model overrides and their credentials', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-zcode-project-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-zcode-project-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const project = path.join(home, 'project')
   const child = path.join(project, 'child')
@@ -518,7 +518,7 @@ test('Zcode discovers native project model overrides and their credentials', t =
 })
 
 test('Zcode readiness follows the selected project provider instead of the global provider', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-zcode-project-ready-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-zcode-project-ready-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const globalDir = path.join(home, '.zcode', 'cli')
   const project = path.join(home, 'project')
@@ -536,7 +536,7 @@ test('Zcode readiness follows the selected project provider instead of the globa
 })
 
 test('Zcode project provider replacement does not inherit credentials from a global provider', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-zcode-provider-replacement-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-zcode-provider-replacement-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const globalDir = path.join(home, '.zcode', 'cli')
   const project = path.join(home, 'project')
@@ -553,7 +553,7 @@ test('Zcode project provider replacement does not inherit credentials from a glo
 })
 
 test('Zcode reads the home directory inherited by its native CLI', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-zcode-home-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-zcode-home-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const selected = path.join(home, 'selected')
   const configDir = path.join(selected, '.zcode', 'cli')
@@ -564,7 +564,7 @@ test('Zcode reads the home directory inherited by its native CLI', t => {
 })
 
 test('Hermes captures only safe credential names declared by its selected YAML config', async t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-declared-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-declared-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const selected = path.join(home, 'selected'); fs.mkdirSync(selected)
   fs.writeFileSync(path.join(selected, 'config.yaml'), [
@@ -602,7 +602,7 @@ test('declared Hermes credentials can be read from a login shell without capturi
 })
 
 test('Hermes declared credentials follow selected and fallback providers, including auto selection', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-provider-keys-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-provider-keys-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.hermes'); fs.mkdirSync(root)
   const file = path.join(root, 'config.yaml')
@@ -622,7 +622,7 @@ test('Hermes declared credentials follow selected and fallback providers, includ
 })
 
 test('Hermes fallback readiness ignores unrelated credentials', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-fallback-readiness-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-fallback-readiness-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.hermes')
   fs.mkdirSync(root)
@@ -657,7 +657,7 @@ test('Hermes fallback readiness ignores unrelated credentials', t => {
 })
 
 test('Hermes captures credentials for the native fallback provider chain and legacy fallback', async t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-fallback-keys-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-fallback-keys-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.hermes'); fs.mkdirSync(root)
   fs.writeFileSync(path.join(root, 'config.yaml'), [
@@ -681,7 +681,7 @@ test('Hermes captures credentials for the native fallback provider chain and leg
 })
 
 test('Hermes receives the selected native provider key without an endpoint override', async t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-native-provider-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-native-provider-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.hermes'); fs.mkdirSync(root)
   fs.writeFileSync(path.join(root, 'config.yaml'), 'model:\n  provider: north-star\n  default: native-model\n')
@@ -694,7 +694,7 @@ test('Hermes receives the selected native provider key without an endpoint overr
 })
 
 test('Hermes honors environment-selected native provider when config.yaml is absent', async t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-env-provider-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-env-provider-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.hermes'); fs.mkdirSync(root)
   const env = { HERMES_INFERENCE_PROVIDER: 'north-star' }
@@ -706,7 +706,7 @@ test('Hermes honors environment-selected native provider when config.yaml is abs
 })
 
 test('Hermes selects credentials for an unquoted numeric native provider', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-numeric-provider-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-numeric-provider-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.hermes')
   fs.mkdirSync(root)
@@ -718,7 +718,7 @@ test('Hermes selects credentials for an unquoted numeric native provider', t => 
 })
 
 test('Hermes selects configured provider credentials for an auto-routed qualified model', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-qualified-model-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-qualified-model-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.hermes'); fs.mkdirSync(root)
   const file = path.join(root, 'config.yaml')
@@ -734,7 +734,7 @@ test('Hermes selects configured provider credentials for an auto-routed qualifie
 })
 
 test('native environment cache observes credential and proxy changes without a PATH change', async () => {
-  const base = { platform: 'win32', home: 'C:\\meldwork-cache-test', env: { PATH: 'C:\\bin',
+  const base = { platform: 'win32', home: 'C:\\tyche-cache-test', env: { PATH: 'C:\\bin',
     ANTHROPIC_API_KEY: 'synthetic-before', HTTPS_PROXY: 'http://before.example:8080' } }
   const before = await resolveNativeShellEnvironment(base)
   const after = await resolveNativeShellEnvironment({ ...base, env: { ...base.env,
@@ -760,7 +760,7 @@ test('Codex native API key is captured and scoped to Codex', async () => {
 })
 
 test('an OpenAI environment key alone does not prove the default Codex provider is authenticated', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-codex-unverified-key-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-codex-unverified-key-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const env = { OPENAI_API_KEY: 'custom-provider-key' }
   assert.deepEqual(nativeCredentialState('codex', { home, env }), { state: 'unknown', source: 'unverified' })
@@ -771,7 +771,7 @@ test('an OpenAI environment key alone does not prove the default Codex provider 
 })
 
 test('Codex readiness follows the selected provider env_key, not other accounts', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-codex-selected-key-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-codex-selected-key-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const selected = path.join(home, 'selected')
   fs.mkdirSync(selected)
@@ -848,7 +848,7 @@ test('native shell capture preserves XDG configuration directories without unrel
 test('explicit refresh replaces cached native shell settings and subsequent calls share the new result', {
   skip: process.platform === 'win32',
 }, async (t) => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-shell-refresh-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-shell-refresh-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const shell = path.join(home, 'sh')
   const settings = path.join(home, 'native-env')
@@ -867,7 +867,7 @@ test('explicit refresh replaces cached native shell settings and subsequent call
 test('a login shell that stops answering keeps the last environment it produced instead of the bare app environment', {
   skip: process.platform === 'win32',
 }, async (t) => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-shell-last-good-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-shell-last-good-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const shell = path.join(home, 'sh')
   fs.writeFileSync(
@@ -904,7 +904,7 @@ test('a login shell that stops answering keeps the last environment it produced 
 test('without any earlier success a failed login shell still falls back to the process environment', {
   skip: process.platform === 'win32',
 }, async (t) => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-shell-first-failure-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-shell-first-failure-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const shell = path.join(home, 'sh')
   fs.writeFileSync(shell, '#!/bin/sh\nexit 3\n', { mode: 0o700 })
@@ -929,7 +929,7 @@ function openClawModelsCatalog(apiKey, baseUrl = 'https://provider.example/v1') 
 }
 
 test('native readiness respects custom config roots and the Pi coding agent auth directory', () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-native-roots-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-native-roots-'))
   const cases = [
     ['pi', {}, path.join(home, '.pi', 'agent', 'auth.json')],
     ['pi', { PI_CODING_AGENT_DIR: path.join(home, 'custom-pi') }, path.join(home, 'custom-pi', 'auth.json')],
@@ -957,7 +957,7 @@ test('native readiness respects custom config roots and the Pi coding agent auth
 })
 
 test('Hermes and Pi readiness do not fall back to unrelated credentials when custom roots are set', (t) => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-custom-native-root-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-custom-native-root-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   fs.mkdirSync(path.join(home, '.hermes'), { recursive: true })
   fs.writeFileSync(path.join(home, '.hermes', '.env'), 'OPENAI_API_KEY=default-test-secret\n')
@@ -978,7 +978,7 @@ test('Hermes and Pi readiness do not fall back to unrelated credentials when cus
 })
 
 test('Hermes readiness follows the native Windows default and configured data suffix', (t) => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-windows-root-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-windows-root-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const localAppData = path.join(home, 'Local')
   const directory = path.join(localAppData, 'hermes-test')
@@ -990,7 +990,7 @@ test('Hermes readiness follows the native Windows default and configured data su
 })
 
 test('Pi native OAuth credentials use access and refresh fields', () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-pi-oauth-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-pi-oauth-'))
   const directory = path.join(home, '.pi', 'agent')
   try {
     fs.mkdirSync(directory, { recursive: true })
@@ -1006,7 +1006,7 @@ test('Pi native OAuth credentials use access and refresh fields', () => {
 })
 
 test('Hermes readiness detects a native credential without returning its value', () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-readiness-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-readiness-'))
   const secret = 'hermes-secret-value'
   fs.mkdirSync(path.join(home, '.hermes'), { recursive: true })
   fs.writeFileSync(path.join(home, '.hermes', '.env'), `OPENAI_API_KEY=${secret}\n`)
@@ -1021,7 +1021,7 @@ test('Hermes readiness detects a native credential without returning its value',
 })
 
 test('Hermes readiness ignores a config.yml file that its native CLI does not load', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-yml-readiness-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-yml-readiness-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.hermes')
   fs.mkdirSync(root)
@@ -1036,7 +1036,7 @@ test('Hermes readiness ignores a config.yml file that its native CLI does not lo
 })
 
 test('custom Provider config is recognized while unresolved Env references remain unverified', () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-custom-provider-readiness-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-custom-provider-readiness-'))
   const config = path.join(home, '.hermes', 'config.yaml')
   fs.mkdirSync(path.dirname(config), { recursive: true })
   try {
@@ -1060,7 +1060,7 @@ test('custom Provider config is recognized while unresolved Env references remai
 })
 
 test('placeholder scalar values are not treated as native credentials', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-placeholder-credential-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-placeholder-credential-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.hermes')
   fs.mkdirSync(root)
@@ -1087,13 +1087,13 @@ test('login shell discovery returns only allowlisted Agent Provider values', asy
     env: {
       PATH: '/usr/bin',
       GITHUB_TOKEN: 'ambient-secret',
-      MELDWORK_PRIVATE_VALUE: 'desktop-private-value',
+      TYCHE_PRIVATE_VALUE: 'desktop-private-value',
     },
     execFileFn: async (command, args, options) => {
       calls.push({ command, args, options })
       return {
         stdout: [
-          'shell startup banner\n__MELDWORK_NATIVE_ENV_V1__',
+          'shell startup banner\n__TYCHE_NATIVE_ENV_V1__',
           'PATH=/opt/custom/bin:/usr/bin',
           'OPENROUTER_API_KEY=openrouter-secret',
           'OPENAI_BASE_URL=https://openrouter.ai/api/v1',
@@ -1109,7 +1109,7 @@ test('login shell discovery returns only allowlisted Agent Provider values', asy
   assert.equal(calls[0].command, '/bin/zsh')
   assert.equal(calls[0].args[0], '-lic')
   assert.equal(calls[0].options.env.GITHUB_TOKEN, undefined)
-  assert.equal(calls[0].options.env.MELDWORK_PRIVATE_VALUE, undefined)
+  assert.equal(calls[0].options.env.TYCHE_PRIVATE_VALUE, undefined)
   assert.equal(calls[0].args[1].includes('ambient-secret'), false)
   assert.deepEqual(result, {
     source: 'native-shell',
@@ -1131,7 +1131,7 @@ test('shell discovery failure falls back to allowlisted process Provider values'
       PATH: '/usr/bin',
       OPENAI_API_KEY: 'process-provider-key',
       OPENAI_BASE_URL: 'https://gateway.example/v1',
-      MELDWORK_PRIVATE_VALUE: 'desktop-private-value',
+      TYCHE_PRIVATE_VALUE: 'desktop-private-value',
     },
     execFileFn: async () => { throw new Error('shell unavailable') },
   })
@@ -1147,7 +1147,7 @@ test('shell discovery failure falls back to allowlisted process Provider values'
 })
 
 test('OpenRouter credentials loaded from the native shell mark Hermes ready', async t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-shell-readiness-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-shell-readiness-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const result = await resolveNativeCredentialState('hermes', {
     home,
@@ -1163,7 +1163,7 @@ test('OpenRouter credentials loaded from the native shell mark Hermes ready', as
 })
 
 test('Hermes readiness and credential discovery follow the provider in its native environment file', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-env-provider-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-env-provider-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.hermes')
   fs.mkdirSync(root)
@@ -1176,7 +1176,7 @@ test('Hermes readiness and credential discovery follow the provider in its nativ
 })
 
 test('Hermes environment readiness follows its selected native provider', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-selected-provider-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-selected-provider-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.hermes')
   fs.mkdirSync(root)
@@ -1215,7 +1215,7 @@ test('Hermes environment readiness follows its selected native provider', t => {
 })
 
 test('Hermes credential discovery follows nested and legacy provider configuration', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-nested-provider-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-nested-provider-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.hermes')
   fs.mkdirSync(root)
@@ -1234,7 +1234,7 @@ test('Hermes credential discovery follows nested and legacy provider configurati
 })
 
 test('Hermes named custom provider readiness ignores unrelated account credentials', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-named-provider-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-named-provider-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.hermes')
   fs.mkdirSync(root)
@@ -1261,7 +1261,7 @@ test('Hermes named custom provider readiness ignores unrelated account credentia
 })
 
 test('Hermes readiness follows a named legacy custom provider', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-legacy-provider-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-legacy-provider-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.hermes')
   fs.mkdirSync(root)
@@ -1281,7 +1281,7 @@ test('Hermes readiness follows a named legacy custom provider', t => {
 })
 
 test('Hermes named provider readiness resolves native display aliases and skips disabled entries', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-provider-alias-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-provider-alias-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.hermes')
   fs.mkdirSync(root)
@@ -1298,7 +1298,7 @@ test('Hermes named provider readiness resolves native display aliases and skips 
 })
 
 test('Hermes does not infer named-provider readiness from unrelated credentials', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-ambiguous-provider-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-ambiguous-provider-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.hermes')
   fs.mkdirSync(root)
@@ -1311,7 +1311,7 @@ test('Hermes does not infer named-provider readiness from unrelated credentials'
 })
 
 test('WorkBuddy readiness requires a selected model and never exposes configured keys', () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-workbuddy-readiness-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-workbuddy-readiness-'))
   const secret = 'workbuddy-secret-value'
   fs.mkdirSync(path.join(home, '.workbuddy'), { recursive: true })
   fs.writeFileSync(path.join(home, '.workbuddy', 'models.json'), JSON.stringify([
@@ -1329,7 +1329,7 @@ test('WorkBuddy readiness requires a selected model and never exposes configured
 })
 
 test('native readiness recognizes credential files for every supported CLI', () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-native-readiness-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-native-readiness-'))
   const fixtures = [
     ['codex', ['.codex', 'auth.json'], { tokens: { access_token: 'codex-secret' } }],
     ['hermes', ['.hermes', 'auth.json'], { access_token: 'hermes-secret' }],
@@ -1364,12 +1364,12 @@ test('native readiness recognizes credential files for every supported CLI', () 
 })
 
 test('Claude readiness uses the official auth status without exposing OAuth data', async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-claude-readiness-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-claude-readiness-'))
   const calls = []
   try {
     const result = await resolveNativeCredentialState('claude', {
       home,
-      env: { PATH: '/usr/bin', XDG_RUNTIME_DIR: '/native/runtime', XDG_CACHE_HOME: '', MELDWORK_PRIVATE_VALUE: 'desktop-private-value' },
+      env: { PATH: '/usr/bin', XDG_RUNTIME_DIR: '/native/runtime', XDG_CACHE_HOME: '', TYCHE_PRIVATE_VALUE: 'desktop-private-value' },
       executable: '/tmp/claude',
       execFileFn: async (command, args, options) => {
         calls.push({ command, args, env: options.env })
@@ -1381,14 +1381,14 @@ test('Claude readiness uses the official auth status without exposing OAuth data
     assert.deepEqual(calls[0].args, ['auth', 'status', '--json'])
     assert.equal(calls[0].env.XDG_RUNTIME_DIR, '/native/runtime')
     assert.equal(calls[0].env.XDG_CACHE_HOME, '')
-    assert.equal(calls[0].env.MELDWORK_PRIVATE_VALUE, undefined)
+    assert.equal(calls[0].env.TYCHE_PRIVATE_VALUE, undefined)
   } finally {
     fs.rmSync(home, { recursive: true, force: true })
   }
 })
 
 test('OpenClaw readiness uses the official model status when auth is stored outside its config', async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-readiness-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-readiness-'))
   const agentDir = path.join(home, '.openclaw', 'agents', 'main', 'agent')
   fs.mkdirSync(agentDir, { recursive: true })
   fs.writeFileSync(path.join(agentDir, 'models.json'), JSON.stringify({
@@ -1405,7 +1405,7 @@ test('OpenClaw readiness uses the official model status when auth is stored outs
   try {
     const result = await resolveNativeCredentialState('openclaw', {
       home,
-      env: { PATH: '/usr/bin', MELDWORK_PRIVATE_VALUE: 'desktop-private-value' },
+      env: { PATH: '/usr/bin', TYCHE_PRIVATE_VALUE: 'desktop-private-value' },
       executable: '/tmp/openclaw',
       execFileFn: async (command, args, options) => {
         calls.push({ command, args, env: options.env })
@@ -1422,7 +1422,7 @@ test('OpenClaw readiness uses the official model status when auth is stored outs
 
     assert.deepEqual(result, { state: 'ready', source: 'native-auth-status' })
     assert.deepEqual(calls[0].args, ['models', 'status', '--check', '--json'])
-    assert.equal(calls[0].env.MELDWORK_PRIVATE_VALUE, undefined)
+    assert.equal(calls[0].env.TYCHE_PRIVATE_VALUE, undefined)
   } finally {
     fs.rmSync(home, { recursive: true, force: true })
   }
@@ -1442,7 +1442,7 @@ test('OpenClaw reports unresolved native secret references without exposing CLI 
 })
 
 test('OpenClaw native runtime extracts only the current validated Provider', async (t) => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-runtime-status-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-runtime-status-'))
   const agentDir = path.join(home, '.openclaw', 'agents', 'main', 'agent')
   fs.mkdirSync(agentDir, { recursive: true })
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
@@ -1514,7 +1514,7 @@ test('OpenClaw native runtime extracts only the current validated Provider', asy
 })
 
 test('OpenClaw native runtime resolves allowlisted Env SecretRefs from the shell environment', async (t) => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-env-runtime-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-env-runtime-'))
   const agentDir = path.join(home, '.openclaw', 'agents', 'main', 'agent')
   fs.mkdirSync(agentDir, { recursive: true })
   fs.writeFileSync(path.join(agentDir, 'models.json'), openClawModelsCatalog({
@@ -1537,7 +1537,7 @@ test('OpenClaw native runtime resolves allowlisted Env SecretRefs from the shell
 })
 
 test('OpenClaw native runtime rejects Env SecretRefs without reading unrelated process secrets', async (t) => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-runtime-env-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-runtime-env-'))
   const agentDir = path.join(home, '.openclaw', 'agents', 'main', 'agent')
   fs.mkdirSync(agentDir, { recursive: true })
   fs.writeFileSync(path.join(agentDir, 'models.json'), JSON.stringify({
@@ -1569,7 +1569,7 @@ test('OpenClaw native runtime rejects Env SecretRefs without reading unrelated p
 })
 
 test('OpenClaw native runtime accepts a selected state root but rejects agents outside it', async t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-selected-root-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-selected-root-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const selected = fs.realpathSync(home)
   const agentDir = path.join(selected, 'agents', 'main', 'agent')
@@ -1589,7 +1589,7 @@ test('OpenClaw native runtime accepts a selected state root but rejects agents o
 })
 
 test('OpenClaw runtime probe respects the native home override and tilde state path', async t => {
-  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-home-probe-')))
+  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-home-probe-')))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const selectedHome = path.join(home, 'selected-home')
   const agentDir = path.join(selectedHome, 'state', 'agents', 'main', 'agent')
@@ -1608,7 +1608,7 @@ test('OpenClaw runtime probe respects the native home override and tilde state p
 })
 
 test('OpenClaw native runtime rejects every structured and string SecretRef marker', async (t) => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-secretrefs-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-secretrefs-'))
   const agentDir = path.join(home, '.openclaw', 'agents', 'main', 'agent')
   fs.mkdirSync(agentDir, { recursive: true })
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
@@ -1654,7 +1654,7 @@ test('OpenClaw native runtime rejects every structured and string SecretRef mark
 test('OpenClaw native runtime rejects ancestor path changes while reading models', {
   skip: process.platform === 'win32',
 }, async (t) => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-model-path-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-model-path-'))
   const agentDir = path.join(home, '.openclaw', 'agents', 'main', 'agent')
   const external = path.join(home, 'external-agent')
   fs.mkdirSync(agentDir, { recursive: true })
@@ -1695,7 +1695,7 @@ test('OpenClaw native runtime rejects ancestor path changes while reading models
 test('OpenClaw native runtime rejects models file identity changes after opening', {
   skip: process.platform === 'win32',
 }, async (t) => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-model-inode-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-model-inode-'))
   const agentDir = path.join(home, '.openclaw', 'agents', 'main', 'agent')
   fs.mkdirSync(agentDir, { recursive: true })
   fs.writeFileSync(path.join(agentDir, 'models.json'), openClawModelsCatalog('inside-key'))
@@ -1732,7 +1732,7 @@ test('OpenClaw native runtime rejects models file identity changes after opening
 test('OpenClaw native runtime rejects in-place models changes while reading', {
   skip: process.platform === 'win32',
 }, async (t) => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-model-content-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-model-content-'))
   const agentDir = path.join(home, '.openclaw', 'agents', 'main', 'agent')
   fs.mkdirSync(agentDir, { recursive: true })
   fs.writeFileSync(path.join(agentDir, 'models.json'), openClawModelsCatalog('inside-key'))
@@ -1768,7 +1768,7 @@ test('OpenClaw native runtime rejects in-place models changes while reading', {
 })
 
 test('OpenClaw native runtime rejects unsafe status and Provider descriptors', async (t) => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-runtime-invalid-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-runtime-invalid-'))
   const agentDir = path.join(home, '.openclaw', 'agents', 'main', 'agent')
   fs.mkdirSync(agentDir, { recursive: true })
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
@@ -1846,7 +1846,7 @@ test('OpenClaw native runtime rejects unsafe status and Provider descriptors', a
 })
 
 test('OpenClaw model status overrides a stale gateway token without exposing auth details', async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-stale-auth-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-stale-auth-'))
   const configPath = path.join(home, '.openclaw', 'openclaw.json')
   fs.mkdirSync(path.dirname(configPath), { recursive: true })
   fs.writeFileSync(configPath, JSON.stringify({ gateway: { auth: { token: 'gateway-only-token' } } }))
@@ -1873,7 +1873,7 @@ test('OpenClaw model status overrides a stale gateway token without exposing aut
 })
 
 test('MiMo readiness uses the installed CLI identity without forwarding private values', async (t) => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-mimo-auth-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-mimo-auth-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const calls = []
   for (const stdout of [
@@ -1882,7 +1882,7 @@ test('MiMo readiness uses the installed CLI identity without forwarding private 
   ]) {
     const result = await resolveNativeCredentialState('mimo', {
       home,
-      env: { PATH: '/usr/bin', MELDWORK_PRIVATE_VALUE: 'desktop-private-value' },
+      env: { PATH: '/usr/bin', TYCHE_PRIVATE_VALUE: 'desktop-private-value' },
       executable: '/tmp/mimo',
       execFileFn: async (command, args, options) => {
         calls.push({ command, args, env: options.env })
@@ -1896,11 +1896,11 @@ test('MiMo readiness uses the installed CLI identity without forwarding private 
     ['providers', 'whoami'],
     ['providers', 'whoami'],
   ])
-  assert.equal(calls.every(call => call.env.MELDWORK_PRIVATE_VALUE === undefined), true)
+  assert.equal(calls.every(call => call.env.TYCHE_PRIVATE_VALUE === undefined), true)
 })
 
 test('MiMo official logout does not rule out a project provider', async (t) => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-mimo-auth-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-mimo-auth-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const result = await resolveNativeCredentialState('mimo', {
     home,
@@ -1915,7 +1915,7 @@ test('MiMo official logout does not rule out a project provider', async (t) => {
 })
 
 test('MiMo readiness remains unknown for missing or malformed identity output', async (t) => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-mimo-auth-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-mimo-auth-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   assert.deepEqual(await resolveNativeCredentialState('mimo', { home, env: {} }), {
     state: 'unknown', source: 'unverified',
@@ -1939,7 +1939,7 @@ test('MiMo readiness remains unknown for missing or malformed identity output', 
 })
 
 test('Claude logged-out status does not make stale credentials or project settings verified', async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-claude-stale-auth-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-claude-stale-auth-'))
   const credentialPath = path.join(home, '.claude', '.credentials.json')
   fs.mkdirSync(path.dirname(credentialPath), { recursive: true })
   fs.writeFileSync(credentialPath, JSON.stringify({ oauth: { accessToken: 'expired-token' } }))
@@ -2110,7 +2110,7 @@ for (const shell of ['/bin/sh', '/bin/bash', '/bin/zsh']) {
   test(`native shell ${shell} extracts exported dynamic regions without unrelated values or value evaluation`, {
     skip: process.platform === 'win32' || !fs.existsSync(shell),
   }, async t => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-region-'))
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-region-'))
     t.after(() => fs.rmSync(home, { recursive: true, force: true }))
     const execFile = require('node:util').promisify(require('node:child_process').execFile)
     let output = ''
@@ -2122,7 +2122,7 @@ for (const shell of ['/bin/sh', '/bin/bash', '/bin/zsh']) {
           "VERTEX_REGION_PRIVATE=unexported-region",
           "export VERTEX_REGION_CLAUDE_EMPTY=''",
           "export VERTEX_REGION_LITERAL='$(touch should-not-exist)'",
-          "export MELDWORK_UNRELATED='synthetic-unrelated-secret'",
+          "export TYCHE_UNRELATED='synthetic-unrelated-secret'",
           "export NODE_OPTIONS='--require /nonexistent/untrusted-module.cjs'",
           args[1],
         ].join('\n')], { ...options, cwd: home })
@@ -2135,7 +2135,7 @@ for (const shell of ['/bin/sh', '/bin/bash', '/bin/zsh']) {
     assert.equal(resolved.env.VERTEX_REGION_PRIVATE, undefined)
     assert.equal(resolved.env.VERTEX_REGION_CLAUDE_EMPTY, '')
     assert.equal(resolved.env.VERTEX_REGION_LITERAL, '$(touch should-not-exist)')
-    assert.equal(resolved.env.MELDWORK_UNRELATED, undefined)
+    assert.equal(resolved.env.TYCHE_UNRELATED, undefined)
     assert.equal(resolved.env.NODE_OPTIONS, undefined)
     assert.equal(output.includes('synthetic-unrelated-secret'), false)
     assert.equal(output.includes('unexported-region'), false)
@@ -2273,7 +2273,7 @@ test('Claude retains native Bedrock container credentials through shell discover
 })
 
 test('Kimi credential detection follows its selected native home instead of stale defaults', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-kimi-home-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-kimi-home-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const defaults = path.join(home, '.kimi-code')
   const selected = path.join(home, 'selected-kimi')
@@ -2289,7 +2289,7 @@ test('Kimi credential detection follows its selected native home instead of stal
 })
 
 test('an installed Agent without credential evidence remains unverified', () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-missing-readiness-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-missing-readiness-'))
   try {
     assert.deepEqual(nativeCredentialState('workbuddy', { home }), {
       state: 'unknown', source: 'unverified',
@@ -2303,7 +2303,7 @@ test('native environment forwarding includes only the current Agent credential k
   assert.deepEqual(nativeCredentialEnvironment('claude', {
     ANTHROPIC_API_KEY: 'claude-key',
     OPENAI_API_KEY: 'unrelated-openai-key',
-    MELDWORK_PRIVATE_VALUE: 'desktop-private-value',
+    TYCHE_PRIVATE_VALUE: 'desktop-private-value',
   }), {
     ANTHROPIC_API_KEY: 'claude-key',
   })

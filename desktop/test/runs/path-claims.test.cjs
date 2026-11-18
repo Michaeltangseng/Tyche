@@ -13,7 +13,7 @@ const {
 } = require('../../src/runs/path-claims.cjs')
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-path-claims-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-path-claims-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   return directory
 }

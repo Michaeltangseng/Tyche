@@ -7,10 +7,10 @@ const afterAllArtifactBuild = require('../../scripts/after-all-artifact-build.cj
 
 test('DMG post-processing ignores non-DMG release artifacts', () => {
   assert.deepEqual(afterAllArtifactBuild.selectDmgArtifacts([
-    '/dist/Meldwork-arm64.zip',
-    '/dist/Meldwork-arm64.dmg.blockmap',
-    '/dist/Meldwork-arm64.dmg',
-  ]), ['/dist/Meldwork-arm64.dmg'])
+    '/dist/Tyche-arm64.zip',
+    '/dist/Tyche-arm64.dmg.blockmap',
+    '/dist/Tyche-arm64.dmg',
+  ]), ['/dist/Tyche-arm64.dmg'])
 })
 
 test('DMG post-processing removes Finder-visible root resources', () => {
@@ -21,7 +21,7 @@ test('DMG post-processing removes Finder-visible root resources', () => {
 })
 
 test('DMG post-processing locates electron-builder bundled Python', () => {
-  const cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-dmg-cache-'))
+  const cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-dmg-cache-'))
   const pythonPath = path.join(
     cacheRoot,
     'dmg-builder@1.2.5',
@@ -41,7 +41,7 @@ test('DMG post-processing locates electron-builder bundled Python', () => {
 })
 
 test('DMG post-processing extracts the mounted device and volume path', () => {
-  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-dmg-plist-'))
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-dmg-plist-'))
   const plist = '<plist />'
   const run = (file, args) => {
     assert.equal(file, 'plutil')
@@ -49,7 +49,7 @@ test('DMG post-processing extracts the mounted device and volume path', () => {
     return JSON.stringify({
       'system-entities': [
         { 'dev-entry': '/dev/disk8', 'potentially-mountable': false },
-        { 'dev-entry': '/dev/disk8s1', 'mount-point': '/Volumes/Meldwork' },
+        { 'dev-entry': '/dev/disk8s1', 'mount-point': '/Volumes/Tyche' },
       ],
     })
   }
@@ -57,7 +57,7 @@ test('DMG post-processing extracts the mounted device and volume path', () => {
   try {
     assert.deepEqual(afterAllArtifactBuild.parseAttachedVolume(plist, workDir, run), {
       device: '/dev/disk8s1',
-      mountPath: '/Volumes/Meldwork',
+      mountPath: '/Volumes/Tyche',
     })
   } finally {
     fs.rmSync(workDir, { recursive: true, force: true })

@@ -18,6 +18,6 @@ The notes describe how Tyche collaborates now. Earlier option comparisons and mi
 
 ## While reading
 
-- The product name is Tyche. `MELDWORK_TOOL`, `MELDWORK_REPORT`, and `meldwork-private` are protocol names and directory names that still exist in code.
+- The product name is Tyche. `TYCHE_TOOL`, `TYCHE_REPORT`, and `tyche-private` are protocol names and directory names that still exist in code.
 - The room runtime currently drives Claude Code and Codex.
 - The user-facing model is Room, Chat, role, Captain, task, report, Attention, and artifact. Checkpoint, gate, seat, and round are not part of that model.

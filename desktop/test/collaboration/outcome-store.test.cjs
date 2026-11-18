@@ -92,7 +92,7 @@ function adoptionInput(artifactId, overrides = {}) {
 }
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-outcomes-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-outcomes-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const blobRoot = path.join(directory, 'private', 'blobs')
   const rootPath = path.join(directory, 'private', 'outcomes')
@@ -153,7 +153,7 @@ test('supports every Artifact type with content or bounded location references',
     name: 'result.txt',
     producedBy: PRODUCER,
     contentHash: fileHash,
-    locationRef: { kind: 'workspace-relative', path: '.meldwork-output/result.txt' },
+    locationRef: { kind: 'workspace-relative', path: '.tyche-output/result.txt' },
   })
   const link = createArtifactRecord({
     type: 'link',

@@ -64,7 +64,7 @@ const {
 } = require('./local-workspace-state.cjs')
 
 const MAX_AGENT_OUTCOME_ARTIFACTS = 16
-const OUTCOME_RECORDER = Object.freeze({ kind: 'system', actorId: 'meldwork-main' })
+const OUTCOME_RECORDER = Object.freeze({ kind: 'system', actorId: 'tyche-main' })
 const TERMINAL_RUN_STATUSES = new Set([
   'completed', 'partial', 'failed', 'stopped', 'timeout', 'round-limit', 'interrupted',
   'budget-exhausted', 'circuit-breaker',
@@ -164,7 +164,7 @@ class LocalWorkspace extends EventEmitter {
     this.workspaceRecovery = this.load()
     this.state = this.workspaceRecovery.state
     this.delivery = new DeliveryTasks(this)
-    const privateRoot = path.join(path.dirname(this.storagePath), 'meldwork-private')
+    const privateRoot = path.join(path.dirname(this.storagePath), 'tyche-private')
     this.tracesRoot = options.tracesRoot || path.join(privateRoot, 'traces')
     this.contentBlobStore = options.contentBlobStore || new ContentBlobStore({
       rootPath: path.join(privateRoot, 'content-blobs'),
@@ -2815,7 +2815,7 @@ class LocalWorkspace extends EventEmitter {
           kind: 'observation',
           level: 'observed',
           subject: { type: 'artifact', artifactId: artifact.artifactId },
-          summary: 'Meldwork captured the concrete Agent output.',
+          summary: 'Tyche captured the concrete Agent output.',
           recordedBy: OUTCOME_RECORDER,
           refs: evidenceRefs,
         })
@@ -2827,7 +2827,7 @@ class LocalWorkspace extends EventEmitter {
             kind: 'file-hash',
             level: 'observed',
             subject: { type: 'artifact', artifactId: artifact.artifactId },
-            summary: 'Meldwork captured and hashed the workspace output file.',
+            summary: 'Tyche captured and hashed the workspace output file.',
             recordedBy: OUTCOME_RECORDER,
             refs: [...evidenceRefs, { type: 'location', locationRef: descriptor.locationRef, contentHash: artifact.contentHash }],
           })

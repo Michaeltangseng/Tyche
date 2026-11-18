@@ -1,8 +1,6 @@
 # Changelog
 
-Earlier entries below keep the wording of the releases they describe.
-
-## 1.0.7 - 2026-10-27 (Meldwork-V1.0.7 prerelease)
+## 1.0.7 - 2026-10-27 (Tyche-V1.0.7 prerelease)
 
 - Preserve streamed discussion replies across cancellation and reload; scope ACP notifications to the active session.
 - Support Hermes native stream JSON and avoid MiMo interactive plan prompts in headless runs.
@@ -10,11 +8,11 @@ Earlier entries below keep the wording of the releases they describe.
 - Let WorkBuddy use an explicitly selected model from its desktop configuration, without exposing credentials to the renderer.
 - Keep Chinese slash-separated text intact while retaining credential and local-path redaction.
 - Unify application, artifact, README, and website versions at 1.0.7.
-- License Meldwork's original source, documentation, and website under Apache-2.0: commercial use is permitted without separate authorization or license fees. Third-party notices remain applicable. Older entries below describe their historical release terms.
+- License Tyche's original source, documentation, and website under Apache-2.0: commercial use is permitted without separate authorization or license fees. Third-party notices remain applicable. Older entries below describe their historical release terms.
 - Native acceptance includes a real WorkBuddy response; six-Agent unlimited discussion cancellation and reload were checked with simulated adapters. Zcode's default provider still needs a valid API key; the observed OpenCode router's invalid `tool_calls` finish reason remains an upstream issue.
 - Apple silicon DMG and ZIP remain ad-hoc signed and unnotarized.
 
-## 0.1.6 - 2026-10-17 (Meldwork-V1.0.6 prerelease)
+## 0.1.6 - 2026-10-17 (Tyche-V1.0.6 prerelease)
 
 ### Agent Reliability
 
@@ -56,7 +54,7 @@ Earlier entries below keep the wording of the releases they describe.
 - DMG and ZIP are ad-hoc signed, without Apple Developer ID signing or notarization. No installed user application is replaced automatically.
 - Live coverage is limited to observed CLI versions and configurations; this release did not repeat the live Agent acceptance run.
 
-## 0.1.5 - 2026-09-09 (Meldwork-V1.0.5 prerelease)
+## 0.1.5 - 2026-09-09 (Tyche-V1.0.5 prerelease)
 
 ### Local Agent Reliability
 
@@ -77,9 +75,9 @@ Earlier entries below keep the wording of the releases they describe.
 - Frontend 343/343, desktop 1562/1562, and deterministic evaluation 6 cases / 18 results passed.
 - Web and desktop builds, packaging, real packaged Codex/OpenClaw group execution, cancellation, and restart acceptance passed on Apple silicon macOS.
 - DMG and ZIP are ad-hoc signed, without Apple Developer ID signing or notarization. No installed user application is replaced automatically.
-- Live coverage is limited to observed CLI versions and configurations; cloud credential forwarding is not cloud-account certification. Full evidence: `docs/releases/Meldwork-V1.0.5.md`.
+- Live coverage is limited to observed CLI versions and configurations; cloud credential forwarding is not cloud-account certification. Full evidence: `docs/releases/Tyche-V1.0.5.md`.
 
-## 0.1.4 - 2026-09-01 (Meldwork-V1.0.4 prerelease)
+## 0.1.4 - 2026-09-01 (Tyche-V1.0.4 prerelease)
 
 ### Natural Group Discussions
 
@@ -99,7 +97,7 @@ Earlier entries below keep the wording of the releases they describe.
 - Desktop syntax checks and `git diff --check` passed.
 - The Apple silicon DMG and ZIP are ad-hoc signed and not notarized. Live CLI behavior still depends on each installed Agent's version, authentication, Provider, and capabilities.
 
-## 0.1.3 - 2026-08-18 (Meldwork-V1.0.3 prerelease)
+## 0.1.3 - 2026-08-18 (Tyche-V1.0.3 prerelease)
 
 ### Concurrent Conversations
 
@@ -125,7 +123,7 @@ Earlier entries below keep the wording of the releases they describe.
 - Web and Electron renderer builds, Electron `pack`, packaged acceptance, and `git diff --check` passed before release packaging.
 - The prerelease remains ad-hoc signed, without Apple Developer ID signing or notarization, and may require Open Anyway on first launch.
 
-## 0.1.2 - 2026-08-18 (Meldwork-V1.0.2 prerelease)
+## 0.1.2 - 2026-08-18 (Tyche-V1.0.2 prerelease)
 
 ### Collaboration Harness V4
 
@@ -162,10 +160,10 @@ Earlier entries below keep the wording of the releases they describe.
 
 ### Packaging And Distribution
 
-- Sets the desktop package version to `0.1.2` with permanent Bundle ID `com.rydersun.meldwork`.
+- Sets the desktop package version to `0.1.2` with permanent Bundle ID `com.rydersun.tyche`.
 - Produces Apple silicon DMG and ZIP prerelease artifacts using ad-hoc signing. This is not Apple Developer ID signing or notarization and may require Open Anyway on first launch.
 - Keeps `dist:public` as the fail-closed future formal-distribution path requiring a Developer ID identity, Hardened Runtime, complete Apple notarization credentials, and post-sign validation.
-- This historical release used the Meldwork Non-Commercial Source License and required prior written permission for commercial use. Current releases use Apache-2.0 as stated above.
+- This historical release used the Tyche Non-Commercial Source License and required prior written permission for commercial use. Current releases use Apache-2.0 as stated above.
 
 ### Verification
 
@@ -180,7 +178,7 @@ Earlier entries below keep the wording of the releases they describe.
 
 ## 0.1.0 Private Preview 1 - 2026-08-03
 
-This private preview packages the initial Meldwork MVP for internal evaluation on Apple silicon Macs.
+This private preview packages the initial Tyche MVP for internal evaluation on Apple silicon Macs.
 
 ### Highlights
 
@@ -199,7 +197,7 @@ This private preview packages the initial Meldwork MVP for internal evaluation o
 
 ### License
 
-Meldwork was source-available under PolyForm Noncommercial 1.0.0 for this historical preview. Commercial use required a separate written agreement.
+Tyche was source-available under PolyForm Noncommercial 1.0.0 for this historical preview. Commercial use required a separate written agreement.
 
 ### Verification
 

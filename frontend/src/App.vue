@@ -12,13 +12,13 @@
     :aria-busy="agentDiscoveryPending ? 'true' : undefined"
   >
     <section v-if="booting" class="boot-state" aria-live="polite">
-      <img class="boot-logo" :src="productAppIcon" alt="Meldwork" />
+      <img class="boot-logo" :src="productAppIcon" alt="Tyche" />
       <p>{{ t('app.loading') }}</p>
       <WavePhysicsLoader :theme="theme" />
     </section>
 
     <section v-else-if="bridgeMissing" class="bridge-state">
-      <img class="bridge-logo" :src="productAppIcon" alt="Meldwork" />
+      <img class="bridge-logo" :src="productAppIcon" alt="Tyche" />
       <h1>{{ t('app.desktopRequired') }}</h1>
       <p>{{ t('app.desktopRequiredDetail') }}</p>
     </section>

@@ -71,7 +71,7 @@ function redactChildSecrets(value, env) {
 
 function childSecrets(env) {
   const secrets = new Set(inlineConfigSecrets(env))
-  for (const value of env?.[Symbol.for('meldwork.project-secret-values')] || []) {
+  for (const value of env?.[Symbol.for('tyche.project-secret-values')] || []) {
     if (typeof value === 'string' && value) secrets.add(value)
   }
   for (const [name, value] of Object.entries(env || {})) {

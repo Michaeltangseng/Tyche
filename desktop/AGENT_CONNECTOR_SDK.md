@@ -28,7 +28,7 @@ node - <<'NODE'
 const fs = require('node:fs')
 const { SAMPLE_LOCAL_ECHO_AGENT_CONNECTOR_PACKAGE } = require('./desktop/src/agents/connectors/agent-connector-local.cjs')
 const { serializeAgentConnectorPackage } = require('./desktop/src/agents/connectors/agent-connector-package-store.cjs')
-fs.writeFileSync('/tmp/meldwork-local-echo.connector.json', serializeAgentConnectorPackage(SAMPLE_LOCAL_ECHO_AGENT_CONNECTOR_PACKAGE))
+fs.writeFileSync('/tmp/tyche-local-echo.connector.json', serializeAgentConnectorPackage(SAMPLE_LOCAL_ECHO_AGENT_CONNECTOR_PACKAGE))
 NODE
 ```
 

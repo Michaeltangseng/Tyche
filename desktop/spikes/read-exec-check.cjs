@@ -161,7 +161,7 @@ function codexVerdict(dir, result) {
 }
 
 async function main() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-read-exec-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-read-exec-'))
   fs.writeFileSync(path.join(dir, 'sample.txt'), 'ALPHA\n')
   fs.writeFileSync(path.join(dir, 'edit-me.txt'), 'OLD\n')
   const summary = { dir, claude: null, codex: null }

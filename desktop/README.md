@@ -2,7 +2,7 @@
 
 Tyche is an Electron client that runs entirely on this computer. It loads the desktop frontend from this repository and detects and invokes local Agent CLIs in the Electron main process. It does not need a login, a JWT, a remote platform, Docker, or a cloud service.
 
-Local group chats, messages, group configuration, and CLI session references are stored in the Electron user-data directory. The renderer calls the constrained preload API only through `window.meldworkDesktop`. It does not receive executable paths, provider API keys, or arbitrary shell execution.
+Local group chats, messages, group configuration, and CLI session references are stored in the Electron user-data directory. The renderer calls the constrained preload API only through `window.tycheDesktop`. It does not receive executable paths, provider API keys, or arbitrary shell execution.
 
 The client can detect and invoke these local Agent CLIs:
 
@@ -102,7 +102,7 @@ npm run dev
 
 Optional environment variable:
 
-- `MELDWORK_CODEX_SANDBOX`: Codex's default sandbox mode. `read-only` and `workspace-write` are supported. An unset or unsupported value uses `read-only`.
+- `TYCHE_CODEX_SANDBOX`: Codex's default sandbox mode. `read-only` and `workspace-write` are supported. An unset or unsupported value uses `read-only`.
 
 ## Tests and packaging
 

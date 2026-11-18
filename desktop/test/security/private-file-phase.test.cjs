@@ -7,7 +7,7 @@ const path = require('node:path')
 const { atomicWritePrivateFile } = require('../../src/security/private-file.cjs')
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-private-file-phase-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-private-file-phase-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   return directory
 }

@@ -103,7 +103,7 @@ const SAMPLE_LOCAL_ECHO_AGENT_CONNECTOR_MANIFEST = createAgentConnectorManifest(
   description: 'Local SDK sample that returns text without delegating to a built-in Agent.',
   transport: { type: 'cli', protocol: 'json' },
   upstream: {
-    id: 'meldwork-sdk',
+    id: 'tyche-sdk',
     minVersion: AGENT_CONNECTOR_SDK_VERSION,
     maxVersion: AGENT_CONNECTOR_SDK_VERSION,
   },
@@ -127,7 +127,7 @@ const SAMPLE_LOCAL_ECHO_AGENT_CONNECTOR_MANIFEST = createAgentConnectorManifest(
   license: 'Apache-2.0',
 })
 const SAMPLE_LOCAL_ECHO_AGENT_CONNECTOR_PACKAGE = createAgentConnectorPackage({
-  publisher: { id: 'meldwork', name: 'Meldwork' },
+  publisher: { id: 'tyche', name: 'Tyche' },
   provider: { id: SDK_LOCAL_ECHO_RECIPE_ID, config: {} },
   manifest: SAMPLE_LOCAL_ECHO_AGENT_CONNECTOR_MANIFEST,
 })
@@ -422,8 +422,8 @@ class LocalAgentConnectors {
       }
       const sdkPackage = this.packageStore?.packageForManifest(manifest.manifestId)
       const installed = sdkPackage ? {
-        kind: 'meldwork-sdk',
-        name: 'Meldwork Connector SDK',
+        kind: 'tyche-sdk',
+        name: 'Tyche Connector SDK',
         version: AGENT_CONNECTOR_SDK_VERSION,
         compatibilityState: 'compatible',
         packageId: sdkPackage.packageId,
@@ -500,7 +500,7 @@ class LocalAgentConnectors {
     if (!manifest) fail('AGENT_CONNECTOR_MANIFEST_NOT_REGISTERED')
     const sdkPackage = this.packageStore?.packageForManifest(manifest.manifestId)
     const upstream = sdkPackage ? {
-      kind: 'meldwork-sdk', version: AGENT_CONNECTOR_SDK_VERSION,
+      kind: 'tyche-sdk', version: AGENT_CONNECTOR_SDK_VERSION,
       compatibilityState: 'compatible', packageId: sdkPackage.packageId,
     } : this.detectedUpstreams.find(agent => (
       agent?.kind === manifest.upstream.id
@@ -647,7 +647,7 @@ class LocalAgentConnectors {
     const agent = this.detectAgents().find(item => item.kind === String(instanceId || ''))
     if (!agent) fail('AGENT_CONNECTOR_INSTANCE_NOT_FOUND')
     const suffix = crypto.randomBytes(8).toString('hex')
-    const result = await this.run(agent, 'Meldwork Connector conformance probe', workdir, {
+    const result = await this.run(agent, 'Tyche Connector conformance probe', workdir, {
       runId: `connector-test-${suffix}`,
       agentRunId: `connector-agent-test-${suffix}`,
       sandbox: 'read-only',

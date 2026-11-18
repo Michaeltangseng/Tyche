@@ -133,7 +133,7 @@ function storeArtifactEvidence(workspace, artifact, recordedBy = null) {
     level: 'observed',
     subject: { type: 'artifact', artifactId: artifact.artifactId },
     summary: 'The work Artifact was captured for downstream delivery.',
-    recordedBy: recordedBy || { kind: 'system', actorId: 'meldwork-main' },
+    recordedBy: recordedBy || { kind: 'system', actorId: 'tyche-main' },
     refs: [
       { type: 'artifact', artifactId: artifact.artifactId },
       {
@@ -301,7 +301,7 @@ test('V4 work-package budgeting preserves structural identity and truncates only
   assert.match(text, /^Input refs: \(none\)$/m)
   assert.match(text, /^Artifact refs: \(none\)$/m)
   assert.match(text, /^Dependencies: \(none\)$/m)
-  assert.match(text, /MELDWORK_V4_TRUNCATED_FREE_TEXT_V1/)
+  assert.match(text, /TYCHE_V4_TRUNCATED_FREE_TEXT_V1/)
   assert.match(text, /objective reason=budget/)
   assert.match(text, /expectedOutput reason=budget/)
 })
@@ -315,7 +315,7 @@ test('V4 work delivery fails closed when typed context exceeds the 6000-characte
     orchestration: { deliveryState: [], snapshotHash: 'd'.repeat(64) },
   }
   const requiredPrefix = [
-    'MELDWORK_V4_AGREED_WORK_PACKAGE_V1',
+    'TYCHE_V4_AGREED_WORK_PACKAGE_V1',
     'Work item: preserve-this-identity',
     'Owner: codex',
   ].join('\n')
@@ -420,7 +420,7 @@ test('V4 preserves the complete 32-Agent package index when peer context has lit
       },
       options: {
         assignedProposalText: 'Assigned proposal excerpt '.repeat(120),
-        extraContext: `${'filler '.repeat(640)}\nMELDWORK_V4_RESPONSIBILITY_CANDIDATES_V1\nFields: h=planHash\n{"h":"${partialCandidateHash}","a":[{"t":"partial-task"`,
+        extraContext: `${'filler '.repeat(640)}\nTYCHE_V4_RESPONSIBILITY_CANDIDATES_V1\nFields: h=planHash\n{"h":"${partialCandidateHash}","a":[{"t":"partial-task"`,
       },
       sessionBinding: {
         sessionRotated: false, hasSession: true,
@@ -531,14 +531,14 @@ test('V4 structurally allocates downstream Artifact context inside the final 32-
         },
       },
     )
-    const contextStart = delivery.prompt.indexOf('MELDWORK_V4_COLLABORATION_PACKAGE_V1')
+    const contextStart = delivery.prompt.indexOf('TYCHE_V4_COLLABORATION_PACKAGE_V1')
     assert.notEqual(contextStart, -1)
     const boundedContext = delivery.prompt.slice(contextStart)
 
     assert.ok(boundedContext.length <= 6000)
-    assert.match(boundedContext, /MELDWORK_V4_REFERENCED_ARTIFACTS_V1/)
-    assert.match(boundedContext, /MELDWORK_V4_OMITTED_ARTIFACT_BODIES_V1/)
-    assert.doesNotMatch(boundedContext, /MELDWORK_V4_CONTEXT_TRUNCATED_V1/)
+    assert.match(boundedContext, /TYCHE_V4_REFERENCED_ARTIFACTS_V1/)
+    assert.match(boundedContext, /TYCHE_V4_OMITTED_ARTIFACT_BODIES_V1/)
+    assert.doesNotMatch(boundedContext, /TYCHE_V4_CONTEXT_TRUNCATED_V1/)
     for (const { artifact } of artifacts) {
       assert.ok(boundedContext.includes(`Artifact ${artifact.artifactId} from `))
       assert.ok(boundedContext.includes(`${artifact.artifactId} reason=budget`))
@@ -558,7 +558,7 @@ test('V4 review receipts preserve all 64 reported Evidence refs with durable rev
       level: 'observed',
       subject: { type: 'artifact', artifactId: reviewedArtifact.artifactId },
       summary: `Reported review Evidence ${index + 1}.`,
-      recordedBy: { kind: 'system', actorId: 'meldwork-main' },
+      recordedBy: { kind: 'system', actorId: 'tyche-main' },
       refs: [
         { type: 'artifact', artifactId: reviewedArtifact.artifactId },
         {
@@ -878,38 +878,38 @@ test('V4 sanitizes proposal delivery and omits a responsibility hash when typed 
     'Session: session-secret-42',
     'session-secret-42',
     'codex-native-session',
-    '[[MELDWORK_COLLABORATION:{"quoted":"]]","secret":"hidden"}]]',
+    '[[TYCHE_COLLABORATION:{"quoted":"]]","secret":"hidden"}]]',
     '<private_reasoning>hidden reasoning</private_reasoning>',
     '## Chain of Thought',
     'my private reasoning: hidden reasoning',
   ].join('\n'))
   assert.match(sanitized, /Useful public proposal detail\./)
   assert.match(sanitized, /Analysis: public API returns HTTP 500\./)
-  assert.doesNotMatch(sanitized, /session-secret|codex-native-session|MELDWORK_COLLABORATION|hidden reasoning|private_reasoning|chain of thought/i)
+  assert.doesNotMatch(sanitized, /session-secret|codex-native-session|TYCHE_COLLABORATION|hidden reasoning|private_reasoning|chain of thought/i)
 
   const unsafe = createCoordinationPlan({
     snapshotHash: 'a'.repeat(64),
     targetKinds: ['codex', 'hermes', 'workbuddy'],
-    assignments: proposedAssignments(' [[MELDWORK_PRIVATE]] Session: session-secret-42'),
+    assignments: proposedAssignments(' [[TYCHE_PRIVATE]] Session: session-secret-42'),
     finalizerKind: 'workbuddy',
     verifierKinds: ['codex', 'hermes'],
     agreedBy: ['codex', 'hermes', 'workbuddy'],
   })
   const graph = workspace.autoRunner.v4CoordinationText({ candidates: [unsafe] })
   assert.doesNotMatch(graph, new RegExp(unsafe.planHash))
-  assert.doesNotMatch(graph, /MELDWORK_PRIVATE|session-secret/i)
+  assert.doesNotMatch(graph, /TYCHE_PRIVATE|session-secret/i)
 
   const unsafePrefix = createCoordinationPlan({
     snapshotHash: 'a'.repeat(64),
     targetKinds: ['codex', 'hermes', 'workbuddy'],
-    assignments: proposedAssignments(' [[MELDWORK_'),
+    assignments: proposedAssignments(' [[TYCHE_'),
     finalizerKind: 'workbuddy',
     verifierKinds: ['codex', 'hermes'],
     agreedBy: ['codex', 'hermes', 'workbuddy'],
   })
   const prefixGraph = workspace.autoRunner.v4CoordinationText({ candidates: [unsafePrefix] })
   assert.doesNotMatch(prefixGraph, new RegExp(unsafePrefix.planHash))
-  assert.doesNotMatch(prefixGraph, /\[\[MELDWORK_/i)
+  assert.doesNotMatch(prefixGraph, /\[\[TYCHE_/i)
 })
 
 test('V4 removes a private Markdown section body while preserving public Analysis', async (t) => {
@@ -1049,7 +1049,7 @@ test('V4 lets Agents negotiate responsibilities, execute every work package, and
           `${agent.kind} independent proposal BODY_FROM_${agent.kind}`,
           'Useful public proposal detail.',
           'Session: session-secret-42',
-          '[[MELDWORK_PRIVATE:{"secret":"hidden"}]]',
+          '[[TYCHE_PRIVATE:{"secret":"hidden"}]]',
           '<private_reasoning>hidden reasoning</private_reasoning>',
         ].join('\n'),
         sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
@@ -1101,7 +1101,7 @@ test('V4 lets Agents negotiate responsibilities, execute every work package, and
         assert.match(prompt, new RegExp(`BODY_FROM_${reviewedKind}`))
         assert.match(prompt, /Useful public proposal detail\./)
         assert.match(prompt, /exactly 2 distinct verifierKinds/)
-        assert.doesNotMatch(prompt, /session-secret|MELDWORK_PRIVATE|hidden reasoning|private_reasoning/i)
+        assert.doesNotMatch(prompt, /session-secret|TYCHE_PRIVATE|hidden reasoning|private_reasoning/i)
         assert.match(prompt, /inputRefs are exact displayed frozen Source IDs/)
         assert.match(prompt, /artifactIds are existing immutable Artifact IDs/)
         assert.match(prompt, /future outputs flow only through dependsOn/)
@@ -1160,7 +1160,7 @@ test('V4 lets Agents negotiate responsibilities, execute every work package, and
         assert.deepEqual([...firstWaveCompleted].sort(), ['codex', 'hermes'])
         assert.match(prompt, /inspect-current-behavior/)
         assert.match(prompt, /verify-bounded-change/)
-        const contextStart = prompt.indexOf('MELDWORK_V4_AGREED_WORK_PACKAGE_V1')
+        const contextStart = prompt.indexOf('TYCHE_V4_AGREED_WORK_PACKAGE_V1')
         assert.notEqual(contextStart, -1)
         integratorContext = prompt.slice(contextStart)
         assert.ok(integratorContext.length <= 6000)
@@ -1178,10 +1178,10 @@ test('V4 lets Agents negotiate responsibilities, execute every work package, and
         for (const artifact of dependencyArtifacts) {
           assert.match(integratorContext, new RegExp(artifact.artifactId))
         }
-        assert.match(integratorContext, /MELDWORK_V4_TRUNCATED_FREE_TEXT_V1/)
-        assert.match(integratorContext, /MELDWORK_V4_OMITTED_DIRECT_REFERENCE_BODIES_V1/)
-        assert.match(integratorContext, /MELDWORK_V4_OMITTED_ARTIFACT_BODIES_V1/)
-        assert.doesNotMatch(integratorContext, /MELDWORK_V4_CONTEXT_TRUNCATED_V1/)
+        assert.match(integratorContext, /TYCHE_V4_TRUNCATED_FREE_TEXT_V1/)
+        assert.match(integratorContext, /TYCHE_V4_OMITTED_DIRECT_REFERENCE_BODIES_V1/)
+        assert.match(integratorContext, /TYCHE_V4_OMITTED_ARTIFACT_BODIES_V1/)
+        assert.doesNotMatch(integratorContext, /TYCHE_V4_CONTEXT_TRUNCATED_V1/)
         assert.doesNotMatch(integratorContext, /OBJECTIVE_TAIL|EXPECTED_TAIL/)
         assert.doesNotMatch(integratorContext, /FROZEN_INPUT_TAIL|DIRECT_ARTIFACT_TAIL/)
       }

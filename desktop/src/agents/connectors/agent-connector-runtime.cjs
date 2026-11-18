@@ -118,7 +118,7 @@ function assertOutboundDestination(connector, value, outbound = {}) {
   const destination = String(value || '')
   if (!destination) {
     if (connector.recipeId === 'external.cloud-agent-bridge'
-        && connector.upstreamId === 'meldwork-cloud'
+        && connector.upstreamId === 'tyche-cloud'
         && outbound.tunneled === true && destinations.length === 0) return ''
     if (destinations.length || OUTBOUND_TRANSPORTS.has(connector.transport.type)) {
       fail('AGENT_CONNECTOR_OUTBOUND_DESTINATION_REQUIRED')

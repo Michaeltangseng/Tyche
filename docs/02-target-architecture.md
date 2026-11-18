@@ -263,7 +263,7 @@ Agent tools cannot exist only in the documentation; there must be an explicit ch
 If a CLI does not support MCP:
 
 ```text
-[[MELDWORK_TOOL:{"name":"mention","callId":"...","args":{"names":["reviewer"],"text":"..."}}]]
+[[TYCHE_TOOL:{"name":"mention","callId":"...","args":{"names":["reviewer"],"text":"..."}}]]
 ```
 
 - **A marker is not an MCP equivalent.** Each reply applies only the last complete marker. There is no tool-result return, so the same reply cannot `create_task` and then `comment_task`, and it cannot continue deciding after `list_tasks`/`get_task`.

@@ -8,7 +8,7 @@ const { createTraceReader } = require('../../../src/runs/trace/trace-reader.cjs'
 const { createTraceSink } = require('../../../src/runs/trace/trace-writer.cjs')
 
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-trace-reader-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-trace-reader-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   return {
     root,

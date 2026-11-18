@@ -42,7 +42,7 @@ const V4_PRIVATE_GATE_RESUME_KINDS = new Set([
   'v4_human_gate', 'v4_synthesis_recovery',
 ])
 const PUBLIC_AGENT_KIND = /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/
-const WORKSPACE_V3_BACKUP = 'meldwork-workspace.v3.backup.json'
+const WORKSPACE_V3_BACKUP = 'tyche-workspace.v3.backup.json'
 
 function publicOrchestrationSnapshot(orchestration) {
   if (!orchestration || orchestration.version !== 4) return null

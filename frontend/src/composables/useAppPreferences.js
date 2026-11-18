@@ -27,12 +27,12 @@ export function useAppPreferences() {
   const theme = ref(themePreference.value === 'system' ? systemTheme() : themePreference.value)
   let colorSchemeQuery = null
   const productMark = computed(() => publicAsset(
-    theme.value === 'dark' ? 'logos/meldwork-mark-v3-dark.svg' : 'logos/meldwork-mark-v3.svg',
+    theme.value === 'dark' ? 'logos/tyche-mark-v3-dark.svg' : 'logos/tyche-mark-v3.svg',
   ))
   const productWordmark = computed(() => publicAsset(
-    theme.value === 'dark' ? 'logos/meldwork-wordmark-v3-dark.svg' : 'logos/meldwork-wordmark-v3.svg',
+    theme.value === 'dark' ? 'logos/tyche-wordmark-v3-dark.svg' : 'logos/tyche-wordmark-v3.svg',
   ))
-  const productAppIcon = computed(() => publicAsset('logos/meldwork-app.png'))
+  const productAppIcon = computed(() => publicAsset('logos/tyche-app.png'))
 
   function applyTheme(value) {
     document.documentElement.dataset.theme = value

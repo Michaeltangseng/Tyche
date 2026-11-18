@@ -21,7 +21,7 @@ test('runs fixed SSH bridge commands inside the remote login environment', () =>
 })
 
 test('keeps a cloud CLI request alive for the local Agent runtime timeout', () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-timeout-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-timeout-'))
   try {
     const store = new CloudAgentBridgeStore({
       storagePath: path.join(directory, 'bridges.json'),
@@ -35,7 +35,7 @@ test('keeps a cloud CLI request alive for the local Agent runtime timeout', () =
 })
 
 test('Bridge requests cancel oversized streams and respect a pre-aborted caller', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-response-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-response-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   let cancelled = false
   const store = new CloudAgentBridgeStore({
@@ -76,7 +76,7 @@ test('Bridge requests cancel oversized streams and respect a pre-aborted caller'
 
 for (const stage of ['headers', 'body']) {
   test(`Bridge timeout settles when ${stage} never resolves after abort`, { timeout: 3000 }, async t => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-hung-response-'))
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-hung-response-'))
     t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
     const never = () => new Promise(() => {})
     const store = new CloudAgentBridgeStore({
@@ -88,7 +88,7 @@ for (const stage of ['headers', 'body']) {
   })
 
   test(`Bridge timeout rejects a late ${stage} response even when the transport ignores abort`, async t => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-late-response-'))
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-late-response-'))
     t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
     const store = new CloudAgentBridgeStore({
       storagePath: path.join(directory, 'bridges.json'),
@@ -107,7 +107,7 @@ for (const stage of ['headers', 'body']) {
 }
 
 test('reports activity while a cloud Agent request is waiting for its final response', async () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-activity-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-activity-'))
   const activity = []
   try {
     const store = new CloudAgentBridgeStore({
@@ -153,7 +153,7 @@ test('does not send to a removed or changed cloud bridge after outbound review',
   for (const transport of ['bridge', 'ssh-tunnel', 'ssh']) {
     for (const change of ['remove', 'address', 'server', 'agent', 'abort']) {
       await t.test(`${transport}: ${change}`, async t => {
-        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-target-'))
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-target-'))
         t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
         let sent = false
         const store = new CloudAgentBridgeStore({
@@ -188,7 +188,7 @@ test('does not send to a removed or changed cloud bridge after outbound review',
 
 for (const changed of [false, true]) {
   test(`cloud response ${changed ? 'rejects a changed server identity' : 'accepts a matching reconnected server'}`, async t => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-identity-'))
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-identity-'))
     t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
     let finish
     const store = new CloudAgentBridgeStore({
@@ -210,7 +210,7 @@ for (const changed of [false, true]) {
 
 for (const transport of ['bridge', 'ssh-tunnel', 'ssh']) {
   test(`${transport} bridge removal aborts only its active run and rejects a late reply`, async t => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-remove-active-'))
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-remove-active-'))
     t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
     const pending = new Map()
     const store = new CloudAgentBridgeStore({
@@ -254,7 +254,7 @@ for (const transport of ['bridge', 'ssh-tunnel', 'ssh']) {
 
 function manifest() {
   return {
-    protocol: 'meldwork-agent-bridge',
+    protocol: 'tyche-agent-bridge',
     version: 1,
     server: { id: 'server-1', label: 'Research server' },
     agents: [{
@@ -284,7 +284,7 @@ test('normalizes an IP HTTPS address and rejects non-IP destinations', () => {
 })
 
 test('connects, persists, and exposes a bridge Agent as a connector entry', async () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-bridge-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-bridge-'))
   const storagePath = path.join(directory, 'bridges.json')
   const calls = []
   const store = new CloudAgentBridgeStore({
@@ -336,7 +336,7 @@ test('connects, persists, and exposes a bridge Agent as a connector entry', asyn
 })
 
 test('keeps installed but unavailable cloud Agents in the catalog and out of runtime entries', async () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-catalog-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-catalog-'))
   const storagePath = path.join(directory, 'bridges.json')
   const unavailableManifest = manifest()
   unavailableManifest.agents.push({
@@ -382,11 +382,11 @@ test('keeps installed but unavailable cloud Agents in the catalog and out of run
 })
 
 test('SSH fallback discovers multiple CLI types without advertising unsupported execution', async () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-fallback-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-fallback-'))
   const store = new CloudAgentBridgeStore({
     storagePath: path.join(directory, 'bridges.json'),
     fetch: async () => response(manifest()),
-    sshExecute: async () => ({ stdout: '__MELDWORK_CLI__codex\tcodex-cli 0.146.1\n__MELDWORK_CLI__pi\tpi 0.86.1\n__MELDWORK_CLI__kimi\tkimi 0.19.2\n', stderr: '' }),
+    sshExecute: async () => ({ stdout: '__TYCHE_CLI__codex\tcodex-cli 0.146.1\n__TYCHE_CLI__pi\tpi 0.86.1\n__TYCHE_CLI__kimi\tkimi 0.19.2\n', stderr: '' }),
   })
   try {
     const result = await store.probeSsh('203.0.113.10')
@@ -397,7 +397,7 @@ test('SSH fallback discovers multiple CLI types without advertising unsupported 
 })
 
 test('marks a persisted bridge unavailable after a failed refresh', async () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-bridge-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-bridge-'))
   const storagePath = path.join(directory, 'bridges.json')
   const store = new CloudAgentBridgeStore({
     storagePath,
@@ -436,7 +436,7 @@ test('generates a valid manifest from a persisted bridge record', () => {
 })
 
 test('cloud Agents must explicitly declare session, resume, and cancel capabilities', async () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-session-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-session-'))
   const remote = manifest()
   remote.agents[0].session = { supported: false, resume: true }
   const store = new CloudAgentBridgeStore({
@@ -451,7 +451,7 @@ test('cloud Agents must explicitly declare session, resume, and cancel capabilit
 })
 
 test('discovers and runs a remote Codex CLI through existing SSH configuration', async () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-ssh-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-ssh-'))
   const storagePath = path.join(directory, 'bridges.json')
   const calls = []
   const store = new CloudAgentBridgeStore({
@@ -499,7 +499,7 @@ test('discovers and runs a remote Codex CLI through existing SSH configuration',
 })
 
 test('upgrades a persisted direct SSH connection to the enhanced tunnel without changing its id', async () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-ssh-upgrade-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-ssh-upgrade-'))
   const storagePath = path.join(directory, 'bridges.json')
   const store = new CloudAgentBridgeStore({
     storagePath,
@@ -527,7 +527,7 @@ test('upgrades a persisted direct SSH connection to the enhanced tunnel without 
 })
 
 test('keeps an SSH discovery failure when the HTTPS fallback is unavailable', async () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-ssh-failure-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-ssh-failure-'))
   const store = new CloudAgentBridgeStore({
     storagePath: path.join(directory, 'bridges.json'),
     fetch: async () => { throw new Error('network unavailable') },
@@ -544,7 +544,7 @@ test('keeps an SSH discovery failure when the HTTPS fallback is unavailable', as
 })
 
 test('connects through an SSH-local Agent Bridge tunnel and reuses its HTTP protocol', async () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-tunnel-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-tunnel-'))
   const storagePath = path.join(directory, 'bridges.json')
   const calls = []
   const child = { killed: false, kill() { this.killed = true } }
@@ -581,7 +581,7 @@ test('connects through an SSH-local Agent Bridge tunnel and reuses its HTTP prot
 })
 
 test('passes a caller abort signal through to cloud Agent execution', async () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-bridge-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-bridge-'))
   const storagePath = path.join(directory, 'bridges.json')
   const controller = new AbortController()
   let receivedSignal = null

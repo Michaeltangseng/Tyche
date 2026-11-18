@@ -7,7 +7,7 @@ const { encodeId } = require('../../../src/runs/trace/trace-ids.cjs')
 const { createTraceSink } = require('../../../src/runs/trace/trace-writer.cjs')
 
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-trace-writer-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-trace-writer-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   return {
     root,
@@ -119,18 +119,18 @@ test('stream text is split at four KiB after redaction', (t) => {
   const timers = manualTimers()
   const { file, sink } = makeSink(t, {
     ...timers,
-    childEnv: { TEST_API_KEY: 'meldwork-test-secret-123456' },
+    childEnv: { TEST_API_KEY: 'tyche-test-secret-123456' },
   })
   sink.ingest('acp', {
     sessionUpdate: 'agent_message_chunk',
-    content: { type: 'text', text: `secret meldwork-test-secret-123456 ${'word '.repeat(2000)}` },
+    content: { type: 'text', text: `secret tyche-test-secret-123456 ${'word '.repeat(2000)}` },
   })
   sink.end()
   const steps = readSteps(file)
   assert.ok(steps.length > 1)
   assert.ok(steps.every(step => step.kind === 'message'))
-  assert.equal(steps.some(step => step.output.includes('meldwork-test-secret-123456')), false)
-  assert.equal(fs.readFileSync(file, 'utf8').includes('meldwork-test-secret-123456'), false)
+  assert.equal(steps.some(step => step.output.includes('tyche-test-secret-123456')), false)
+  assert.equal(fs.readFileSync(file, 'utf8').includes('tyche-test-secret-123456'), false)
 })
 
 test('a short released stream chunk waits for the 500ms boundary', (t) => {
