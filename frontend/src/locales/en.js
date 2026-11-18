@@ -190,6 +190,7 @@ export default {
     "room.roleNameRequired": "Enter a role name.",
     "room.enabledCapabilities": "Enabled capabilities",
     "room.availableSkills": "Available skills",
+    "room.cannotSpeak": "Cannot speak in this chat",
     "room.addAgent": "Add agent",
     "room.addAgentHint": "The new role joins this chat. Configure its responsibilities, capabilities, and prompt after creation.",
     "room.createAgent": "Add agent",

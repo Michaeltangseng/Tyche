@@ -190,6 +190,7 @@ export default {
     "room.roleNameRequired": "请输入角色名。",
     "room.enabledCapabilities": "已启用能力",
     "room.availableSkills": "可用技能",
+    "room.cannotSpeak": "不能在此聊天发言",
     "room.addAgent": "新增 Agent",
     "room.addAgentHint": "新角色会加入当前聊天，创建后可继续配置职责、能力和提示词。",
     "room.createAgent": "添加 Agent",

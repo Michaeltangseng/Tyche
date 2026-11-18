@@ -12,7 +12,7 @@ Tyche is a local-first desktop workspace for the Agent tools already installed o
 
 Use Tyche when several Agents should work on the same local project and you want the handoff to stay in one place. Typical work includes research, writing, review, and implementation inside a directory you choose. You still set the goal, choose who is in the room, and accept the result. The app does not require an account or a hosted conversation store.
 
-The room runtime currently drives Claude Code and Codex. Other local Agent CLIs remain available through the existing local-workspace path; see the [agent catalog](CATALOG.md).
+The room runtime launches any provider in OAR's default runtime registry, including Pi. Providers without a room launcher, such as Hermes, can still sit in a chat but cannot speak there. Other local Agent CLIs remain available through the existing local-workspace path; see the [agent catalog](CATALOG.md).
 
 ## How a room works
 

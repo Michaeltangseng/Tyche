@@ -132,6 +132,12 @@ function createRoomService({
     repository,
     timeline: timelineStore,
     queueReply: input => engine.queueReply(input),
+    canLaunch(roleId) {
+      const role = repository.getRole(roleId)
+      if (!role || typeof runtimeAdapter?.hasLauncher !== 'function') return true
+      const known = runtimeAdapter.hasLauncher(role.provider)
+      return known === null ? true : known
+    },
   })
   registerReadChatTool({ dispatcher: toolDispatcher, timeline: timelineStore, repository })
   registerTaskTools({

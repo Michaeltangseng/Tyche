@@ -62,3 +62,31 @@ test('mention excludes self and reports unknown names without queueing', async t
   assert.equal(queued.length, 0)
   roomDb.close()
 })
+
+test('mention records a member with no room launcher and does not queue a reply', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const roomDb = openRoomDatabase({ directory })
+  const repo = createRoomRepository(roomDb)
+  const roomId = repo.createRoom({ name: 'R', workspace: directory })
+  const chatId = repo.createChat({ roomId, title: 'C' })
+  const a = repo.createRole({ chatId, displayName: 'A', provider: 'claude', prompt: 'p' })
+  const hermes = repo.createRole({ chatId, displayName: 'Hermes', provider: 'hermes', prompt: 'p' })
+  repo.addParticipant({ chatId, roleId: a })
+  repo.addParticipant({ chatId, roleId: hermes })
+  const timeline = createTimeline({ roomDb, repository: repo })
+  const dispatcher = createToolDispatcher({ roomDb, repository: repo })
+  const queued = []
+  registerMentionTool({ dispatcher, roomDb, repository: repo, timeline,
+    queueReply: input => { queued.push(input); return input.trigger },
+    canLaunch: roleId => roleId !== hermes })
+  dispatcher.bindRun('run1', { chatId, roleId: a, allowedTools: ['mention'] })
+  const result = await dispatcher.invoke({ runId: 'run1', callId: 'mention-3', name: 'mention',
+    args: { names: ['Hermes'], text: 'please review' } })
+  assert.deepEqual(result.targets, [hermes])
+  assert.equal(result.queued, 0)
+  assert.deepEqual(result.unlaunchable, [{ id: hermes, name: 'Hermes', provider: 'hermes' }])
+  assert.equal(queued.length, 0)
+  assert.equal(timeline.latest(chatId).kind, 'mention')
+  roomDb.close()
+})

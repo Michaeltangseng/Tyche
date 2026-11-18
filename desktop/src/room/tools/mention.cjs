@@ -1,6 +1,6 @@
 const { judgeMention, resolveNamed } = require('../routing.cjs')
 
-function registerMentionTool({ dispatcher, roomDb, repository, timeline, queueReply }) {
+function registerMentionTool({ dispatcher, roomDb, repository, timeline, queueReply, canLaunch = null }) {
   const { database } = roomDb
 
   dispatcher.register('mention', async (args, context) => {
@@ -28,9 +28,19 @@ function registerMentionTool({ dispatcher, roomDb, repository, timeline, queueRe
       WHERE chat_id = ? AND kind = 'mention' AND root_message_id IS ?
     `).get(context.chatId, rootMessageId).n
     const wake = judgeMention(count)
+    const unlaunchable = []
     let queued = 0
     if (wake !== 'capped') {
       for (const roleId of ids) {
+        if (typeof canLaunch === 'function' && canLaunch(roleId) === false) {
+          const role = repository.getRole(roleId)
+          unlaunchable.push({
+            id: roleId,
+            name: role?.displayName || roleId,
+            provider: role?.provider || '',
+          })
+          continue
+        }
         queueReply({
           chatId: context.chatId,
           roleId,
@@ -41,7 +51,7 @@ function registerMentionTool({ dispatcher, roomDb, repository, timeline, queueRe
         queued += 1
       }
     }
-    return { targets: ids, unknown, wake, queued, messageId: mention.id }
+    return { targets: ids, unknown, wake, queued, unlaunchable, messageId: mention.id }
   }, {
     description: 'Mention one or more participants in this chat.',
     inputSchema: {

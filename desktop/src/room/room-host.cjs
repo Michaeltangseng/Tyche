@@ -219,11 +219,15 @@ function createRoomHost({
 
   function snapshot(input = {}) {
     const roomId = roomIdOf(input.roomId)
-    return readModel.snapshot({
+    const data = readModel.snapshot({
       roomId,
       messageLimit: input.messageLimit,
       includeCaptain: input.includeCaptain === true,
     })
+    if (data?.room && typeof service.adapter?.launchProviderIds === 'function') {
+      data.room.launch_providers = service.adapter.launchProviderIds()
+    }
+    return data
   }
 
   function chatMessages(input = {}) {

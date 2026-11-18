@@ -44,7 +44,7 @@ User message / Agent mention / Captain authorization
 
 Chat replies are read-only by default. Writes happen in an authorized TaskRun. The Room `write_authorized` flag is wired to the host and the UI. It is not yet wired to the execution lease. Current run permissions are still a development setting and need a separate review before production.
 
-The room runtime adapter currently supports Claude Code and Codex. Other local CLIs still use the local-workspace path and do not enter this room domain.
+The room runtime adapter launches any provider in OAR's default runtime registry. Providers outside that registry stay on the local-workspace path and cannot speak in a chat.
 
 ## Where the code lives
 

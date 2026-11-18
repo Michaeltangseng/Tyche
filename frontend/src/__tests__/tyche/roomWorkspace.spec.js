@@ -455,6 +455,28 @@ describe('team room workspace', () => {
     wrapper.unmount()
   })
 
+  it('marks a member whose provider has no room launcher', async () => {
+    const snapshot = data()
+    snapshot.room.launch_providers = ['claude', 'codex', 'pi']
+    snapshot.room.providers = ['claude', 'codex', 'hermes']
+    snapshot.roles.push({
+      id: 'hermes',
+      chat_id: 'chat-1',
+      display_name: 'Hermes',
+      provider: 'hermes',
+      is_captain: false,
+      native_permission: 'default',
+      prompt: 'watch',
+      prompt_revision: 1,
+    })
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+    const chip = wrapper.findAll('.room-agent-chip').find(node => node.text().includes('Hermes'))
+    const writer = wrapper.findAll('.room-agent-chip').find(node => node.text().includes('Writer'))
+    expect(chip.text()).toContain('Cannot speak in this chat')
+    expect(writer.text()).not.toContain('Cannot speak')
+  })
+
   it('opens the room and chat requested by the sidebar', async () => {
     const bridge = api()
     const wrapper = mountRoom(bridge, {

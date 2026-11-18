@@ -29,12 +29,13 @@
           :key="role.id"
           class="room-agent-chip"
           type="button"
-          :title="`${roleLabel(role)} · ${providerLabel(role.provider)}`"
+          :title="agentTitle(role)"
           :aria-label="`${t('room.configureRole')}: ${roleLabel(role)}`"
           @click="openRoleSettings(role.id)"
         >
           <img v-if="role.provider" :src="agentLogo(role.provider)" alt="" />
           <span>{{ roleLabel(role) }}</span>
+          <span v-if="role.provider && !canSpeak(role.provider)" class="room-agent-quiet">{{ t('room.cannotSpeak') }}</span>
           <span v-if="role.is_captain" class="room-agent-badge">{{ t('room.captain') }}</span>
         </button>
         <span v-if="!roles.length" class="room-agent-idle">{{ t('room.teamIdle') }}</span>
@@ -407,6 +408,7 @@
                 <PencilOutline aria-hidden="true" />
               </label>
               <span class="room-role-v2-provider-label">{{ providerLabel(roleDraft.provider) }}</span>
+              <span v-if="roleDraft.provider && !canSpeak(roleDraft.provider)" class="room-agent-quiet">{{ t('room.cannotSpeak') }}</span>
               <div class="room-role-v2-provider-icons" role="group" :aria-label="t('room.agent')">
                 <button
                   v-for="provider in roleProviders"
@@ -415,8 +417,8 @@
                   :class="{ active: roleDraft.provider === provider }"
                   type="button"
                   :data-provider="provider"
-                  :title="providerLabel(provider)"
-                  :aria-label="providerLabel(provider)"
+                  :title="providerChoiceTitle(provider)"
+                  :aria-label="providerChoiceTitle(provider)"
                   @click="changeRoleProvider(provider)"
                 >
                   <img :src="agentLogo(provider)" alt="" />
@@ -695,6 +697,22 @@ function roleName(roleId) {
 
 function assignmentTargetNames(assignment) {
   return (assignment?.target_role_ids || []).map(roleName).filter(Boolean).join(' · ')
+}
+
+function canSpeak(provider) {
+  const list = snapshot.value?.room?.launch_providers
+  if (!Array.isArray(list)) return true
+  return list.includes(provider)
+}
+
+function agentTitle(role) {
+  const base = `${roleLabel(role)} · ${providerLabel(role.provider)}`
+  return role?.provider && !canSpeak(role.provider) ? `${base} · ${t('room.cannotSpeak')}` : base
+}
+
+function providerChoiceTitle(provider) {
+  const label = providerLabel(provider)
+  return canSpeak(provider) ? label : `${label} · ${t('room.cannotSpeak')}`
 }
 
 function providerLabel(provider) {
@@ -1054,10 +1072,11 @@ onBeforeUnmount(() => {
 .room-chat-title:hover svg, .room-chat-title:focus-visible svg { color: var(--accent-text); }
 .room-subtitle { max-width: 34ch; overflow: hidden; color: var(--faint); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
 .room-agent-strip { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
-.room-agent-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 190px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-raised); color: inherit; font: inherit; font-size: var(--text-xs); cursor: pointer; }
+.room-agent-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 320px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-raised); color: inherit; font: inherit; font-size: var(--text-xs); cursor: pointer; }
 .room-agent-chip:hover { border-color: var(--border-strong); background: var(--surface-hover); }
 .room-agent-chip img { width: 16px; height: 16px; flex: 0 0 16px; object-fit: contain; }
 .room-agent-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-agent-quiet { color: var(--text-muted); font-size: var(--text-xs); }
 .room-agent-badge { flex: 0 0 auto; margin-left: 2px; padding: 1px 5px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-size: 10px; font-weight: 600; }
 .room-agent-idle { flex: 1 1 auto; color: var(--faint); font-size: var(--text-xs); }
 .room-agent-add { width: 28px; height: 28px; flex: 0 0 28px; display: inline-grid; place-items: center; padding: 0; border: 1px dashed var(--border); border-radius: 999px; background: transparent; color: var(--muted); cursor: pointer; }

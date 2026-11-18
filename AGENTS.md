@@ -12,7 +12,7 @@
 - Tyche is a local-first desktop application. Do not introduce a required server, container, or cluster dependency unless the task explicitly calls for it.
 - Keep Agent execution in the Electron main process. Renderer access must go through narrow, validated preload APIs. The room UI uses `teamRoom`.
 - The room domain lives in `desktop/src/room/`. The platform records rooms, messages, tasks, reports, permissions, and recovery. It does not decompose an Agent's task or hide a scheduler behind the chat.
-- The room runtime adapter supports Claude Code and Codex. Keep CLI integration provider-agnostic. Do not add gateway-specific adapters, provider overrides, or bundled patches for external tools.
+- The room runtime launches any provider in OAR's default runtime registry. Providers outside that registry stay on the local-workspace path and cannot speak in a chat. Keep CLI integration provider-agnostic. Do not add gateway-specific adapters, provider overrides, or bundled patches for external tools.
 - Except for read-only full-trace display, never expose executable paths to renderer code, and never let it start processes from them. Tokens, credentials, and unrestricted shell execution are never exposed to renderer code.
 - Store secrets only through operating-system-backed secure storage. Do not add plaintext fallbacks.
 - Keep workspace write access opt-in. Chat replies stay read-only unless a task run is authorized. Conversations and rooms stay local; do not add remote participants, cloud channels, or remote conversation storage.

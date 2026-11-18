@@ -19,9 +19,19 @@
 const crypto = require('node:crypto')
 const { createMcpHttpServer } = require('./tools/mcp-server.cjs')
 
-const SUPPORTED_PROVIDERS = new Set(['claude', 'codex'])
 const LOOPBACK_NO_PROXY = '127.0.0.1,localhost,::1'
 const MCP_SERVER_NAME = 'tyche'
+
+function selectRoomRuntime(registry, provider) {
+  const runtime = registry?.get?.(provider)
+  if (!runtime) {
+    throw adapterError(
+      'ROOM_RUNTIME_UNSUPPORTED',
+      `room runtime has no launcher for ${JSON.stringify(provider)}`,
+    )
+  }
+  return runtime
+}
 
 function adapterError(code, message, cause) {
   const error = new Error(message || code)
@@ -82,13 +92,24 @@ function createOarRuntimeAdapter({
   }
   const { database } = roomDb
   let oarPromise = null
+  let launcherIds = null
   const controllers = new Map()
   const completions = new Set()
 
+  function rememberLaunchers(mod) {
+    const list = mod?.defaultRuntimes?.list?.() || []
+    launcherIds = list.map(runtime => runtime?.id).filter(id => typeof id === 'string')
+  }
+
   function oarModule() {
-    oarPromise ??= Promise.resolve().then(loadOar)
+    oarPromise ??= Promise.resolve().then(loadOar).then(mod => {
+      rememberLaunchers(mod)
+      return mod
+    })
     return oarPromise
   }
+
+  void oarModule().catch(() => { /* a later launch reports the missing runtime */ })
 
   function rolePromptRevision(roleId) {
     const row = database.prepare('SELECT MAX(revision) AS revision FROM role_prompt_revisions WHERE role_id = ?').get(roleId)
@@ -114,11 +135,8 @@ function createOarRuntimeAdapter({
   }
 
   async function installationFor(provider, runId) {
-    if (!SUPPORTED_PROVIDERS.has(provider)) {
-      throw adapterError('ROOM_RUNTIME_UNSUPPORTED', `room runtime does not support provider ${JSON.stringify(provider)}`)
-    }
     const { defaultRuntimes } = await oarModule()
-    const runtime = defaultRuntimes.require(provider)
+    const runtime = selectRoomRuntime(defaultRuntimes, provider)
     if (typeof runtime.installation !== 'function') {
       throw adapterError('ROOM_RUNTIME_INSTALLATION_UNAVAILABLE', `${provider} has no installation probe`)
     }
@@ -597,7 +615,16 @@ function createOarRuntimeAdapter({
     return Promise.allSettled([...completions])
   }
 
-  return { start, startTaskRun, stopRun, disposeAll }
+  function hasLauncher(provider) {
+    if (!launcherIds) return null
+    return launcherIds.includes(provider)
+  }
+
+  function launchProviderIds() {
+    return launcherIds ? [...launcherIds] : null
+  }
+
+  return { start, startTaskRun, stopRun, disposeAll, hasLauncher, launchProviderIds }
 }
 
-module.exports = { createOarRuntimeAdapter }
+module.exports = { createOarRuntimeAdapter, selectRoomRuntime }
