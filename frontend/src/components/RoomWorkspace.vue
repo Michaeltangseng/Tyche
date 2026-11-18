@@ -134,7 +134,13 @@
                     :content="liveFor(entry.message).text"
                     aria-live="polite"
                   />
-                  <p v-else-if="isWorking(entry.message)" class="room-live-output" aria-live="polite">{{ t('room.liveOutput') }}</p>
+                  <p v-else-if="isWorking(entry.message) && !entry.handoffs.length" class="room-live-output" aria-live="polite">{{ t('room.liveOutput') }}</p>
+                  <MarkdownMessage
+                    v-for="handoff in entry.handoffs"
+                    :key="handoff.message.id"
+                    class="room-message-handoff"
+                    :content="handoff.message.content"
+                  />
                   <div v-if="entry.mentions.length" class="room-mention-row">
                     <span v-for="name in entry.mentions" :key="name" class="room-mention-chip">@{{ name }}</span>
                   </div>
@@ -599,6 +605,12 @@ const workdirName = computed(() => snapshot.value?.room?.workspace_label || '')
 const rolesById = computed(() => new Map(roles.value.map(role => [role.id, role])))
 const tasksById = computed(() => new Map((snapshot.value?.tasks || []).map(task => [task.id, task])))
 
+function isHandoff(message) {
+  if (!message || message.author_type !== 'agent') return false
+  if (message.kind === 'mention') return true
+  return !message.reply_to && Array.isArray(message.mentions) && message.mentions.length > 0
+}
+
 const entries = computed(() => {
   const list = messages.value.map(message => {
     const role = rolesById.value.get(message.author_id)
@@ -618,6 +630,7 @@ const entries = computed(() => {
           : message.author_name || role?.display_name || t('room.system'),
       provider: role?.provider || '',
       mentions: (message.mentions || []).map(id => rolesById.value.get(id)?.display_name).filter(Boolean),
+      handoffs: [],
     }
   })
   for (const report of reports.value) {
@@ -628,7 +641,7 @@ const entries = computed(() => {
       report,
     })
   }
-  return list.sort((left, right) => {
+  const sorted = list.sort((left, right) => {
     const byTime = String(left.createdAt).localeCompare(String(right.createdAt))
     if (byTime !== 0) return byTime
     // Same-millisecond rows must keep ledger order, never random UUID order.
@@ -638,6 +651,21 @@ const entries = computed(() => {
     if (leftSequence !== rightSequence) return leftSequence - rightSequence
     return left.key.localeCompare(right.key)
   })
+  const folded = []
+  for (const entry of sorted) {
+    const previous = folded.at(-1)
+    const sameAuthor = previous?.kind === 'message'
+      && entry.kind === 'message'
+      && previous.message.author_type === 'agent'
+      && previous.message.author_id === entry.message.author_id
+    if (sameAuthor && isHandoff(entry.message)) {
+      previous.handoffs.push(entry)
+      previous.mentions = [...new Set([...previous.mentions, ...entry.mentions])]
+      continue
+    }
+    folded.push(entry)
+  }
+  return folded
 })
 
 const agentUsage = computed(() => agentUsageRows({
@@ -1154,6 +1182,7 @@ onBeforeUnmount(() => {
 .room-message .markdown-body th, .room-message .markdown-body td { padding: 6px 8px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
 .room-message .markdown-body th { color: var(--text-soft); font-weight: 600; }
 .room-message-streaming::after { content: ""; display: inline-block; width: 7px; height: 0.95em; margin-left: 3px; background: var(--accent); vertical-align: text-bottom; animation: room-caret 1s steps(1) infinite; }
+.room-message-handoff { margin-top: 10px; }
 @keyframes room-caret { 50% { opacity: 0; } }
 .room-trace-list { padding-left: 18px; }
 .room-trace-list li { margin-bottom: 8px; }

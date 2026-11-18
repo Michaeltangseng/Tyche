@@ -213,6 +213,36 @@ describe('team room workspace', () => {
     }))
   })
 
+  it('folds a mention handoff into the same author bubble', async () => {
+    const snapshot = data()
+    snapshot.messages = [
+      {
+        id: 'reply-1', chat_id: 'chat-1', sequence: 2, author_type: 'agent', author_id: 'captain',
+        author_name: 'Captain', content: 'A joke', kind: 'message', reply_to: 'user-1',
+        status: 'done', created_at: '2026-11-15T10:00:00Z', mentions: [],
+      },
+      {
+        id: 'mention-1', chat_id: 'chat-1', sequence: 3, author_type: 'agent', author_id: 'captain',
+        author_name: 'Captain', content: 'Please score it', kind: 'mention',
+        status: 'done', created_at: '2026-11-15T10:00:01Z', mentions: ['worker'],
+      },
+      {
+        id: 'reply-2', chat_id: 'chat-1', sequence: 5, author_type: 'agent', author_id: 'worker',
+        author_name: 'Writer', content: 'Seven', kind: 'message', reply_to: 'mention-1',
+        status: 'done', created_at: '2026-11-15T10:00:02Z', mentions: [],
+      },
+    ]
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+    const rows = wrapper.findAll('.room-message')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].text()).toContain('A joke')
+    expect(rows[0].text()).toContain('Please score it')
+    expect(rows[0].text()).toContain('@Writer')
+    expect(rows[1].text()).toContain('Seven')
+    expect(rows[1].text()).not.toContain('Please score it')
+  })
+
   it('keeps same-millisecond messages in ledger sequence order', async () => {
     const snapshot = data()
     snapshot.messages = [
