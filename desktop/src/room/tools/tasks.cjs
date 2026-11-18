@@ -15,7 +15,7 @@ function stableHash(value) {
 }
 
 /**
- * docs-new2/04 §5.1: create_task is unique per assignment + source message.
+ * docs/04 §5.1: create_task is unique per assignment + source message.
  * Outside an assignment, a call is scoped to its run and argument shape so a
  * retry with a new callId still maps to the first task while a genuinely
  * different task in the same run is allowed.

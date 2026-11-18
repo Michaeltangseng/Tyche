@@ -2,7 +2,7 @@
  * Domain idempotency for write tools whose transport may not preserve callId.
  *
  * dispatcher.invoke already dedupes a repeated callId. That only covers a
- * client that reuses the id. docs-new2/04 §5.1 asks for a domain key as the
+ * client that reuses the id. docs/04 §5.1 asks for a domain key as the
  * fallback: create_task is unique per assignment + source message, comment_task
  * takes a caller key (and otherwise derives one from the source and text).
  *

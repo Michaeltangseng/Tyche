@@ -1,5 +1,7 @@
 # Changelog
 
+Earlier entries below keep the wording of the releases they describe.
+
 ## 1.0.7 - 2026-10-27 (Meldwork-V1.0.7 prerelease)
 
 - Preserve streamed discussion replies across cancellation and reload; scope ACP notifications to the active session.

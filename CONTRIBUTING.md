@@ -1,6 +1,6 @@
 # Contributing
 
-Meldwork is licensed under the [Apache License 2.0](LICENSE). Contributions are welcome when they improve the local-first desktop product, documentation, tests, or security posture.
+Tyche is licensed under the [Apache License 2.0](LICENSE). Contributions are welcome when they improve the local-first desktop product, documentation, tests, or security posture.
 
 Unless a separate written agreement applies, a contribution accepted into this repository is available under the repository license. Opening a pull request does not transfer copyright beyond the rights granted by the Apache License 2.0.
 
