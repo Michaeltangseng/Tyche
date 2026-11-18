@@ -34,6 +34,28 @@ describe('room usage', () => {
     expect(indexed['run-2']).toBeUndefined()
   })
 
+  it('keeps a run\'s token totals when a later event only reports context', () => {
+    const indexed = indexUsageByRun([
+      {
+        runId: 'run-1',
+        payload: {
+          kind: 'usage',
+          usage: { inputTokens: 14920, outputTokens: 790, cachedInputTokens: 29824 },
+        },
+      },
+      {
+        runId: 'run-1',
+        payload: { kind: 'usage', usage: { context: { percent: 2 } } },
+      },
+    ])
+    expect(indexed['run-1']).toEqual({
+      inputTokens: 14920,
+      outputTokens: 790,
+      cachedInputTokens: 29824,
+      context: { percent: 2 },
+    })
+  })
+
   it('sums each agent across turns and keeps the latest context fill', () => {
     const rows = agentUsageRows({
       roles: [

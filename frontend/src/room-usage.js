@@ -19,11 +19,24 @@ export function formatUsageLine(usage) {
   return parts.join(' · ')
 }
 
+export function mergeUsage(previous, next) {
+  if (!previous) return next || null
+  if (!next) return previous
+  const context = next.context || previous.context
+  return {
+    ...previous,
+    ...next,
+    ...(context ? { context } : {}),
+  }
+}
+
 export function indexUsageByRun(events) {
   const byRun = {}
   for (const event of events || []) {
     const payload = event?.payload
-    if (payload?.kind === 'usage' && payload.usage && event.runId) byRun[event.runId] = payload.usage
+    if (payload?.kind === 'usage' && payload.usage && event.runId) {
+      byRun[event.runId] = mergeUsage(byRun[event.runId], payload.usage)
+    }
   }
   return byRun
 }

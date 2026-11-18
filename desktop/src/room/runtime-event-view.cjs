@@ -50,6 +50,29 @@ function hostToolOutput(name, output) {
   return HOST_TOOLS.test(name) ? '' : output
 }
 
+/**
+ * OAR's running total counts cache reads and writes inside `input`. The room
+ * shows those beside input, the way a member strip is read, so input here is
+ * the part that is not cache.
+ */
+function projectTokenTotals(totals) {
+  if (!totals || typeof totals !== 'object' || Array.isArray(totals)) return null
+  const input = number(totals.input)
+  const output = number(totals.output)
+  if (input === null && output === null) return null
+  const cacheRead = number(totals.cacheRead)
+  const cacheWrite = number(totals.cacheWrite)
+  const hasCache = cacheRead !== null || cacheWrite !== null
+  const cache = (cacheRead ?? 0) + (cacheWrite ?? 0)
+  const reasoning = number(totals.reasoning)
+  return {
+    inputTokens: Math.max(0, (input ?? 0) - (hasCache ? cache : 0)),
+    outputTokens: output ?? 0,
+    ...(hasCache ? { cachedInputTokens: cache } : {}),
+    ...(reasoning !== null ? { reasoningTokens: reasoning } : {}),
+  }
+}
+
 function safeUsage(usage) {
   if (!usage || typeof usage !== 'object' || Array.isArray(usage)) return null
   const result = {}
@@ -59,6 +82,12 @@ function safeUsage(usage) {
   ]) {
     const value = number(usage[key])
     if (value !== null) result[key] = value
+  }
+  const projected = projectTokenTotals(usage.tokens) || projectTokenTotals(usage.total)
+  if (projected) {
+    for (const [key, value] of Object.entries(projected)) {
+      if (result[key] === undefined) result[key] = value
+    }
   }
   if (usage.context && typeof usage.context === 'object' && !Array.isArray(usage.context)) {
     const tokens = number(usage.context.tokens)

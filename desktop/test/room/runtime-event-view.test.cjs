@@ -79,6 +79,42 @@ test('usage and turn events keep provider-reported numbers only', () => {
   assert.equal(ended.event.outcome, 'completed')
 })
 
+test('OAR token totals become in, out, and cache, with cache kept out of input', () => {
+  const usage = sanitizeRuntimeEvent(payload({
+    kind: 'usage',
+    usage: {
+      context: { tokens: 15497, contextWindow: 1000000, percent: 2 },
+      tokens: { input: 44744, output: 790, cacheRead: 29824, cacheWrite: 0 },
+      total: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
+      sessionId: 'secret',
+    },
+  }))
+  assert.deepEqual(usage.event.usage, {
+    inputTokens: 14920,
+    outputTokens: 790,
+    cachedInputTokens: 29824,
+    context: { tokens: 15497, contextWindow: 1000000, percent: 2 },
+  })
+
+  const fromTotal = sanitizeRuntimeEvent(payload({
+    kind: 'usage',
+    usage: { total: { input: 80, output: 20, cacheRead: 30 } },
+  }))
+  assert.deepEqual(fromTotal.event.usage, {
+    inputTokens: 50,
+    outputTokens: 20,
+    cachedInputTokens: 30,
+  })
+
+  const contextOnly = sanitizeRuntimeEvent(payload({
+    kind: 'usage',
+    usage: { context: { tokens: 5420, contextWindow: 1000000, percent: 0.542 } },
+  }))
+  assert.deepEqual(contextOnly.event.usage, {
+    context: { tokens: 5420, contextWindow: 1000000, percent: 0.542 },
+  })
+})
+
 test('malformed payloads and unknown private events are rejected', () => {
   assert.equal(sanitizeRuntimeEvent(null), null)
   assert.equal(sanitizeRuntimeEvent({ runId: 'r', chatId: 'c', mode: 'other', event: { kind: 'text_delta' } }), null)

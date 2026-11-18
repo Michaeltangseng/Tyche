@@ -1,5 +1,5 @@
 import { computed, onScopeDispose, ref, watch } from 'vue'
-import { indexUsageByRun } from '../room-usage.js'
+import { indexUsageByRun, mergeUsage } from '../room-usage.js'
 
 /**
  * Renderer-side room domain adapter.
@@ -154,9 +154,10 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
       return
     }
     if (event.kind === 'usage' && event.usage) {
-      updateLive(payload.runId, { usage: event.usage, lastSeq })
-      usageByRun.value = { ...usageByRun.value, [payload.runId]: event.usage }
-      chatUsage.value = event.usage
+      const usage = mergeUsage(usageByRun.value[payload.runId] || current.usage, event.usage)
+      updateLive(payload.runId, { usage, lastSeq })
+      usageByRun.value = { ...usageByRun.value, [payload.runId]: usage }
+      chatUsage.value = usage
       return
     }
     if (event.kind === 'turn_ended' || event.kind === 'failure' || event.kind === 'exited') {
