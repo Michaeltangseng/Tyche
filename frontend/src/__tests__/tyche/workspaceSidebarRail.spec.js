@@ -125,6 +125,29 @@ describe('workspace sidebar rail', () => {
     wrapper.unmount()
   })
 
+  it('filters the sidebar from search and opens settings from the footer', async () => {
+    const fixture = controller()
+    fixture.roomWorkspaceAvailable = ref(true)
+    fixture.sidebarCollapsed.value = false
+    fixture.openSystemSettings = vi.fn()
+    fixture.teamRooms = ref([
+      { id: 'team-1', name: 'Alpha', chats: [{ id: 'chat-1', title: 'Research', is_primary: true }] },
+      { id: 'team-2', name: 'Beta', chats: [{ id: 'chat-2', title: 'Notes', is_primary: true }] },
+    ])
+    const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })
+
+    expect(wrapper.get('.member-presence').attributes('data-tone')).toBe('ready')
+    expect(wrapper.get('.sidebar-agent-main').attributes('title')).toContain('nav.agentIdle')
+    await wrapper.get('.sidebar-search input').setValue('beta')
+    expect(wrapper.findAll('.team-room-entry')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Beta')
+    expect(wrapper.text()).not.toContain('Codex')
+
+    await wrapper.get('.sidebar-footer .icon-button').trigger('click')
+    expect(fixture.openSystemSettings).toHaveBeenCalledWith('agents')
+    wrapper.unmount()
+  })
+
   it('keeps agent entries in the collapsed rail', async () => {
     const fixture = controller()
     const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })

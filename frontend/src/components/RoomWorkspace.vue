@@ -213,21 +213,44 @@
           </div>
         </div>
         <div class="room-composer-wrap">
-          <div v-if="roles.length" class="room-composer-mentions">
-            <span class="room-muted">{{ t('room.mentionHint') }}</span>
-            <button
-              v-for="role in roles"
-              :key="role.id"
-              class="room-mention-chip"
-              type="button"
-              @click="insertMention(role)"
-            >
-              @{{ roleLabel(role) }}
-            </button>
-          </div>
           <form class="room-composer" @submit.prevent="sendMessage">
-            <textarea v-model="draft" :placeholder="t('room.messageHint')" :aria-label="t('room.message')" rows="3" maxlength="100000" :disabled="busy || !chat" @keydown.enter.exact.prevent="sendMessage" />
-            <button class="primary-button" :disabled="busy || !draft.trim() || !chat">{{ t('room.send') }}</button>
+            <div v-if="mentionQuery !== null && mentionOptions.length" class="room-mention-menu" role="listbox" :aria-label="t('room.mentionHint')">
+              <button
+                v-for="role in mentionOptions"
+                :key="role.id"
+                class="room-mention-option"
+                type="button"
+                role="option"
+                @click="insertMention(role)"
+              >
+                @{{ roleLabel(role) }}
+              </button>
+            </div>
+            <button
+              class="room-composer-tool"
+              type="button"
+              :title="t('room.mentionHint')"
+              :aria-label="t('room.mentionHint')"
+              :disabled="busy || !roles.length"
+              @click="focusComposer"
+            >
+              <AtOutline />
+            </button>
+            <div class="room-composer-field">
+              <textarea
+                ref="composerInput"
+                v-model="draft"
+                :placeholder="t('room.messageHint')"
+                :aria-label="t('room.message')"
+                rows="1"
+                maxlength="100000"
+                :disabled="busy || !chat"
+                @keydown="handleComposerKeydown"
+              />
+            </div>
+            <button class="room-composer-send" type="submit" :aria-label="t('room.send')" :disabled="busy || !draft.trim() || !chat">
+              <SendOutline />
+            </button>
           </form>
         </div>
       </section>
@@ -508,12 +531,14 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   AddOutline,
+  AtOutline,
   ChevronDownOutline,
   CloseOutline,
   FolderOutline,
   PencilOutline,
   PersonOutline,
   PulseOutline,
+  SendOutline,
   TrashOutline,
 } from '@vicons/ionicons5'
 import { agentLogo } from '../catalog.js'
@@ -603,6 +628,7 @@ const name = ref('')
 const directory = ref('')
 const chatTitle = ref('')
 const draft = ref('')
+const composerInput = ref(null)
 const answers = ref({})
 const picking = ref(false)
 const pickerError = ref(false)
@@ -851,9 +877,49 @@ function optionLabel(option) {
   return String(option?.label ?? option?.name ?? option ?? '')
 }
 
+const mentionQuery = computed(() => {
+  const match = draft.value.match(/(?:^|\s)@([^\s@]*)$/)
+  return match ? match[1] : null
+})
+
+const mentionOptions = computed(() => {
+  if (mentionQuery.value == null) return []
+  const query = mentionQuery.value.toLowerCase()
+  return roles.value.filter(role => roleLabel(role).toLowerCase().includes(query))
+})
+
+function focusComposer() {
+  if (!/(?:^|\s)@[^\s@]*$/.test(draft.value)) {
+    const separator = draft.value && !/\s$/.test(draft.value) ? ' ' : ''
+    draft.value = `${draft.value}${separator}@`
+  }
+  nextTick(() => composerInput.value?.focus())
+}
+
 function insertMention(role) {
   const mention = `@${roleLabel(role)} `
-  draft.value = draft.value ? `${draft.value.replace(/\s*$/, ' ')}${mention}` : mention
+  if (/(?:^|\s)@[^\s@]*$/.test(draft.value)) {
+    draft.value = draft.value.replace(/(^|\s)@[^\s@]*$/, `$1${mention}`)
+  } else {
+    draft.value = draft.value ? `${draft.value.replace(/\s*$/, ' ')}${mention}` : mention
+  }
+  nextTick(() => composerInput.value?.focus())
+}
+
+function handleComposerKeydown(event) {
+  if (event.key === 'Escape' && mentionQuery.value != null) {
+    event.preventDefault()
+    event.stopPropagation()
+    draft.value = draft.value.replace(/(^|\s)@[^\s@]*$/, '$1')
+    return
+  }
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return
+  event.preventDefault()
+  if (mentionQuery.value != null && mentionOptions.value.length) {
+    insertMention(mentionOptions.value[0])
+    return
+  }
+  sendMessage()
 }
 
 async function sendMessage() {
@@ -1145,7 +1211,7 @@ onBeforeUnmount(() => {
 .room-agent-chip img { width: 16px; height: 16px; flex: 0 0 16px; object-fit: contain; }
 .room-agent-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .room-agent-quiet { color: var(--text-muted); font-size: var(--text-xs); }
-.room-agent-badge { flex: 0 0 auto; margin-left: 2px; padding: 1px 5px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-size: 10px; font-weight: 600; }
+.room-agent-badge { flex: 0 0 auto; margin-left: 2px; padding: 1px 5px; border-radius: 999px; background: var(--surface-active); color: var(--text-soft); font-size: 10px; font-weight: 600; }
 .room-agent-idle { flex: 1 1 auto; color: var(--faint); font-size: var(--text-xs); }
 .room-agent-add { width: 28px; height: 28px; flex: 0 0 28px; display: inline-grid; place-items: center; padding: 0; border: 1px dashed var(--border); border-radius: 999px; background: transparent; color: var(--muted); cursor: pointer; }
 .room-agent-add svg { width: 15px; height: 15px; }
@@ -1183,7 +1249,8 @@ onBeforeUnmount(() => {
 .room-message p { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.65; }
 .room-message ul { margin: 8px 0 0; padding-left: 18px; color: var(--text-soft); font-size: var(--text-xs); line-height: 1.55; }
 .room-report .room-message-body { padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); }
-.room-message-controller .room-message-body { padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--accent-soft) 34%, var(--surface-raised)); }
+.room-message-controller .room-message-body,
+.room-message-captain .room-message-body { padding: 0; border: 0; border-radius: 0; background: transparent; }
 .room-message-trace { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); font-size: var(--text-xs); }
 .room-message-trace summary { cursor: pointer; color: var(--text-soft); }
 .room-message-trace .room-trace-list { margin: 8px 0 0; }
@@ -1201,9 +1268,23 @@ onBeforeUnmount(() => {
 .room-attention-card p { margin: 0 0 10px; line-height: 1.55; }
 .room-attention-card form { display: flex; flex-wrap: wrap; gap: 8px; }
 .room-attention-card select, .room-attention-card input { flex: 1; min-width: min(220px, 100%); }
-.room-composer-wrap { padding: 12px clamp(16px, 4vw, 48px) 18px; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 92%, var(--surface-raised)); }
-.room-composer { display: flex; align-items: flex-end; gap: 10px; width: min(920px, 100%); margin: 0 auto; }
-.room-composer textarea { flex: 1; min-width: 0; min-height: 44px; max-height: 160px; resize: vertical; }
+.room-composer-wrap { padding: 8px clamp(18px, 4vw, 48px) 18px; background: transparent; }
+.room-composer { position: relative; display: flex; align-items: flex-end; gap: 6px; width: min(760px, 100%); margin: 0 auto; padding: 8px 8px 8px 6px; border-radius: 22px; background: color-mix(in srgb, var(--surface-raised) 88%, var(--surface-active) 12%); box-shadow: 0 10px 28px rgb(0 0 0 / 0.22); }
+.room-mention-menu { position: absolute; right: 12px; bottom: calc(100% + 8px); left: 12px; z-index: 5; display: flex; flex-direction: column; max-height: 220px; overflow: auto; padding: 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); box-shadow: var(--elev-2); }
+.room-mention-option { display: flex; align-items: center; width: 100%; min-height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer; }
+.room-mention-option:hover, .room-mention-option:focus-visible { outline: none; background: var(--surface-hover); }
+.room-composer:focus-within { box-shadow: 0 12px 30px rgb(0 0 0 / 0.28); }
+.room-composer-tool, .room-composer-send { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; cursor: pointer; }
+.room-composer-tool { width: 32px; height: 32px; border-radius: 10px; background: transparent; color: var(--muted); }
+.room-composer-tool:hover:not(:disabled), .room-composer-tool:focus-visible { color: var(--text); background: var(--surface-hover); }
+.room-composer-tool svg, .room-composer-send svg { width: 16px; height: 16px; }
+.room-composer-field { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 2px 0; }
+.room-composer textarea { flex: 1 1 160px; width: auto; min-width: 120px; min-height: 28px; max-height: 120px; margin: 0; padding: 4px 2px; border: 0; border-radius: 0; background: transparent; resize: none; line-height: 1.45; }
+.room-composer textarea:focus-visible { outline: none; }
+.room-composer-send { width: 34px; height: 34px; border-radius: 50%; background: var(--surface-active); color: var(--faint); }
+.room-composer-send:disabled { opacity: 1; }
+.room-composer-send:not(:disabled) { background: var(--accent); color: #fff; }
+.room-composer-send:hover:not(:disabled) { background: var(--accent-hover); }
 .room-ledger { display: flex; flex: 0 0 min(340px, 36%); flex-direction: column; min-height: 0; overflow: auto; padding: 14px; border-left: 1px solid var(--border); background: var(--surface-raised); }
 .room-ledger-header { display: flex; gap: 10px; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
 .room-ledger-header h2 { margin: 0; }
@@ -1331,7 +1412,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   .room-body { position: relative; }
   .room-ledger { position: absolute; inset: 0 0 0 auto; z-index: 20; width: min(360px, 100%); box-shadow: -18px 0 50px rgb(0 0 0 / 0.18); }
   .room-timeline { padding: 20px 16px 12px; }
-  .room-composer-wrap { padding: 10px 16px 14px; }
+  .room-composer-wrap { padding: 8px 14px 14px; }
   .room-message-body, .room-message-user .room-message-body { max-width: calc(100% - 44px); }
   .room-welcome { margin-top: 32px; }
   .room-settings-modal, .room-role-modal { width: 100%; max-height: calc(100vh - 24px); }
@@ -1346,7 +1427,7 @@ body.room-overlay-open { overflow: hidden; }
 
 <style scoped>
 .room-subtitle-divider { opacity: 0.45; }
-.room-subtitle [data-tone="ready"] { color: var(--accent-text); }
+.room-subtitle [data-tone="ready"] { color: var(--text-soft); }
 .room-message-status { color: var(--faint); font-size: var(--text-2xs); }
 .room-message-status[data-status="working"],
 .room-message-status[data-status="queued"],
@@ -1355,10 +1436,10 @@ body.room-overlay-open { overflow: hidden; }
 .room-message-status[data-status="interrupted"],
 .room-message-status[data-status="unknown"] { color: var(--danger, #b94c4c); }
 .room-message-system .room-message-body { padding: 4px 0; color: var(--faint); font-size: var(--text-xs); }
-.room-message-captain .room-message-body { padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--accent-soft) 34%, var(--surface-raised)); }
+.room-message-captain .room-message-body { padding: 0; border: 0; border-radius: 0; background: transparent; }
 .room-mention-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.room-mention-chip { display: inline-flex; align-items: center; padding: 2px 7px; border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border)); border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font: inherit; font-size: var(--text-2xs); cursor: pointer; }
-.room-composer-mentions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; width: min(920px, 100%); margin: 0 auto 8px; }
+.room-mention-chip { display: inline-flex; align-items: center; padding: 2px 7px; border: 0; border-radius: 999px; background: var(--surface-active); color: var(--text-soft); font: inherit; font-size: var(--text-2xs); }
+.room-composer-mentions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0; }
 .room-report-card .room-message-body { padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); }
 .room-report-task { color: var(--faint); font-size: var(--text-2xs); }
 .room-runs, .room-reports { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: var(--text-xs); }

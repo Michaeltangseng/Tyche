@@ -35,14 +35,14 @@
   --muted: #5a6b75;
   /* ≈3.3:1. Placeholders, disabled text and decorative icons only. */
   --faint: #7d8d95;
-  --accent: #d45f52;
-  --accent-hover: #b94e45;
-  --accent-soft: #f7e3df;
-  --accent-contrast: #fffaf8;
-  /* Accent as text (≥4.5:1, also on --accent-soft) and as a filled button behind light text (≈4.6:1). */
-  --accent-text: #ad4840;
-  --accent-strong: #bd5047;
-  --accent-strong-hover: #a9463e;
+  --accent: #0f7c86;
+  --accent-hover: #0c6770;
+  --accent-soft: #e4f3f4;
+  --accent-contrast: #f3fbfb;
+  /* Accent as text (≥4.5:1, also on --accent-soft) and as a filled button behind light text. */
+  --accent-text: #0b6570;
+  --accent-strong: #0f7c86;
+  --accent-strong-hover: #0c6770;
   --focus-ring: color-mix(in srgb, var(--accent) 72%, var(--surface-raised));
   --scrollbar-thumb: rgb(38 52 60 / 0.22);
   /* Status colors. The accent is for actions, selection and brand moments;
@@ -109,13 +109,13 @@
   --text-soft: #c3cdd1;
   --muted: #9aa6ab;
   --faint: #808b90;
-  --accent: #d98568;
-  --accent-hover: #efa080;
-  --accent-soft: #3b2a24;
-  --accent-contrast: #1b110d;
-  --accent-text: #e2906f;
-  --accent-strong: #d98568;
-  --accent-strong-hover: #efa080;
+  --accent: #3ec4d0;
+  --accent-hover: #6fd4de;
+  --accent-soft: #143238;
+  --accent-contrast: #062226;
+  --accent-text: #8fe3ea;
+  --accent-strong: #249eaa;
+  --accent-strong-hover: #3ec4d0;
   --scrollbar-thumb: rgb(230 235 237 / 0.2);
   --success: #6cc3a0;
   --success-soft: #17302a;

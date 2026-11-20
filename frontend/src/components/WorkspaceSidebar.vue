@@ -34,6 +34,18 @@
       </button>
     </header>
 
+    <form v-if="!sidebarCollapsed" class="sidebar-search" role="search" @submit.prevent="focusSidebarSearch">
+      <SearchOutline aria-hidden="true" />
+      <input
+        ref="sidebarSearchInput"
+        v-model="sidebarQuery"
+        type="search"
+        :placeholder="t('nav.searchSidebar')"
+        :aria-label="t('nav.searchSidebar')"
+      />
+      <kbd>{{ searchShortcut }}</kbd>
+    </form>
+
     <div v-if="sidebarCollapsed" class="sidebar-rail">
       <div class="sidebar-rail-scroll">
         <section
@@ -87,8 +99,8 @@
             <span v-for="index in 3" :key="index" class="sidebar-discovery-row" aria-hidden="true"><i /><b /></span>
             <p>{{ t('onboarding.detecting') }}</p>
           </div>
-          <div v-for="agentGroup in sidebarAgentGroups" :key="agentGroup.id" class="sidebar-agent-location-group">
-            <p class="sidebar-agent-location-heading">{{ t(agentGroup.titleKey) }}</p>
+          <div v-for="agentGroup in filteredAgentGroups" :key="agentGroup.id" class="sidebar-agent-location-group">
+            <p v-if="filteredAgentGroups.length > 1" class="sidebar-agent-location-heading">{{ t(agentGroup.titleKey) }}</p>
             <article
               v-for="agent in agentGroup.agents"
               :key="agent.kind"
@@ -99,7 +111,7 @@
               <button
                 class="sidebar-agent-main"
                 type="button"
-                :title="agent.ready ? agent.label : `${agent.label}: ${agentState(agent).label}`"
+                :title="agent.ready ? `${agent.label} · ${memberStatus(agent)}` : `${agent.label}: ${agentState(agent).label}`"
                 :disabled="isDirectCreationPending(agent.kind)"
                 :aria-expanded="directGroupsFor(agent.kind).length ? String(isSidebarAgentExpanded(agent.kind)) : undefined"
                 :aria-controls="directGroupsFor(agent.kind).length ? sidebarAgentSessionListId(agent.kind) : undefined"
@@ -113,14 +125,10 @@
                     class="attention-dot agent-attention-dot"
                     :title="t('humanGate.waiting')"
                   />
+                  <span class="member-presence" :data-tone="memberPresence(agent)" />
                 </span>
                 <span>
                   <strong>{{ agent.label }}</strong>
-                  <small :data-tone="agent.ready ? undefined : agentState(agent).tone">
-                    {{ !agent.ready ? agentState(agent).label : directGroupsFor(agent.kind).length
-                      ? t('nav.agentSessions', { count: directGroupsFor(agent.kind).length })
-                      : t('nav.noAgentSessions') }}
-                  </small>
                 </span>
               </button>
               <button
@@ -135,12 +143,12 @@
               </button>
             </header>
             <div
-              v-if="directGroupsFor(agent.kind).length && isSidebarAgentExpanded(agent.kind)"
+              v-if="matchingSessions(agent).length && sessionsOpen(agent)"
               :id="sidebarAgentSessionListId(agent.kind)"
               class="direct-session-list"
             >
               <div
-                v-for="group in visibleDirectGroupsFor(agent.kind)"
+                v-for="group in matchingSessions(agent)"
                 :key="group.id"
                 class="direct-session-row"
                 :class="{ active: isSelectedConversation(group) }"
@@ -221,33 +229,32 @@
             </article>
           </div>
         </div>
-        <p v-if="!sidebarAgentGroups.length && !sidebarAgentsCollapsed && !discoveringAgents" class="nav-empty">{{ t('nav.noSidebarAgents') }}</p>
+        <p v-if="!filteredAgentGroups.length && !sidebarAgentsCollapsed && !discoveringAgents && !searching" class="nav-empty">{{ t('nav.noSidebarAgents') }}</p>
       </section>
 
       <section v-if="roomWorkspaceAvailable" class="nav-section team-room-nav-section">
         <div class="nav-heading project-room-heading team-room-heading" role="heading" aria-level="2">
           <span>{{ t('room.title') }}</span>
-          <small class="nav-heading-count">{{ teamRoomList.length }}</small>
           <button class="project-room-add team-room-add" type="button" :title="t('room.createTeamRoom')" :aria-label="t('room.createTeamRoom')" @click="openTeamRoomCreate">
             <AddOutline />
           </button>
         </div>
-        <div v-if="teamRoomList.length" class="project-room-list team-room-list">
-          <div v-for="room in teamRoomList" :key="room.id" class="project-room-entry team-room-entry">
+        <div v-if="filteredTeamRooms.length" class="project-room-list team-room-list">
+          <div v-for="room in filteredTeamRooms" :key="room.id" class="project-room-entry team-room-entry">
             <div class="project-room-row team-room-row" :class="{ active: isTeamRoomSelected(room.id) }">
               <button
                 class="project-room-open"
                 type="button"
                 :title="t(isTeamRoomExpanded(room.id) ? 'room.collapseChats' : 'room.expandChats', { name: room.name })"
                 :aria-current="isTeamRoomSelected(room.id) ? 'page' : undefined"
-                :aria-expanded="String(isTeamRoomExpanded(room.id))"
+                :aria-expanded="String(searching || isTeamRoomExpanded(room.id))"
                 :aria-controls="`team-room-chats-${room.id}`"
                 @click="handleTeamRoomClick(room)"
               >
+                <ChevronForwardOutline class="team-room-chevron" :class="{ open: searching || isTeamRoomExpanded(room.id) }" />
                 <span class="project-room-avatar" aria-hidden="true">{{ projectInitial(room.name) }}</span>
                 <span class="project-room-copy">
                   <strong>{{ room.name }}</strong>
-                  <small>{{ t('room.chatCount', { count: room.chats?.length || 0 }) }}</small>
                 </span>
               </button>
               <button
@@ -270,7 +277,7 @@
               </button>
             </div>
             <div
-              v-if="room.chats?.length && isTeamRoomExpanded(room.id)"
+              v-if="room.chats?.length && (searching || isTeamRoomExpanded(room.id))"
               :id="`team-room-chats-${room.id}`"
               class="project-room-groups team-room-chats"
             >
@@ -307,7 +314,20 @@
         </div>
       </section>
 
+      <p v-if="searching && !filteredAgentGroups.length && !filteredTeamRooms.length" class="nav-empty">{{ t('nav.searchEmpty') }}</p>
     </nav>
+
+    <footer v-if="!sidebarCollapsed" class="sidebar-footer">
+      <button class="sidebar-user" type="button" :title="t('nav.you')" :aria-label="t('nav.you')" @click="openSidebarSettings">
+        <span class="sidebar-user-mark" aria-hidden="true">{{ youMark }}</span>
+        <span>{{ t('nav.you') }}</span>
+      </button>
+      <div class="sidebar-footer-actions">
+        <button class="icon-button" type="button" :title="t('nav.settings')" :aria-label="t('nav.settings')" :aria-current="activeView === 'settings' ? 'page' : undefined" @click="openSidebarSettings">
+          <SettingsOutline />
+        </button>
+      </div>
+    </footer>
 
   </aside>
 
@@ -357,7 +377,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref, unref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, unref, watch } from 'vue'
 import {
   AddOutline,
   ChatbubblesOutline,
@@ -367,6 +387,8 @@ import {
   CloudOutline,
   PencilOutline,
   PeopleOutline,
+  SearchOutline,
+  SettingsOutline,
   TrashOutline,
 } from '@vicons/ionicons5'
 
@@ -413,6 +435,7 @@ const {
   openNewGroup,
   roomWorkspaceAvailable,
   openRoomWorkspace,
+  openSystemSettings,
   openTeamRoomCreate,
   openSidebarConversationDelete,
   productMark,
@@ -497,9 +520,98 @@ const sidebarAgentCount = computed(() => (
   unref(sidebarAgentGroups).reduce((total, group) => total + group.agents.length, 0)
 ))
 
+const sidebarQuery = ref('')
+const sidebarSearchInput = ref(null)
+const sidebarQueryNormalized = computed(() => sidebarQuery.value.trim().toLowerCase())
+const searching = computed(() => sidebarQueryNormalized.value.length > 0)
+const searchShortcut = computed(() => (
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'
+))
+const youMark = computed(() => String(t('nav.you') || '').trim().slice(0, 1) || '•')
+
+function queryMatches(...values) {
+  const query = sidebarQueryNormalized.value
+  if (!query) return true
+  return values.some(value => String(value || '').toLowerCase().includes(query))
+}
+
+function agentSessions(agent) {
+  const sessions = directGroupsFor(agent.kind)
+  return Array.isArray(sessions) ? sessions : []
+}
+
+function memberPresence(agent) {
+  if (!agent.ready) return agentState(agent).tone === 'warning' ? 'warning' : 'off'
+  const sessions = agentSessions(agent)
+  if (sessions.some(group => isGroupAwaitingDecision(group.id))) return 'waiting'
+  if (sessions.some(group => isGroupRunning(group.id))) return 'running'
+  return 'ready'
+}
+
+function memberStatus(agent) {
+  const presence = memberPresence(agent)
+  if (presence === 'running') return t('nav.agentRunning')
+  if (presence === 'waiting') return t('nav.agentWaiting')
+  if (presence === 'ready') return t('nav.agentIdle')
+  return agentState(agent).label
+}
+
+function matchingSessions(agent) {
+  const sessions = agentSessions(agent)
+  if (!searching.value) return visibleDirectGroupsFor(agent.kind) || []
+  const named = sessions.filter(group => queryMatches(groupName(group)))
+  if (named.length) return named
+  return queryMatches(agent.label) ? (visibleDirectGroupsFor(agent.kind) || []) : []
+}
+
+function sessionsOpen(agent) {
+  if (!searching.value) return isSidebarAgentExpanded(agent.kind)
+  return agentSessions(agent).some(group => queryMatches(groupName(group))) || isSidebarAgentExpanded(agent.kind)
+}
+
+const filteredAgentGroups = computed(() => (
+  unref(sidebarAgentGroups).map(group => ({
+    ...group,
+    agents: group.agents.filter(agent => queryMatches(agent.label) || agentSessions(agent).some(session => queryMatches(groupName(session)))),
+  })).filter(group => group.agents.length)
+))
+
 const teamRoomList = computed(() => {
   const value = unref(teamRooms)
   return Array.isArray(value) ? value : []
+})
+
+const filteredTeamRooms = computed(() => teamRoomList.value.flatMap(room => {
+  const chats = Array.isArray(room.chats) ? room.chats : []
+  if (!searching.value) return [{ ...room, chatTotal: chats.length }]
+  const roomHit = queryMatches(room.name)
+  const matchedChats = chats.filter(chat => queryMatches(teamChatLabel(room, chat), chat.title))
+  if (!roomHit && !matchedChats.length) return []
+  return [{ ...room, chats: matchedChats.length ? matchedChats : chats, chatTotal: chats.length }]
+}))
+
+function focusSidebarSearch() {
+  if (unref(sidebarCollapsed)) sidebarCollapsed.value = false
+  nextTick(() => sidebarSearchInput.value?.focus())
+}
+
+function openSidebarSettings() {
+  openSystemSettings?.('agents')
+}
+
+function handleSidebarSearchKey(event) {
+  if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') return
+  if (event.altKey) return
+  event.preventDefault()
+  focusSidebarSearch()
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', handleSidebarSearchKey)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', handleSidebarSearchKey)
 })
 
 const railAgents = computed(() => (

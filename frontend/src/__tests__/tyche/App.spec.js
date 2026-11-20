@@ -939,8 +939,9 @@ describe('Tyche workbench', () => {
     const appSource = readFileSync(resolve(process.cwd(), 'src/App.vue'), 'utf8')
     const composerSource = readFileSync(resolve(process.cwd(), 'src/components/ConversationComposer.vue'), 'utf8')
 
-    expect(source).toContain('--accent: #d45f52;')
-    expect(source).toContain('--accent: #d98568;')
+    const foundation = readFileSync(resolve(process.cwd(), 'src/styles/base-foundation.css'), 'utf8')
+    expect(foundation).toContain('--accent: #0f7c86;')
+    expect(foundation).toContain('--accent: #3ec4d0;')
     expect(source).toMatch(/\.mode-segmented button\[data-mode="auto"\]\.active\s*\{[^}]*background:\s*var\(--accent-soft\);/s)
     expect(source).toMatch(/\.composer-attachment-button\s*\{[^}]*background:\s*transparent;/s)
     expect(source).toMatch(/\.composer-skill-button\s*\{[^}]*background:\s*transparent;/s)

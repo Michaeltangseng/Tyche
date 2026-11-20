@@ -49,6 +49,7 @@ export function createWorkspaceControllers({
     handleTeamRoomClick: app.handleTeamRoomClick,
     roomWorkspaceAvailable: app.roomWorkspaceAvailable,
     openRoomWorkspace: app.openRoomWorkspace,
+    openSystemSettings: app.openSystemSettings,
     openTeamRoomCreate: app.openTeamRoomCreate,
     selectTeamChat: app.selectTeamChat,
     teamRooms: app.teamRooms,
