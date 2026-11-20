@@ -90,6 +90,9 @@ function safeMessageData(data, room = null) {
   const safe = {}
   if (data.reviewReply === true) safe.reviewReply = true
   if (Array.isArray(data.reviewIds)) safe.reviewIds = data.reviewIds.filter(id => typeof id === 'string')
+  if (Array.isArray(data.roleIds)) {
+    safe.roleIds = data.roleIds.filter(id => typeof id === 'string' && id.length > 0 && id.length <= 120)
+  }
   if (Number.isInteger(data.checkpoint)) safe.checkpoint = data.checkpoint
   if (typeof data.reportId === 'string') safe.reportId = data.reportId
   if (typeof data.reportKind === 'string') safe.reportKind = data.reportKind

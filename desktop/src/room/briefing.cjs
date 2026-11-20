@@ -13,7 +13,31 @@ function visible(row, me, viewerIsCaptain) {
   return true
 }
 
-function briefing({ chatTitle, me, lastSeq, rows, trigger, nameOf, filesOf = () => [], viewerIsCaptain = false }) {
+function rosterProviders(roomProviders, launchIds) {
+  if (Array.isArray(launchIds)) return launchIds.filter(id => typeof id === 'string')
+  return (Array.isArray(roomProviders) ? roomProviders : []).filter(id => typeof id === 'string')
+}
+
+function rosterLines(members, launchProviders) {
+  const lines = []
+  if (Array.isArray(members) && members.length > 0) {
+    lines.push('Members:')
+    for (const member of members) {
+      const provider = member?.provider || 'unknown'
+      const mark = member?.isCaptain === true ? ', captain' : ''
+      lines.push(`- ${member?.displayName ?? 'member'} (${provider}${mark})`)
+    }
+  }
+  if (Array.isArray(launchProviders)) {
+    lines.push(`Providers that can speak: ${launchProviders.join(', ')}`)
+  }
+  return lines
+}
+
+function briefing({
+  chatTitle, me, lastSeq, rows, trigger, nameOf, filesOf = () => [], viewerIsCaptain = false,
+  members, launchProviders,
+}) {
   let seen = lastSeq
   let blocked = false
   const earlier = []
@@ -67,7 +91,7 @@ function briefing({ chatTitle, me, lastSeq, rows, trigger, nameOf, filesOf = () 
     omittedLine = `(omitted ${dropped.length} earlier messages)`
   }
 
-  const lines = [`[chat: ${chatTitle}]`, 'Since you last looked:']
+  const lines = [`[chat: ${chatTitle}]`, ...rosterLines(members, launchProviders), 'Since you last looked:']
   if (omittedLine) lines.push(omittedLine)
   for (const item of older) lines.push(item.line)
   lines.push('---')
@@ -81,4 +105,4 @@ function briefing({ chatTitle, me, lastSeq, rows, trigger, nameOf, filesOf = () 
   }
 }
 
-module.exports = { MAX_EARLIER, MAX_TEXT, briefing }
+module.exports = { MAX_EARLIER, MAX_TEXT, briefing, rosterProviders }

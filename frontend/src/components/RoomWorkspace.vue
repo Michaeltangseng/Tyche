@@ -144,6 +144,20 @@
                   <div v-if="entry.mentions.length" class="room-mention-row">
                     <span v-for="name in entry.mentions" :key="name" class="room-mention-chip">@{{ name }}</span>
                   </div>
+                  <div v-if="rosterRoles(entry).length" class="room-roster" :aria-label="t('room.roster')">
+                    <button
+                      v-for="role in rosterRoles(entry)"
+                      :key="role.id"
+                      class="room-roster-card"
+                      type="button"
+                      :aria-label="`${t('room.configureRole')}: ${roleLabel(role)}`"
+                      @click="openRoleSettings(role.id)"
+                    >
+                      <img v-if="role.provider" :src="agentLogo(role.provider)" alt="" />
+                      <span class="room-roster-name">{{ roleLabel(role) }}</span>
+                      <span v-if="role.responsibilities" class="room-roster-duty">{{ role.responsibilities }}</span>
+                    </button>
+                  </div>
                   <RoomRunTrace
                     v-if="entry.message.author_type === 'agent'"
                     :api="api"
@@ -693,7 +707,16 @@ const hasWork = computed(() => workCount.value > 0)
 const showWorkPanel = computed(() => workPanelOpen.value && hasWork.value)
 const canCreate = computed(() => Boolean(name.value.trim() && directory.value && selectedProviders.value.length))
 
-const roleProviders = computed(() => snapshot.value?.room?.providers || [])
+const roleProviders = computed(() => {
+  const room = snapshot.value?.room
+  const launch = Array.isArray(room?.launch_providers) ? room.launch_providers : []
+  const enabled = Array.isArray(room?.providers) ? room.providers : []
+  const providers = []
+  for (const provider of [...launch, ...enabled]) {
+    if (provider && !providers.includes(provider)) providers.push(provider)
+  }
+  return providers
+})
 const canSaveRole = computed(() => Boolean(
   roleDraft.value
   && roleDraft.value.displayName.trim()
@@ -717,6 +740,12 @@ function permissionModeLabel(mode) {
 
 function roleLabel(role) {
   return role?.display_name || role?.id || ''
+}
+
+function rosterRoles(entry) {
+  const ids = entry?.message?.data?.roleIds
+  if (!Array.isArray(ids)) return []
+  return ids.map(id => rolesById.value.get(id)).filter(Boolean)
 }
 
 function roleName(roleId) {
@@ -1100,6 +1129,12 @@ onBeforeUnmount(() => {
 .room-chat-title:hover svg, .room-chat-title:focus-visible svg { color: var(--accent-text); }
 .room-subtitle { max-width: 34ch; overflow: hidden; color: var(--faint); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
 .room-agent-strip { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
+.room-roster { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.room-roster-card { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 168px; max-width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.room-roster-card:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+.room-roster-card img { width: 22px; height: 22px; object-fit: contain; }
+.room-roster-name { max-width: 100%; overflow: hidden; font-size: var(--text-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.room-roster-duty { display: -webkit-box; overflow: hidden; color: var(--text-soft); font-size: var(--text-2xs); line-height: 1.4; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 .room-agent-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 320px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-raised); color: inherit; font: inherit; font-size: var(--text-xs); cursor: pointer; }
 .room-agent-chip:hover { border-color: var(--border-strong); background: var(--surface-hover); }
 .room-agent-chip img { width: 16px; height: 16px; flex: 0 0 16px; object-fit: contain; }

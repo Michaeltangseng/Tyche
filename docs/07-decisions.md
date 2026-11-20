@@ -92,7 +92,8 @@ This file records the directional decisions for the room domain. On conflict, th
 
 **Decision:**
 - The Captain is a Role inside the Chat, with `is_captain=1` and its own Participant Session. `author_type=agent`, and a badge identifies it.
-- Its tools are `assign_in_group`, `post_in_chat`, the read tools, `request_attention`, `control_task` (continue/pause), `propose_role`, and `set_role_prompt`.
+- Its tools are `assign_in_group`, `post_in_chat`, `create_roles`, the read tools, `request_attention`, `control_task` (continue/pause), and `set_role_prompt`.
+- `create_roles` writes the same chat-role fields the user writes from the role dialog. The platform reads that record. It does not treat either writer as the sole owner of the team.
 - `assign_in_group` writes one visible message and @s the target. The target Agent creates the Task itself. The Captain must not target itself. The assignment causal chain is in ADR-N21.
 - Captain tools are limited to the Chat they belong to. They cannot read or write across Chats. There is no cross-Chat `list_chats` / `read_chat`. `read_chat(beforeSeq, limit)` for the current Chat is allowed.
 - The Captain cannot grant permissions, change the workspace, set a Task to done or cancelled directly, or rerun or delete a Task.

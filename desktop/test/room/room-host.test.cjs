@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 
-const { createRoomHost } = require('../../src/room/room-host.cjs')
+const { createRoomHost, PREVIOUS_CAPTAIN_PROMPT } = require('../../src/room/room-host.cjs')
 
 function fakeAdapter() {
   return {
@@ -72,7 +72,7 @@ test('bootstrap creates a display-safe room with a default captain', async (t) =
   assert.equal(snapshot.roles[0].display_name, 'Captain')
   assert.equal(snapshot.roles[0].is_captain, true)
   assert.equal(snapshot.roles[0].native_permission, 'danger-full-access')
-  assert.ok(snapshot.roles[0].prompt.length > 0)
+  assert.match(snapshot.roles[0].prompt, /create_roles/)
   assert.equal(JSON.stringify(snapshot).includes(workspace), false)
 
   await host.start()
@@ -383,6 +383,23 @@ test('captain and worker default prompts follow the role, including demotion', (
   })
   const extraRole = host.snapshot({ roomId: created.roomId }).roles.find(role => role.id === extra.roleId)
   assert.match(extraRole.prompt, /create_task/)
+})
+
+test('startup upgrades a stock captain prompt and leaves a custom prompt alone', async (t) => {
+  const { workspace, host } = createHost(t)
+  const created = host.bootstrap({
+    name: 'Stock captain',
+    workspace,
+    providers: ['codex'],
+    roles: [
+      { displayName: 'Captain', provider: 'codex', prompt: PREVIOUS_CAPTAIN_PROMPT, isCaptain: true },
+      { displayName: 'Custom', provider: 'codex', prompt: 'Keep this prompt.', isCaptain: false },
+    ],
+  })
+  await host.start()
+  const roles = host.snapshot({ roomId: created.roomId }).roles
+  assert.match(roles.find(role => role.is_captain).prompt, /create_roles/)
+  assert.equal(roles.find(role => role.display_name === 'Custom').prompt, 'Keep this prompt.')
 })
 
 test('startup repairs the legacy captain prompt on a demoted role', async (t) => {

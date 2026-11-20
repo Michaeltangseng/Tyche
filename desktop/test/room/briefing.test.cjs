@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
-const { briefing } = require('../../src/room/briefing.cjs')
+const { briefing, rosterProviders } = require('../../src/room/briefing.cjs')
 
 const row = (seq, extra = {}) => ({ id: `m${seq}`, seq, authorType: 'agent', authorId: 'a', status: 'done', content: `c${seq}`, audience: 'chat', data: {}, ...extra })
 
@@ -13,6 +13,31 @@ test('includes unseen completed rows, skips own and in-flight, and blocks the wa
   assert.equal(result.text.includes('trigger'), true)
   assert.equal(result.seen, 2)
   assert.equal(result.omittedSeqs.includes(3), true)
+})
+
+test('captain briefing lists current members and providers that can speak', () => {
+  const trigger = row(1, { authorType: 'user', authorId: 'user', content: '做个网站' })
+  const result = briefing({
+    chatTitle: 'C',
+    me: 'captain',
+    lastSeq: 0,
+    trigger,
+    nameOf: message => message.authorId,
+    viewerIsCaptain: true,
+    members: [
+      { displayName: 'Captain', provider: 'claude', isCaptain: true },
+      { displayName: '实现', provider: 'codex', isCaptain: false },
+    ],
+    launchProviders: ['claude', 'codex'],
+    rows: [trigger],
+  })
+  assert.match(result.text, /Members:\n- Captain \(claude, captain\)\n- 实现 \(codex\)/)
+  assert.match(result.text, /Providers that can speak: claude, codex/)
+})
+
+test('roster providers follow who can speak, and fall back to the room list', () => {
+  assert.deepEqual(rosterProviders(['claude'], ['claude', 'codex']), ['claude', 'codex'])
+  assert.deepEqual(rosterProviders(['claude'], undefined), ['claude'])
 })
 
 test('hides captain-only rows from non-captains and keeps them for the captain', () => {

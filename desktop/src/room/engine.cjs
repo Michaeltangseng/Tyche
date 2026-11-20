@@ -1,5 +1,5 @@
 const { routeUserMessage, resolveNamed } = require('./routing.cjs')
-const { briefing } = require('./briefing.cjs')
+const { briefing, rosterProviders } = require('./briefing.cjs')
 
 function mentionNames(content) {
   const names = []
@@ -8,7 +8,10 @@ function mentionNames(content) {
   return names
 }
 
-function createEngine({ roomDb, repository, timeline, sessions, outbox, runtime, now = () => Date.now(), onEvent = () => {} }) {
+function createEngine({
+  roomDb, repository, timeline, sessions, outbox, runtime, now = () => Date.now(), onEvent = () => {},
+  launchProviders = null,
+}) {
   const { database } = roomDb
   const activeReplies = new Map()
 
@@ -124,6 +127,17 @@ function createEngine({ roomDb, repository, timeline, sessions, outbox, runtime,
             if (row.authorType === 'system') return 'system'
             return participants.find(participant => participant.roleId === row.authorId)?.displayName ?? row.authorId
           }
+          let speakable
+          if (role.isCaptain === true) {
+            let launchIds
+            if (typeof launchProviders === 'function') {
+              try {
+                const ids = launchProviders()
+                if (Array.isArray(ids)) launchIds = ids
+              } catch { /* fall back to the providers enabled on the room */ }
+            }
+            speakable = rosterProviders(room.providers, launchIds)
+          }
           const briefingResult = briefing({
             chatTitle: chat.title,
             me: role.id,
@@ -132,6 +146,14 @@ function createEngine({ roomDb, repository, timeline, sessions, outbox, runtime,
             trigger,
             nameOf,
             viewerIsCaptain: role.isCaptain === true,
+            members: role.isCaptain === true
+              ? participants.map(participant => ({
+                displayName: participant.displayName,
+                provider: participant.provider,
+                isCaptain: participant.isCaptain === true,
+              }))
+              : undefined,
+            launchProviders: speakable,
           })
           const prompt = briefingResult.text
           const watermark = briefingResult.seen

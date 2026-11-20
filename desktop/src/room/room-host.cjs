@@ -29,8 +29,17 @@ const MAX_MESSAGE_LENGTH = 100_000
 const MAX_FILES_READ_BYTES = 512 * 1024
 const ROOM_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/
 const PROVIDER = /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/
+const PREVIOUS_CAPTAIN_PROMPT = [
+  'You are the Captain of this chat.',
+  'Use assign_in_group to give work to other roles.',
+  'Reply directly for normal answers; use post_in_chat only for a separate public notice, without duplicating your reply.',
+  'Do not create tasks yourself; the assigned role owns its task.',
+  'Keep replies short and quote task numbers when useful.',
+].join(' ')
 const DEFAULT_CAPTAIN_PROMPT = [
   'You are the Captain of this chat.',
+  'When the current members cannot cover the request, call create_roles with a name, provider, responsibilities, and prompt for each new member.',
+  'Do not call assign_in_group in the same turn as create_roles. The next user message is the instruction to start or change the team.',
   'Use assign_in_group to give work to other roles.',
   'Reply directly for normal answers; use post_in_chat only for a separate public notice, without duplicating your reply.',
   'Do not create tasks yourself; the assigned role owns its task.',
@@ -52,7 +61,9 @@ const LEGACY_CAPTAIN_PROMPT = [
 ].join(' ')
 
 function isCaptainPrompt(value) {
-  return value === DEFAULT_CAPTAIN_PROMPT || value === LEGACY_CAPTAIN_PROMPT
+  return value === DEFAULT_CAPTAIN_PROMPT
+    || value === PREVIOUS_CAPTAIN_PROMPT
+    || value === LEGACY_CAPTAIN_PROMPT
 }
 
 function hostError(code, message) {
@@ -100,8 +111,12 @@ function workspacePath(value) {
   return real
 }
 
+// Null means no cap on how many providers or roles a room may hold.
+const MAX_ROOM_PROVIDERS = null
+const MAX_ROOM_ROLES = null
+
 function providerList(value) {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 32) {
+  if (!Array.isArray(value) || value.length === 0 || (MAX_ROOM_PROVIDERS != null && value.length > MAX_ROOM_PROVIDERS)) {
     throw hostError('TEAM_ROOM_INPUT_INVALID', 'providers are required')
   }
   const providers = []
@@ -249,7 +264,9 @@ function createRoomHost({
     const rawRoles = Array.isArray(input.roles) && input.roles.length > 0
       ? input.roles
       : [{ displayName: 'Captain', provider: providers[0], prompt: DEFAULT_CAPTAIN_PROMPT, isCaptain: true }]
-    if (rawRoles.length > 32) throw hostError('TEAM_ROOM_INPUT_INVALID', 'too many roles')
+    if (MAX_ROOM_ROLES != null && rawRoles.length > MAX_ROOM_ROLES) {
+      throw hostError('TEAM_ROOM_INPUT_INVALID', 'too many roles')
+    }
     const roles = rawRoles.map((role, index) => normalizeRole(role, index, providers))
     const captainCount = roles.filter(role => role.isCaptain).length
     if (captainCount > 1) throw hostError('ROOM_ROLE_CAPTAIN_CONFLICT')
@@ -408,12 +425,31 @@ function createRoomHost({
     const roles = roomDb.database.prepare("SELECT id, is_captain FROM chat_roles WHERE status = 'active'").all()
     for (const role of roles) {
       const prompt = latestPrompt(role.id)
-      if (role.is_captain === 1 && (prompt === DEFAULT_WORKER_PROMPT || prompt === LEGACY_CAPTAIN_PROMPT)) {
+      if (role.is_captain === 1 && (
+        prompt === DEFAULT_WORKER_PROMPT
+        || prompt === LEGACY_CAPTAIN_PROMPT
+        || prompt === PREVIOUS_CAPTAIN_PROMPT
+      )) {
         insertPromptRevision(role.id, DEFAULT_CAPTAIN_PROMPT)
       } else if (role.is_captain !== 1 && isCaptainPrompt(prompt)) {
         insertPromptRevision(role.id, DEFAULT_WORKER_PROMPT)
       }
     }
+  }
+
+  function providerCanSpeak(provider) {
+    if (typeof provider !== 'string' || !PROVIDER.test(provider)) return false
+    if (typeof service.adapter?.hasLauncher !== 'function') return true
+    const known = service.adapter.hasLauncher(provider)
+    return known === null ? true : known === true
+  }
+
+  function rememberProvider(room, provider) {
+    if (room.providers.includes(provider)) return
+    const next = [...room.providers, provider]
+    roomDb.database.prepare('UPDATE rooms SET providers_json = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(next), new Date(now()).toISOString(), room.id)
+    room.providers = next
   }
 
   function createRole(input = {}) {
@@ -422,7 +458,7 @@ function createRoomHost({
     if (typeof input.displayName !== 'string' || !input.displayName.trim()) {
       throw hostError('ROOM_ROLE_NAME_REQUIRED')
     }
-    if (!room.providers.includes(input.provider)) throw hostError('ROOM_ROLE_PROVIDER_NOT_ALLOWED')
+    if (!providerCanSpeak(input.provider)) throw hostError('ROOM_ROLE_PROVIDER_NOT_LAUNCHABLE')
     if (input.isCaptain === true) {
       const captain = roomDb.database.prepare(
         "SELECT id FROM chat_roles WHERE chat_id = ? AND is_captain = 1 AND status = 'active'",
@@ -433,6 +469,7 @@ function createRoomHost({
       ? input.prompt.slice(0, 100_000)
       : (input.isCaptain === true ? DEFAULT_CAPTAIN_PROMPT : DEFAULT_WORKER_PROMPT)
     return roomDb.withTransaction(() => {
+      rememberProvider(room, input.provider)
       const roleId = repository.createRole({
         chatId: chat.id,
         displayName: input.displayName.trim(),
@@ -442,6 +479,7 @@ function createRoomHost({
         nativePermission: input.nativePermission === undefined
           ? defaultNativePermission(input.provider)
           : cleanText(input.nativePermission, 80, 'nativePermission'),
+        responsibilities: typeof input.responsibilities === 'string' ? input.responsibilities.slice(0, 4000) : '',
         capabilities: stringList(input.capabilities, 16, 'capabilities'),
         model: input.model === undefined || input.model === null
           ? null
@@ -455,8 +493,8 @@ function createRoomHost({
   function updateRole(input = {}) {
     const { room, role, chat } = roleContext(input)
     if (roleBusy(role.id)) throw hostError('ROOM_ROLE_BUSY')
-    if (input.provider !== undefined && !room.providers.includes(input.provider)) {
-      throw hostError('ROOM_ROLE_PROVIDER_NOT_ALLOWED')
+    if (input.provider !== undefined && !providerCanSpeak(input.provider)) {
+      throw hostError('ROOM_ROLE_PROVIDER_NOT_LAUNCHABLE')
     }
     if (input.isCaptain === true && role.isCaptain !== true) {
       const captain = roomDb.database.prepare(
@@ -472,6 +510,7 @@ function createRoomHost({
       else if (!nextCaptain && isCaptainPrompt(currentPrompt)) promptToWrite = DEFAULT_WORKER_PROMPT
     }
     return roomDb.withTransaction(() => {
+      if (input.provider !== undefined) rememberProvider(room, input.provider)
       const assignments = []
       const values = []
       if (input.displayName !== undefined) {
@@ -825,4 +864,4 @@ function createRoomHost({
   }
 }
 
-module.exports = { createRoomHost, DEFAULT_CAPTAIN_PROMPT }
+module.exports = { createRoomHost, DEFAULT_CAPTAIN_PROMPT, PREVIOUS_CAPTAIN_PROMPT }

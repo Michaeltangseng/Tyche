@@ -76,6 +76,38 @@ test('startQueuedReplies surfaces a queued reply without a start effect', async 
   roomDb.close()
 })
 
+test('the captain briefing lists every provider that can speak', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const roomDb = openRoomDatabase({ directory })
+  const repo = createRoomRepository(roomDb)
+  const roomId = repo.createRoom({ name: 'R', workspace: directory, providers: ['claude'] })
+  const chatId = repo.createChat({ roomId, title: 'C' })
+  const captainRoleId = repo.createRole({ chatId, displayName: 'Captain', provider: 'claude', prompt: 'route', isCaptain: true })
+  repo.addParticipant({ chatId, roleId: captainRoleId })
+  const timeline = createTimeline({ roomDb, repository: repo })
+  const sessions = createSessionStore({ roomDb, repository: repo })
+  const outbox = createOutbox({ roomDb, repository: repo })
+  const runtime = createFakeRuntime({ deferCompletion: true })
+  const engine = createEngine({
+    roomDb,
+    repository: repo,
+    timeline,
+    sessions,
+    outbox,
+    runtime,
+    launchProviders: () => ['claude', 'codex', 'hermes'],
+  })
+  const { replies } = engine.submitUserMessage({ chatId, content: '做一个首页' })
+  const pending = engine.startReply(replies[0].id)
+  await pending.launched
+  const prompt = runtime.starts[0].prompt
+  assert.match(prompt, /Providers that can speak: claude, codex, hermes\n/)
+  runtime.finish({ status: 'done', text: 'ok' }, replies[0].id)
+  await pending.done
+  roomDb.close()
+})
+
 test('the captain receives captain-only review rows in its briefing', async t => {
   const { roomDb, repo, chatId, timeline } = setup(t)
   const captainRoleId = repo.createRole({ chatId, displayName: 'Captain', provider: 'claude', prompt: 'route', isCaptain: true })

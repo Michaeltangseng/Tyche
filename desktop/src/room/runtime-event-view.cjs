@@ -42,7 +42,7 @@ function toolNameOf(event) {
   )
 }
 
-const HOST_TOOLS = /(?:^|__)(assign_in_group|post_in_chat|create_task|finish_task|comment_task|mention|read_chat)$/
+const HOST_TOOLS = /(?:^|__)(assign_in_group|post_in_chat|create_roles|create_task|finish_task|comment_task|mention|read_chat)$/
 
 function hostToolOutput(name, output) {
   // Host tool results are structured domain rows. The trace should show that

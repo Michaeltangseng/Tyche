@@ -134,6 +134,7 @@ export default {
     "room.noRolePrompt": "当前没有单独的角色提示词；主控会根据聊天约定分派任务。",
     "room.roleSettings": "角色配置",
     "room.configureRole": "配置角色",
+    "room.roster": "团队成员",
     "room.roleName": "角色名",
     "room.roleResponsibilities": "职责",
     "room.roleReadOnly": "角色名称、职责、Agent 和能力由主控创建；你可以调整角色提示词和技能。",

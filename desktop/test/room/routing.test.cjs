@@ -9,10 +9,10 @@ test('routes named members, then steward, then a single member', () => {
   assert.deepEqual(routeUserMessage({ kind: 'group', members: ['a', 'b'], mentions: [], steward: null }).targets, [])
 })
 
-test('caps mention wakes at five', () => {
+test('mention wakes stay open while the budget placeholder is empty', () => {
   assert.equal(judgeMention(1), 'wake')
-  assert.equal(judgeMention(5), 'wake_last')
-  assert.equal(judgeMention(6), 'capped')
+  assert.equal(judgeMention(5), 'wake')
+  assert.equal(judgeMention(6), 'wake')
 })
 
 test('resolves names case-insensitively and excludes self', () => {

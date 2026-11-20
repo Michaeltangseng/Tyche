@@ -46,7 +46,7 @@ finish_task(taskId, summary, status, evidence?, artifact_ids?)
 
 ### 1.4 Joining a Role, and permissions
 
-- A Role is created or confirmed by the user. The Captain may `propose_role`, but it cannot create a Role directly.
+- A Role is one chat record: name, provider, responsibilities, prompt revision, and native permission. The user writes it from the role dialog. The Captain writes it with `create_roles`. Both calls store the same fields. The platform reads that record for the member list, the timeline cards, and later runs. `create_roles` does not wake the new members. `assign_in_group` in that same turn is rejected. The next user message can assign them.
 - A Role binds a Provider and model, a Prompt revision, capabilities, a native permission mode, and Skill bindings.
 - After a Role joins a Chat it becomes a Participant. Each Chat has its own session and does not share context with other Chats.
 - A Role belongs to one Chat and is not shared across Chats. If the same Provider appears in two Chats, those are two Roles and two sessions.
@@ -318,7 +318,7 @@ read_chat(beforeSeq?, limit?)     // history pagination of the current Chat only
 read_inbox(pendingOnly?)
 request_attention(taskId?, type, question, options?)
 control_task(taskId, action, text?)   // continue/pause only; stop/rerun/delete need a user command
-propose_role(...)                     // created only after the user confirms
+create_roles(roles)                   // writes chat roles directly; same fields as the role dialog
 set_role_prompt(...)                  // usually needs user confirmation
 ```
 

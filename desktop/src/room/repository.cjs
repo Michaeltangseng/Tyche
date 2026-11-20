@@ -123,23 +123,30 @@ function createRoomRepository(roomDb) {
       return chatView(database.prepare('SELECT * FROM chats WHERE id = ?').get(chatId))
     },
 
-    createRole({ chatId, displayName, provider, prompt, isCaptain = false, nativePermission = 'read-only', capabilities = [], model = null }) {
+    createRole({
+      chatId, displayName, provider, prompt, isCaptain = false, nativePermission = 'read-only',
+      capabilities = [], model = null, responsibilities = '', createdBy = 'user',
+    }) {
       if (typeof displayName !== 'string' || displayName.length === 0) throw new TypeError('ROOM_ROLE_NAME_REQUIRED')
       if (typeof provider !== 'string' || provider.length === 0) throw new TypeError('ROOM_ROLE_PROVIDER_REQUIRED')
       if (typeof prompt !== 'string') throw new TypeError('ROOM_ROLE_PROMPT_REQUIRED')
       requireChat(chatId)
+      const duty = typeof responsibilities === 'string' ? responsibilities.slice(0, 4000) : ''
+      const writer = typeof createdBy === 'string' && createdBy.length > 0 && createdBy.length <= 120 && !createdBy.includes('\u0000')
+        ? createdBy
+        : 'user'
       const id = crypto.randomUUID()
       const at = timestamp()
       roomDb.withTransaction(() => {
         database.prepare(`
           INSERT INTO chat_roles
-            (id, chat_id, display_name, provider, model, capabilities_json, native_permission, is_captain, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(id, chatId, displayName, provider, model, JSON.stringify(capabilities), nativePermission, isCaptain ? 1 : 0, at, at)
+            (id, chat_id, display_name, responsibilities, provider, model, capabilities_json, native_permission, is_captain, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(id, chatId, displayName, duty, provider, model, JSON.stringify(capabilities), nativePermission, isCaptain ? 1 : 0, at, at)
         database.prepare(`
           INSERT INTO role_prompt_revisions (id, role_id, revision, prompt, created_by, created_at)
-          VALUES (?, ?, 1, ?, 'user', ?)
-        `).run(crypto.randomUUID(), id, prompt, at)
+          VALUES (?, ?, 1, ?, ?, ?)
+        `).run(crypto.randomUUID(), id, prompt, writer, at)
       })
       return id
     },

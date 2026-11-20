@@ -1,4 +1,5 @@
-const WAKE_BUDGET = 5
+// Null means no cap. A number restores the per-root-message mention wake limit.
+const WAKE_BUDGET = null
 
 function memberIdentity(member) {
   if (typeof member === 'string') return { id: member, name: member }
@@ -44,6 +45,7 @@ function routeUserMessage({ kind, members, mentions, steward }) {
 }
 
 function judgeMention(spent) {
+  if (WAKE_BUDGET == null) return 'wake'
   if (spent > WAKE_BUDGET) return 'capped'
   if (spent === WAKE_BUDGET) return 'wake_last'
   return 'wake'

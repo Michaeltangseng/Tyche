@@ -387,6 +387,45 @@ describe('team room workspace', () => {
     })
   })
 
+  it('offers every launchable provider when editing a role', async () => {
+    const snapshot = data()
+    snapshot.room.providers = ['claude']
+    snapshot.room.launch_providers = ['claude', 'codex']
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+    await wrapper.get('.room-agent-add').trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('.room-role-provider-choice').map(node => node.attributes('data-provider')))
+      .toEqual(['claude', 'codex'])
+  })
+
+  it('opens the role dialog from a roster card', async () => {
+    const snapshot = data()
+    snapshot.roles[1].responsibilities = 'Write the draft'
+    snapshot.messages = [{
+      id: 'roster-1',
+      chat_id: 'chat-1',
+      sequence: 2,
+      author_type: 'agent',
+      author_id: 'captain',
+      author_name: 'Captain',
+      content: 'Added Writer.',
+      status: 'done',
+      data: { roleIds: ['worker'] },
+      created_at: '2026-11-15T10:05:00Z',
+    }]
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+
+    const card = wrapper.get('.room-roster-card')
+    expect(card.text()).toContain('Writer')
+    expect(card.text()).toContain('Write the draft')
+    await card.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.room-role-modal').text()).toContain('Writer')
+    expect(wrapper.get('.room-role-prompt').element.value).toBe('write')
+  })
+
   it('updates role prompts, creates roles, and deletes unused roles', async () => {
     const bridge = api()
     const wrapper = mountRoom(bridge)

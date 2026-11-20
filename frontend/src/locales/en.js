@@ -134,6 +134,7 @@ export default {
     "room.noRolePrompt": "No separate role prompt is set; the controller uses the chat agreement when assigning work.",
     "room.roleSettings": "Role settings",
     "room.configureRole": "Configure role",
+    "room.roster": "Team members",
     "room.roleName": "Role name",
     "room.roleResponsibilities": "Responsibilities",
     "room.roleReadOnly": "The controller creates the role name, responsibilities, agent, and capabilities. You can adjust the role prompt and skills.",

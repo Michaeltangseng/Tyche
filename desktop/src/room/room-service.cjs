@@ -103,6 +103,10 @@ function createRoomService({
     runtime,
     now,
     onEvent: recordRuntimeEvent,
+    launchProviders: () => {
+      if (typeof runtimeAdapter?.launchProviderIds !== 'function') return null
+      return runtimeAdapter.launchProviderIds()
+    },
   })
   const queue = createTaskQueue({
     roomDb,
@@ -148,7 +152,18 @@ function createRoomService({
     queueRun: queue,
   })
   registerFinishTaskTool({ dispatcher: toolDispatcher, settlement, roomDb })
-  registerCaptainTools({ dispatcher: toolDispatcher, repository, captainAssignment, timeline: timelineStore })
+  registerCaptainTools({
+    dispatcher: toolDispatcher,
+    repository,
+    captainAssignment,
+    timeline: timelineStore,
+    roomDb,
+    canLaunch(provider) {
+      if (typeof runtimeAdapter?.hasLauncher !== 'function') return true
+      const known = runtimeAdapter.hasLauncher(provider)
+      return known === null ? true : known
+    },
+  })
 
   function onTaskSettled(info) {
     if (info?.taskId) {
