@@ -118,7 +118,7 @@ function registerTeamRoomIpc({ registerTrustedHandle, getHost }) {
   registerTrustedHandle(CHANNELS.createRole, input => {
     const parsed = assertInput(input, [
       'roomId', 'chatId', 'displayName', 'provider', 'prompt', 'isCaptain',
-      'nativePermission', 'capabilities', 'model', 'responsibilities',
+      'nativePermission', 'capabilities', 'model', 'responsibilities', 'portrait',
     ])
     text(parsed.roomId)
     text(parsed.chatId)
@@ -142,13 +142,14 @@ function registerTeamRoomIpc({ registerTrustedHandle, getHost }) {
         && (typeof parsed.responsibilities !== 'string' || parsed.responsibilities.length > 4000)) {
       throw ipcError('TEAM_ROOM_INPUT_INVALID')
     }
+    if (parsed.portrait !== undefined) text(parsed.portrait, 40)
     return host().createRole(parsed)
   })
 
   registerTrustedHandle(CHANNELS.updateRole, input => {
     const parsed = assertInput(input, [
       'roomId', 'roleId', 'displayName', 'provider', 'prompt', 'isCaptain',
-      'nativePermission', 'capabilities', 'model', 'responsibilities',
+      'nativePermission', 'capabilities', 'model', 'responsibilities', 'portrait',
     ])
     text(parsed.roomId)
     text(parsed.roleId)
@@ -172,6 +173,7 @@ function registerTeamRoomIpc({ registerTrustedHandle, getHost }) {
         && (typeof parsed.responsibilities !== 'string' || parsed.responsibilities.length > 4000)) {
       throw ipcError('TEAM_ROOM_INPUT_INVALID')
     }
+    if (parsed.portrait !== undefined) text(parsed.portrait, 40)
     return host().updateRole(parsed)
   })
 

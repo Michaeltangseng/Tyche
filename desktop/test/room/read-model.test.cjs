@@ -142,6 +142,13 @@ test('snapshot can include captain rows and reports older pages', t => {
 
 test('listRooms exposes a label and chats, not the absolute workspace', t => {
   const context = setup(t)
+  context.timeline.append({
+    chatId: context.chatId,
+    authorType: 'agent',
+    authorId: context.captainRoleId,
+    content: '完成。`snake.html` **好了**',
+    status: 'done',
+  })
   const model = createRoomReadModel({ roomDb: context.roomDb })
   const rooms = model.listRooms()
   assert.equal(rooms.length, 1)
@@ -150,9 +157,13 @@ test('listRooms exposes a label and chats, not the absolute workspace', t => {
   assert.equal(typeof rooms[0].workspace_label, 'string')
   assert.equal(rooms[0].chat_count, 1)
   assert.equal(rooms[0].chats[0].id, context.chatId)
-  assert.equal(rooms[0].chats[0].members.some(member => member.name === 'Captain' && member.is_captain), true)
+  assert.equal(rooms[0].chats[0].members[0].name, 'Captain')
+  assert.equal(rooms[0].chats[0].members[0].last_seq > rooms[0].chats[0].members[1].last_seq, true)
   assert.equal(JSON.stringify(rooms[0].chats[0].members).includes('route'), false)
-  assert.equal(typeof rooms[0].chats[0].activity?.text, 'string')
+  assert.equal(rooms[0].chats[0].activity.text.includes('`'), false)
+  assert.equal(rooms[0].chats[0].activity.text.includes('**'), false)
+  assert.match(rooms[0].chats[0].activity.text, /snake\.html/)
+  assert.equal(rooms[0].chats[0].activity.name, 'Captain')
   context.roomDb.close()
 })
 

@@ -251,8 +251,9 @@
                 :aria-controls="`team-room-chats-${room.id}`"
                 @click="handleTeamRoomClick(room)"
               >
-                <span v-if="roomFaces(room).faces.length" class="team-face-stack" aria-hidden="true">
-                  <img v-for="member in roomFaces(room).faces" :key="member.provider || member.name" :src="rolePortrait(member.provider)" alt="" />
+                <span v-if="roomFaces(room).faces.length" class="team-face-stack team-face-stack-room" aria-hidden="true">
+                  <img v-for="(member, index) in roomFaces(room).faces" :key="`${member.provider}-${member.name}-${index}`" :src="rolePortrait(member.portrait || member.provider)" alt="" />
+                  <span v-if="roomFaces(room).extra" class="team-face-more">+{{ roomFaces(room).extra }}</span>
                 </span>
                 <span v-else class="project-room-avatar" aria-hidden="true">{{ projectInitial(room.name) }}</span>
                 <span class="project-room-copy">
@@ -294,8 +295,8 @@
                   :aria-current="isTeamChatSelected(room.id, chat.id) ? 'page' : undefined"
                   @click="selectTeamChat(room.id, chat.id)"
                 >
-                  <span v-if="stackedMembers(chat.members).faces.length" class="team-face-stack" aria-hidden="true">
-                    <img v-for="member in stackedMembers(chat.members).faces" :key="member.provider || member.name" :src="rolePortrait(member.provider)" alt="" />
+                  <span v-if="stackedMembers(chat.members).faces.length" class="team-face-stack team-face-stack-chat" aria-hidden="true">
+                    <img v-for="(member, index) in stackedMembers(chat.members).faces" :key="`${member.provider}-${member.name}-${index}`" :src="rolePortrait(member.portrait || member.provider)" alt="" />
                     <span v-if="stackedMembers(chat.members).extra" class="team-face-more">+{{ stackedMembers(chat.members).extra }}</span>
                   </span>
                   <span class="team-chat-copy">
@@ -303,7 +304,7 @@
                       <span class="project-room-group-name">{{ teamChatLabel(room, chat) }}</span>
                       <time v-if="chatTime(chat)">{{ chatTime(chat) }}</time>
                     </span>
-                    <small v-if="chatActivityLabel(chat)">{{ chatActivityLabel(chat) }}</small>
+                    <small>{{ chatActivityLabel(chat) }}</small>
                   </span>
                 </button>
                 <button
@@ -487,23 +488,29 @@ function memberList(chat) {
   return Array.isArray(chat?.members) ? chat.members : []
 }
 
+function orderedMembers(members) {
+  return [...(Array.isArray(members) ? members : [])]
+    .sort((a, b) => (Number(b?.last_seq) || 0) - (Number(a?.last_seq) || 0))
+}
+
 function stackedMembers(members, limit = 3) {
-  const list = Array.isArray(members) ? members : []
+  const list = orderedMembers(members)
   return { faces: list.slice(0, limit), extra: Math.max(0, list.length - limit) }
 }
 
 function roomFaces(room) {
-  const seen = new Set()
-  const faces = []
+  const best = new Map()
   for (const chat of room.chats || []) {
-    for (const member of memberList(chat)) {
+    for (const member of orderedMembers(memberList(chat))) {
       const key = member.provider || member.name
-      if (!key || seen.has(key)) continue
-      seen.add(key)
-      faces.push(member)
+      if (!key) continue
+      const rank = Number(member.last_seq) || 0
+      const existing = best.get(key)
+      if (!existing || rank > existing.rank) best.set(key, { member, rank })
     }
   }
-  return stackedMembers(faces, 4)
+  const faces = [...best.values()].sort((a, b) => b.rank - a.rank).map(item => item.member)
+  return stackedMembers(faces, 3)
 }
 
 function roomSummary(room) {
@@ -516,11 +523,12 @@ function roomSummary(room) {
 
 function chatActivityLabel(chat) {
   const activity = chat?.activity
-  if (!activity) return ''
+  if (!activity?.text) return t('room.noMessages')
   if (['working', 'queued', 'starting', 'running'].includes(activity.status) && activity.name) {
     return t('room.memberWorking', { name: activity.name })
   }
-  return activity.text || ''
+  const name = activity.author === 'user' ? t('room.you') : activity.name
+  return name ? t('room.activityLine', { name, text: activity.text }) : activity.text
 }
 
 function chatTime(chat) {

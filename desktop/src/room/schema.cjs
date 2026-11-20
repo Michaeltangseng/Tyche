@@ -33,6 +33,7 @@ const SCHEMA_SQL = `
     model TEXT,
     capabilities_json TEXT NOT NULL DEFAULT '[]',
     native_permission TEXT NOT NULL DEFAULT 'read-only',
+    portrait TEXT NOT NULL DEFAULT '',
     is_captain INTEGER NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'active',
     created_at TEXT NOT NULL,
@@ -347,19 +348,29 @@ const SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS runtime_events_chat_created ON runtime_events(chat_id, created_at);
 `
 
+function ensurePortraitColumn(database) {
+  const table = database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'chat_roles'").get()
+  if (!table) return
+  const columns = database.prepare('PRAGMA table_info(chat_roles)').all()
+  if (columns.some(column => column.name === 'portrait')) return
+  database.exec("ALTER TABLE chat_roles ADD COLUMN portrait TEXT NOT NULL DEFAULT ''")
+}
+
 function ensureRoomSchema(database) {
   const current = database.prepare('PRAGMA user_version').get().user_version
   if (current > ROOM_SCHEMA_VERSION) throw new Error('ROOM_DATABASE_VERSION_NEWER_THAN_RUNTIME')
-  if (current === ROOM_SCHEMA_VERSION) return
-  database.exec('BEGIN IMMEDIATE')
-  try {
-    database.exec(SCHEMA_SQL)
-    database.exec(`PRAGMA user_version = ${ROOM_SCHEMA_VERSION}`)
-    database.exec('COMMIT')
-  } catch (error) {
-    try { database.exec('ROLLBACK') } catch { /* preserve original error */ }
-    throw error
+  if (current !== ROOM_SCHEMA_VERSION) {
+    database.exec('BEGIN IMMEDIATE')
+    try {
+      database.exec(SCHEMA_SQL)
+      database.exec(`PRAGMA user_version = ${ROOM_SCHEMA_VERSION}`)
+      database.exec('COMMIT')
+    } catch (error) {
+      try { database.exec('ROLLBACK') } catch { /* preserve original error */ }
+      throw error
+    }
   }
+  ensurePortraitColumn(database)
 }
 
 module.exports = { ROOM_SCHEMA_VERSION, ensureRoomSchema }

@@ -433,8 +433,10 @@ describe('team room workspace', () => {
     await flushPromises()
     await wrapper.get('.room-agent-add').trigger('click')
     await flushPromises()
-    expect(wrapper.findAll('.room-role-provider-choice').map(node => node.attributes('data-provider')))
+    expect(wrapper.get('.room-role-engine-field select').findAll('option').map(node => node.element.value))
       .toEqual(['claude', 'codex'])
+    expect(wrapper.findAll('.room-role-provider-choice').map(node => node.attributes('data-portrait')))
+      .toEqual(['claude', 'codex', 'pi', 'gemini'])
   })
 
   it('opens the role dialog from a roster card', async () => {
@@ -482,7 +484,7 @@ describe('team room workspace', () => {
 
     await wrapper.get('.room-agent-add').trigger('click')
     await flushPromises()
-    await wrapper.get('.room-role-v2-name input').setValue('Reviewer')
+    await wrapper.get('.room-role-identity input').setValue('Reviewer')
     await wrapper.get('.room-role-prompt').setValue('Review the work.')
     await wrapper.get('.room-role-v2-footer .primary-button').trigger('click')
     await flushPromises()

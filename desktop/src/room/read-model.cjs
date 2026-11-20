@@ -77,6 +77,7 @@ function roleView(row, prompt) {
     model: row.model,
     capabilities: parseJson(row.capabilities_json, []),
     native_permission: row.native_permission,
+    portrait: row.portrait || '',
     is_captain: row.is_captain === 1,
     status: row.status,
     prompt: prompt?.prompt ?? '',
@@ -328,17 +329,41 @@ function createRoomReadModel({ roomDb } = {}) {
     return { rows: rows.slice(0, limit).reverse(), hasMore }
   }
 
+  function previewText(value, room) {
+    const plain = String(value || '')
+      .replace(/```[\s\S]*?```/g, ' ')
+      .replace(/`([^`]*)`/g, '$1')
+      .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
+      .replace(/\[([^\]]*)]\([^)]*\)/g, '$1')
+      .replace(/^#{1,6}\s+/gm, '')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/__([^_]+)__/g, '$1')
+      .replace(/~~([^~]+)~~/g, '$1')
+      .replace(/^\s*>\s?/gm, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+    return scrubWorkspace(plain, room).slice(0, 80)
+  }
+
   function chatMembers(chatId) {
+    const spoken = new Map(database.prepare(`
+      SELECT author_id, MAX(seq) AS last_seq
+      FROM messages
+      WHERE chat_id = ? AND deleted_at IS NULL AND audience = 'chat' AND kind != 'captain_review' AND author_type = 'agent'
+      GROUP BY author_id
+    `).all(chatId).map(row => [row.author_id, row.last_seq]))
     return database.prepare(`
-      SELECT display_name, provider, is_captain
+      SELECT id, display_name, provider, is_captain, portrait
       FROM chat_roles
       WHERE chat_id = ? AND status = 'active'
       ORDER BY is_captain DESC, created_at ASC, rowid ASC
     `).all(chatId).map(role => ({
       name: role.display_name,
       provider: role.provider,
+      portrait: role.portrait || '',
       is_captain: role.is_captain === 1,
-    }))
+      last_seq: spoken.get(role.id) || 0,
+    })).sort((a, b) => b.last_seq - a.last_seq)
   }
 
   function chatActivity(chatId, room) {
@@ -352,11 +377,11 @@ function createRoomReadModel({ roomDb } = {}) {
     const role = message.author_type === 'agent'
       ? database.prepare('SELECT display_name FROM chat_roles WHERE id = ?').get(message.author_id)
       : null
-    const text = scrubWorkspace(String(message.content || '').replace(/\s+/g, ' ').trim(), room).slice(0, 80)
     return {
       name: role?.display_name || '',
+      author: message.author_type === 'user' ? 'user' : 'agent',
       status: message.status,
-      text,
+      text: previewText(message.content, room),
       created_at: message.created_at,
     }
   }

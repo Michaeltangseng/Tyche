@@ -125,7 +125,7 @@ function createRoomRepository(roomDb) {
 
     createRole({
       chatId, displayName, provider, prompt, isCaptain = false, nativePermission = 'read-only',
-      capabilities = [], model = null, responsibilities = '', createdBy = 'user',
+      capabilities = [], model = null, responsibilities = '', portrait = '', createdBy = 'user',
     }) {
       if (typeof displayName !== 'string' || displayName.length === 0) throw new TypeError('ROOM_ROLE_NAME_REQUIRED')
       if (typeof provider !== 'string' || provider.length === 0) throw new TypeError('ROOM_ROLE_PROVIDER_REQUIRED')
@@ -140,9 +140,9 @@ function createRoomRepository(roomDb) {
       roomDb.withTransaction(() => {
         database.prepare(`
           INSERT INTO chat_roles
-            (id, chat_id, display_name, responsibilities, provider, model, capabilities_json, native_permission, is_captain, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(id, chatId, displayName, duty, provider, model, JSON.stringify(capabilities), nativePermission, isCaptain ? 1 : 0, at, at)
+            (id, chat_id, display_name, responsibilities, provider, model, capabilities_json, native_permission, portrait, is_captain, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(id, chatId, displayName, duty, provider, model, JSON.stringify(capabilities), nativePermission, typeof portrait === 'string' ? portrait.slice(0, 40) : '', isCaptain ? 1 : 0, at, at)
         database.prepare(`
           INSERT INTO role_prompt_revisions (id, role_id, revision, prompt, created_by, created_at)
           VALUES (?, ?, 1, ?, ?, ?)

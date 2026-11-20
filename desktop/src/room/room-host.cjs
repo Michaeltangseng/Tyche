@@ -29,6 +29,7 @@ const MAX_MESSAGE_LENGTH = 100_000
 const MAX_FILES_READ_BYTES = 512 * 1024
 const ROOM_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/
 const PROVIDER = /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/
+const PORTRAIT_IDS = new Set(['claude', 'codex', 'pi', 'gemini', 'hermes', 'deepseek', 'kimi', 'qwen'])
 const PREVIOUS_CAPTAIN_PROMPT = [
   'You are the Captain of this chat.',
   'Use assign_in_group to give work to other roles.',
@@ -480,6 +481,7 @@ function createRoomHost({
           ? defaultNativePermission(input.provider)
           : cleanText(input.nativePermission, 80, 'nativePermission'),
         responsibilities: typeof input.responsibilities === 'string' ? input.responsibilities.slice(0, 4000) : '',
+        portrait: PORTRAIT_IDS.has(input.portrait) ? input.portrait : '',
         capabilities: stringList(input.capabilities, 16, 'capabilities'),
         model: input.model === undefined || input.model === null
           ? null
@@ -544,6 +546,10 @@ function createRoomHost({
       if (input.isCaptain !== undefined) {
         assignments.push('is_captain = ?')
         values.push(input.isCaptain === true ? 1 : 0)
+      }
+      if (input.portrait !== undefined) {
+        assignments.push('portrait = ?')
+        values.push(PORTRAIT_IDS.has(input.portrait) ? input.portrait : '')
       }
       if (assignments.length > 0) {
         assignments.push('updated_at = ?')

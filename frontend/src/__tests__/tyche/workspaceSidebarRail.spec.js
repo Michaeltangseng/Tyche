@@ -89,7 +89,18 @@ describe('workspace sidebar rail', () => {
       name: 'Team Alpha',
       primary_chat_id: 'chat-1',
       chats: [
-        { id: 'chat-1', title: 'Team chat', is_primary: true },
+        {
+          id: 'chat-1',
+          title: 'Team chat',
+          is_primary: true,
+          members: [
+            { name: 'Claude', provider: 'claude', last_seq: 1 },
+            { name: 'Codex', provider: 'codex', last_seq: 4 },
+            { name: 'Pi', provider: 'pi', last_seq: 3 },
+            { name: 'Gemini', provider: 'gemini', last_seq: 2 },
+          ],
+          activity: { name: 'Pi', author: 'agent', status: 'done', text: 'snake.html', created_at: '2026-11-20T10:00:00Z' },
+        },
         { id: 'chat-2', title: 'Research', is_primary: false },
       ],
     }])
@@ -100,6 +111,12 @@ describe('workspace sidebar rail', () => {
     const chats = wrapper.findAll('.team-room-chats .project-room-group')
     expect(chats).toHaveLength(2)
     expect(chats[0].text()).toContain('Team chat')
+    expect(chats[0].text()).toContain('room.activityLine')
+    expect(chats[0].findAll('.team-face-stack img')).toHaveLength(3)
+    expect(chats[0].get('.team-face-stack img').attributes('src')).toContain('codex')
+    expect(chats[0].get('.team-face-more').text()).toBe('+1')
+    expect(chats[1].text()).toContain('room.noMessages')
+    expect(wrapper.text()).toContain('room.roomFaces')
 
     await chats[1].trigger('click')
     expect(fixture.selectTeamChat).toHaveBeenCalledWith('team-1', 'chat-2')
