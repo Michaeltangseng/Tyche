@@ -7,7 +7,7 @@ const test = require('node:test')
 const { ChannelInboxStore } = require('../../src/channels/channel-inbox-store.cjs')
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-channel-inbox-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-channel-inbox-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   let now = 1000
   const storagePath = path.join(directory, 'private', 'channel-inbox.json')

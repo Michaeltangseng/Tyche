@@ -83,17 +83,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.run-details-button {
-  margin-left: auto;
-  color: var(--muted);
-}
-
-.run-details-button:hover,
-.run-details-button:focus-visible {
-  background: var(--surface-hover);
-  color: var(--text);
-}
-
 .run-status-header strong {
   overflow: hidden;
   color: var(--text-soft);

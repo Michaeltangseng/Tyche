@@ -13,7 +13,7 @@ const v4DeliveryMethods = {
     const safeReferenceText = (value) => {
       const raw = String(value || '').trim()
       const sanitized = this.v4SanitizeDeliveryText(raw, Number.MAX_SAFE_INTEGER)
-      if (!raw || sanitized !== raw || /\[\[MELDWORK_/iu.test(raw)) {
+      if (!raw || sanitized !== raw || /\[\[TYCHE_/iu.test(raw)) {
         throw new Error('LOCAL_RUN_V4_ASSIGNMENT_REFERENCE_INVALID')
       }
       return sanitized
@@ -100,7 +100,7 @@ const v4DeliveryMethods = {
       })
     const render = (included) => {
       const lines = [
-        'MELDWORK_V4_AGREED_WORK_PACKAGE_V1',
+        'TYCHE_V4_AGREED_WORK_PACKAGE_V1',
         `Responsibility plan: ${coordinationPlan.planHash}`,
         `Work item: ${assignment.taskId}`,
         `Owner: ${assignment.ownerKind}`,
@@ -112,7 +112,7 @@ const v4DeliveryMethods = {
         ...(assignment.acceptance?.requiredEvidenceKinds?.length ? [`Required Evidence kinds: ${assignment.acceptance.requiredEvidenceKinds.join(', ')}`] : []),
       ]
       if (inputReferences.length) {
-        lines.push('MELDWORK_V4_FROZEN_INPUT_REFS_V1')
+        lines.push('TYCHE_V4_FROZEN_INPUT_REFS_V1')
         for (const reference of inputReferences) {
           lines.push(reference.header)
           const body = included.get(`direct:${reference.kind}:${reference.id}`) || ''
@@ -120,7 +120,7 @@ const v4DeliveryMethods = {
         }
       }
       if (directArtifacts.length) {
-        lines.push('MELDWORK_V4_DIRECT_ARTIFACT_REFS_V1')
+        lines.push('TYCHE_V4_DIRECT_ARTIFACT_REFS_V1')
         for (const reference of directArtifacts) {
           lines.push(reference.header)
           const body = included.get(`direct:${reference.kind}:${reference.id}`) || ''
@@ -128,7 +128,7 @@ const v4DeliveryMethods = {
         }
       }
       if (dependencyArtifacts.length) {
-        lines.push('MELDWORK_V4_REFERENCED_ARTIFACTS_V1')
+        lines.push('TYCHE_V4_REFERENCED_ARTIFACTS_V1')
         for (const artifact of dependencyArtifacts) {
           lines.push(artifact.header)
           const body = included.get(`dependency:${artifact.key}`) || ''
@@ -144,14 +144,14 @@ const v4DeliveryMethods = {
           ? ['expectedOutput reason=budget'] : []),
       ]
       if (freeTextOmissions.length) {
-        lines.push('MELDWORK_V4_TRUNCATED_FREE_TEXT_V1', ...freeTextOmissions)
+        lines.push('TYCHE_V4_TRUNCATED_FREE_TEXT_V1', ...freeTextOmissions)
       }
       const directOmissions = directReferences.filter(reference => (
         (included.get(`direct:${reference.kind}:${reference.id}`) || '').length
           < reference.body.length
       )).map(reference => `${reference.kind} ${reference.id} reason=budget`)
       if (directOmissions.length) {
-        lines.push('MELDWORK_V4_OMITTED_DIRECT_REFERENCE_BODIES_V1', ...directOmissions)
+        lines.push('TYCHE_V4_OMITTED_DIRECT_REFERENCE_BODIES_V1', ...directOmissions)
       }
       const dependencyOmissions = dependencyArtifacts.flatMap((artifact) => {
         if (artifact.omission) return [artifact.omission]
@@ -160,7 +160,7 @@ const v4DeliveryMethods = {
           : []
       })
       if (dependencyOmissions.length) {
-        lines.push('MELDWORK_V4_OMITTED_ARTIFACT_BODIES_V1', ...dependencyOmissions)
+        lines.push('TYCHE_V4_OMITTED_ARTIFACT_BODIES_V1', ...dependencyOmissions)
       }
       return lines.join('\n')
     }
@@ -318,12 +318,12 @@ const v4DeliveryMethods = {
       `${artifact.artifactId} reason=budget`
     ))
     const structuralLines = [
-      'MELDWORK_V4_REFERENCED_ARTIFACTS_V1',
+      'TYCHE_V4_REFERENCED_ARTIFACTS_V1',
       ...artifacts.map(artifact => artifact.header),
     ]
     const reservedManifest = [...fixedOmissions, ...potentialBudgetOmissions]
     const reservedLines = reservedManifest.length
-      ? [...structuralLines, 'MELDWORK_V4_OMITTED_ARTIFACT_BODIES_V1', ...reservedManifest]
+      ? [...structuralLines, 'TYCHE_V4_OMITTED_ARTIFACT_BODIES_V1', ...reservedManifest]
       : structuralLines
     const bodySeparators = textArtifacts.length
     const bodyBudget = maximum - reservedLines.join('\n').length - bodySeparators
@@ -341,7 +341,7 @@ const v4DeliveryMethods = {
     const budgetOmissions = textArtifacts.filter(artifact => (
       includedByKey.get(artifact.key).length < artifact.body.length
     )).map(artifact => `${artifact.artifactId} reason=budget`)
-    const lines = ['MELDWORK_V4_REFERENCED_ARTIFACTS_V1']
+    const lines = ['TYCHE_V4_REFERENCED_ARTIFACTS_V1']
     for (const artifact of artifacts) {
       lines.push(artifact.header)
       const included = includedByKey.get(artifact.key) || ''
@@ -349,7 +349,7 @@ const v4DeliveryMethods = {
     }
     const omissions = [...fixedOmissions, ...budgetOmissions]
     if (omissions.length) {
-      lines.push('MELDWORK_V4_OMITTED_ARTIFACT_BODIES_V1', ...omissions)
+      lines.push('TYCHE_V4_OMITTED_ARTIFACT_BODIES_V1', ...omissions)
     }
     const result = lines.join('\n')
     if (result.length > maximum) throw new Error('LOCAL_RUN_V4_DELIVERY_BUDGET_EXCEEDED')
@@ -402,7 +402,7 @@ const v4DeliveryMethods = {
       }
     } else if (extraContext.length > extraLimit) {
       if (phase === 'work') throw new Error('LOCAL_RUN_V4_DELIVERY_BUDGET_EXCEEDED')
-      const marker = 'MELDWORK_V4_CONTEXT_TRUNCATED_V1'
+      const marker = 'TYCHE_V4_CONTEXT_TRUNCATED_V1'
       if (extraLimit <= marker.length + 1) {
         extraContext = ''
       } else {

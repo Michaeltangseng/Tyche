@@ -27,7 +27,7 @@ test('remote discovery covers every built-in Agent profile and command alias', (
 })
 
 test('remote Skill discovery follows each CLI native configuration directory', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-remote-skills-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-remote-skills-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const entries = [
     ['custom-codex', 'skills', 'codex-new'], ['.codex', 'skills', 'codex-old'],
@@ -68,7 +68,7 @@ test('starts the Bridge when the module is executed through node stdin', async (
     'utf8',
   )
   const child = spawn(process.execPath, ['-'], {
-    env: { ...process.env, MELDWORK_AGENT_BRIDGE_PORT: String(port) },
+    env: { ...process.env, TYCHE_AGENT_BRIDGE_PORT: String(port) },
     stdio: ['pipe', 'pipe', 'pipe'],
   })
   try {
@@ -76,7 +76,7 @@ test('starts the Bridge when the module is executed through node stdin', async (
       const timer = setTimeout(() => reject(new Error('Bridge did not start')), 3000)
       child.once('error', reject)
       child.stdout.on('data', (chunk) => {
-        if (!String(chunk).includes(`MELDWORK_AGENT_BRIDGE_READY ${port}`)) return
+        if (!String(chunk).includes(`TYCHE_AGENT_BRIDGE_READY ${port}`)) return
         clearTimeout(timer)
         resolve(true)
       })
@@ -147,7 +147,7 @@ test('OpenCode uses plan mode and only accepts completed, non-error responses', 
 })
 
 test('OpenCode returns a completed response even if the native process keeps running', async () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-opencode-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-opencode-'))
   const originalPath = process.env.PATH
   const executable = path.join(directory, 'opencode')
   fs.writeFileSync(executable, `#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify({type:'text',sessionID:'ses_test',part:{type:'text',text:'Done'}})+'\\n')\nprocess.stdout.write(JSON.stringify({type:'step_finish',part:{reason:'stop'}})+'\\n')\nsetInterval(()=>{}, 1000)\n`, { mode: 0o755 })
@@ -163,7 +163,7 @@ test('OpenCode returns a completed response even if the native process keeps run
 
 test('OpenCode does not report success when an error follows its terminal event', async t => {
   if (process.platform === 'win32') return t.skip('uses a POSIX executable fixture')
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-opencode-error-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-opencode-error-'))
   const originalPath = process.env.PATH
   const executable = path.join(directory, 'opencode')
   fs.writeFileSync(executable, `#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify({type:'text',sessionID:'ses_test',part:{type:'text',text:'Done'}})+'\\n')\nprocess.stdout.write(JSON.stringify({type:'step_finish',part:{reason:'stop'}})+'\\n')\nsetTimeout(()=>process.stdout.write(JSON.stringify({type:'error'})+'\\n'), 30)\nsetInterval(()=>{}, 1000)\n`, { mode: 0o755 })
@@ -179,7 +179,7 @@ test('OpenCode does not report success when an error follows its terminal event'
 
 test('OpenCode does not report success when it exits nonzero after a terminal event', async t => {
   if (process.platform === 'win32') return t.skip('uses a POSIX executable fixture')
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-opencode-exit-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-opencode-exit-'))
   const originalPath = process.env.PATH
   fs.writeFileSync(path.join(directory, 'opencode'), `#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify({type:'text',part:{type:'text',text:'Done'}})+'\\n')\nprocess.stdout.write(JSON.stringify({type:'step_finish',part:{reason:'stop'}})+'\\n')\nsetTimeout(()=>process.exit(1), 30)\n`, { mode: 0o755 })
   process.env.PATH = `${directory}${path.delimiter}${originalPath}`
@@ -193,7 +193,7 @@ test('OpenCode does not report success when it exits nonzero after a terminal ev
 
 test('OpenCode does not report success when output exceeds the response limit', async t => {
   if (process.platform === 'win32') return t.skip('uses a POSIX executable fixture')
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-opencode-limit-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-opencode-limit-'))
   const originalPath = process.env.PATH
   fs.writeFileSync(path.join(directory, 'opencode'), `#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify({type:'text',part:{type:'text',text:'Done'}})+'\\n')\nprocess.stdout.write(JSON.stringify({type:'step_finish',part:{reason:'stop'}})+'\\n')\nprocess.stdout.write('x'.repeat(300000))\nsetInterval(()=>{}, 1000)\n`, { mode: 0o755 })
   process.env.PATH = `${directory}${path.delimiter}${originalPath}`
@@ -207,7 +207,7 @@ test('OpenCode does not report success when output exceeds the response limit', 
 
 test('remote replies preserve UTF-8 characters split across process output chunks', async t => {
   if (process.platform === 'win32') return t.skip('uses POSIX executable fixtures')
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-utf8-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-utf8-'))
   const originalPath = process.env.PATH
   const streams = {
     hermes: 'session_id: session-1\n你好，世界\n',
@@ -231,7 +231,7 @@ test('remote replies preserve UTF-8 characters split across process output chunk
 
 test('remote Hermes reports a native failed turn as failure even when the process exits zero', async t => {
   if (process.platform === 'win32') return t.skip('uses a POSIX executable fixture')
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-hermes-failure-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-hermes-failure-'))
   const originalPath = process.env.PATH
   const failed = "custom didn't respond in time on any of 3 attempts.\n\nProvider said: Connection error.\n\nYour request was not processed. Send it again if you still want me to carry it out."
   fs.writeFileSync(path.join(directory, 'hermes'), `#!/usr/bin/env node\nprocess.stdout.write(${JSON.stringify(failed)})\n`, { mode: 0o755 })
@@ -250,7 +250,7 @@ test('remote Hermes reports a native failed turn as failure even when the proces
 
 test('cancelling a remote Agent run terminates its native process', async t => {
   if (process.platform === 'win32') return t.skip('uses a POSIX executable fixture')
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-cancel-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-cancel-'))
   const originalPath = process.env.PATH
   const pidFile = path.join(directory, 'pid')
   fs.writeFileSync(path.join(directory, 'hermes'), `#!/bin/sh\necho $$ > '${pidFile}'\nexec sleep 30\n`, { mode: 0o755 })
@@ -272,7 +272,7 @@ test('cancelling a remote Agent run terminates its native process', async t => {
 
 test('disconnecting a Bridge request terminates the remote Agent process', async t => {
   if (process.platform === 'win32') return t.skip('uses a POSIX executable fixture')
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-cloud-disconnect-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-cloud-disconnect-'))
   const originalPath = process.env.PATH
   const pidFile = path.join(directory, 'pid')
   fs.writeFileSync(path.join(directory, 'hermes'), `#!/bin/sh\nif [ "$1" = "--version" ]; then echo 'Hermes 1.2.3'; exit; fi\necho $$ > '${pidFile}'\nexec sleep 30\n`, { mode: 0o755 })

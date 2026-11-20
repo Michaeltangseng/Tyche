@@ -841,7 +841,7 @@ function registerDesktopIpc(options) {
     const connectors = getAgentConnectors?.()
     if (!connectors) throw new Error('AGENT_CONNECTOR_RUNTIME_UNAVAILABLE')
     connectors.refresh(await installer.detectedAgents())
-    const workdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'meldwork-connector-test-'))
+    const workdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'tyche-connector-test-'))
     try {
       return await connectors.test(args[0], workdir)
     } finally {

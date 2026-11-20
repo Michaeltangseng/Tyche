@@ -1,0 +1,46 @@
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const test = require('node:test')
+const { openRoomDatabase } = require('../../src/room/db.cjs')
+const { createRoomRepository } = require('../../src/room/repository.cjs')
+const { createOutbox } = require('../../src/room/effects.cjs')
+
+function setup(t) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const roomDb = openRoomDatabase({ directory })
+  const repo = createRoomRepository(roomDb)
+  const roomId = repo.createRoom({ name: 'R', workspace: directory })
+  const chatId = repo.createChat({ roomId, title: 'C' })
+  return { roomDb, chatId, outbox: createOutbox({ roomDb, repository: repo }) }
+}
+
+test('enqueue is idempotent and claimNext moves pending to running', t => {
+  const { roomDb, chatId, outbox } = setup(t)
+  const first = outbox.enqueue({ chatId, kind: 'start_reply', payload: { replyId: 'r1' }, idempotencyKey: 'k1' })
+  const again = outbox.enqueue({ chatId, kind: 'start_reply', payload: { replyId: 'r1' }, idempotencyKey: 'k1' })
+  assert.equal(first.id, again.id)
+  const claimed = outbox.claimNext('start_reply')
+  assert.equal(claimed.id, first.id)
+  assert.equal(claimed.status, 'running')
+  assert.equal(claimed.attempts, 1)
+  assert.equal(outbox.claimNext('start_reply'), undefined)
+  roomDb.close()
+})
+
+test('succeed, fail, and unknown keep terminal states', t => {
+  const { roomDb, chatId, outbox } = setup(t)
+  const ok = outbox.enqueue({ chatId, kind: 'a', payload: {}, idempotencyKey: 'ok' })
+  outbox.claimNext('a')
+  assert.equal(outbox.succeed(ok.id).status, 'succeeded')
+  const failed = outbox.enqueue({ chatId, kind: 'b', payload: {}, idempotencyKey: 'failed' })
+  outbox.claimNext('b')
+  assert.equal(outbox.fail(failed.id, new Error('boom')).status, 'failed')
+  const unknown = outbox.enqueue({ chatId, kind: 'c', payload: {}, idempotencyKey: 'unknown' })
+  outbox.claimNext('c')
+  assert.equal(outbox.unknown(unknown.id, 'lost').status, 'unknown')
+  assert.equal(outbox.claimNext('b'), undefined)
+  roomDb.close()
+})

@@ -1,4 +1,4 @@
-# Meldwork General Agent catalog
+# Tyche General Agent catalog
 
 [Back to README](README.md)
 
@@ -8,9 +8,9 @@
 
 Settings → Agents offers installation for supported recipes on macOS and Windows. Confirm the installation before execution; npm recipes require an existing Node.js/npm installation and use fixed versions with integrity checks. The installer uses your native shell environment. Installation does not sign you in or grant knowledge access. Agents without an installation recipe, including Zcode, require manual installation.
 
-Settings → Knowledge bases can install the official Feishu and DingTalk CLIs through npm after confirmation. Meldwork checks detection afterwards; complete sign-in and permissions with the CLI's native flow. Obsidian still uses its official download and a vault directory you select.
+Settings → Knowledge bases can install the official Feishu and DingTalk CLIs through npm after confirmation. Tyche checks detection afterwards; complete sign-in and permissions with the CLI's native flow. Obsidian still uses its official download and a vault directory you select.
 
-Meldwork detects and invokes compatible locally installed Agent commands. The catalog currently includes:
+Tyche detects and invokes compatible locally installed Agent commands. The catalog currently includes:
 
 <table>
   <tr>
@@ -41,9 +41,9 @@ An explicit ACP provider or model in the native profile or DSH home patch takes 
 
 WorkBuddy also supports selecting its existing native configuration directory in Settings → Agents. Its model list, execution environment, and local and plugin Skills use the selected directory.
 
-OpenClaw also supports selecting its native state directory in Settings → Agents. Meldwork reads the selected Agent's model configuration from that directory and runs it in its guarded local runtime.
+OpenClaw also supports selecting its native state directory in Settings → Agents. Tyche reads the selected Agent's model configuration from that directory and runs it in its guarded local runtime.
 
-When switching an Agent's native configuration directory, Meldwork keeps separate local conversation sessions for each selected directory and restores them when switching back. Configuration changes are blocked while a run is active or awaiting recovery.
+When switching an Agent's native configuration directory, Tyche keeps separate local conversation sessions for each selected directory and restores them when switching back. Configuration changes are blocked while a run is active or awaiting recovery.
 
 For Zcode, choose an existing `.zcode/cli` directory containing `config.json`. Zcode runs with that directory's parent user home, which also affects its home-relative session and other file paths; project configuration may still override user configuration.
 
@@ -51,4 +51,4 @@ For Qwen Code, choose an existing `.qwen` directory containing settings or crede
 
 For OpenCodeReview, choose an existing `.opencodereview` directory containing `config.json`. OCR runs with that directory's parent user home, including its native session and other home-relative paths.
 
-Hermes uses its native `config.yaml` and Provider settings. When its model, fallback model, or provider entries declare credential variables with `key_env` or `api_key_env`, Meldwork reads those variables from the launch environment or login shell for Hermes; unrelated variables and unsafe process controls are excluded. Hermes may prepare its own dependencies when started with a new native data directory.
+Hermes uses its native `config.yaml` and Provider settings. When its model, fallback model, or provider entries declare credential variables with `key_env` or `api_key_env`, Tyche reads those variables from the launch environment or login shell for Hermes; unrelated variables and unsafe process controls are excluded. Hermes may prepare its own dependencies when started with a new native data directory.

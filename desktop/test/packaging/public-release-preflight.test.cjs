@@ -32,7 +32,7 @@ test('public release preflight accepts valid local Developer ID and Keychain pro
   const calls = []
   const result = assertPublicReleaseEnvironment({
     platform: 'darwin',
-    env: { APPLE_KEYCHAIN_PROFILE: 'meldwork-notary' },
+    env: { APPLE_KEYCHAIN_PROFILE: 'tyche-notary' },
     execFile: (file, args) => {
       calls.push([file, args])
       if (file === '/usr/bin/security') {

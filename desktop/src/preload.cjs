@@ -108,6 +108,49 @@ if (isLocalDocument) Object.assign(desktopApi, {
       return () => ipcRenderer.removeListener('local-workspace:open-group', listener)
     },
   }),
+  teamRoom: Object.freeze({
+    listRooms: () => ipcRenderer.invoke('team-room:list'),
+    bootstrap: input => ipcRenderer.invoke('team-room:bootstrap', input),
+    snapshot: input => ipcRenderer.invoke('team-room:snapshot', input),
+    chatMessages: input => ipcRenderer.invoke('team-room:chat-messages', input),
+    createChat: input => ipcRenderer.invoke('team-room:chat-create', input),
+    deleteChat: input => ipcRenderer.invoke('team-room:chat-delete', input),
+    deleteRoom: input => ipcRenderer.invoke('team-room:room-delete', input),
+    createRole: input => ipcRenderer.invoke('team-room:role-create', input),
+    updateRole: input => ipcRenderer.invoke('team-room:role-update', input),
+    setCaptain: input => ipcRenderer.invoke('team-room:role-set-captain', input),
+    deleteRole: input => ipcRenderer.invoke('team-room:role-delete', input),
+    answerAttention: input => ipcRenderer.invoke('team-room:attention-answer', input),
+    submitMessage: input => ipcRenderer.invoke('team-room:message-submit', input),
+    acceptTask: input => ipcRenderer.invoke('team-room:accept-task', input),
+    stopReply: input => ipcRenderer.invoke('team-room:stop-reply', input),
+    filesList: input => ipcRenderer.invoke('team-room:files-list', input),
+    filesRead: input => ipcRenderer.invoke('team-room:files-read', input),
+    setWriteAuthorized: input => ipcRenderer.invoke('team-room:write-authorized', input),
+    runtimeEvents: input => ipcRenderer.invoke('team-room:runtime-events', input),
+    onChanged: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('team-room:changed', listener)
+      return () => ipcRenderer.removeListener('team-room:changed', listener)
+    },
+    onRuntimeEvents: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('team-room:runtime-events', listener)
+      return () => ipcRenderer.removeListener('team-room:runtime-events', listener)
+    },
+  }),
+  trace: Object.freeze({
+    page: input => ipcRenderer.invoke('trace:page', input),
+    blob: input => ipcRenderer.invoke('trace:blob', input),
+    status: input => ipcRenderer.invoke('trace:status', input),
+    diskUsage: () => ipcRenderer.invoke('trace:diskUsage'),
+    prune: input => ipcRenderer.invoke('trace:prune', input),
+    onAppended: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('trace:appended', listener)
+      return () => ipcRenderer.removeListener('trace:appended', listener)
+    },
+  }),
   cloudAgent: Object.freeze({
     provideInput: (runId, requestId, value) => ipcRenderer.invoke(
       'local-cloud-agent:provide-input', runId, requestId, value,
@@ -228,4 +271,4 @@ if (isLocalDocument) Object.assign(desktopApi, {
   }),
 })
 
-contextBridge.exposeInMainWorld('meldworkDesktop', Object.freeze(desktopApi))
+contextBridge.exposeInMainWorld('tycheDesktop', Object.freeze(desktopApi))

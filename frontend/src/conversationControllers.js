@@ -195,5 +195,9 @@ export function createConversationControllers({
     unlimitedRounds: app.unlimitedRounds,
   }
 
-  return { composerController, conversationHeaderController, timelineController }
+  return {
+    composerController,
+    conversationHeaderController,
+    timelineController,
+  }
 }

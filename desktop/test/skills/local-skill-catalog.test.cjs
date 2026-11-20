@@ -11,7 +11,7 @@ const {
   listLocalAgentSkills,
 } = require('../../src/skills/local-skill-catalog.cjs')
 
-function fixture(t, prefix = 'meldwork-skills-') {
+function fixture(t, prefix = 'tyche-skills-') {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   return home

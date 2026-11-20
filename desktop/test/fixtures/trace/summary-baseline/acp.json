@@ -1,0 +1,45 @@
+[
+  {
+    "id": "reasoning:acp",
+    "type": "reasoning_summary",
+    "title": "reasoning",
+    "status": "running"
+  },
+  {
+    "id": "reasoning:acp",
+    "type": "reasoning_summary",
+    "title": "reasoning",
+    "status": "completed"
+  },
+  {
+    "type": "answer_delta",
+    "status": "running",
+    "delta": "I will list the "
+  },
+  {
+    "type": "answer_delta",
+    "status": "running",
+    "delta": "repository files."
+  },
+  {
+    "id": "acp-tool-1",
+    "type": "tool_start",
+    "title": "Bash",
+    "status": "running",
+    "summary": "execute: [operation hidden]"
+  },
+  {
+    "id": "acp-tool-1",
+    "type": "tool_result_summary",
+    "title": "Bash",
+    "status": "completed",
+    "summary": "execute: [operation hidden]",
+    "detail": "Result: 1 item"
+  },
+  {
+    "type": "plan",
+    "title": "plan",
+    "status": "running",
+    "summary": "[completed] Inspect files\n[queued] Write the summary"
+  }
+]

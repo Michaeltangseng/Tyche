@@ -6,7 +6,7 @@ const path = require('node:path')
 const { opencodeDeclaredCredentialKeys } = require('../../../src/agents/cli/opencode-native-config.cjs')
 
 test('OpenCode discovers native provider references in global, explicit, inline and project configurations', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-opencode-config-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-opencode-config-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const global = path.join(home, 'config', 'opencode')
   const project = path.join(home, 'project')
@@ -27,7 +27,7 @@ test('OpenCode discovers native provider references in global, explicit, inline 
 })
 
 test('OpenCode reads native global config.json and honors disabled project configuration', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-opencode-project-policy-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-opencode-project-policy-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const global = path.join(home, '.config', 'opencode')
   const nativeHome = path.join(home, '.opencode')
@@ -50,7 +50,7 @@ test('OpenCode reads native global config.json and honors disabled project confi
 })
 
 test('OpenCode discovers env names for selected native model providers only', async t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-opencode-providers-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-opencode-providers-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const config = path.join(home, 'config', 'opencode')
   const cache = path.join(home, 'cache', 'opencode')
@@ -78,7 +78,7 @@ test('OpenCode discovers env names for selected native model providers only', as
 })
 
 test('OpenCode discovers native default provider candidates when no model is configured', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-opencode-recent-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-opencode-recent-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const cache = path.join(home, 'cache', 'opencode')
   const state = path.join(home, 'state', 'opencode')
@@ -100,7 +100,7 @@ test('OpenCode discovers native default provider candidates when no model is con
 })
 
 test('OpenCode default discovery retains provider names beyond the first 128 entries', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-opencode-many-providers-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-opencode-many-providers-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const cache = path.join(home, '.cache', 'opencode')
   fs.mkdirSync(cache, { recursive: true })
@@ -114,7 +114,7 @@ test('OpenCode default discovery retains provider names beyond the first 128 ent
 })
 
 test('OpenCode respects unambiguous native provider enablement when discovering credentials', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-opencode-enabled-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-opencode-enabled-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const config = path.join(home, '.config', 'opencode')
   const cache = path.join(home, '.cache', 'opencode')
@@ -136,7 +136,7 @@ test('OpenCode respects unambiguous native provider enablement when discovering 
 })
 
 test('OpenCode follows native model and provider precedence across config layers', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-opencode-precedence-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-opencode-precedence-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const global = path.join(home, '.config', 'opencode')
   const cache = path.join(home, '.cache', 'opencode')
@@ -166,7 +166,7 @@ test('OpenCode follows native model and provider precedence across config layers
 })
 
 test('OpenCode resolves an env-selected native model to its provider credential name', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-opencode-model-env-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-opencode-model-env-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const cache = path.join(home, '.cache', 'opencode')
   fs.mkdirSync(cache, { recursive: true })

@@ -112,7 +112,7 @@ test('interruption overrides trace status, deduplicates globally, and retains st
     'group-1', 'codex', { runTrace }, 'root-1', 'interrupted', reported,
   )
   assert.equal(normalized.status, 'interrupted')
-  assert.equal(calls[0][3], 'Codex was interrupted when Meldwork closed.\npartial answer')
+  assert.equal(calls[0][3], 'Codex was interrupted when Tyche closed.\npartial answer')
   assert.equal(calls[0][6].key, 'system.agentInterrupted')
 
   state.messages.push({ trace: { agentRunId: 'other-run' } })

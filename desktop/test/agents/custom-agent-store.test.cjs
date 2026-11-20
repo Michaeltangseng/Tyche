@@ -55,7 +55,7 @@ test('custom Agent environment preserves network settings without unrelated cred
 })
 
 function fixture(t, options = {}) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-custom-agent-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-custom-agent-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const executable = path.join(directory, 'review-agent')
   fs.writeFileSync(executable, '#!/bin/sh\nprintf "review-agent 1.0.0\\n"\n', { mode: 0o700 })

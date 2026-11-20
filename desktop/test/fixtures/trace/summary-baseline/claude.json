@@ -1,0 +1,47 @@
+[
+  {
+    "id": "reasoning:root:msg_fixture_1:0",
+    "type": "reasoning_summary",
+    "title": "reasoning",
+    "status": "running"
+  },
+  {
+    "type": "answer_delta",
+    "status": "running",
+    "delta": "I will read the file "
+  },
+  {
+    "type": "answer_delta",
+    "status": "running",
+    "delta": "and summarize it."
+  },
+  {
+    "id": "toolu_fixture_1",
+    "type": "tool_start",
+    "title": "Read",
+    "status": "running",
+    "summary": "Read"
+  },
+  {
+    "id": "toolu_fixture_1",
+    "type": "tool_update",
+    "title": "Read",
+    "status": "running",
+    "summary": "Read"
+  },
+  {
+    "id": "toolu_fixture_1",
+    "type": "tool_update",
+    "title": "Read",
+    "status": "running",
+    "summary": "Read: file_path: text (9 chars)"
+  },
+  {
+    "id": "toolu_fixture_1",
+    "type": "tool_result_summary",
+    "title": "Read",
+    "status": "completed",
+    "summary": "Read: file_path: text (9 chars)",
+    "detail": "Result: 1 item"
+  }
+]

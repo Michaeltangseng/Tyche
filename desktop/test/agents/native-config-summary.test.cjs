@@ -6,7 +6,7 @@ const path = require('node:path')
 const { nativeUserConfigSummary } = require('../../src/agents/native-config-summary.cjs')
 
 test('native summaries expose only the selected user configuration field', t => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-config-summary-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-config-summary-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const selected = path.join(root, 'selected')
   fs.mkdirSync(path.join(selected, '.qwen'), { recursive: true })
@@ -32,7 +32,7 @@ test('native summaries expose only the selected user configuration field', t => 
 })
 
 test('Qwen summary follows native system, user, default and environment precedence', t => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-qwen-summary-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-qwen-summary-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const user = path.join(root, '.qwen', 'settings.json')
   const system = path.join(root, 'system.json')

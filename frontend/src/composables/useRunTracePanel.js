@@ -70,7 +70,7 @@ export function useRunTracePanel({
     if (!tracePanelOpen.value) {
       tracePanelFocusReturn = opener instanceof HTMLElement ? opener : document.activeElement
       tracePanelFocusReturnAgentRunId = agentRunId
-      history.pushState({ meldworkTracePanel: true }, '', window.location.href)
+      history.pushState({ tycheTracePanel: true }, '', window.location.href)
       tracePanelHistoryPushed = true
     }
     tracePanelGroupId.value = selectedGroupId.value

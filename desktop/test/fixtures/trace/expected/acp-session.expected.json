@@ -1,0 +1,117 @@
+[
+  {
+    "kind": "thinking",
+    "output": "I should inspect the repository first.",
+    "raw": {
+      "type": "agent_thought_chunk",
+      "coalesced": true
+    }
+  },
+  {
+    "kind": "message",
+    "output": "I will list the ",
+    "raw": {
+      "type": "agent_message_chunk",
+      "coalesced": true
+    }
+  },
+  {
+    "kind": "message",
+    "output": "repository files.",
+    "raw": {
+      "type": "agent_message_chunk",
+      "coalesced": true
+    }
+  },
+  {
+    "kind": "tool",
+    "toolCallId": "acp-tool-1",
+    "title": "List files",
+    "status": "running",
+    "command": "ls -la",
+    "input": {
+      "command": "ls -la"
+    },
+    "paths": [
+      "src"
+    ],
+    "raw": {
+      "sessionUpdate": "tool_call",
+      "toolCallId": "acp-tool-1",
+      "title": "List files",
+      "kind": "execute",
+      "status": "running",
+      "rawInput": {
+        "command": "ls -la"
+      },
+      "locations": [
+        {
+          "path": "src"
+        }
+      ]
+    }
+  },
+  {
+    "kind": "tool",
+    "toolCallId": "acp-tool-1",
+    "title": "List files",
+    "status": "completed",
+    "output": "total 2\nfile.txt",
+    "raw": {
+      "sessionUpdate": "tool_call_update",
+      "toolCallId": "acp-tool-1",
+      "title": "List files",
+      "kind": "execute",
+      "status": "completed",
+      "content": [
+        {
+          "type": "text",
+          "text": "total 2\nfile.txt"
+        }
+      ]
+    }
+  },
+  {
+    "kind": "plan",
+    "title": "plan",
+    "status": "running",
+    "output": "Inspect files\nWrite the summary",
+    "input": {
+      "entries": [
+        {
+          "content": "Inspect files",
+          "status": "completed"
+        },
+        {
+          "content": "Write the summary",
+          "status": "pending"
+        }
+      ]
+    },
+    "raw": {
+      "sessionUpdate": "plan_update",
+      "plan": {
+        "entries": [
+          {
+            "content": "Inspect files",
+            "status": "completed"
+          },
+          {
+            "content": "Write the summary",
+            "status": "pending"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "kind": "raw",
+    "title": "unknown_update",
+    "raw": {
+      "sessionUpdate": "unknown_update",
+      "payload": {
+        "value": 42
+      }
+    }
+  }
+]

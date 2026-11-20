@@ -109,7 +109,7 @@ function deliveryInput(contextPackId, overrides = {}) {
 }
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-context-packs-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-context-packs-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const rootPath = path.join(directory, 'private', 'context-packs')
   return { directory, rootPath, store: new ContextPackStore({ rootPath }) }

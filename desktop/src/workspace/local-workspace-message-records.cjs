@@ -44,7 +44,7 @@ const KNOWLEDGE_BASE_KINDS = new Set(['feishu', 'dingtalk', 'obsidian'])
 
 function emptyState() {
   return {
-    version: 3,
+    version: 4,
     groups: [],
     messages: [],
     sessions: {},

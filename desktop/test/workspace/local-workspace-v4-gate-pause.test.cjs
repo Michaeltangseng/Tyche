@@ -1189,7 +1189,7 @@ test('Auto V4 atomically checkpoints a resumed receipt with its completed contin
     return hermes?.status === 'completed' && workbuddy?.status === 'running' ? record : null
   }, 'initial pending Auto proposal peer')
   const workspaceBytes = fs.readFileSync(options.storagePath)
-  const gateStorePath = path.join(directory, 'meldwork-private', 'human-gates.json')
+  const gateStorePath = path.join(directory, 'tyche-private', 'human-gates.json')
   const gateBytes = fs.readFileSync(gateStorePath)
   await workspace.stopAll()
   await send

@@ -8,7 +8,7 @@ const { normalizeFailure } = require('../../../src/runs/failure-policy.cjs')
 const { executable, within, readWhenReady } = require('../../support/cli-adapters-test-helpers.cjs')
 
 for (const [kind, paraphrased] of [['opencode', false], ['mimo', false], ['opencode', true]]) test(`${kind} ${paraphrased ? 'paraphrased' : 'exact'} native output loops are cancelled, preserve streamed text and never auto-retry as success`, async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-acp-runaway-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-acp-runaway-'))
   t.after(async () => { await adapters.shutdownAcpSessionRuntime(); fs.rmSync(directory, { recursive: true, force: true }) })
   const cancelled = path.join(directory, 'cancelled')
   const cli = executable(directory, kind, `
@@ -49,7 +49,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line', line 
 })
 
 test('Hermes native JSON streaming is terminated when it repeats short acknowledgements forever', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-runaway-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-runaway-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const terminated = path.join(directory, 'terminated')
   const cli = executable(directory, 'hermes', `
@@ -65,7 +65,7 @@ setInterval(() => console.log(JSON.stringify({type:'text',text:'已确认，随�
 })
 
 test('Hermes ACP cancels repeated private reasoning without publishing it', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-acp-thought-loop-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-acp-thought-loop-'))
   t.after(async () => { await adapters.shutdownAcpSessionRuntime(); fs.rmSync(directory, { recursive: true, force: true }) })
   const cancelled = path.join(directory, 'cancelled')
   const cli = executable(directory, 'hermes', `

@@ -1,13 +1,10 @@
-# Meldwork 桌面客户端
+# Tyche desktop client
 
-Meldwork 是完全本地运行的 Electron 客户端。它直接加载仓库中的桌面前端，在 Electron
-主进程中检测和调用本机 Agent CLI，不需要登录、JWT、远端平台、Docker 或云端服务。
+Tyche is an Electron client that runs entirely on this computer. It loads the desktop frontend from this repository and detects and invokes local Agent CLIs in the Electron main process. It does not need a login, a JWT, a remote platform, Docker, or a cloud service.
 
-本地群聊、消息、群组配置和 CLI 会话引用保存在 Electron 用户数据目录。渲染进程只通过
-`window.meldworkDesktop` 调用经过约束的 preload API，不会获得可执行文件路径、Provider
-API Key 或任意 Shell 执行能力。
+Local group chats, messages, group configuration, and CLI session references are stored in the Electron user-data directory. The renderer calls the constrained preload API only through `window.tycheDesktop`. It does not receive executable paths, provider API keys, or arbitrary shell execution.
 
-支持检测和调用以下本机 Agent CLI：
+The client can detect and invoke these local Agent CLIs:
 
 - Codex
 - Hermes
@@ -24,119 +21,78 @@ API Key 或任意 Shell 执行能力。
 - Qwen Code
 - OpenCodeReview
 
-Connector 包的当前支持范围、示例与验证方法见 [Agent Connector SDK](AGENT_CONNECTOR_SDK.md)。
+See the [Agent Connector SDK](AGENT_CONNECTOR_SDK.md) for the current Connector package scope, examples, and verification.
 
-Agent 管理面板提供经过白名单约束的安装入口。安装命令和下载地址由主进程固定，不会根据页面
-输入执行任意命令。内置 Agent 通过各自支持的原生权限模式或 Meldwork 托管工具策略执行；无法
-满足当前权限契约的 Agent 会安全失败。群聊级工作目录写入默认关闭，只有用户明确授权后才会
-切换为写入模式。Kimi 在只读对话中通过 Agent Client Protocol 的 `plan` 模式运行；用户明确
-开启写入权限后，才切换到 Kimi 原生的 `stream-json --prompt` 模式。
+The Agent management panel offers an allowlisted install entry. Install commands and download URLs are fixed in the main process. Page input never becomes an arbitrary command. Built-in Agents run with their own native permission mode or with a Tyche-managed tool policy. An Agent that cannot meet the current permission contract fails closed. Group-level workspace writes are off by default and turn on only after an explicit user authorization. In a read-only conversation, Kimi runs through the Agent Client Protocol `plan` mode. After the user turns writes on, it switches to Kimi's native `stream-json --prompt` mode.
 
-## 首次启动与本地 Agent 检测
+## First launch and local Agent detection
 
-V1.0.7 GitHub 预发布使用 ad-hoc 临时签名，不使用 Apple Developer ID，也不提交 Apple 公证。
-如果 macOS 首次启动时拦截候选应用，请打开
-“系统设置 → 隐私与安全性”，找到 Meldwork 的拦截提示，点击“仍要打开 / Open Anyway”，
-再确认启动。
+The V1.0.7 GitHub prerelease uses an ad-hoc signature. It does not use an Apple Developer ID and it is not notarized. If macOS blocks the app on first launch, open System Settings → Privacy & Security, find this app's block notice, choose Open Anyway, and confirm.
 
-首次启动会显示三页引导轮播，依次介绍本地 Agent 检测、多 Agent 协作、Skill 与文件上下文。
-客户端在引导打开时执行唯一一次启动刷新；检测任务真正结束前“开始使用”按钮保持禁用，不会
-用固定计时器伪装完成。检测成功或失败后才释放按钮。完成或关闭引导后会在渲染层本地记录状态，
-后续启动直接进入工作台；Agent 仍可在管理面板中重新检测。
+The first launch shows a three-page carousel: local Agent detection, multi-Agent collaboration, and Skill and file context. The client runs one startup refresh when the carousel opens. Get Started stays disabled until detection actually finishes. It is not released by a fixed timer. The button is released after detection succeeds or fails. Finishing or closing the carousel records that state in the renderer. Later launches go straight to the workspace. Agents can still be detected again from the management panel.
 
-## 并发协作 Harness V4
+## Concurrent collaboration harness V4
 
-群聊中选择多个 Agent 后，“并发回复”会在任何 Agent 获取调度资源前冻结同一份任务快照，让全部已选 Agent 独立生成，并在批次屏障后按稳定顺序提交。
+After several Agents are selected in a group chat, Concurrent Responses freezes one task snapshot before any Agent takes a scheduling slot. Every selected Agent generates independently, and the batch commits in a stable order after the barrier.
 
-Auto Discussion 会依次进入独立提案、交叉质询与职责协商、分工执行、单写者整合和独立复核。职责图由 Agent 协商产生，Harness 只负责验证全员同意的同一份计划、依赖、权限、回执、恢复和提交边界，不在模型之外私下分配工作。参与者仍由用户选定；从更大候选池自动选人组队不属于当前版本。
+Auto Discussion moves through independent proposals, cross-questioning and responsibility negotiation, divided execution, single-writer synthesis, and independent review. The responsibility graph comes from the Agents. The harness validates the one plan everyone agreed to, plus dependencies, permissions, receipts, recovery, and commit boundaries. It does not assign work privately outside the model. Participants are still chosen by the user. Automatic selection from a larger pool is not in this version.
 
-## `@` Skill 引用
+## `@` Skill references
 
-在消息输入框输入 `@` 或点击 `@` 按钮，可以选择当前目标 Agent 本机已发现的 Skill。列表只
-返回清洗后的 Agent、命名空间、slug 和显示名称，不返回 Skill 文件路径或内容。一次消息最多
-选择 4 个 Skill；主进程会在发送前按目标 Agent 重新扫描并验证选择，跨 Agent 冒用、过期条目
-或前端构造的任意路径都会被拒绝。Hermes 使用原生 `--skills` 参数预加载已验证 Skill；其他
-Agent 只会收到属于自己的 Skill 坐标提示，不会收到其他目标的选择。
+Type `@` in the composer, or click the `@` button, to pick a Skill already discovered for the current target Agent. The list returns only the sanitized Agent, namespace, slug, and display name. It does not return Skill file paths or contents. One message can select at most four Skills. Before send, the main process scans again for the target Agent and validates the selection. A Skill claimed for another Agent, a stale entry, or an arbitrary path built by the frontend is rejected. Hermes preloads a validated Skill with its native `--skills` argument. Other Agents receive only their own Skill coordinates. They do not receive another target's selection.
 
-## 文件与多模态附件
+## Files and multimodal attachments
 
-消息输入框支持系统文件选择器、剪贴板图片以及把文件拖入输入区。当前接受经过 MIME、扩展名和
-文件签名交叉校验的 PNG、JPEG、音视频、PDF、文本、Markdown、常见代码与配置文件、Office
-文档和常见压缩容器；一条消息最多 4 个附件，各格式使用独立大小上限。附件会复制到 Electron
-用户数据目录下的私有存储，工作区消息只保存 `id`、文件名、MIME 类型和大小；渲染层不能读取
-附件路径，只能通过窄 IPC 请求预览或使用系统默认应用打开文件。
+The composer accepts the system file picker, clipboard images, and files dropped onto the input. It accepts PNG, JPEG, audio, video, PDF, text, Markdown, common code and configuration files, Office documents, and common archive containers after MIME type, extension, and file signature agree. One message can have at most four attachments, and each format has its own size limit. Attachments are copied into private storage under the Electron user-data directory. A workspace message stores only `id`, file name, MIME type, and size. The renderer cannot read the attachment path. It can request a preview, or open the file with the system default app, only through a narrow IPC call.
 
-Agent 原生支持的图片会按其数量限制直接传递。其他文件，或超过某个 Agent 原生媒体能力的附件，
-会在运行期间暂存为工作区内的只读输入文件，并在运行结束后清理；提示词明确要求只读取、不得执行
-附件。未发送附件、删除会话后的无引用附件和异常导入残留由主进程回收。
+Images a native Agent supports are passed directly, within that Agent's count limit. Other files, and attachments past an Agent's native media capability, are staged as read-only input files in the workspace for the run and removed when the run ends. The prompt tells the Agent to read them and not to execute them. Unsent attachments, unreferenced attachments after a conversation is deleted, and leftover failed imports are reclaimed by the main process.
 
-## Provider 配置
+## Provider configuration
 
-Agent 使用各自本机的原生鉴权、Provider 和默认模型配置。Meldwork 不要求统一 Provider，
-也不会将一个 Agent 的密钥注入其他 Agent。WorkBuddy 桌面账号的加密登录不能直接供独立
-CLI 解锁；可在 Meldwork 中选择桌面配置里已有且已配置鉴权的模型。
-Meldwork 仅保存模型标识，运行时由主进程读取原生配置，不向渲染层返回密钥。
-Zcode 沿用默认配置；若其默认 Provider 缺少 API Key，需要先修复本机原生配置。
+Each Agent uses its own local native authentication, provider, and default model configuration. Tyche does not require one shared provider, and it does not inject one Agent's secret into another. An encrypted WorkBuddy desktop login cannot unlock the standalone CLI directly. In Tyche you can select a model that is already present and authenticated in the desktop configuration. Tyche stores only the model identifier. At runtime the main process reads the native configuration and does not return secrets to the renderer. Zcode keeps its default configuration. If that default provider has no API key, fix the local native configuration first.
 
-Hermes 的原生配置目录设置会显示 `config.yaml` 中显式指定的 Provider（包括嵌套模型及旧版根级配置），或配置中没有指定时的
-`HERMES_INFERENCE_PROVIDER`。显示 `auto` 表示交由 Hermes 自动选择，并不代表已经确认最终路由；
-无法读取或没有明确配置时显示未指定。此摘要不返回凭据。
-Codex 设置显示用户配置（含所选 profile）中的 `model_provider`；项目配置或运行参数仍可覆盖它，
-因此该值不等同于每次调用的最终 Provider。
+Hermes's native configuration directory setting shows the provider named in `config.yaml`, including nested models and the older root-level configuration, or `HERMES_INFERENCE_PROVIDER` when the file does not name one. `auto` means Hermes chooses. It does not mean the final route is known. When the file cannot be read or has no clear configuration, the setting shows unspecified. This summary does not return credentials. Codex settings show `model_provider` from the user configuration, including the selected profile. Project configuration or runtime arguments can still override it, so the value is not the final provider of every call.
 
-DeepSeek Harness 使用 `dsh` 的 ACP profile，未指定原生 ACP Provider 或模型时默认连接 ZGCI 的 `smart-router-v2`；
-若 ACP profile 或 DSH home 的 `cordis.patch.yml` 已指定 Provider 或模型，则沿用原生配置及其声明的凭据环境变量。
-可在 DeepSeek Harness
-的原生凭据服务中配置 `ZGCI_API_KEY`，或在启动 Meldwork 的环境中提供该变量；
-Meldwork 不保存该密钥。默认只读，授权工作区写入后才允许修改工作区；权限模式改变时会建立
-新的原生会话并由 Meldwork 补充对话上下文。需要超出所选工作区权限的原生升级请求会被拒绝。
+DeepSeek Harness uses the `dsh` ACP profile. When no native ACP provider or model is set, it connects to ZGCI `smart-router-v2` by default. If the ACP profile or `cordis.patch.yml` in the DSH home already names a provider or model, that native configuration and its declared credential environment variables are used. Set `ZGCI_API_KEY` in DeepSeek Harness's native credential service, or provide the variable in the environment that starts Tyche. Tyche does not store that secret. The default is read-only. Workspace writes are allowed only after authorization. Changing the permission mode starts a new native session, and Tyche supplies the conversation context. A native escalation that asks for more than the selected workspace permission is refused.
 
-客户端「设置 → Agent → DeepSeek Harness → 模型与使用说明」列出默认模型、凭据配置和能力范围。
-配置凭据后点击刷新，再打开私聊或将其加入群聊。私聊与群聊分别保留原生会话；群聊可选择并发回复、
-顺序讨论或自动讨论。文件附件通过受控暂存路径提供，本地 Skill 可从输入框选择；当前没有原生图片输入。
-图标取自官方 macOS 客户端的 `Contents/Resources/icon.png`，资源来源记录在
-`frontend/public/agent-logos/deepseek-source.md`。
+Settings → Agents → DeepSeek Harness → Model and usage lists the default model, credential setup, and capability range. After configuring credentials, refresh, then open a direct chat or add it to a group. Direct chats and group chats keep separate native sessions. A group can choose concurrent responses, ordered discussion, or auto discussion. File attachments are provided through a controlled staging path. Local Skills can be chosen from the composer. There is no native image input yet. The icon comes from `Contents/Resources/icon.png` in the official macOS app. The source is recorded in `frontend/public/agent-logos/deepseek-source.md`.
 
-## 本地 CLI 支持矩阵
+## Local CLI support matrix
 
-| Agent | 检测命令 | macOS 安装 | Windows 安装 | 用户 Provider |
+| Agent | Detect command | macOS install | Windows install | User provider |
 | --- | --- | --- | --- | --- |
-| Codex | `codex` | npm：`@openai/codex@latest` | npm：`@openai/codex@latest` | 不注入；沿用 Codex 本机配置 |
-| Hermes | `hermes` | 官方 `install.sh` | 官方 `install.ps1` | 沿用本机配置 |
-| OpenClaw | `openclaw` | npm：`openclaw@latest` | npm：`openclaw@latest` | 沿用本机配置 |
-| WorkBuddy | `codebuddy` | npm：`@tencent-ai/codebuddy-code@2.115.0` | npm：`@tencent-ai/codebuddy-code@2.115.0` | 可选择桌面已配置模型 |
-| Zcode | `zcode` | 官方 CLI 安装 | 官方 CLI 安装 | 沿用默认配置 |
-| Pi Agent | `pi` | npm：`@mariozechner/pi-coding-agent` | npm：`@mariozechner/pi-coding-agent` | 沿用本机配置 |
-| Kimi Code | `kimi` | 官方 `install.sh` | 官方 `install.ps1` | 不注入；沿用 Kimi 本机配置 |
-| MiMo Code | `mimo` | npm：`@mimo-ai/cli@latest` | npm：`@mimo-ai/cli@latest` | 不注入；沿用 MiMo 本机配置，按授权使用 `plan` / `build` 模式 |
-| DeepSeek Harness | `dsh` | npm：`@deepseek-ai/dsh@0.2.1-rc.2` | npm：`@deepseek-ai/dsh@0.2.1-rc.2` | ZGCI `smart-router-v2`，使用原生凭据或环境变量 |
-| Claude Code | `claude` | npm：`@anthropic-ai/claude-code@latest` | npm：`@anthropic-ai/claude-code@latest` | 不注入；沿用 Claude 本机配置 |
-| Gemini CLI | `gemini` | npm：`@google/gemini-cli@latest` | npm：`@google/gemini-cli@latest` | 不注入；沿用 Gemini 本机配置 |
-| OpenCode | `opencode` | npm：`opencode-ai@latest` | npm：`opencode-ai@latest` | 不注入；沿用 OpenCode 本机配置 |
-| Qwen Code | `qwen` | npm：`@qwen-code/qwen-code@latest` | npm：`@qwen-code/qwen-code@latest` | 沿用本机配置 |
-| OpenCodeReview | `ocr` | npm：`@alibaba-group/open-code-review@latest` | npm：`@alibaba-group/open-code-review@latest` | 沿用本机配置 |
+| Codex | `codex` | npm: `@openai/codex@latest` | npm: `@openai/codex@latest` | Not injected. Uses the local Codex configuration |
+| Hermes | `hermes` | Official `install.sh` | Official `install.ps1` | Uses the local configuration |
+| OpenClaw | `openclaw` | npm: `openclaw@latest` | npm: `openclaw@latest` | Uses the local configuration |
+| WorkBuddy | `codebuddy` | npm: `@tencent-ai/codebuddy-code@2.115.0` | npm: `@tencent-ai/codebuddy-code@2.115.0` | Can select a model already configured in the desktop app |
+| Zcode | `zcode` | Official CLI install | Official CLI install | Uses the default configuration |
+| Pi Agent | `pi` | npm: `@mariozechner/pi-coding-agent` | npm: `@mariozechner/pi-coding-agent` | Uses the local configuration |
+| Kimi Code | `kimi` | Official `install.sh` | Official `install.ps1` | Not injected. Uses the local Kimi configuration |
+| MiMo Code | `mimo` | npm: `@mimo-ai/cli@latest` | npm: `@mimo-ai/cli@latest` | Not injected. Uses the local MiMo configuration, `plan` or `build` according to authorization |
+| DeepSeek Harness | `dsh` | npm: `@deepseek-ai/dsh@0.2.1-rc.2` | npm: `@deepseek-ai/dsh@0.2.1-rc.2` | ZGCI `smart-router-v2`, using native credentials or an environment variable |
+| Claude Code | `claude` | npm: `@anthropic-ai/claude-code@latest` | npm: `@anthropic-ai/claude-code@latest` | Not injected. Uses the local Claude configuration |
+| Gemini CLI | `gemini` | npm: `@google/gemini-cli@latest` | npm: `@google/gemini-cli@latest` | Not injected. Uses the local Gemini configuration |
+| OpenCode | `opencode` | npm: `opencode-ai@latest` | npm: `opencode-ai@latest` | Not injected. Uses the local OpenCode configuration |
+| Qwen Code | `qwen` | npm: `@qwen-code/qwen-code@latest` | npm: `@qwen-code/qwen-code@latest` | Uses the local configuration |
+| OpenCodeReview | `ocr` | npm: `@alibaba-group/open-code-review@latest` | npm: `@alibaba-group/open-code-review@latest` | Uses the local configuration |
 
-macOS 会在当前 `PATH` 之外搜索 Volta、pnpm、fnm、asdf、mise、bun、
-`~/.local/bin`、`~/.kimi-code/bin`、`~/.mimocode/bin`、Homebrew 等常见目录。Windows 会额外搜索用户 npm、
-WindowsApps、Node.js、WorkBuddy、Chocolatey 和 Scoop 目录，并按 `PATHEXT` 解析命令。
+On macOS, detection also searches common directories outside the current `PATH`: Volta, pnpm, fnm, asdf, mise, bun, `~/.local/bin`, `~/.kimi-code/bin`, `~/.mimocode/bin`, and Homebrew. On Windows it also searches the user npm directory, WindowsApps, Node.js, WorkBuddy, Chocolatey, and Scoop, and it resolves commands with `PATHEXT`.
 
-Hermes 和 Kimi 的安装脚本来自固定 HTTPS 白名单地址；客户端不内置脚本副本，因此离线环境
-不能使用这两个一键安装入口。当前自动安装面向 macOS 和 Windows，Windows 安装流程仍需在
-真实 Windows 设备上做发布前验证。
+The Hermes and Kimi installers come from fixed HTTPS allowlist URLs. The client does not bundle a copy of those scripts, so the one-click installers do not work offline. Automatic install currently targets macOS and Windows. The Windows install flow still needs a pre-release check on a real Windows machine.
 
-## 目录结构
+## Directory layout
 
-- `src/agents/`：Agent 兼容层、路由、运行时、CLI、安装器、连接器
-- `src/attachments/`：附件、内容存储、图片尺寸校验
-- `src/collaboration/`：对话、上下文包、产物、任务图
-- `src/workspace/`：本地工作区与自动调度；自动运行器的通用失败、重试和等待语义位于 `local-workspace-auto-runner-support.cjs`
-- `src/runs/`：运行、预算、事件、调度、日志
-- `src/knowledge/`：知识库与知识连接器
-- `src/skills/`：Skill 目录、快照、信任
-- `src/security/`：私有文件与敏感信息脱敏
-- `test/`：按同名领域镜像组织测试，`support/` 放测试辅助代码；测试发现与 suite 选择位于 `scripts/test-discovery.cjs`
+- `src/agents/`: Agent compatibility, routing, runtime, CLI, installer, and connectors
+- `src/attachments/`: attachments, content storage, and image dimension checks
+- `src/collaboration/`: conversations, context packs, outcomes, and task graphs
+- `src/workspace/`: the local workspace and automatic scheduling. Shared failure, retry, and wait behavior for the auto runner lives in `local-workspace-auto-runner-support.cjs`
+- `src/runs/`: runs, budgets, events, scheduling, and logs
+- `src/knowledge/`: knowledge bases and knowledge connectors
+- `src/skills/`: Skill catalog, snapshots, and trust
+- `src/security/`: private files and redaction
+- `test/`: tests mirrored by domain name. `support/` holds test helpers. Test discovery and suite selection live in `scripts/test-discovery.cjs`
 
-## 本地开发
+## Local development
 
 ```bash
 cd desktop
@@ -144,16 +100,15 @@ npm install
 npm run dev
 ```
 
-可选环境变量：
+Optional environment variable:
 
-- `MELDWORK_CODEX_SANDBOX`：Codex 默认沙箱模式，支持 `read-only` 和
-  `workspace-write`；未设置或值不受支持时使用 `read-only`。
+- `TYCHE_CODEX_SANDBOX`: Codex's default sandbox mode. `read-only` and `workspace-write` are supported. An unset or unsupported value uses `read-only`.
 
-## 测试与打包
+## Tests and packaging
 
-任务图的 `primary` 节点可以设置可选的 `claimKey`：相同键的结论会进行冲突检查，不同键适合独立交付物。未设置时沿用共享结论的检查方式；该字段是工作流输入的一部分，不会自动推断任务含义。
+A task-graph `primary` node can set an optional `claimKey`. Conclusions that share a key are checked for conflicts. Different keys fit independent deliverables. When the key is unset, the shared-conclusion check is used. The field is part of the workflow input. It does not infer what the task means.
 
-当前默认的 V4 群聊尚不支持任务图。旧版 V3 任务图的审查节点可能把指出问题的回复判为已通过；在此问题修复前，请人工检查审查内容，不要仅依据节点完成状态判断结果。
+The current default V4 group chat does not support task graphs yet. A review node in an older V3 task graph can mark a reply that points out a problem as passed. Until that is fixed, read the review yourself. Do not treat node completion as the result.
 
 ```bash
 npm test
@@ -162,9 +117,6 @@ npm run dist
 npm run dist:public
 ```
 
-`pack` 用于生成未打包应用并验证 Electron 产物；`dist` 生成 V1.0.7 GitHub 预发布候选使用的 ad-hoc 签名 DMG 和 ZIP。这些产物不具备 Developer ID 信任链且未公证，不能声称通过 Gatekeeper。
+`pack` builds an unpacked app and checks the Electron output. `dist` builds the ad-hoc signed DMG and ZIP used by the V1.0.7 GitHub prerelease candidate. Those artifacts do not have a Developer ID trust chain and are not notarized. They cannot be described as passing Gatekeeper.
 
-`dist:public` 是未来正式签名公开发行的专用命令：它要求
-Developer ID 证书和完整公证凭据，强制代码签名，在签名后校验永久 Bundle ID、Team ID 与
-hardened runtime，并调用 Apple 公证；任一条件不满足都会失败。产物输出到 `desktop/dist/`，
-其中包含本地前端，不依赖服务器或容器。
+`dist:public` is reserved for a future signed public release. It requires a Developer ID certificate and full notarization credentials, forces code signing, checks the permanent bundle ID, Team ID, and hardened runtime after signing, and calls Apple notarization. It fails if any of those conditions is missing. Output goes to `desktop/dist/` and includes the local frontend. It does not depend on a server or a container.

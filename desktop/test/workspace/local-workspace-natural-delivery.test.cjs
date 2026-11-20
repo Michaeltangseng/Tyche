@@ -137,7 +137,7 @@ for (const staleSession of [false, true]) {
         const text = count === 1 ? `PROPOSAL_${agent.kind}` : `CONTRIBUTION_${agent.kind}_${count}`
         return {
           outcome: 'completed', sessionRef: runOptions.sessionRef || `${agent.kind}-${invalidated ? 'new' : 'initial'}`,
-          text: `${text}\n[[MELDWORK_COLLABORATION:${JSON.stringify({ summary: text,
+          text: `${text}\n[[TYCHE_COLLABORATION:${JSON.stringify({ summary: text,
             taskDecision: { status: 'continue', reason: text, deliverables: [] },
           })}]]`,
         }
@@ -182,7 +182,7 @@ test('Natural completion with an absolute deliverable path persists its receipt 
   const workspace = new LocalWorkspace({
     ...options, runLedger: ledger, naturalAgentResponses: true,
     runAgent: async () => ({ outcome: 'completed', sessionRef: 'native-path-session',
-      text: ++calls === 1 ? 'Initial proposal.' : `Verified result.txt.\n[[MELDWORK_COLLABORATION:${JSON.stringify({ summary: 'Verified result.', taskDecision: decision })}]]`,
+      text: ++calls === 1 ? 'Initial proposal.' : `Verified result.txt.\n[[TYCHE_COLLABORATION:${JSON.stringify({ summary: 'Verified result.', taskDecision: decision })}]]`,
     }),
   })
   await workspace.refreshAgents()

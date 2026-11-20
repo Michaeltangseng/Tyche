@@ -1058,7 +1058,7 @@ test('V4 invocation preserves 64 reported Evidence refs through review receipt c
       level: 'observed',
       subject: { type: 'artifact', artifactId: reviewedArtifact.artifactId },
       summary: `Reported invocation Evidence ${index + 1}.`,
-      recordedBy: { kind: 'system', actorId: 'meldwork-main' },
+      recordedBy: { kind: 'system', actorId: 'tyche-main' },
       refs: [
         { type: 'artifact', artifactId: reviewedArtifact.artifactId },
         {
@@ -1214,7 +1214,7 @@ test('terminal conclusions and explicit outputs become durable observed Outcomes
       name: 'change.patch',
       mediaType: 'text/x-diff',
       content: Buffer.from('diff --git a/a b/a\n'),
-      locationRef: { kind: 'workspace-relative', path: '.meldwork-output/change.patch' },
+      locationRef: { kind: 'workspace-relative', path: '.tyche-output/change.patch' },
     }]
   }
   options.runAgent = async () => ({
@@ -1251,7 +1251,7 @@ test('terminal conclusions and explicit outputs become durable observed Outcomes
   )), true)
   assert.doesNotMatch(
     JSON.stringify(message.trace),
-    /diff --git|\.meldwork-output|Implemented the requested change/,
+    /diff --git|\.tyche-output|Implemented the requested change/,
   )
 
   const storedRun = options.runLedger.get(message.trace.runId)
@@ -1275,7 +1275,7 @@ test('workspace file capture produces system-recorded hash Evidence for the capt
   options.captureArtifactOutputs = captureArtifactOutputState
   options.captureAgentOutcomeDescriptors = captureAgentOutcomeDescriptors
   options.runAgent = async () => {
-    const output = path.join(directory, '.meldwork-output')
+    const output = path.join(directory, '.tyche-output')
     fs.mkdirSync(output, { recursive: true })
     fs.writeFileSync(path.join(output, 'result.txt'), 'captured result')
     return { text: 'Done.', sessionRef: 'codex-session', outcome: 'completed' }
@@ -1288,7 +1288,7 @@ test('workspace file capture produces system-recorded hash Evidence for the capt
   const evidence = message.trace.context.outcomeRefs.evidenceIds.map(id => workspace.outcomeStore.getEvidence(id))
   const hashes = evidence.filter(item => item.kind === 'file-hash')
   assert.equal(hashes.length, 1)
-  assert.deepEqual(hashes[0].recordedBy, { kind: 'system', actorId: 'meldwork-main' })
+  assert.deepEqual(hashes[0].recordedBy, { kind: 'system', actorId: 'tyche-main' })
   const expectedHash = require('node:crypto').createHash('sha256').update('captured result').digest('hex')
   assert.ok(hashes[0].refs.some(ref => ref.type === 'blob' && ref.contentHash === expectedHash))
   assert.ok(hashes[0].refs.some(ref => ref.type === 'location' && ref.contentHash === expectedHash))
@@ -1487,6 +1487,7 @@ test('Hermes retains group-scoped persistent ACP while a frozen Skill stays prom
   await workspace.refreshAgents()
   const group = workspace.createGroup({
     name: 'Hermes transport switch', agentKinds: ['hermes'], workdir: directory,
+    allowWrite: false,
   })
   const oldUser = workspace.addMessage(group.id, 'user', 'Keep the original constraint')
   const previousAgent = workspace.addMessage(
@@ -1548,6 +1549,7 @@ test('Hermes replaces an unavailable stored ACP runtime with rebuilt context', a
   await workspace.refreshAgents()
   const group = workspace.createGroup({
     name: 'Hermes stale ACP', agentKinds: ['hermes'], workdir: directory,
+    allowWrite: false,
   })
   const oldUser = workspace.addMessage(group.id, 'user', 'Keep the original constraint')
   const previousAgent = workspace.addMessage(
@@ -1882,7 +1884,7 @@ test('per-Agent watchdog persists a timeout trace and continues the automatic ro
       })
     }
     return {
-      text: 'Hermes continued\n[[MELDWORK_CONSENSUS:continue]]',
+      text: 'Hermes continued\n[[TYCHE_CONSENSUS:continue]]',
       sessionRef: 'hermes-session',
     }
   }
@@ -2054,7 +2056,7 @@ test('automatic discussion keeps a live but slow-starting Agent past the startup
       }
     }
     return {
-      text: `${agent.kind} answered\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} answered\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -2256,7 +2258,7 @@ test('terminal Agent states persist conclusion text already streamed through ans
       name: 'interruption',
       action: 'interrupt',
       expectedKey: 'system.agentInterrupted',
-      expectedPrefix: 'Codex was interrupted when Meldwork closed.',
+      expectedPrefix: 'Codex was interrupted when Tyche closed.',
     },
   ]
 
@@ -2421,10 +2423,10 @@ test('Automatic Harness conclusions stream without exposing the consensus contro
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   options.runAgent = async (agent, prompt, workdir, runOptions) => {
     runOptions.onEvent({ type: 'reasoning_summary', summary: agent.kind + ' compared the proposals' })
-    runOptions.onEvent({ type: 'answer_delta', status: 'running', delta: agent.kind + ' conclusion\n[[MELDWORK_CONSENSUS:' })
+    runOptions.onEvent({ type: 'answer_delta', status: 'running', delta: agent.kind + ' conclusion\n[[TYCHE_CONSENSUS:' })
     runOptions.onEvent({ type: 'answer_delta', status: 'running', delta: 'agree]]' })
     return {
-      text: agent.kind + ' conclusion\n[[MELDWORK_CONSENSUS:agree]]',
+      text: agent.kind + ' conclusion\n[[TYCHE_CONSENSUS:agree]]',
       sessionRef: runOptions.sessionRef || agent.kind + '-session',
     }
   }
@@ -2448,7 +2450,7 @@ test('Automatic Harness conclusions stream without exposing the consensus contro
   const answerText = events.filter(event => event.type === 'answer_delta')
     .map(event => event.delta)
     .join('')
-  assert.doesNotMatch(answerText, /MELDWORK_CONSENSUS/)
+  assert.doesNotMatch(answerText, /TYCHE_CONSENSUS/)
   assert.equal(events.some(event => event.type === 'reasoning_summary'), true)
   assert.deepEqual(
     workspace.snapshot().messages.filter(message => message.role === 'agent')
@@ -2652,7 +2654,7 @@ test('resuming automatic discussion checkpoints its existing Task before executi
     assert.equal(durable.status, 'running')
     assert.equal(durable.taskId, active.threadRootId)
     return {
-      text: `${agent.kind} agrees\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} agrees\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -3715,12 +3717,12 @@ test('session references stay opaque and OpenClaw group scopes do not collide', 
   const first = workspace.openClawSessionRef({ id: 'group-abcdefghijkl-1' })
   const second = workspace.openClawSessionRef({ id: 'group-abcdefghijkl-2' })
   assert.notEqual(first, second)
-  assert.match(first, /^agent:main:desktop-meldwork-[a-f0-9]{20}-openclaw$/)
-  assert.match(second, /^agent:main:desktop-meldwork-[a-f0-9]{20}-openclaw$/)
+  assert.match(first, /^agent:main:desktop-tyche-[a-f0-9]{20}-openclaw$/)
+  assert.match(second, /^agent:main:desktop-tyche-[a-f0-9]{20}-openclaw$/)
 
   const legacyGroup = { id: 'group-abcdefghijkl-1' }
   const legacyKey = workspace.sessionKey(legacyGroup.id, 'openclaw')
-  workspace.state.sessions[legacyKey] = 'agent:main:desktop-meldwork-groupabcdefg-openclaw'
+  workspace.state.sessions[legacyKey] = 'agent:main:desktop-tyche-groupabcdefg-openclaw'
   workspace.state.sessionMeta[legacyKey] = { turns: 4, estimatedChars: 1200 }
   assert.equal(workspace.sessionRef(legacyGroup, 'openclaw'), first)
   assert.deepEqual(workspace.state.sessionMeta[legacyKey], {

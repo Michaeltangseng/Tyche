@@ -18,7 +18,7 @@ const {
   readHermesFinalResponse,
   readHermesMessageWatermark,
   stripAnsi,
-  stripExactMeldworkPromptEcho,
+  stripExactTychePromptEcho,
   structuredCliError,
 } = require('./cli-output-parsers.cjs')
 const {
@@ -62,6 +62,6 @@ module.exports = {
   redactChildSecrets,
   runtimeCommandSummary,
   stripAnsi,
-  stripExactMeldworkPromptEcho,
+  stripExactTychePromptEcho,
   structuredCliError,
 }

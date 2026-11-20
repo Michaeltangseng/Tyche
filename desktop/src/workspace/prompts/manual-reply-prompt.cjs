@@ -21,8 +21,8 @@ function manualReplyPrompt({
   const topic = String(group?.topic || '').trim().slice(0, 240)
   return [
     peers.length
-      ? `You are one of several Agents answering the user's latest message in a Meldwork group chat. Everyone replies on their own at the same time; the others are ${peers.map(peer => `@${peer}`).join(', ')}. You cannot see their replies, so give your own complete answer and do not speak for them.`
-      : "You are answering the user's latest message in a Meldwork group chat.",
+      ? `You are one of several Agents answering the user's latest message in a Tyche group chat. Everyone replies on their own at the same time; the others are ${peers.map(peer => `@${peer}`).join(', ')}. You cannot see their replies, so give your own complete answer and do not speak for them.`
+      : "You are answering the user's latest message in a Tyche group chat.",
     groupName ? `Group: ${groupName}${topic ? `\nTopic: ${topic}` : ''}` : '',
     `User message:\n${taskText || '(none)'}`,
     skillHintsText,

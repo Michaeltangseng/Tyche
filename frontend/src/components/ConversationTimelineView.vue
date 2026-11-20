@@ -21,7 +21,7 @@
   <div class="conversation-timeline">
     <div ref="messageScroller" class="message-scroll" @scroll="handleMessageScroll">
     <section v-if="conversationEmptyVisible" class="conversation-empty">
-      <img class="conversation-empty-wordmark" :src="productWordmark" alt="Meldwork" />
+      <img class="conversation-empty-wordmark" :src="productWordmark" alt="Tyche" />
       <Transition name="empty-showcase" mode="out-in">
         <div :key="emptyShowcaseIndex" class="conversation-empty-copy" aria-live="polite">
           <strong>{{ t(`conversation.emptyShowcase.${emptyShowcaseIndex}.title`) }}</strong>
@@ -52,7 +52,7 @@
 
       <div class="message-list">
         <article
-          v-for="message in timelineMessages"
+          v-for="message in displayTimelineMessages"
           :key="message.id"
           :id="messageElementId(message.id)"
           class="message-row"
@@ -72,8 +72,8 @@
             },
           ]"
         >
-          <template v-if="message.role === 'system'">
-            <div class="system-message-stack">
+              <template v-if="message.role === 'system'">
+                <div class="system-message-stack">
               <div class="system-message">
                 <span
                   v-if="isAgentFailureMessage(message) && message.agentKind"
@@ -191,8 +191,15 @@
           </template>
           <template v-else>
             <span
+              v-if="message.role === 'user'"
+              class="message-avatar-wrap user-avatar-wrap"
+              aria-hidden="true"
+            >
+              <span class="user-avatar"><PersonOutline /></span>
+            </span>
+            <span
               v-if="message.role === 'agent'"
-              class="message-avatar-wrap"
+              class="message-avatar-wrap agent-avatar-tile"
               :class="{ cloud: isCloudAgentKind(message.agentKind) }"
             >
               <img
@@ -292,12 +299,6 @@
                   <div
                     class="message-copy-surface message-trace-surface"
                     :class="{ copied: isMessageCopied(message.id) }"
-                    :tabindex="messageHasTrace(message) ? 0 : undefined"
-                    :role="messageHasTrace(message) ? 'button' : undefined"
-                    :aria-label="messageHasTrace(message) ? t('trace.viewProcess') : undefined"
-                    @click="openAgentMessageTrace(message, $event)"
-                    @keydown.enter.prevent="openAgentMessageTrace(message, $event)"
-                    @keydown.space.prevent="openAgentMessageTrace(message, $event)"
                   >
                     <MarkdownMessage
                       v-if="message.content"
@@ -331,7 +332,7 @@
                   </ol>
                 </details>
                   <details
-                    v-if="messageHasTrace(message)"
+                    v-if="messageHasTrace(message) && !messageHasFullTrace(message)"
                     class="execution-details trace-inline-details"
                     :open="isDirectTraceOpen(message)"
                     @toggle="syncDirectTraceDisclosure(message, $event)"
@@ -372,6 +373,17 @@
                     <p v-else class="trace-inline-empty">{{ t('trace.noEvents') }}</p>
                   </details>
                 </template>
+                <InlineTrace
+                  v-if="messageHasFullTrace(message)"
+                  :agent-run-id="message.trace.agentRunId"
+                  :compact="true"
+                  :elapsed-label="messageElapsedLabel(message)"
+                  :run-id="message.trace.runId"
+                  :status="messageTraceStatus(message)"
+                  :status-label="messageTraceStatus(message) ? runStatusLabel(messageTraceStatus(message)) : ''"
+                  :t="t"
+                  :workdir="activeGroup.workdir || ''"
+                />
               </template>
               <template v-else>
                 <div class="user-message-flow">
@@ -589,7 +601,7 @@
                 </button>
               </div>
             </div>
-          </template>
+              </template>
         </article>
 
         <section
@@ -752,16 +764,6 @@
                 </small>
               </div>
             </div>
-            <button
-              v-if="activeGroup.conversationType !== 'direct' && displayedRunAgentRuns.length"
-              class="icon-button run-details-button"
-              type="button"
-              :title="t('run.openDetails')"
-              :aria-label="t('run.openDetails')"
-              @click="openDisplayedRunTrace($event.currentTarget)"
-            >
-              <TerminalOutline />
-            </button>
           </header>
           <div v-if="isDisplayedCoordinatedRun" class="run-agent-list" :aria-label="t('run.agents')">
             <button
@@ -863,6 +865,7 @@ import {
   GridOutline,
   LibraryOutline,
   OpenOutline,
+  PersonOutline,
   ReaderOutline,
   RefreshOutline,
   TerminalOutline,
@@ -878,6 +881,7 @@ import { isAgentFailureMessage, responseVersionRootId } from '../conversationTim
 import AttachmentMediaPreview from './AttachmentMediaPreview.vue'
 import HumanGateDecisionContext from './HumanGateDecisionContext.vue'
 import MarkdownMessage from './MarkdownMessage.vue'
+import InlineTrace from './trace/InlineTrace.vue'
 
 const props = defineProps({
   controller: { type: Object, required: true },
@@ -948,7 +952,6 @@ const {
   messageTraceKey,
   messageTraceStatus,
   messageTraceSummary,
-  openDisplayedRunTrace,
   openAttachment,
   openDisplayedTraceForAgent,
   openTraceForMessage,
@@ -987,6 +990,12 @@ const BUDGET_DIMENSIONS = [
 ]
 const directHumanGates = computed(() => props.controller.directHumanGates?.value || [])
 const directRunBudget = computed(() => props.controller.directRunBudget?.value || null)
+const displayTimelineMessages = computed(() => timelineMessages.value)
+
+function messageHasFullTrace(message) {
+  return Boolean(message?.trace?.runId && message?.trace?.agentRunId)
+}
+
 const humanGateDecisionPendingIds = computed(() => (
   props.controller.humanGateDecisionPendingIds?.value || []
 ))
@@ -1098,17 +1107,6 @@ function openMediaPreview(attachment) {
 
 function closeMediaPreview() {
   mediaPreviewAttachment.value = null
-}
-
-function openAgentMessageTrace(message, event) {
-  if (!messageHasTrace(message)) return
-  const target = event?.target
-  if (target instanceof Element && target.closest(
-    'a, button, input, textarea, select, option, form, summary, [contenteditable="true"]',
-  )) return
-  const selection = typeof window.getSelection === 'function' ? window.getSelection() : null
-  if (selection && String(selection).trim()) return
-  openTraceForMessage(message, event?.currentTarget || null)
 }
 
 function attachmentDocumentIconName(attachment) {

@@ -19,7 +19,7 @@ const {
 const { invocation } = require('../../../src/agents/cli/cli-invocations.cjs')
 
 function fixture() {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-runtime-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-runtime-'))
   const workdir = path.join(directory, 'workspace')
   fs.mkdirSync(workdir)
   return { directory, workdir }
@@ -58,7 +58,7 @@ test('native runtime scope is keyed by session, workspace, and CLI version', (t)
   const base = {
     storageRoot: directory,
     workdir,
-    sessionRef: 'agent:main:desktop-meldwork-scope-openclaw',
+    sessionRef: 'agent:main:desktop-tyche-scope-openclaw',
     runtime: nativeRuntime(),
   }
   const versionA = nativeOpenClawOptions({ ...base, openclawVersion: 'OpenClaw 2026.7.1-2 (a1b2c3)' })
@@ -108,7 +108,7 @@ test('Gateway setup rewrites the guarded config without persisting credentials',
   assert.equal(config.update.checkOnStart, false)
   assert.equal(config.update.auto.enabled, false)
   assert.equal(config.logging.file, path.join(runtime.env.OPENCLAW_STATE_DIR, 'gateway.log'))
-  assert.equal(configText.includes(runtime.env.MELDWORK_OPENCLAW_NATIVE_API_KEY), false)
+  assert.equal(configText.includes(runtime.env.TYCHE_OPENCLAW_NATIVE_API_KEY), false)
   assert.equal(configText.includes(runtime.env.OPENCLAW_GATEWAY_TOKEN), false)
 })
 
@@ -198,13 +198,13 @@ test('Gateway health termination failure is not hidden by cancellation', async (
   const signal = new AbortController()
   const failure = Object.assign(new Error('LOCAL_AGENT_TERMINATION_FAILED'), { code: 'LOCAL_AGENT_TERMINATION_FAILED' })
   const pendingExit = new Promise(() => {})
-  Object.defineProperty(failure, Symbol.for('meldwork.pending-process-exit'), { value: pendingExit })
+  Object.defineProperty(failure, Symbol.for('tyche.pending-process-exit'), { value: pendingExit })
   const result = verifyGatewayHealth({ child: gateway, env: {}, executable: '/tmp/openclaw',
     gatewayPort: 12345, workdir: '/tmp', signal: signal.signal,
     spawnHealth: () => health, terminateHealth: async () => { throw failure } })
   signal.abort()
   await assert.rejects(result, error => error === failure
-    && error[Symbol.for('meldwork.pending-process-exit')] === pendingExit)
+    && error[Symbol.for('tyche.pending-process-exit')] === pendingExit)
 })
 
 test('Gateway lifecycle retries setup before callback and closes the isolated process', async (t) => {
@@ -424,7 +424,7 @@ if (args[commandOffset + 1] === 'health') {
 })
 
 test('OpenClaw ACP keeps deterministic global CLI flags before the subcommand', () => {
-  const sessionRef = 'agent:main:desktop-meldwork-test-openclaw'
+  const sessionRef = 'agent:main:desktop-tyche-test-openclaw'
   const spec = invocation('openclaw', '/tmp/openclaw', '/tmp/workspace', sessionRef, {
     sandbox: 'read-only',
   })
@@ -444,7 +444,7 @@ test('write authorization uses an immutable config and preserves the topic state
   const input = {
     storageRoot: directory,
     workdir,
-    sessionRef: 'agent:main:desktop-meldwork-group-topic-openclaw',
+    sessionRef: 'agent:main:desktop-tyche-group-topic-openclaw',
     runtime: nativeRuntime(),
   }
   const readOnly = nativeOpenClawOptions(input)
@@ -467,7 +467,7 @@ test('native auth uses the isolated tool policy without importing user configura
   const nativeOptions = nativeOpenClawOptions({
     storageRoot: directory,
     workdir,
-    sessionRef: 'agent:main:desktop-meldwork-native-openclaw',
+    sessionRef: 'agent:main:desktop-tyche-native-openclaw',
     runtime: {
       ...nativeRuntime(),
       provider: {
@@ -491,11 +491,11 @@ test('native auth uses the isolated tool policy without importing user configura
   assert.equal(Object.hasOwn(nativeConfig, 'channels'), false)
   assert.deepEqual(Object.keys(nativeConfig.models.providers), ['native'])
   assert.deepEqual(nativeConfig.models.providers.native.apiKey, {
-    source: 'env', provider: 'default', id: 'MELDWORK_OPENCLAW_NATIVE_API_KEY',
+    source: 'env', provider: 'default', id: 'TYCHE_OPENCLAW_NATIVE_API_KEY',
   })
   assert.equal(JSON.stringify(nativeConfig).includes('native-openclaw-key'), false)
   assert.equal(Object.hasOwn(nativeConfig.models.providers.native.models[0], 'params'), false)
-  assert.equal(nativeOptions.env.MELDWORK_OPENCLAW_NATIVE_API_KEY, 'native-openclaw-key')
+  assert.equal(nativeOptions.env.TYCHE_OPENCLAW_NATIVE_API_KEY, 'native-openclaw-key')
   assert.ok(nativeOptions.env.OPENCLAW_STATE_DIR.startsWith(fs.realpathSync(directory)))
 })
 
@@ -757,12 +757,12 @@ test('runtime guard rejects in-place config and credential changes without expos
   })
   const serializedGuard = JSON.stringify(configOptions.openClawRuntimeGuard)
   const credentialDigest = crypto.createHash('sha256')
-    .update(configOptions.env.MELDWORK_OPENCLAW_NATIVE_API_KEY)
+    .update(configOptions.env.TYCHE_OPENCLAW_NATIVE_API_KEY)
     .digest('hex')
   const gatewayDigest = crypto.createHash('sha256')
     .update(configOptions.env.OPENCLAW_GATEWAY_TOKEN)
     .digest('hex')
-  assert.equal(serializedGuard.includes(configOptions.env.MELDWORK_OPENCLAW_NATIVE_API_KEY), false)
+  assert.equal(serializedGuard.includes(configOptions.env.TYCHE_OPENCLAW_NATIVE_API_KEY), false)
   assert.equal(serializedGuard.includes(configOptions.env.OPENCLAW_GATEWAY_TOKEN), false)
   assert.equal(serializedGuard.includes(credentialDigest), false)
   assert.equal(serializedGuard.includes(gatewayDigest), false)
@@ -787,7 +787,7 @@ test('runtime guard rejects in-place config and credential changes without expos
     credentialOptions.openClawRuntimeGuard,
     {
       ...credentialOptions.env,
-      MELDWORK_OPENCLAW_NATIVE_API_KEY: 'tampered-openclaw-key',
+      TYCHE_OPENCLAW_NATIVE_API_KEY: 'tampered-openclaw-key',
     },
   ), { message: 'OPENCLAW_RUNTIME_CREDENTIAL_SCOPE_INVALID' })
   assert.throws(() => validateOpenClawRuntimeGuard(
@@ -831,7 +831,7 @@ test('runtime paths are stable and isolated per topic and workspace', (t) => {
   const input = {
     storageRoot: directory,
     workdir,
-    sessionRef: 'agent:main:desktop-meldwork-group-topic-openclaw',
+    sessionRef: 'agent:main:desktop-tyche-group-topic-openclaw',
     runtime: nativeRuntime(),
   }
 

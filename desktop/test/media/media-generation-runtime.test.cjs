@@ -18,7 +18,7 @@ function response(body, options = {}) {
 }
 
 function fixture(t, fetchFn, provider = {}) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-media-generation-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-media-generation-'))
   const workdir = path.join(directory, 'workspace')
   fs.mkdirSync(workdir)
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
@@ -47,7 +47,7 @@ test('writes a base64 image response to the controlled output directory and trac
   })
 
   assert.deepEqual(result, { type: 'image', filename: 'generated-image-media-id.png' })
-  assert.deepEqual(fs.readFileSync(path.join(workdir, '.meldwork-output', result.filename)), PNG)
+  assert.deepEqual(fs.readFileSync(path.join(workdir, '.tyche-output', result.filename)), PNG)
   assert.equal(calls[0][0], 'https://api.openai.com/v1/images/generations')
   assert.equal(JSON.parse(calls[0][1].body).model, 'gpt-image-1')
   assert.equal(calls[0][1].headers.Authorization, 'Bearer test-api-key')
@@ -59,7 +59,7 @@ test('writes a base64 image response to the controlled output directory and trac
 
 test('accepts non-Codex Agents and resolves media independently from the chat runtime', async (t) => {
   const providerRequests = []
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-media-generation-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-media-generation-'))
   const workdir = path.join(directory, 'workspace')
   fs.mkdirSync(workdir)
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
@@ -107,7 +107,7 @@ test('writes binary audio output and uses the audio endpoint', async (t) => {
   })
 
   assert.equal(result.filename, 'generated-audio-media-id.mp3')
-  assert.deepEqual(fs.readFileSync(path.join(workdir, '.meldwork-output', result.filename)), MP3)
+  assert.deepEqual(fs.readFileSync(path.join(workdir, '.tyche-output', result.filename)), MP3)
 })
 
 test('polls an async video job and downloads the completed media locally', async (t) => {
@@ -127,7 +127,7 @@ test('polls an async video job and downloads the completed media locally', async
   })
 
   assert.equal(result.filename, 'generated-video-media-id.mp4')
-  assert.deepEqual(fs.readFileSync(path.join(workdir, '.meldwork-output', result.filename)), MP4)
+  assert.deepEqual(fs.readFileSync(path.join(workdir, '.tyche-output', result.filename)), MP4)
   assert.deepEqual(calls.map(call => call[0]), [
     'https://api.openai.com/v1/videos',
     'https://api.openai.com/v1/videos/video-1',
@@ -157,7 +157,7 @@ test('uses the legacy H3 submit, status, and content endpoints with secure provi
   })
 
   assert.equal(result.filename, 'generated-video-media-id.mp4')
-  assert.deepEqual(fs.readFileSync(path.join(workdir, '.meldwork-output', result.filename)), MP4)
+  assert.deepEqual(fs.readFileSync(path.join(workdir, '.tyche-output', result.filename)), MP4)
   assert.deepEqual(calls.map(([url]) => url), [
     'https://helper.ihainan.me/v1/videogen',
     'https://helper.ihainan.me/v1/videogen/h3-task',
@@ -218,14 +218,14 @@ test('maps ZGCI audio requests to CosyVoice', async (t) => {
   })
 
   const result = await runtime.generate({
-    kind: 'hermes', request: { type: 'audio', prompt: '欢迎使用 Meldwork' }, workdir,
+    kind: 'hermes', request: { type: 'audio', prompt: '欢迎使用 Tyche' }, workdir,
   })
 
   assert.equal(result.filename, 'generated-audio-media-id.wav')
   assert.equal(calls[0][0], 'https://hub.zgci.org/v1/audio/speech')
   assert.deepEqual(JSON.parse(calls[0][1].body), {
     model: 'cosy-voice',
-    input: '欢迎使用 Meldwork',
+    input: '欢迎使用 Tyche',
     voice: 'mm_Southern_Young_Man',
     response_format: 'wav',
   })
@@ -241,7 +241,7 @@ test('keeps provider errors secret-free and does not write a false attachment', 
     }),
     { message: 'MEDIA_GENERATION_HTTP_401' },
   )
-  assert.equal(fs.existsSync(path.join(workdir, '.meldwork-output', 'generated-image-media-id.png')), false)
+  assert.equal(fs.existsSync(path.join(workdir, '.tyche-output', 'generated-image-media-id.png')), false)
 })
 
 test('retries transient provider failures before writing generated media', async (t) => {
@@ -258,7 +258,7 @@ test('retries transient provider failures before writing generated media', async
 
   assert.equal(attempts, 3)
   assert.equal(result.filename, 'generated-image-media-id.png')
-  assert.deepEqual(fs.readFileSync(path.join(workdir, '.meldwork-output', result.filename)), PNG)
+  assert.deepEqual(fs.readFileSync(path.join(workdir, '.tyche-output', result.filename)), PNG)
 })
 
 test('stops after three transient provider failures without writing an attachment', async (t) => {
@@ -275,12 +275,12 @@ test('stops after three transient provider failures without writing an attachmen
     { message: 'MEDIA_GENERATION_HTTP_503' },
   )
   assert.equal(attempts, 3)
-  assert.equal(fs.existsSync(path.join(workdir, '.meldwork-output', 'generated-image-media-id.png')), false)
+  assert.equal(fs.existsSync(path.join(workdir, '.tyche-output', 'generated-image-media-id.png')), false)
 })
 
 test('falls back to another secure Provider when the first lacks the media model', async (t) => {
   const providerRequests = []
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-media-generation-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-media-generation-'))
   const workdir = path.join(directory, 'workspace')
   fs.mkdirSync(workdir)
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
@@ -320,11 +320,11 @@ test('falls back to another secure Provider when the first lacks the media model
 
   assert.deepEqual(providerRequests, [[], ['openclaw']])
   assert.equal(result.filename, 'generated-video-media-id.mp4')
-  assert.deepEqual(fs.readFileSync(path.join(workdir, '.meldwork-output', result.filename)), MP4)
+  assert.deepEqual(fs.readFileSync(path.join(workdir, '.tyche-output', result.filename)), MP4)
 })
 
 test('reports a stable model-unavailable error after all secure Providers are exhausted', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-media-generation-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-media-generation-'))
   const workdir = path.join(directory, 'workspace')
   fs.mkdirSync(workdir)
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
@@ -355,7 +355,7 @@ test('reports a stable model-unavailable error after all secure Providers are ex
 
 test('falls back to another secure Provider after transient retries are exhausted', async (t) => {
   const providerRequests = []
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-media-generation-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-media-generation-'))
   const workdir = path.join(directory, 'workspace')
   fs.mkdirSync(workdir)
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
@@ -398,5 +398,5 @@ test('falls back to another secure Provider after transient retries are exhauste
   assert.equal(unavailableAttempts, 3)
   assert.deepEqual(providerRequests, [[], ['openclaw']])
   assert.equal(result.filename, 'generated-image-media-id.png')
-  assert.deepEqual(fs.readFileSync(path.join(workdir, '.meldwork-output', result.filename)), PNG)
+  assert.deepEqual(fs.readFileSync(path.join(workdir, '.tyche-output', result.filename)), PNG)
 })

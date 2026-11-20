@@ -17,7 +17,7 @@
       >
         <img :src="productMark" alt="" />
         <span>
-          <strong>Meldwork</strong>
+          <strong>Tyche</strong>
           <small>{{ t('app.localWorkspace') }}</small>
         </span>
       </button>
@@ -34,13 +34,43 @@
       </button>
     </header>
 
-    <button class="new-group-button" type="button" :title="t('nav.newGroup')" @click="openNewGroup">
-      <AddOutline />
-      <span>{{ t('nav.newGroup') }}</span>
-    </button>
+    <div v-if="sidebarCollapsed" class="sidebar-rail">
+      <div class="sidebar-rail-scroll">
+        <section
+          v-if="railAgents.length"
+          class="sidebar-rail-section"
+          :aria-label="t('nav.sidebarAgents')"
+        >
+          <button
+            v-for="agent in railAgents"
+            :key="agent.kind"
+            class="sidebar-rail-item"
+            :class="{ active: isRailAgentActive(agent), unavailable: !agent.ready }"
+            type="button"
+            :title="`${agent.label} · ${agentState(agent).label}`"
+            :aria-label="agent.label"
+            :disabled="isDirectCreationPending(agent.kind)"
+            @click="handleSidebarAgentMain(agent)"
+          >
+            <span class="agent-logo-cloud" :class="{ cloud: agent.cloud }">
+              <img :src="agent.logo" :alt="agent.label" />
+              <CloudOutline v-if="agent.cloud" aria-hidden="true" />
+              <span
+                v-if="agentAwaitingDecision(agent.kind)"
+                class="attention-dot agent-attention-dot"
+                :title="t('humanGate.waiting')"
+              />
+            </span>
+          </button>
+        </section>
 
-    <nav class="conversation-nav" :aria-label="t('nav.conversations')">
-      <section class="nav-section">
+        <button v-if="roomWorkspaceAvailable" class="sidebar-rail-item" type="button" :title="t('room.title')" :aria-label="t('room.title')" :aria-current="activeView === 'rooms' ? 'page' : undefined" @click="openRoomWorkspace"><PeopleOutline /></button>
+        <button v-if="roomWorkspaceAvailable" class="sidebar-rail-item sidebar-rail-add" type="button" :title="t('room.createTeamRoom')" :aria-label="t('room.createTeamRoom')" @click="openTeamRoomCreate"><AddOutline /></button>
+      </div>
+    </div>
+
+    <nav v-else class="conversation-nav" :aria-label="t('nav.conversations')">
+      <section class="nav-section agent-nav-section">
         <button
           class="nav-heading"
           type="button"
@@ -194,202 +224,92 @@
         <p v-if="!sidebarAgentGroups.length && !sidebarAgentsCollapsed && !discoveringAgents" class="nav-empty">{{ t('nav.noSidebarAgents') }}</p>
       </section>
 
-      <section class="nav-section group-nav-section">
-        <button
-          class="nav-heading"
-          type="button"
-          :title="sidebarGroupsCollapsed ? t('nav.expandGroups') : t('nav.collapseGroups')"
-          :aria-expanded="String(!sidebarGroupsCollapsed)"
-          aria-controls="sidebar-group-list"
-          @click="sidebarGroupsCollapsed = !sidebarGroupsCollapsed"
-        >
-          <span>{{ t('nav.groups') }}</span>
-          <small v-if="sidebarGroupsCollapsed" class="nav-heading-count">{{ groupGroups.length }}</small>
-        </button>
-        <div v-if="!sidebarGroupsCollapsed" id="sidebar-group-list">
-          <div v-if="groupGroups.length" class="group-conversation-list">
-            <div
-              v-for="group in visibleGroupGroups"
-              :key="group.id"
-              class="group-conversation-row"
-              :class="{ active: isSelectedConversation(group) }"
-            >
+      <section v-if="roomWorkspaceAvailable" class="nav-section team-room-nav-section">
+        <div class="nav-heading project-room-heading team-room-heading" role="heading" aria-level="2">
+          <span>{{ t('room.title') }}</span>
+          <small class="nav-heading-count">{{ teamRoomList.length }}</small>
+          <button class="project-room-add team-room-add" type="button" :title="t('room.createTeamRoom')" :aria-label="t('room.createTeamRoom')" @click="openTeamRoomCreate">
+            <AddOutline />
+          </button>
+        </div>
+        <div v-if="teamRoomList.length" class="project-room-list team-room-list">
+          <div v-for="room in teamRoomList" :key="room.id" class="project-room-entry team-room-entry">
+            <div class="project-room-row team-room-row" :class="{ active: isTeamRoomSelected(room.id) }">
               <button
-                class="conversation-link"
+                class="project-room-open"
                 type="button"
-                :title="t('nav.openGroup', { name: groupName(group) })"
-                :aria-current="isSelectedConversation(group) ? 'page' : undefined"
-                @click="selectGroup(group.id)"
+                :title="t(isTeamRoomExpanded(room.id) ? 'room.collapseChats' : 'room.expandChats', { name: room.name })"
+                :aria-current="isTeamRoomSelected(room.id) ? 'page' : undefined"
+                :aria-expanded="String(isTeamRoomExpanded(room.id))"
+                :aria-controls="`team-room-chats-${room.id}`"
+                @click="handleTeamRoomClick(room)"
               >
-                <span class="group-avatar stack" :aria-label="groupAgentSummary(group)">
-                  <img v-for="kind in group.agentKinds.slice(0, 3)" :key="kind" :src="agentLogo(kind, theme)" alt="" />
-                </span>
-                <span>{{ groupName(group) }}</span>
-                <span
-                  v-if="isGroupAwaitingDecision(group.id) && !isSelectedConversation(group)"
-                  class="attention-mark"
-                  role="img"
-                  :title="t('humanGate.waiting')"
-                  :aria-label="t('humanGate.waiting')"
-                >
-                  <span class="attention-dot" />
-                </span>
-                <span
-                  v-else-if="isGroupRunning(group.id) && !isSelectedConversation(group)"
-                  class="run-mark"
-                  :title="t('conversation.runningGeneric')"
-                >
-                  <span class="run-agent-bars" aria-hidden="true"><i /><i /><i /></span>
-                </span>
-                <span
-                  v-else-if="hasFinishedDirectRun(group.id) && !isSelectedConversation(group)"
-                  class="run-finished-mark"
-                  role="img"
-                  :title="t('nav.runFinished')"
-                  :aria-label="t('nav.runFinished')"
-                >
-                  <CheckmarkCircleOutline aria-hidden="true" />
+                <span class="project-room-avatar" aria-hidden="true">{{ projectInitial(room.name) }}</span>
+                <span class="project-room-copy">
+                  <strong>{{ room.name }}</strong>
+                  <small>{{ t('room.chatCount', { count: room.chats?.length || 0 }) }}</small>
                 </span>
               </button>
-              <span class="group-conversation-actions">
-                <button
-                  class="direct-session-action"
-                  type="button"
-                  :title="t('nav.renameGroup', { name: groupName(group) })"
-                  :aria-label="t('nav.renameGroup', { name: groupName(group) })"
-                  @click="openConversationRename(group)"
-                >
-                  <PencilOutline />
-                </button>
-                <span class="sidebar-delete-control">
-                  <button
-                    class="direct-session-action danger"
-                    type="button"
-                    :title="t('nav.deleteGroup', { name: groupName(group) })"
-                    :aria-label="t('nav.deleteGroup', { name: groupName(group) })"
-                    :disabled="isGroupRunning(group.id)"
-                    @click="openSidebarConversationDelete(group, $event)"
-                  >
-                    <TrashOutline />
-                  </button>
-                </span>
-              </span>
+              <button
+                class="project-room-add team-room-add-chat"
+                type="button"
+                :title="t('room.addChat', { name: room.name })"
+                :aria-label="t('room.addChat', { name: room.name })"
+                @click.stop="addTeamChat(room.id)"
+              >
+                <AddOutline />
+              </button>
+              <button
+                class="project-room-delete team-room-delete"
+                type="button"
+                :title="t('room.deleteRoom', { name: room.name })"
+                :aria-label="t('room.deleteRoom', { name: room.name })"
+                @click.stop="openTeamDelete({ type: 'room', roomId: room.id, name: room.name }, $event)"
+              >
+                <TrashOutline />
+              </button>
             </div>
-            <button
-              v-if="hasMoreGroupGroups"
-              class="sidebar-more-button"
-              type="button"
-              :title="t(groupSessionListExpanded ? 'nav.lessGroups' : 'nav.moreGroups', {
-                count: remainingGroupGroupsCount,
-              })"
-              :aria-label="t(groupSessionListExpanded ? 'nav.lessGroups' : 'nav.moreGroups', {
-                count: remainingGroupGroupsCount,
-              })"
-              :aria-expanded="String(groupSessionListExpanded)"
-              @click="toggleGroupSessionListExpanded"
+            <div
+              v-if="room.chats?.length && isTeamRoomExpanded(room.id)"
+              :id="`team-room-chats-${room.id}`"
+              class="project-room-groups team-room-chats"
             >
-              <span>{{ t(groupSessionListExpanded ? 'nav.lessItems' : 'nav.moreItems') }}</span>
-            </button>
+              <div v-for="chat in room.chats" :key="chat.id" class="project-room-group-row">
+                <button
+                  class="project-room-group"
+                  :class="{ active: isTeamChatSelected(room.id, chat.id) }"
+                  type="button"
+                  :title="t('room.openChat', { name: chat.title })"
+                  :aria-current="isTeamChatSelected(room.id, chat.id) ? 'page' : undefined"
+                  @click="selectTeamChat(room.id, chat.id)"
+                >
+                  <span class="project-room-group-name">{{ teamChatLabel(room, chat) }}</span>
+                  <span v-if="chat.is_primary && teamChatLabel(room, chat) !== t('room.primaryChat')" class="project-room-group-badge">
+                    {{ t('room.primaryChat') }}
+                  </span>
+                </button>
+                <button
+                  v-if="!chat.is_primary || room.chats.length > 1"
+                  class="project-room-group-delete team-room-delete-chat"
+                  type="button"
+                  :title="t('room.deleteChat', { name: teamChatLabel(room, chat) })"
+                  :aria-label="t('room.deleteChat', { name: teamChatLabel(room, chat) })"
+                  @click.stop="openTeamDelete({ type: 'chat', roomId: room.id, chatId: chat.id, name: teamChatLabel(room, chat) }, $event)"
+                >
+                  <TrashOutline />
+                </button>
+              </div>
+            </div>
+            <p v-else-if="isTeamRoomExpanded(room.id) && !room.chats?.length" class="team-room-chat-empty">
+              {{ t('room.noChats') }}
+            </p>
           </div>
-          <p v-else class="nav-empty">{{ t('nav.noGroups') }}</p>
         </div>
       </section>
+
     </nav>
 
-    <div v-if="sidebarCollapsed" class="collapsed-group-switcher">
-      <button
-        ref="collapsedGroupMenuButton"
-        class="icon-button collapsed-group-switcher-button"
-        :class="{ active: collapsedGroupMenuOpen }"
-        type="button"
-        :title="t('nav.switchGroup')"
-        :aria-label="t('nav.switchGroup')"
-        :aria-expanded="String(collapsedGroupMenuOpen)"
-        aria-haspopup="dialog"
-        aria-controls="collapsed-group-menu"
-        @click="toggleCollapsedGroupMenu"
-      >
-        <ChatbubblesOutline />
-        <span
-          v-if="groupGroups.some(group => isGroupAwaitingDecision(group.id))"
-          class="attention-dot collapsed-group-attention"
-          aria-hidden="true"
-        />
-      </button>
-    </div>
-
-
   </aside>
-
-  <Teleport to="body">
-    <section
-      v-if="collapsedGroupMenuOpen"
-      id="collapsed-group-menu"
-      ref="collapsedGroupMenu"
-      class="collapsed-group-menu"
-      role="dialog"
-      :aria-label="t('nav.switchGroup')"
-      :style="collapsedGroupMenuStyle"
-    >
-      <header class="collapsed-group-menu-header">
-        <span class="collapsed-group-menu-icon"><PeopleOutline /></span>
-        <span>
-          <strong>{{ t('nav.groups') }}</strong>
-          <small>{{ t('nav.groupCount', { count: groupGroups.length }) }}</small>
-        </span>
-      </header>
-      <div v-if="groupGroups.length" class="collapsed-group-menu-list">
-        <button
-          v-for="group in groupGroups"
-          :key="group.id"
-          class="collapsed-group-option"
-          :class="{ active: activeView === 'conversation' && selectedGroupId === group.id }"
-          type="button"
-          :title="t('nav.openGroup', { name: groupName(group) })"
-          :aria-current="activeView === 'conversation' && selectedGroupId === group.id ? 'page' : undefined"
-          @click="selectGroup(group.id)"
-        >
-          <span class="group-avatar stack" :aria-label="groupAgentSummary(group)">
-            <img v-for="kind in group.agentKinds.slice(0, 3)" :key="kind" :src="agentLogo(kind, theme)" alt="" />
-          </span>
-          <span class="collapsed-group-option-main">
-            <strong>{{ groupName(group) }}</strong>
-            <small>{{ groupAgentSummary(group) }}</small>
-          </span>
-          <span class="collapsed-group-option-state">
-            <span
-              v-if="isGroupAwaitingDecision(group.id) && !isSelectedConversation(group)"
-              class="attention-mark"
-              role="img"
-              :title="t('humanGate.waiting')"
-              :aria-label="t('humanGate.waiting')"
-            >
-              <span class="attention-dot" />
-            </span>
-            <span
-              v-else-if="isGroupRunning(group.id) && !isSelectedConversation(group)"
-              class="run-mark"
-              :title="t('conversation.runningGeneric')"
-            >
-              <span class="run-agent-bars" aria-hidden="true"><i /><i /><i /></span>
-            </span>
-            <span
-              v-else-if="hasFinishedDirectRun(group.id) && !isSelectedConversation(group)"
-              class="run-finished-mark"
-              role="img"
-              :title="t('nav.runFinished')"
-              :aria-label="t('nav.runFinished')"
-            >
-              <CheckmarkCircleOutline aria-hidden="true" />
-            </span>
-            <CheckmarkCircleOutline v-else-if="isSelectedConversation(group)" aria-hidden="true" />
-            <time v-else>{{ formatNavTime(group.updatedAt || group.createdAt) }}</time>
-          </span>
-        </button>
-      </div>
-      <p v-else class="collapsed-group-menu-empty">{{ t('nav.noGroups') }}</p>
-    </section>
-  </Teleport>
 
   <Teleport to="body">
     <span
@@ -411,11 +331,33 @@
         </button>
       </span>
     </span>
+    <span v-if="teamDeleteTarget" class="team-delete-backdrop" aria-hidden="true" @click="dismissTeamDelete" />
+    <span
+      v-if="teamDeleteTarget"
+      class="settings-delete-popover sidebar-delete-popover"
+      role="dialog"
+      aria-modal="false"
+      :style="teamDeletePopoverStyle"
+      :aria-labelledby="`team-delete-title-${teamDeleteTarget.type}-${teamDeleteTarget.roomId}`"
+    >
+      <strong :id="`team-delete-title-${teamDeleteTarget.type}-${teamDeleteTarget.roomId}`">
+        {{ t('room.deleteTitle', { name: teamDeleteTarget.name }) }}
+      </strong>
+      <p>{{ t(teamDeleteTarget.type === 'room' ? 'room.deleteRoomHint' : 'room.deleteChatHint') }}</p>
+      <span class="settings-delete-actions">
+        <button class="secondary-button compact" type="button" @click="dismissTeamDelete">
+          {{ t('common.cancel') }}
+        </button>
+        <button class="danger-button" type="button" @click="confirmTeamDelete">
+          {{ t('room.deleteConfirm') }}
+        </button>
+      </span>
+    </span>
   </Teleport>
 </template>
 
 <script setup>
-import { computed, unref } from 'vue'
+import { computed, onBeforeUnmount, ref, unref, watch } from 'vue'
 import {
   AddOutline,
   ChatbubblesOutline,
@@ -427,13 +369,13 @@ import {
   PeopleOutline,
   TrashOutline,
 } from '@vicons/ionicons5'
-import { agentLogo } from '../catalog.js'
 
 const props = defineProps({
   controller: { type: Object, required: true },
 })
 
 const {
+  addTeamChat,
   activeView,
   agentState,
   collapsedGroupMenu,
@@ -443,6 +385,8 @@ const {
   contentInteractionBlocked,
   createDirectSession,
   deleteSidebarConversation,
+  deleteTeamChat,
+  deleteTeamRoom,
   directGroupsFor,
   discoveringAgents,
   dismissSidebarDeleteConfirmation,
@@ -453,6 +397,7 @@ const {
   groupName,
   groupSessionListExpanded,
   handleSidebarAgentMain,
+  handleTeamRoomClick,
   hasFinishedDirectRun,
   hasMoreDirectGroups,
   hasMoreGroupGroups,
@@ -461,14 +406,21 @@ const {
   isGroupAwaitingDecision,
   isGroupRunning,
   isSidebarAgentExpanded,
+  isTeamChatSelected,
+  isTeamRoomExpanded,
+  isTeamRoomSelected,
   openConversationRename,
   openNewGroup,
+  roomWorkspaceAvailable,
+  openRoomWorkspace,
+  openTeamRoomCreate,
   openSidebarConversationDelete,
   productMark,
   remainingDirectGroupsCount,
   remainingGroupGroupsCount,
   saving,
   selectGroup,
+  selectTeamChat,
   selectedGroupId,
   sidebarAgentSessionListId,
   sidebarAgentGroups,
@@ -478,6 +430,7 @@ const {
   sidebarDeleteGroup,
   sidebarDeletePopoverStyle,
   t,
+  teamRooms,
   theme,
   toggleCollapsedGroupMenu,
   toggleDirectSessionListExpanded,
@@ -490,9 +443,72 @@ function isSelectedConversation(group) {
   return unref(activeView) === 'conversation' && unref(selectedGroupId) === group.id
 }
 
+function projectInitial(name) {
+  return String(name || '').trim().slice(0, 1).toUpperCase() || '•'
+}
+
+function teamChatLabel(room, chat) {
+  return chat?.is_primary && chat.title === room?.name ? t('room.primaryChat') : chat?.title
+}
+
+const teamDeleteTarget = ref(null)
+const teamDeletePopoverStyle = ref({})
+
+function openTeamDelete(target, event) {
+  const rect = event?.currentTarget?.getBoundingClientRect?.()
+  teamDeleteTarget.value = target
+  if (!rect || typeof window === 'undefined') return
+  const width = 278
+  const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8))
+  const top = Math.min(rect.bottom + 6, Math.max(8, window.innerHeight - 190))
+  teamDeletePopoverStyle.value = { top: `${top}px`, left: `${left}px` }
+}
+
+function dismissTeamDelete() {
+  teamDeleteTarget.value = null
+}
+
+function handleTeamDeleteKey(event) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    dismissTeamDelete()
+  }
+}
+
+function confirmTeamDelete() {
+  const target = teamDeleteTarget.value
+  teamDeleteTarget.value = null
+  if (!target) return
+  if (target.type === 'room') void deleteTeamRoom(target.roomId)
+  else void deleteTeamChat(target.roomId, target.chatId)
+}
+
+watch(teamDeleteTarget, (target) => {
+  if (typeof document === 'undefined') return
+  document.removeEventListener('keydown', handleTeamDeleteKey)
+  if (target) document.addEventListener('keydown', handleTeamDeleteKey)
+})
+
+onBeforeUnmount(() => {
+  if (typeof document !== 'undefined') document.removeEventListener('keydown', handleTeamDeleteKey)
+})
+
 const sidebarAgentCount = computed(() => (
   unref(sidebarAgentGroups).reduce((total, group) => total + group.agents.length, 0)
 ))
+
+const teamRoomList = computed(() => {
+  const value = unref(teamRooms)
+  return Array.isArray(value) ? value : []
+})
+
+const railAgents = computed(() => (
+  unref(sidebarAgentGroups).flatMap(group => group.agents)
+))
+
+function isRailAgentActive(agent) {
+  return directGroupsFor(agent.kind).some(group => isSelectedConversation(group))
+}
 
 function agentAwaitingDecision(kind) {
   return directGroupsFor(kind).some(group => isGroupAwaitingDecision(group.id))

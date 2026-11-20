@@ -30,7 +30,7 @@ test('switching OpenClaw native directories creates isolated sessions and restor
 })
 
 test('switching native profiles preserves direct, group and other Agent sessions across reload', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-native-sessions-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-native-sessions-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const filename = path.join(directory, 'workspace.json')
   let state = { version: 3, groups: [
@@ -72,7 +72,7 @@ test('profile switching retains canonical and legacy task sessions with provenan
 })
 
 test('invalid archived session data does not silently become trusted workspace state', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-native-sessions-invalid-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-native-sessions-invalid-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const filename = path.join(directory, 'workspace.json')
   saveWorkspaceState(filename, { version: 3, groups: [], messages: [], sessions: {},

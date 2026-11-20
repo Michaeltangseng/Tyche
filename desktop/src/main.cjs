@@ -67,6 +67,12 @@ const {
   resolveNativeShellEnvironment,
 } = require('./agents/local-agent-readiness.cjs')
 const { LocalWorkspace } = require('./workspace/local-workspace.cjs')
+const { createTraceReader } = require('./runs/trace/trace-reader.cjs')
+const { cleanupOrphanTraces, createTraceStore } = require('./runs/trace/trace-store.cjs')
+const { createTraceAppendedNotifier, registerTraceIpc } = require('./shell/trace-ipc.cjs')
+const { ProcessRegistry } = require('./agents/process/process-registry.cjs')
+const { processRunScheduler } = require('./runs/run-scheduler.cjs')
+const { makeClaim } = require('./runs/path-claims.cjs')
 const { registerDesktopIpc } = require('./shell/main-ipc.cjs')
 const { workBuddyEnvironment, workBuddySettings } = require('./agents/cli/workbuddy-runtime.cjs')
 const {
@@ -89,6 +95,8 @@ const {
   resolveKnowledgeBaseSources,
 } = require('./knowledge/local-knowledge-base.cjs')
 const { LocalKnowledgeConnectors } = require('./knowledge/local-knowledge-connectors.cjs')
+const { createRoomHost } = require('./room/room-host.cjs')
+const { registerTeamRoomIpc } = require('./shell/team-room-ipc.cjs')
 const { nativeOpenClawOptions } = require('./agents/cli/openclaw-runtime.cjs')
 const { migrateLegacyProductData } = require('./product-data-migration.cjs')
 const LOCAL_AGENT_KINDS = new Set([
@@ -97,15 +105,46 @@ const LOCAL_AGENT_KINDS = new Set([
 ])
 const QUIT_CLEANUP_TIMEOUT_MS = 2500
 let mainWindow = null
+let roomTraceReader = null
+const traceAppendedNotifier = createTraceAppendedNotifier({
+  send: payload => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('trace:appended', payload)
+    }
+  },
+})
+
+function flushTeamRoomRuntimeEvents() {
+  teamRoomEventTimer = null
+  if (!teamRoomEventBuffer.length) return
+  const batch = teamRoomEventBuffer
+  teamRoomEventBuffer = []
+  if (mainWindow && !mainWindow.isDestroyed()
+      && isTrustedLocalWebContents(mainWindow.webContents)) {
+    mainWindow.webContents.send('team-room:runtime-events', batch)
+  }
+}
+
+function queueTeamRoomRuntimeEvent(payload) {
+  teamRoomEventBuffer.push(payload)
+  if (teamRoomEventBuffer.length >= 200) {
+    if (teamRoomEventTimer) clearTimeout(teamRoomEventTimer)
+    flushTeamRoomRuntimeEvents()
+    return
+  }
+  if (teamRoomEventTimer) return
+  teamRoomEventTimer = setTimeout(flushTeamRoomRuntimeEvents, 40)
+  teamRoomEventTimer.unref?.()
+}
 
 // Faults outside a request handler are written to a small private log in
 // userData (secrets redacted, size-capped) instead of disappearing or
 // taking the app down, so instability reports have evidence.
 function recordMainProcessFault(kind, detail) {
   const text = String(detail?.stack || detail?.message || detail || '').slice(0, 4000)
-  console.error(`[meldwork] ${kind}`, text)
+  console.error(`[tyche] ${kind}`, text)
   try {
-    const file = path.join(app.getPath('userData'), 'meldwork-diagnostics.log')
+    const file = path.join(app.getPath('userData'), 'tyche-diagnostics.log')
     try {
       if (fs.statSync(file).size > 1024 * 1024) fs.renameSync(file, `${file}.1`)
     } catch { /* first entry */ }
@@ -135,7 +174,11 @@ const knowledgeBaseSourcesCache = new Map()
 let attachmentStore = null
 let skillCatalog = null
 let skillTrustStore = null
+let skillSnapshotSelections = null
 let shutdownStarted = false
+let teamRoomHost = null
+let teamRoomEventBuffer = []
+let teamRoomEventTimer = null
 const knowledgeInstallShutdown = new AbortController()
 let quitCleanup = null
 let cachedAppIcon
@@ -198,8 +241,8 @@ function offlinePath() {
 
 function appIconPath() {
   return app.isPackaged
-    ? path.join(__dirname, '../frontend/logos/meldwork-app.png')
-    : path.resolve(__dirname, '../../frontend/public/logos/meldwork-app.png')
+    ? path.join(__dirname, '../frontend/logos/tyche-app.png')
+    : path.resolve(__dirname, '../../frontend/public/logos/tyche-app.png')
 }
 
 function appIconImage() {
@@ -437,7 +480,7 @@ async function resolveProjectEnvironmentIdentities(workdir, kinds) {
 }
 
 function workspaceStoragePath(userData = app.getPath('userData')) {
-  return path.join(userData, 'meldwork-workspace.json')
+  return path.join(userData, 'tyche-workspace.json')
 }
 
 function notifyWorkspaceChanged(snapshot) {
@@ -534,7 +577,7 @@ async function runCoreAgent(agent, prompt, workdir, options = {}) {
     if (agent.kind !== 'codex' || !/^custom-[a-f0-9]{16}$/.test(String(connectorInstanceId || ''))) {
       throw new Error('AGENT_CONNECTOR_CREDENTIAL_ISOLATION_UNSUPPORTED')
     }
-    const privateRoot = path.join(app.getPath('userData'), 'meldwork-private')
+    const privateRoot = path.join(app.getPath('userData'), 'tyche-private')
     const connectorRoot = path.join(privateRoot, 'connector-native')
     const instanceRoot = path.join(connectorRoot, connectorInstanceId)
     for (const directory of [privateRoot, connectorRoot, instanceRoot]) ensurePrivateDirectory(directory)
@@ -670,7 +713,7 @@ async function requestLocalSkillTrust({ binding, coordinates, manifest }) {
 
 function createWorkspace() {
   cloudAgentStartRetry?.cancel()
-  const privateRoot = path.join(app.getPath('userData'), 'meldwork-private')
+  const privateRoot = path.join(app.getPath('userData'), 'tyche-private')
   ensurePrivateDirectory(privateRoot)
   const contentBlobStore = new ContentBlobStore({
     rootPath: path.join(privateRoot, 'content-blobs'),
@@ -682,7 +725,7 @@ function createWorkspace() {
   skillTrustStore = new LocalSkillTrustStore({
     storagePath: path.join(privateRoot, 'skill-trust-audit.jsonl'),
   })
-  const skillSnapshotSelections = new LocalSkillSnapshotSelections({
+  skillSnapshotSelections = new LocalSkillSnapshotSelections({
     catalog: skillCatalog,
     snapshotStore: skillSnapshotStore,
     contentBlobStore,
@@ -712,7 +755,7 @@ function createWorkspace() {
     contentBlobStore,
   })
   const runLedger = new RunLedger({
-    storagePath: path.join(app.getPath('userData'), 'meldwork-run-ledger.json'),
+    storagePath: path.join(app.getPath('userData'), 'tyche-run-ledger.json'),
   })
   const runtime = new CloudAgentRuntime({
     runLedger,
@@ -730,8 +773,18 @@ function createWorkspace() {
     }),
     connectors: [],
   })
+  const processRegistry = new ProcessRegistry({
+    storagePath: path.join(privateRoot, 'process-registry.json'),
+  })
+  const managedSupervisorPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'bin', 'tyche-supervisor')
+    : path.join(__dirname, '..', 'native', 'build', 'tyche-supervisor')
   const localWorkspace = new LocalWorkspace({
     storagePath: workspaceStoragePath(),
+    processRegistry,
+    managedSupervisorPath,
+    tracesRoot: path.join(app.getPath('userData'), 'tyche-private', 'traces'),
+    onTraceAppended: payload => traceAppendedNotifier.notify(payload),
     contentBlobStore,
     contextPackStore: new ContextPackStore({
       rootPath: path.join(privateRoot, 'context-packs'),
@@ -877,6 +930,12 @@ function initializeWorkspace() {
   if (workspace) return workspace
   const next = createWorkspace()
   workspace = next
+  try {
+    cleanupOrphanTraces(
+      path.join(app.getPath('userData'), 'tyche-private', 'traces'),
+      groupId => Boolean(next.getGroup(groupId)),
+    )
+  } catch { /* orphan cleanup is best effort */ }
   workspaceChangedListener = notifyWorkspaceChanged
   workspaceRunFinishedListener = notifyRunFinished
   workspaceRunEventListener = notifyWorkspaceRunEvent
@@ -892,7 +951,7 @@ function createWindow(startupError = workspaceStartupError) {
     height: 920,
     minWidth: 980,
     minHeight: 680,
-    title: 'Meldwork',
+    title: 'Tyche',
     icon: appIconImage() || appIconPath(),
     backgroundColor: process.platform === 'darwin' ? '#e7edef' : '#f3f6f8',
     ...(process.platform === 'darwin' ? {
@@ -1018,6 +1077,19 @@ function registerIpc() {
     })).env,
     skillCatalog,
   })
+  const tracesRoot = path.join(app.getPath('userData'), 'tyche-private', 'traces')
+  roomTraceReader = createTraceReader({
+    tracesRoot,
+    isKnownGroup: groupId => {
+      try { return Boolean(workspace?.getGroup?.(groupId)) } catch { return false }
+    },
+  })
+  const traceStore = createTraceStore({ tracesRoot })
+  registerTraceIpc({ registerTrustedHandle, reader: roomTraceReader, store: traceStore })
+  registerTeamRoomIpc({
+    registerTrustedHandle,
+    getHost: () => teamRoomHost,
+  })
 }
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
@@ -1031,7 +1103,7 @@ if (!hasSingleInstanceLock) {
     try {
       ensurePrivateDirectory(app.getPath('userData'))
     } catch (error) {
-      console.error('MELDWORK_PRIVATE_DIRECTORY_UNAVAILABLE', { code: String(error?.code || '') })
+      console.error('TYCHE_PRIVATE_DIRECTORY_UNAVAILABLE', { code: String(error?.code || '') })
       app.quit()
       return
     }
@@ -1039,7 +1111,7 @@ if (!hasSingleInstanceLock) {
       migrateLegacyProductData(app.getPath('userData'))
     } catch (error) {
       console.error(
-        'MELDWORK_PRODUCT_DATA_MIGRATION_ABORTED',
+        'TYCHE_PRODUCT_DATA_MIGRATION_ABORTED',
         error?.diagnostic || { status: 'failed', code: String(error?.code || '') },
       )
       app.quit()
@@ -1047,21 +1119,21 @@ if (!hasSingleInstanceLock) {
     }
     const attachmentReferences = persistedAttachmentReferences(workspaceStoragePath())
     customAgentStore = new CustomAgentStore({
-      storagePath: path.join(app.getPath('userData'), 'meldwork-custom-agents.json'),
+      storagePath: path.join(app.getPath('userData'), 'tyche-custom-agents.json'),
       environment: async () => (await nativeShellEnvironment()).env,
     })
     cloudAgentBridges = new CloudAgentBridgeStore({
-      storagePath: path.join(app.getPath('userData'), 'meldwork-cloud-agent-bridges.json'),
+      storagePath: path.join(app.getPath('userData'), 'tyche-cloud-agent-bridges.json'),
       fetch: globalThis.fetch,
     })
     // The shared Provider store was removed; drop any legacy encrypted
     // credentials so they do not linger on disk unread.
     try {
       const { rmSync } = require('node:fs')
-      rmSync(path.join(app.getPath('userData'), 'meldwork-provider.json'), { force: true })
+      rmSync(path.join(app.getPath('userData'), 'tyche-provider.json'), { force: true })
     } catch { /* best-effort cleanup */ }
     knowledgeBaseStore = new KnowledgeBaseStore({
-      storagePath: path.join(app.getPath('userData'), 'meldwork-knowledge-base.json'),
+      storagePath: path.join(app.getPath('userData'), 'tyche-knowledge-base.json'),
     })
     try {
       attachmentStore = new AttachmentStore({
@@ -1112,16 +1184,76 @@ if (!hasSingleInstanceLock) {
         refreshLocalAgentState().catch(() => {})
       }
     })
+    const scheduler = processRunScheduler
+    scheduler.enterRecoveryMode()
     try {
-      initializeWorkspace()
-    } catch (error) {
-      if (error?.message !== 'RUN_LEDGER_LOAD_FAILED') throw error
-      workspaceStartupError = 'RUN_LEDGER_LOAD_FAILED'
-      createWindow()
-      app.on('activate', () => {
-        if (!shutdownStarted && BrowserWindow.getAllWindows().length === 0) createWindow()
-      })
-      return
+      let startupWorkspace
+      try {
+        startupWorkspace = initializeWorkspace()
+      } catch (error) {
+        if (error?.message !== 'RUN_LEDGER_LOAD_FAILED') throw error
+        workspaceStartupError = 'RUN_LEDGER_LOAD_FAILED'
+        createWindow()
+        app.on('activate', () => {
+          if (!shutdownStarted && BrowserWindow.getAllWindows().length === 0) createWindow()
+        })
+        return
+      }
+      // M4/M6 C: protect every known project root, recover the process
+      // registry, register residual occupancy, then leave recovery mode.
+      const privateRoot = path.join(app.getPath('userData'), 'tyche-private')
+      try {
+        const recovery = await startupWorkspace.processRegistry.recover()
+        for (const result of recovery) {
+          if (!result || result.outcome !== 'residual') continue
+          const residual = result.residual
+          let claims = Array.isArray(residual?.claims) ? residual.claims : []
+          if (!claims.length && residual?.workdir) {
+            try {
+              claims = [await makeClaim({ root: residual.workdir, path: '', mode: 'exclusive' })]
+            } catch (error) {
+              console.warn('[tyche] residual workdir could not be claimed',
+                result.recordId, error?.code || error?.message || error)
+            }
+          }
+          if (claims.length) {
+            scheduler.registerResidual({ residualId: result.recordId, claims })
+          } else {
+            console.warn('[tyche] residual has no writable claim', result.recordId)
+          }
+        }
+        const residuals = scheduler.snapshot().residuals
+        if (residuals.length) {
+          console.warn('[tyche] managed process residuals require review', residuals)
+        }
+      } catch (recoveryError) {
+        console.warn('[tyche] managed process recovery failed',
+          recoveryError?.message || recoveryError)
+      }
+      try {
+        const shell = await nativeShellEnvironment()
+        const roomEnv = { ...process.env, ...shell.env }
+        for (const key of shell.unsetKeys || []) delete roomEnv[key]
+        teamRoomHost = createRoomHost({
+          privateRoot,
+          env: roomEnv,
+          onChanged: () => {
+            if (mainWindow && !mainWindow.isDestroyed()
+                && isTrustedLocalWebContents(mainWindow.webContents)) {
+              mainWindow.webContents.send('team-room:changed', {})
+            }
+          },
+          onRuntimeEvent: queueTeamRoomRuntimeEvent,
+        })
+        await teamRoomHost.start()
+      } catch (error) {
+        console.warn('[tyche] team room startup failed',
+          error?.code || error?.message || error)
+        try { await teamRoomHost?.close() } catch { /* host may be partially assembled */ }
+        teamRoomHost = null
+      }
+    } finally {
+      scheduler.exitRecoveryMode()
     }
     if (attachmentStore && attachmentReferences) {
       try {
@@ -1177,6 +1309,10 @@ if (!hasSingleInstanceLock) {
         }
       },
       () => installer?.waitForIdle(),
+      async () => {
+        await teamRoomHost?.close()
+        teamRoomHost = null
+      },
     ]).then(() => {
       app.exit(0)
     })

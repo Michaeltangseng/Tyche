@@ -18,7 +18,7 @@ const {
 } = require('../../../src/agents/connectors/agent-connector-local.cjs')
 
 function fixture(t) {
-  const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-connector-packages-'))
+  const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-connector-packages-'))
   t.after(() => fs.rmSync(rootPath, { recursive: true, force: true }))
   let tick = 0
   const create = () => new AgentConnectorPackageStore({

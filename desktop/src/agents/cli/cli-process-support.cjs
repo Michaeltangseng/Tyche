@@ -21,6 +21,7 @@ const { validateOpenClawRuntimeGuard } = require('./openclaw-runtime.cjs')
 
 const TERMINATE_GRACE_MS = 500
 const KILL_SETTLE_MS = 500
+const MANAGED_PROCESS = Symbol.for('tyche.managed-process')
 const OPENCODE_READ_ONLY_PERMISSION = JSON.stringify({
   '*': 'deny',
   read: 'allow',
@@ -36,7 +37,7 @@ const OPENCLAW_RUNTIME_PATH_KEYS = Object.freeze([
   'OPENCLAW_CONFIG_PATH',
   'OPENCLAW_WORKSPACE_DIR',
 ])
-const TEST_RUNTIME_ENV = /^(?:CONNECTOR_TEST_|MELDWORK_TEST_)/
+const TEST_RUNTIME_ENV = /^(?:CONNECTOR_TEST_|TYCHE_TEST_)/
 const BLOCKED_RUNTIME_ENV = /^(?:NODE_OPTIONS|NODE_PATH|LD_PRELOAD|LD_LIBRARY_PATH|DYLD_|ELECTRON_RUN_AS_NODE)$/
 
 function agentExecutionError(code, diagnostic = '') {
@@ -67,7 +68,7 @@ function terminateWindowsProcessTree(child, spawnFn, timeoutMs = TERMINATE_GRACE
               resolveExit()
             }
           })
-          Object.defineProperty(failure, Symbol.for('meldwork.pending-process-exit'), { value: pending })
+          Object.defineProperty(failure, Symbol.for('tyche.pending-process-exit'), { value: pending })
         }
         reject(failure)
       } else resolve()
@@ -190,7 +191,7 @@ function childEnvironment(agent, workdir, options, platform) {
     : {}
   const openCodeSafetyEnv = {}
   // ACP has no terminal UI for question/plan transitions. Match the native
-  // headless runner: return the answer to Meldwork instead of waiting forever.
+  // headless runner: return the answer to Tyche instead of waiting forever.
   const headlessPermissions = { question: 'deny', plan_enter: 'deny', plan_exit: 'deny' }
   if (agent.kind === 'opencode') {
     openCodeSafetyEnv.OPENCODE_PERMISSION = JSON.stringify({
@@ -229,27 +230,27 @@ function childEnvironment(agent, workdir, options, platform) {
   if (agent.kind === 'hermes') {
     const home = platform === 'win32' ? (childEnv.USERPROFILE || childEnv.HOME) : childEnv.HOME
     const secrets = hermesConfigSecrets({ env: childEnv, home, platform, declaredKeys: nativeKeys })
-    Object.defineProperty(childEnv, Symbol.for('meldwork.project-secret-values'), { value: secrets })
+    Object.defineProperty(childEnv, Symbol.for('tyche.project-secret-values'), { value: secrets })
   }
   if (agent.kind === 'deepseek') {
     const home = platform === 'win32' ? (childEnv.USERPROFILE || childEnv.HOME) : childEnv.HOME
     const secrets = deepseekNativeSecrets({ env: childEnv, home, workdir })
-    Object.defineProperty(childEnv, Symbol.for('meldwork.project-secret-values'), { value: secrets })
+    Object.defineProperty(childEnv, Symbol.for('tyche.project-secret-values'), { value: secrets })
   }
   if (agent.kind === 'qwen') {
     const home = platform === 'win32' ? (childEnv.USERPROFILE || childEnv.HOME) : childEnv.HOME
     const secrets = qwenConfigSecrets({ home, env: childEnv, workdir, platform })
-    Object.defineProperty(childEnv, Symbol.for('meldwork.project-secret-values'), { value: secrets })
+    Object.defineProperty(childEnv, Symbol.for('tyche.project-secret-values'), { value: secrets })
   }
   if (agent.kind === 'mimo') {
     const home = platform === 'win32' ? (childEnv.USERPROFILE || childEnv.HOME) : childEnv.HOME
     const secrets = mimoConfigSecrets({ home, env: childEnv, workdir })
-    Object.defineProperty(childEnv, Symbol.for('meldwork.project-secret-values'), { value: secrets })
+    Object.defineProperty(childEnv, Symbol.for('tyche.project-secret-values'), { value: secrets })
   }
   if (agent.kind === 'opencode') {
     const home = platform === 'win32' ? (childEnv.USERPROFILE || childEnv.HOME) : childEnv.HOME
     const { configs } = opencodeConfigLayers({ home, env: childEnv, workdir })
-    Object.defineProperty(childEnv, Symbol.for('meldwork.project-secret-values'), { value: configSecrets(configs) })
+    Object.defineProperty(childEnv, Symbol.for('tyche.project-secret-values'), { value: configSecrets(configs) })
   }
   if (agent.kind === 'claude' && typeof workdir === 'string' && path.isAbsolute(workdir)) {
     const secrets = new Set()
@@ -275,17 +276,87 @@ function childEnvironment(agent, workdir, options, platform) {
         }
       } catch { /* The CLI reports invalid or unreadable native settings. */ }
     }
-    Object.defineProperty(childEnv, Symbol.for('meldwork.project-secret-values'), { value: [...secrets] })
+    Object.defineProperty(childEnv, Symbol.for('tyche.project-secret-values'), { value: [...secrets] })
   }
   return childEnv
 }
 
+function waitForManagedClose(child) {
+  if (child.closeEmitted === true) return Promise.resolve()
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
+      child.removeListener('close', finish)
+      child.removeListener('error', finish)
+      resolve()
+    }
+    child.once('close', finish)
+    child.once('error', finish)
+  })
+}
+
+// Single termination entry point for CLI and ACP adapters.
+// Managed children only speak the supervisor's fd 3 stop protocol; direct
+// process signals are reserved for unmanaged (read-only) children so a
+// `SIGKILL` cannot race past the supervisor's finalKill report.
+async function terminateAgentProcess(child, options = {}) {
+  if (!child) return
+  const force = options.force === true
+  const platform = options.platform || process.platform
+  const spawnFn = options.spawnFn
+  if (child[MANAGED_PROCESS]) {
+    if (child.closeEmitted !== true) {
+      try { child.stop({ force }) } catch { /* control channel already closed */ }
+      await waitForManagedClose(child)
+    }
+    return
+  }
+  if (child.exitCode != null || child.signalCode != null) return
+  if (platform === 'win32') return terminateWindowsProcessTree(child, spawnFn)
+  await new Promise((resolve) => {
+    let settled = false
+    let forceKillTimeout
+    let forceSettleTimeout
+    const finish = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(forceKillTimeout)
+      clearTimeout(forceSettleTimeout)
+      child.removeListener('close', finish)
+      child.removeListener('error', finish)
+      resolve()
+    }
+    child.once('close', finish)
+    child.once('error', finish)
+    const signalTree = (signal) => {
+      if (child.pid) {
+        try {
+          process.kill(-child.pid, signal)
+          return
+        } catch { /* fall back to the direct child */ }
+      }
+      try {
+        child.kill(signal)
+      } catch { /* the process has already exited */ }
+    }
+    signalTree(force ? 'SIGKILL' : 'SIGTERM')
+    if (!force) {
+      forceKillTimeout = setTimeout(() => signalTree('SIGKILL'), TERMINATE_GRACE_MS)
+    }
+    forceSettleTimeout = setTimeout(finish, (force ? 0 : TERMINATE_GRACE_MS) + KILL_SETTLE_MS)
+  })
+}
+
 module.exports = {
   KILL_SETTLE_MS,
+  MANAGED_PROCESS,
   TERMINATE_GRACE_MS,
   agentExecutionError,
   childEnvironment,
   failedAgentProcessError,
   invalidSessionFailure,
+  terminateAgentProcess,
   terminateWindowsProcessTree,
 }

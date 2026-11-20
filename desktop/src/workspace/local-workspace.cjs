@@ -17,6 +17,7 @@ const { RunBudget } = require('../runs/run-budget.cjs')
 const { LocalWorkspaceRunLedger } = require('./local-workspace-ledger.cjs')
 const { LocalWorkspaceAgentCatalog } = require('./local-workspace-agent-catalog.cjs')
 const { LocalWorkspaceAgentInvocation } = require('./local-workspace-agent-invocation.cjs')
+const { removeTracesForGroup } = require('../runs/trace/trace-store.cjs')
 const { LocalWorkspaceAutoRunner } = require('./local-workspace-auto-runner.cjs')
 const { LocalWorkspaceConversations } = require('./local-workspace-conversations.cjs')
 const { LocalWorkspaceContextPacks } = require('./local-workspace-context-packs.cjs')
@@ -63,7 +64,7 @@ const {
 } = require('./local-workspace-state.cjs')
 
 const MAX_AGENT_OUTCOME_ARTIFACTS = 16
-const OUTCOME_RECORDER = Object.freeze({ kind: 'system', actorId: 'meldwork-main' })
+const OUTCOME_RECORDER = Object.freeze({ kind: 'system', actorId: 'tyche-main' })
 const TERMINAL_RUN_STATUSES = new Set([
   'completed', 'partial', 'failed', 'stopped', 'timeout', 'round-limit', 'interrupted',
   'budget-exhausted', 'circuit-breaker',
@@ -154,10 +155,17 @@ class LocalWorkspace extends EventEmitter {
     this.createId = options.createId || randomUUID
     this.createRunId = options.createRunId || randomUUID
     this.runLedger = options.runLedger || null
+    this.processRegistry = options.processRegistry || null
+    this.managedSupervisorPath = options.managedSupervisorPath || ''
+    this.platform = options.platform || process.platform
+    this.onTraceAppended = typeof options.onTraceAppended === 'function'
+      ? options.onTraceAppended
+      : null
     this.workspaceRecovery = this.load()
     this.state = this.workspaceRecovery.state
     this.delivery = new DeliveryTasks(this)
-    const privateRoot = path.join(path.dirname(this.storagePath), 'meldwork-private')
+    const privateRoot = path.join(path.dirname(this.storagePath), 'tyche-private')
+    this.tracesRoot = options.tracesRoot || path.join(privateRoot, 'traces')
     this.contentBlobStore = options.contentBlobStore || new ContentBlobStore({
       rootPath: path.join(privateRoot, 'content-blobs'),
     })
@@ -267,6 +275,7 @@ class LocalWorkspace extends EventEmitter {
       agentLabel: kind => this.agentLabel(kind),
       createId: () => this.createId(),
       now: () => this.now(),
+      removeTracesForGroup: groupId => removeTracesForGroup(this.tracesRoot, groupId),
     })
     this.runMessages = new LocalWorkspaceRunMessages({
       state: () => this.state,
@@ -318,6 +327,9 @@ class LocalWorkspace extends EventEmitter {
       projectIdentity: (...args) => this.agentCatalog.projectIdentity(...args),
       addMessage: (...args) => this.addMessage(...args),
       runScheduler: options.runScheduler,
+      processRegistry: this.processRegistry,
+      managedSupervisorPath: this.managedSupervisorPath,
+      platform: this.platform,
       registerAgentController: (...args) => this.runCoordinator.registerAgentController(...args),
       unregisterAgentController: (...args) => this.runCoordinator.unregisterAgentController(...args),
       requestHumanGate: (...args) => this.requestHumanGate(...args),
@@ -325,6 +337,9 @@ class LocalWorkspace extends EventEmitter {
       connectorRuntime: options.connectorRuntime,
       attachmentSupport: (...args) => this.attachmentSupportFn(...args),
       validateSkillSelections: (...args) => this.validateSkillSelectionsFn(...args),
+      tracesRoot: this.tracesRoot,
+      onTraceAppended: payload => this.onTraceAppended?.(payload),
+      now: () => this.now(),
     })
     this.autoRunner = new LocalWorkspaceAutoRunner({
       reserveTurnSeqs: (...args) => this.reserveTurnSeqs(...args),
@@ -2639,7 +2654,7 @@ class LocalWorkspace extends EventEmitter {
     return openClawSessionRef(group, generation, taskId, this.state.agentPreferences?.openclaw?.nativeConfigDirectory)
   }
 
-  sessionState(group, kind, threadRootId = '', taskId = '') {
+  sessionState(group, kind, threadRootId = '', taskId = '', options = {}) {
     const previousSessions = { ...this.state.sessions }
     const previousSessionMeta = { ...this.state.sessionMeta }
     try {
@@ -2649,6 +2664,7 @@ class LocalWorkspace extends EventEmitter {
         kind,
         threadRootId,
         taskId,
+        sessionKey: options.sessionKey,
         save: () => this.save(),
       })
     } catch (error) {
@@ -2799,7 +2815,7 @@ class LocalWorkspace extends EventEmitter {
           kind: 'observation',
           level: 'observed',
           subject: { type: 'artifact', artifactId: artifact.artifactId },
-          summary: 'Meldwork captured the concrete Agent output.',
+          summary: 'Tyche captured the concrete Agent output.',
           recordedBy: OUTCOME_RECORDER,
           refs: evidenceRefs,
         })
@@ -2811,7 +2827,7 @@ class LocalWorkspace extends EventEmitter {
             kind: 'file-hash',
             level: 'observed',
             subject: { type: 'artifact', artifactId: artifact.artifactId },
-            summary: 'Meldwork captured and hashed the workspace output file.',
+            summary: 'Tyche captured and hashed the workspace output file.',
             recordedBy: OUTCOME_RECORDER,
             refs: [...evidenceRefs, { type: 'location', locationRef: descriptor.locationRef, contentHash: artifact.contentHash }],
           })

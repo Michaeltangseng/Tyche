@@ -38,7 +38,7 @@ test('valid filename arrays continue through import and preview', () => {
 })
 
 test('buffer import previews validated bytes without rereading the stored file', (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-attachment-preview-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-attachment-preview-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const store = new AttachmentStore({ rootPath: directory })
   const originalRead = store.readWithMetadata.bind(store)
@@ -54,7 +54,7 @@ test('buffer import previews validated bytes without rereading the stored file',
 })
 
 test('media ranges read and verify only intersecting chunks; legacy files retain full validation', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-media-range-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-media-range-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const store = new AttachmentStore({ rootPath: directory })
   const service = createAttachmentService({ getStore: () => store })
@@ -67,7 +67,7 @@ test('media ranges read and verify only intersecting chunks; legacy files retain
   const original = fs.createReadStream
   fs.createReadStream = (filename, options) => { reads.push([options.start, options.end]); return original(filename, options) }
   t.after(() => { fs.createReadStream = original })
-  const request = range => new Request(`meldwork-media://attachment/${item.id}`, { headers: { Range: range } })
+  const request = range => new Request(`tyche-media://attachment/${item.id}`, { headers: { Range: range } })
   const response = handler(request('bytes=300000-300099'))
   assert.equal(response.status, 206)
   assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes.subarray(300000, 300100))
@@ -100,7 +100,7 @@ test('media ranges read and verify only intersecting chunks; legacy files retain
 })
 
 test('media rejects a replaced symlink before serving data', { skip: process.platform === 'win32' }, (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-media-link-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-media-link-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const store = new AttachmentStore({ rootPath: directory })
   const bytes = Buffer.from('49443304000000000000', 'hex')
@@ -112,11 +112,11 @@ test('media rejects a replaced symlink before serving data', { skip: process.pla
   createAttachmentService({ getStore: () => store }).registerProtocol({
     handle: (_scheme, value) => { handler = value },
   })
-  assert.equal(handler(new Request(`meldwork-media://attachment/${item.id}`)).status, 404)
+  assert.equal(handler(new Request(`tyche-media://attachment/${item.id}`)).status, 404)
 })
 
 test('cancelling a media stream closes the underlying file', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-media-cancel-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-media-cancel-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const store = new AttachmentStore({ rootPath: directory })
   const bytes = Buffer.alloc(800000, 0x31)
@@ -138,7 +138,7 @@ test('cancelling a media stream closes the underlying file', async (t) => {
   createAttachmentService({ getStore: () => store }).registerProtocol({
     handle: (_scheme, value) => { handler = value },
   })
-  const reader = handler(new Request(`meldwork-media://attachment/${item.id}`)).body.getReader()
+  const reader = handler(new Request(`tyche-media://attachment/${item.id}`)).body.getReader()
   assert.equal((await reader.read()).done, false)
   await reader.cancel()
   for (let attempts = 0; !closed && attempts < 20; attempts += 1) {

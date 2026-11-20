@@ -11,6 +11,7 @@ const {
   cleanCurrentRound,
   cleanProgressSteps,
   cleanRunMaxRounds,
+  cleanText,
   emptyState,
   normalizeLoadedGroup,
   normalizeLoadedMessage,
@@ -41,6 +42,7 @@ const V4_PRIVATE_GATE_RESUME_KINDS = new Set([
   'v4_human_gate', 'v4_synthesis_recovery',
 ])
 const PUBLIC_AGENT_KIND = /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/
+const WORKSPACE_V3_BACKUP = 'tyche-workspace.v3.backup.json'
 
 function publicOrchestrationSnapshot(orchestration) {
   if (!orchestration || orchestration.version !== 4) return null
@@ -168,7 +170,7 @@ function loadWorkspaceState(storagePath) {
     }
   }
 
-  if (![1, 2, 3].includes(parsed?.version)) {
+  if (![1, 2, 3, 4].includes(parsed?.version)) {
     return {
       state: emptyState(),
       status: 'unsupported',
@@ -195,7 +197,7 @@ function loadWorkspaceState(storagePath) {
       if (!kinds.includes(message.agentKind)) kinds.push(message.agentKind)
       repliedAgentKinds.set(message.groupId, kinds)
     }
-    const groups = parsed.groups
+    let groups = parsed.groups
       .map(group => normalizeLoadedGroup(group, {
         recoveredAgentKinds: repliedAgentKinds.get(group?.id) || [],
       }))
@@ -223,7 +225,7 @@ function loadWorkspaceState(storagePath) {
     }
     return {
       state: {
-        version: 3,
+        version: 4,
         ...(parsed.workPreferences ? { workPreferences: loadedWorkPreferences(parsed.workPreferences) } : {}),
         ...(parsed.deliveryTasks ? {
           deliveryTasks: parseDeliveryTasks(parsed.deliveryTasks).filter(task => groupIds.has(task.groupId)),
@@ -256,11 +258,40 @@ function loadWorkspaceState(storagePath) {
   }
 }
 
+// Older builds reject v4 files, and keeping the version at 3 would make them
+// silently drop `projects`. Before the first v4 write, keep the original v3
+// file byte-for-byte so a downgrade has something to restore (M1/M5 3.1).
+function ensureV3Backup(storagePath, state) {
+  if (!state || !(Number(state.version) >= 4)) return
+  const backupPath = path.join(path.dirname(storagePath), WORKSPACE_V3_BACKUP)
+  if (fs.existsSync(backupPath)) return
+  let source
+  try {
+    source = fs.readFileSync(storagePath, 'utf8')
+  } catch (error) {
+    if (error?.code === 'ENOENT') return
+    throw error
+  }
+  let version
+  try {
+    version = JSON.parse(source)?.version
+  } catch {
+    return
+  }
+  if (![1, 2, 3].includes(version)) return
+  try {
+    atomicWritePrivateFile(backupPath, source)
+  } catch (error) {
+    if (error?.phase !== 'after-commit') throw error
+  }
+}
+
 // The whole workspace is rewritten on every save, synchronously on the main
 // process. Compact JSON cuts the bytes written (and the time the UI is
 // blocked) for long histories, and the private atomic writer fsyncs before
 // the rename so a crash cannot leave a truncated file behind.
 function saveWorkspaceState(storagePath, state) {
+  ensureV3Backup(storagePath, state)
   atomicWritePrivateFile(storagePath, `${JSON.stringify(state)}\n`)
 }
 

@@ -644,7 +644,7 @@ async function verifyAutomaticGateRecovery(t, gateIndex) {
       const completed = (completedTurns.get(agent.kind) || 0) + 1
       completedTurns.set(agent.kind, completed)
       const consensus = maxRounds > 1 && completed === maxRounds
-        ? '\n[[MELDWORK_CONSENSUS:agree]]'
+        ? '\n[[TYCHE_CONSENSUS:agree]]'
         : ''
       return {
         text: `${agent.kind} completed its automatic slot${consensus}`,
@@ -655,7 +655,7 @@ async function verifyAutomaticGateRecovery(t, gateIndex) {
       const completed = (completedTurns.get(agent.kind) || 0) + 1
       completedTurns.set(agent.kind, completed)
       const consensus = maxRounds > 1 && completed === maxRounds
-        ? '\n[[MELDWORK_CONSENSUS:agree]]'
+        ? '\n[[TYCHE_CONSENSUS:agree]]'
         : ''
       return {
         text: `Kimi completed its later automatic slot${consensus}`,
@@ -674,7 +674,7 @@ async function verifyAutomaticGateRecovery(t, gateIndex) {
     const completed = (completedTurns.get(agent.kind) || 0) + 1
     completedTurns.set(agent.kind, completed)
     const consensus = maxRounds > 1 && completed === maxRounds
-      ? '\n[[MELDWORK_CONSENSUS:agree]]'
+      ? '\n[[TYCHE_CONSENSUS:agree]]'
       : ''
     return {
       text: `Kimi resumed:${decision.optionId}${consensus}`,
@@ -1111,8 +1111,8 @@ test('V4 synthesis recovery reuses one durable Gate after its continuation check
     kind: 'observation',
     level: 'observed',
     subject: { type: 'artifact', artifactId: unrelatedArtifact.artifactId },
-    summary: 'Meldwork captured the unrelated durable output.',
-    recordedBy: { kind: 'system', actorId: 'meldwork-main' },
+    summary: 'Tyche captured the unrelated durable output.',
+    recordedBy: { kind: 'system', actorId: 'tyche-main' },
     refs: [
       { type: 'artifact', artifactId: unrelatedArtifact.artifactId },
       {

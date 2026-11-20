@@ -100,13 +100,6 @@ export function useAppWindowInteractions({
       shortcutMenuOpen.value = false
       return
     }
-    if (key === 'g') {
-      event.preventDefault()
-      closeCollapsedGroupMenu()
-      shortcutMenuOpen.value = false
-      openNewGroup()
-      return
-    }
     if (key === '[' || key === ']') {
       event.preventDefault()
       closeCollapsedGroupMenu()

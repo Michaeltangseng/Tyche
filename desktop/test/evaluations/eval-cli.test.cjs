@@ -11,7 +11,7 @@ const desktopRoot = path.resolve(__dirname, '..', '..')
 const runner = path.join(desktopRoot, 'scripts', 'run-evals.cjs')
 
 test('deterministic Eval CLI reproduces the committed frozen matrix', (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-eval-cli-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-eval-cli-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const matrixPath = path.join(directory, 'matrix.json')
   const run = childProcess.spawnSync(process.execPath, [
@@ -30,7 +30,7 @@ test('deterministic Eval CLI reproduces the committed frozen matrix', (t) => {
 
 test('provider Eval CLI remains disabled without explicit local opt-in', () => {
   const environment = { ...process.env }
-  delete environment.MELDWORK_EVAL_PROVIDER
+  delete environment.TYCHE_EVAL_PROVIDER
   const run = childProcess.spawnSync(process.execPath, [runner, '--suite', 'provider'], {
     cwd: desktopRoot,
     encoding: 'utf8',

@@ -3,8 +3,8 @@ const { V4_RECEIPT_MARKER_PREFIX } = require('./collaboration-receipt.cjs')
 // Control markers an Agent appends to its answer. They steer the harness and
 // must never reach the user's screen, even while the answer is still streaming.
 const CONSENSUS_MARKERS = Object.freeze([
-  '[[MELDWORK_CONSENSUS:agree]]',
-  '[[MELDWORK_CONSENSUS:continue]]',
+  '[[TYCHE_CONSENSUS:agree]]',
+  '[[TYCHE_CONSENSUS:continue]]',
 ])
 
 function escapeRegExp(value) {
@@ -33,14 +33,24 @@ function heldSuffixLength(buffer, markers) {
 // `push` returns the text that is safe to show now; text that might be the
 // start of a marker is held back until the next delta settles it, and
 // `flush` releases what is left once the answer has finished.
-function createAnswerMarkerFilter({ mode = 'plain' } = {}) {
-  if (mode === 'plain') {
+function createAnswerMarkerFilter({ mode = 'plain', stopMarkers = [] } = {}) {
+  const extraStopMarkers = Array.isArray(stopMarkers)
+    ? stopMarkers.filter(marker => typeof marker === 'string' && marker)
+    : []
+  if (mode === 'plain' && !extraStopMarkers.length) {
     return { push: delta => String(delta || ''), flush: () => '' }
   }
   const hideReceipt = mode === 'receipt'
-  const markers = hideReceipt
-    ? [...CONSENSUS_MARKERS, V4_RECEIPT_MARKER_PREFIX]
-    : [...CONSENSUS_MARKERS]
+  const baseMarkers = mode === 'plain' ? [] : CONSENSUS_MARKERS
+  const markers = [
+    ...baseMarkers,
+    ...(hideReceipt ? [V4_RECEIPT_MARKER_PREFIX] : []),
+    ...extraStopMarkers,
+  ]
+  const stopPrefixes = [
+    ...(hideReceipt ? [V4_RECEIPT_MARKER_PREFIX] : []),
+    ...extraStopMarkers,
+  ].map(marker => marker.toLowerCase())
   const pattern = new RegExp(markers.map(escapeRegExp).join('|'), 'i')
   let buffer = ''
   let receiptStarted = false
@@ -54,8 +64,7 @@ function createAnswerMarkerFilter({ mode = 'plain' } = {}) {
         if (match) {
           visible += buffer.slice(0, match.index)
           buffer = buffer.slice(match.index + match[0].length)
-          if (hideReceipt
-              && match[0].toLowerCase() === V4_RECEIPT_MARKER_PREFIX.toLowerCase()) {
+          if (stopPrefixes.includes(match[0].toLowerCase())) {
             receiptStarted = true
           }
           continue
@@ -70,6 +79,7 @@ function createAnswerMarkerFilter({ mode = 'plain' } = {}) {
     flush(finalText = '') {
       const rest = buffer
       buffer = ''
+      if (receiptStarted) return ''
       if (!hideReceipt) return rest
       // A held fragment is real answer text only when the final answer ends
       // with it; otherwise it was the start of the (hidden) receipt.

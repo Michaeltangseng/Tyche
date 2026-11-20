@@ -7,7 +7,7 @@ const { createTurnCompletion } = require('../../../src/agents/cli/cli-turn-compl
 const adapters = require('../../../src/agents/cli/cli-adapters.cjs')
 const { executable, within } = require('../../support/cli-adapters-test-helpers.cjs')
 
-const markerOf = boundary => boundary.instruction.match(/\[\[MELDWORK_TURN_DONE:[^\]]+\]\]/)[0]
+const markerOf = boundary => boundary.instruction.match(/\[\[TYCHE_TURN_DONE:[^\]]+\]\]/)[0]
 
 test('contribution boundary hides a split signal and ignores later acknowledgements', () => {
   const boundary = createTurnCompletion()
@@ -39,7 +39,7 @@ test('a quoted signal does not prevent a later explicit final signal', () => {
 
 for (const kind of ['opencode', 'mimo', 'hermes']) {
   test(`${kind} returns an explicit contribution normally even when native prompt never returns before cancel`, async (t) => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-turn-boundary-'))
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-turn-boundary-'))
     t.after(async () => {
       await adapters.shutdownAcpSessionRuntime()
       fs.rmSync(directory, { recursive: true, force: true })
@@ -58,7 +58,7 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', li
   else if (message.method === 'session/set_mode' || message.method === 'session/resume') send({ jsonrpc: '2.0', id: message.id, result: {} })
   else if (message.method === 'session/prompt') {
     request = message
-    const marker = message.params.prompt[0].text.match(/\\[\\[MELDWORK_TURN_DONE:[^\\]]+\\]\\]/)[0]
+    const marker = message.params.prompt[0].text.match(/\\[\\[TYCHE_TURN_DONE:[^\\]]+\\]\\]/)[0]
     send({ jsonrpc: '2.0', method: 'session/update', params: { sessionId, update: {
       sessionUpdate: 'tool_call', toolCallId: 'tool-proof', status: 'completed',
       title: 'Read evidence', kind: 'read', rawOutput: marker,
@@ -83,9 +83,9 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', li
       }), 10000)
     assert.equal(result.outcome, 'completed')
     assert.equal(result.text, 'My completed contribution.')
-    assert.match(outbound.prompt, /MELDWORK_TURN_DONE:/)
+    assert.match(outbound.prompt, /TYCHE_TURN_DONE:/)
     assert.ok(events.some(event => event.type === 'answer_delta'))
-    assert.ok(events.every(event => !/MELDWORK_TURN_DONE|Repeated closing|Late cancelled/.test(event.delta || '')))
+    assert.ok(events.every(event => !/TYCHE_TURN_DONE|Repeated closing|Late cancelled/.test(event.delta || '')))
     const next = await within(adapters.runAgent({ kind, executable: cli, acpAvailable: true },
       'Give the next contribution.', directory, {
         turnCompletion: true, acpPersistenceKey: 'boundary-test', sessionRef: result.sessionRef,

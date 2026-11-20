@@ -6,7 +6,7 @@ const path = require('node:path')
 const { hermesConfiguredProvider } = require('../../src/agents/hermes-config-summary.cjs')
 
 test('Hermes configuration summary reads the selected provider without exposing credentials', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-summary-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-summary-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, 'selected')
   fs.mkdirSync(root)
@@ -30,7 +30,7 @@ test('Hermes configuration summary reads the selected provider without exposing 
 })
 
 test('Hermes summary reads the selected native environment provider without exposing other values', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-env-summary-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-env-summary-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   fs.writeFileSync(path.join(home, '.env'), 'API_KEY=synthetic-secret\nexport HERMES_INFERENCE_PROVIDER="openrouter"\n')
   assert.equal(hermesConfiguredProvider({ home, env: { HERMES_HOME: home } }), 'openrouter')
@@ -41,7 +41,7 @@ test('Hermes summary reads the selected native environment provider without expo
   assert.equal(hermesConfiguredProvider({ home, env: { HERMES_HOME: home, HERMES_INFERENCE_PROVIDER: 'custom' } }), '')
   fs.writeFileSync(path.join(home, '.env'), 'SELECTED_PROVIDER=openrouter\nHERMES_INFERENCE_PROVIDER=${SELECTED_PROVIDER}\n')
   assert.equal(hermesConfiguredProvider({ home, env: { HERMES_HOME: home, SELECTED_PROVIDER: 'stale' } }), 'openrouter')
-  fs.writeFileSync(path.join(home, '.env'), 'HERMES_INFERENCE_PROVIDER=${UNSET_MELDWORK_PROVIDER:-custom:work}\n')
+  fs.writeFileSync(path.join(home, '.env'), 'HERMES_INFERENCE_PROVIDER=${UNSET_TYCHE_PROVIDER:-custom:work}\n')
   assert.equal(hermesConfiguredProvider({ home, env: { HERMES_HOME: home } }), 'custom:work')
   fs.writeFileSync(path.join(home, 'config.yaml'), 'model:\n  provider: anthropic\n')
   assert.equal(hermesConfiguredProvider({ home, env: { HERMES_HOME: home } }), 'anthropic')

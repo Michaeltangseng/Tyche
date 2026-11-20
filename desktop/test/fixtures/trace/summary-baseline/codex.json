@@ -1,0 +1,29 @@
+[
+  {
+    "id": "codex-reasoning-1",
+    "type": "reasoning_summary",
+    "title": "reasoning",
+    "status": "completed",
+    "summary": "Check the repository before answering."
+  },
+  {
+    "id": "codex-command-1",
+    "title": "read_file",
+    "status": "running",
+    "type": "tool_start",
+    "summary": "Bash: operation: command"
+  },
+  {
+    "id": "codex-command-1",
+    "title": "read_file",
+    "status": "completed",
+    "type": "tool_result_summary",
+    "summary": "Bash: operation: command",
+    "detail": "Exit code: 0\nOutput: 2 lines, 16 bytes"
+  },
+  {
+    "type": "answer_delta",
+    "status": "running",
+    "delta": "The fixture command listed one file."
+  }
+]

@@ -6,7 +6,7 @@ const path = require('node:path')
 const { resolveNativeCredentialState } = require('../../../src/agents/local-agent-readiness.cjs')
 
 test('MiMo selected native provider remains usable without signing in to the built-in account', async t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-mimo-selected-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-mimo-selected-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.config', 'mimocode')
   fs.mkdirSync(root, { recursive: true })

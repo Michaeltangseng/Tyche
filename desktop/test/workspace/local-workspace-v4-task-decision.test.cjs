@@ -7,7 +7,7 @@ const { RunLedger } = require('../../src/runs/run-ledger.cjs')
 const { fixture } = require('../support/local-workspace-test-helpers.cjs')
 
 function reply(status, reason, extra = {}) {
-  return `${reason}\n[[MELDWORK_COLLABORATION:${JSON.stringify({ summary: reason, taskDecision: {
+  return `${reason}\n[[TYCHE_COLLABORATION:${JSON.stringify({ summary: reason, taskDecision: {
     status, reason, deliverables: status === 'completed' ? ['The requested answer.'] : [], nextKinds: [], ...extra,
   } })}]]`
 }

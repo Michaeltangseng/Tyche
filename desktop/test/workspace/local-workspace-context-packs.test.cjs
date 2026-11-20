@@ -640,12 +640,12 @@ test('group Tasks reuse native Sessions across automatic rounds and later Tasks'
     await runOptions.onOutboundPayload(outboundPayload(prompt))
     const sessionRef = runOptions.sessionRef || `${agent.kind}-task-session`
     await runOptions.onSessionRef(sessionRef, { transport: 'legacy' })
-    const automatic = prompt.includes('MELDWORK_CONSENSUS')
+    const automatic = prompt.includes('TYCHE_CONSENSUS')
     const kindAttempts = calls.filter(call => call.agent.kind === agent.kind).length
     const consensus = kindAttempts === 1 ? 'continue' : 'agree'
     return {
       text: automatic
-        ? `Automatic result ${calls.length}\n[[MELDWORK_CONSENSUS:${consensus}]]`
+        ? `Automatic result ${calls.length}\n[[TYCHE_CONSENSUS:${consensus}]]`
         : 'Fresh Task result',
       sessionRef,
     }

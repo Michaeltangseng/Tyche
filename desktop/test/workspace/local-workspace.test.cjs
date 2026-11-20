@@ -65,7 +65,7 @@ test('rejects unsupported workflow submissions before launching an Agent', async
 test('workspace startup rejects orphaned Human Gates after restoring interrupted Runs', (t) => {
   const { directory, options } = fixture()
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
-  const privateRoot = path.join(directory, 'meldwork-private')
+  const privateRoot = path.join(directory, 'tyche-private')
   const contentBlobStore = new ContentBlobStore({
     rootPath: path.join(privateRoot, 'content-blobs'),
   })
@@ -93,7 +93,7 @@ test('workspace startup rejects orphaned Human Gates after restoring interrupted
   assert.deepEqual(workspace.listHumanGates().find(gate => gate.gateId === pending.gateId)?.decision, {
     status: 'rejected',
     optionId: 'reject-once',
-    actorId: 'meldwork-system',
+    actorId: 'tyche-system',
     decidedAt: '2026-07-28T00:00:00.000Z',
   })
 })
@@ -1349,7 +1349,7 @@ for (const failure of ['empty reply', 'message persistence']) {
 test('all supported workspace versions preserve stored or omitted read-only permission', (t) => {
   const { directory, options } = fixture()
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
-  for (const version of [1, 2, 3]) {
+  for (const version of [1, 2, 3, 4]) {
     for (const storedPermission of [false, undefined]) {
       const group = {
         id: `workspace-v${version}-${storedPermission === false ? 'false' : 'omitted'}`,
@@ -1366,10 +1366,33 @@ test('all supported workspace versions preserve stored or omitted read-only perm
       })}\n`)
 
       const restored = new LocalWorkspace(options)
-      assert.equal(restored.state.version, 3)
+      assert.equal(restored.state.version, 4)
       assert.equal(restored.snapshot().groups[0].allowWrite, false)
     }
   }
+})
+
+test('the project main chat cannot be deleted on its own', async (t) => {
+  const { directory, options } = fixture()
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const workspace = new LocalWorkspace(options)
+  await workspace.refreshAgents()
+  const main = workspace.createGroup({
+    name: 'Main', agentKinds: ['codex'], workdir: directory,
+    projectId: 'project-1', projectRole: 'main',
+  })
+  const chat = workspace.createGroup({
+    name: 'Chat', agentKinds: ['codex'], workdir: directory, projectId: 'project-1',
+  })
+  assert.equal(main.projectId, 'project-1')
+  assert.equal(main.projectRole, 'main')
+  assert.equal(chat.projectRole, undefined)
+
+  assert.throws(() => workspace.deleteGroup(main.id), {
+    message: 'PROJECT_MAIN_CHAT_UNDELETABLE',
+  })
+  workspace.deleteGroup(chat.id)
+  assert.deepEqual(workspace.state.groups.map(group => group.id), [main.id])
 })
 
 test('Skills are validated and injected only into their selected target Agent', async (t) => {
@@ -1447,7 +1470,7 @@ test('Skill contracts block permission escalation before the Agent process start
       enumerable: false,
       value: {
         schemaVersion: 1,
-        recordType: 'meldwork-skill-manifest',
+        recordType: 'tyche-skill-manifest',
         identity: { id: 'global/writer', version: '1.0.0' },
         origin: { type: 'local-unsigned', publisher: 'Local author' },
         agents: [{ kind: 'codex', minVersion: '0.130.0', maxVersion: '0.200.0' }],
@@ -1623,9 +1646,9 @@ test('document messages use temporary relative Agent inputs without exposing pri
   })
 
   assert.deepEqual(calls[0].runOptions.attachments, [])
-  assert.match(calls[0].prompt, /\.meldwork-input\/\.run-[^/]+\/1-report\.pdf/)
+  assert.match(calls[0].prompt, /\.tyche-input\/\.run-[^/]+\/1-report\.pdf/)
   assert.equal(calls[0].prompt.includes(sourceRoot), false)
-  assert.equal(fs.existsSync(path.join(directory, '.meldwork-input')), false)
+  assert.equal(fs.existsSync(path.join(directory, '.tyche-input')), false)
   assert.deepEqual(workspace.snapshot().messages[0].attachments, [attachment])
 })
 
@@ -1796,9 +1819,9 @@ test('generic file support delivers images to Agents without native image argume
   const attachmentPath = path.join(attachmentRoot, 'attachment-1.png')
   assert.deepEqual(calls.map(call => call.agent.kind), ['codex', 'workbuddy'])
   assert.deepEqual(calls.map(call => call.runOptions.attachments), [[attachmentPath], []])
-  assert.doesNotMatch(calls[0].prompt, /\.meldwork-input/)
-  assert.match(calls[1].prompt, /\.meldwork-input\/\.run-[^/]+\/1-one\.png/)
-  assert.equal(fs.existsSync(path.join(directory, '.meldwork-input')), false)
+  assert.doesNotMatch(calls[0].prompt, /\.tyche-input/)
+  assert.match(calls[1].prompt, /\.tyche-input\/\.run-[^/]+\/1-one\.png/)
+  assert.equal(fs.existsSync(path.join(directory, '.tyche-input')), false)
   assert.equal(workspace.snapshot().messages.length, 3)
 })
 
@@ -2129,7 +2152,7 @@ test('a failed process termination is recorded as failure instead of a successfu
     started.resolve()
     input.signal.addEventListener('abort', () => setTimeout(() => {
       const error = Object.assign(new Error('LOCAL_AGENT_TERMINATION_FAILED'), { code: 'LOCAL_AGENT_TERMINATION_FAILED' })
-      Object.defineProperty(error, Symbol.for('meldwork.pending-process-exit'), { value: exited.promise })
+      Object.defineProperty(error, Symbol.for('tyche.pending-process-exit'), { value: exited.promise })
       reject(error)
     }, 10), { once: true })
   })
@@ -2179,7 +2202,7 @@ test('a slow Windows cancellation retains the lease through a late termination f
   await controller.done
   assert.equal(scheduler.snapshot().active.global, 1)
   const error = Object.assign(new Error('LOCAL_AGENT_TERMINATION_FAILED'), { code: 'LOCAL_AGENT_TERMINATION_FAILED' })
-  Object.defineProperty(error, Symbol.for('meldwork.pending-process-exit'), { value: exited.promise })
+  Object.defineProperty(error, Symbol.for('tyche.pending-process-exit'), { value: exited.promise })
   runner.reject(error)
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(scheduler.snapshot().active.global, 1)
@@ -2358,9 +2381,9 @@ test('direct conversations force manual mode and reuse their group Agent session
   // as a one-line reminder on resumed turns.
   assert.deepEqual(calls.map(call => call.prompt.split('\n')[0]), ['第一条', '第二条'])
   assert.equal(calls.some(call => /You are participating|group Session|Group topic/.test(call.prompt)), false)
-  assert.match(calls[0].prompt, /\.meldwork-output\//)
+  assert.match(calls[0].prompt, /\.tyche-output\//)
   assert.ok(calls[1].prompt.length < calls[0].prompt.length)
-  assert.equal(calls.some(call => call.prompt.includes('MELDWORK_CONSENSUS')), false)
+  assert.equal(calls.some(call => call.prompt.includes('TYCHE_CONSENSUS')), false)
   assert.equal(workspace.snapshot().messages.some(message => message.threadRootId), false)
   const restored = new LocalWorkspace(options)
   assert.deepEqual(restored.snapshot().groups[0], direct)
@@ -2398,7 +2421,7 @@ test('writable conversations persist validated Agent media outputs and enforce t
   assert.equal(importCalls[0].workdir, directory)
   assert.deepEqual(importCalls[0].baseline, { marker: 'before-run' })
   assert.equal(Number.isFinite(importCalls[0].startedAt), true)
-  assert.match(calls[0].prompt, /\.meldwork-output\//)
+  assert.match(calls[0].prompt, /\.tyche-output\//)
   assert.match(calls[0].prompt, /do not claim it was generated unless a real file exists/i)
   const reply = workspace.snapshot().messages.find(message => message.role === 'agent')
   assert.deepEqual(reply.attachments, generated)
@@ -2460,7 +2483,7 @@ test('every writable built-in conversational Agent owns media execution and reta
 
   assert.equal(generationCalls.length, 0)
   assert.equal(calls.length, kinds.length * requests.length)
-  assert.equal(calls.some(call => /Meldwork generated and will attach/.test(call.prompt)), false)
+  assert.equal(calls.some(call => /Tyche generated and will attach/.test(call.prompt)), false)
   const replies = workspace.snapshot().messages.filter(message => message.role === 'agent')
   assert.equal(replies.length, kinds.length * requests.length)
   assert.deepEqual(replies.map(reply => reply.attachments?.[0]?.mimeType), kinds.flatMap(() => (
@@ -2560,7 +2583,7 @@ test('unavailable shared media Providers do not interfere with targeted Agent ex
   assert.equal(calls.length, 1)
   assert.equal(calls[0].agent.kind, 'codex')
   assert.doesNotMatch(calls[0].prompt, /shared media generator was unavailable/i)
-  assert.match(calls[0].prompt, /\.meldwork-output\//)
+  assert.match(calls[0].prompt, /\.tyche-output\//)
   const reply = workspace.snapshot().messages.find(message => message.role === 'agent')
   assert.deepEqual(reply.attachments, [generated])
   assert.equal(workspace.snapshot().messages.some(message => (
@@ -2646,7 +2669,7 @@ test('direct media requests go to the native Agent without a shared Provider pre
   assert.equal(calls.length, 1)
   assert.equal(calls[0].agent.kind, 'hermes')
   assert.doesNotMatch(calls[0].prompt, /shared media generator was unavailable/i)
-  assert.match(calls[0].prompt, /\.meldwork-output\//)
+  assert.match(calls[0].prompt, /\.tyche-output\//)
   const reply = workspace.snapshot().messages.find(message => message.role === 'agent')
   assert.deepEqual(reply.attachments, [generated])
   assert.equal(workspace.snapshot().messages.some(message => (
@@ -2818,7 +2841,7 @@ test('a targeted group image task preserves task authority and native output imp
   assert.equal(calls[0].agent.kind, 'hermes')
   assert.equal(calls[0].runOptions.sessionRef, 'legacy-hermes-research-session')
   assert.match(calls[0].prompt, /Current user task \(authoritative\):\nNEW_IMAGE_TASK/)
-  assert.doesNotMatch(calls[0].prompt, /Meldwork generated and will attach/)
+  assert.doesNotMatch(calls[0].prompt, /Tyche generated and will attach/)
   assert.match(calls[0].prompt, /Final response scope:[\s\S]*Do not append an answer to an older task/)
   assert.ok(calls[0].prompt.lastIndexOf('Final response scope:') > calls[0].prompt.lastIndexOf('OLD_RESEARCH_TASK'))
   assert.doesNotMatch(calls[0].prompt, /Continue this group Session/)
@@ -2868,7 +2891,7 @@ test('every built-in conversational Agent retains its group Session for a newly 
     if (call.agent.kind === 'openclaw') {
       assert.match(
         call.runOptions.sessionRef,
-        /^agent:main:desktop-meldwork-[a-f0-9]{20}-openclaw$/,
+        /^agent:main:desktop-tyche-[a-f0-9]{20}-openclaw$/,
       )
     } else {
       assert.equal(call.runOptions.sessionRef, `legacy-${call.agent.kind}-session`, call.agent.kind)
@@ -2889,7 +2912,7 @@ test('group sessions migrate the current or most recent legacy root per Agent', 
   options.runAgent = async (agent, prompt, workdir, runOptions) => {
     calls.push({ agent, prompt, workdir, runOptions })
     return {
-      text: `${agent.kind} agrees\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} agrees\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-session`,
     }
   }
@@ -2941,7 +2964,7 @@ test('legacy GEO sessions survive across automatic rounds and subsequent user ta
   options.runAgent = async (agent, prompt, workdir, runOptions) => {
     calls.push({ agent, prompt, workdir, runOptions })
     return {
-      text: `${agent.kind} completed the GEO turn\n[[MELDWORK_CONSENSUS:agree]]`,
+      text: `${agent.kind} completed the GEO turn\n[[TYCHE_CONSENSUS:agree]]`,
       sessionRef: runOptions.sessionRef || `${agent.kind}-group-session`,
     }
   }
@@ -3140,7 +3163,7 @@ test('Kimi and OpenClaw retain native sessions within a group and isolate differ
   await workspace.sendMessage({ groupId: first.id, text: 'Kimi 1', targetKinds: ['kimi'] })
   const firstRoot = workspace.snapshot().messages[0].id
   const openClawKey = workspace.sessionKey(first.id, 'openclaw')
-  workspace.state.sessions[openClawKey] = 'explicit:meldwork-legacy-openclaw'
+  workspace.state.sessions[openClawKey] = 'explicit:tyche-legacy-openclaw'
   workspace.save()
   await workspace.sendMessage({
     groupId: first.id, text: 'Kimi 2', targetKinds: ['kimi'], threadRootId: firstRoot,
@@ -3155,11 +3178,11 @@ test('Kimi and OpenClaw retain native sessions within a group and isolate differ
 
   const sessionRefs = calls.map(call => call.runOptions.sessionRef)
   assert.deepEqual(sessionRefs.slice(0, 2), ['', 'kimi-session'])
-  assert.match(sessionRefs[2], /^agent:main:desktop-meldwork-[a-f0-9]{20}-openclaw$/)
-  assert.match(sessionRefs[3], /^agent:main:desktop-meldwork-[a-f0-9]{20}-openclaw$/)
+  assert.match(sessionRefs[2], /^agent:main:desktop-tyche-[a-f0-9]{20}-openclaw$/)
+  assert.match(sessionRefs[3], /^agent:main:desktop-tyche-[a-f0-9]{20}-openclaw$/)
   assert.equal(sessionRefs[3], sessionRefs[2])
   assert.notEqual(sessionRefs[4], sessionRefs[2])
-  assert.notEqual(workspace.state.sessions[openClawKey], 'explicit:meldwork-legacy-openclaw')
+  assert.notEqual(workspace.state.sessions[openClawKey], 'explicit:tyche-legacy-openclaw')
   assert.notEqual(workspace.sessionKey(first.id, 'openclaw', firstRoot), openClawKey)
   assert.equal(calls[0].runOptions.sandbox, 'workspace-write')
   assert.equal(calls[1].runOptions.sandbox, 'workspace-write')

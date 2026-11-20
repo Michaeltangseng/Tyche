@@ -25,7 +25,7 @@ test('direct Hermes conversations reuse one persistent ACP runtime key across me
   await workspace.refreshAgents()
   const group = workspace.createGroup({
     name: 'Hermes ACP direct', agentKinds: ['hermes'], workdir: directory,
-    conversationType: 'direct', directAgentKind: 'hermes',
+    allowWrite: false, conversationType: 'direct', directAgentKind: 'hermes',
   })
 
   await workspace.sendMessage({ groupId: group.id, text: 'first' })
@@ -37,6 +37,35 @@ test('direct Hermes conversations reuse one persistent ACP runtime key across me
   assert.equal(typeof calls[0].runOptions.acpPersistenceKey, 'string')
   assert.equal(calls[0].runOptions.acpPersistenceKey.length > 0, true)
   assert.equal(calls[1].runOptions.acpPersistenceKey, calls[0].runOptions.acpPersistenceKey)
+})
+
+test('writable Hermes conversations run each round without a persistent ACP key', async (t) => {
+  const { directory, calls, options } = fixture()
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  options.detectAgents = async () => [{
+    kind: 'hermes', name: 'Hermes CLI', executable: '/tmp/hermes', version: '2',
+    acpAvailable: true,
+  }]
+  options.runAgent = async (agent, prompt, workdir, runOptions) => {
+    calls.push({ agent, prompt, workdir, runOptions })
+    const sessionRef = runOptions.sessionRef || 'hermes-acp-session'
+    await runOptions.onSessionRef(sessionRef, { transport: 'acp' })
+    return { text: `reply ${calls.length}`, sessionRef, outcome: 'completed' }
+  }
+  const workspace = new LocalWorkspace(options)
+  await workspace.refreshAgents()
+  const group = workspace.createGroup({
+    name: 'Writable Hermes ACP direct', agentKinds: ['hermes'], workdir: directory,
+    allowWrite: true, conversationType: 'direct', directAgentKind: 'hermes',
+  })
+
+  await workspace.sendMessage({ groupId: group.id, text: 'first' })
+  await workspace.sendMessage({ groupId: group.id, text: 'second' })
+
+  assert.deepEqual(calls.map(call => call.runOptions.sessionRef), ['', 'hermes-acp-session'])
+  assert.equal(calls[0].runOptions.sandbox, 'workspace-write')
+  assert.equal(calls[0].runOptions.acpPersistenceKey, undefined)
+  assert.equal(calls[1].runOptions.acpPersistenceKey, undefined)
 })
 
 test('direct Pi conversations reuse the native JSON session across messages', async (t) => {
@@ -139,6 +168,7 @@ test('group OpenCode conversations reuse one persistent ACP runtime key across r
   await workspace.refreshAgents()
   const group = workspace.createGroup({
     name: 'OpenCode ACP group', agentKinds: ['codex', 'opencode'], workdir: directory,
+    allowWrite: false,
   })
 
   await workspace.sendMessage({ groupId: group.id, text: 'first', mode: 'auto', maxRounds: 2 })
@@ -170,7 +200,7 @@ test('Natural V4 keeps Hermes, OpenCode, and Claude Code on one Session per grou
       if (['hermes', 'opencode'].includes(agent.kind)) {
         await runOptions.onSessionRef(sessionRef, { transport: 'acp' })
       }
-      const taskDecision = agent.kind === 'hermes' ? `\n[[MELDWORK_COLLABORATION:${JSON.stringify({
+      const taskDecision = agent.kind === 'hermes' ? `\n[[TYCHE_COLLABORATION:${JSON.stringify({
         summary: 'Continue the session-continuity exercise.',
         taskDecision: {
           status: 'continue', reason: 'Continue the requested rounds until the configured round budget is reached.',
@@ -186,6 +216,7 @@ test('Natural V4 keeps Hermes, OpenCode, and Claude Code on one Session per grou
       name: 'Native Session continuity',
       agentKinds: ['hermes', 'opencode', 'claude'],
       workdir: directory,
+      allowWrite: false,
     })
 
     await workspace.sendMessage({

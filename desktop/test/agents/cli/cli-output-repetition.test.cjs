@@ -80,7 +80,7 @@ test('a closing paragraph and a numbered phrase collection are not a native loop
 })
 
 test('detects MiMo short acknowledgements and native JSON-stream answer deltas', () => {
-  for (const phrase of ['已确认，随时待命。', 'MELDWORK_OK']) {
+  for (const phrase of ['已确认，随时待命。', 'TYCHE_OK']) {
     const guard = createOutputRepetitionGuard()
     let count = 0
     while (++count < 20 && !guard({ type: 'answer_delta', delta: phrase })) {}

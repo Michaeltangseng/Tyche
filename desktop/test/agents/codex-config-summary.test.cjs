@@ -6,7 +6,7 @@ const path = require('node:path')
 const { codexConfiguredProvider } = require('../../src/agents/codex-config-summary.cjs')
 
 test('Codex summary follows the configured profile and never returns secret-like values', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-codex-summary-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-codex-summary-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, 'selected')
   fs.mkdirSync(root)

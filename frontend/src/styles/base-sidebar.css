@@ -140,16 +140,7 @@
   flex: 0 0 34px;
 }
 
-.sidebar.collapsed .brand-button span,
-.sidebar.collapsed .new-group-button span,
-.sidebar.collapsed .nav-heading,
-.sidebar.collapsed .sidebar-agent-location-heading,
-.sidebar.collapsed .sidebar-agent-main > span,
-.sidebar.collapsed .sidebar-agent-new,
-.sidebar.collapsed .direct-session-list,
-.sidebar.collapsed .group-nav-section,
-.sidebar.collapsed .nav-empty,
-.sidebar.collapsed .sidebar-footer button > span {
+.sidebar.collapsed .brand-button span, .sidebar.collapsed .new-group-button span, .sidebar.collapsed .nav-heading, .sidebar.collapsed .sidebar-agent-location-heading, .sidebar.collapsed .sidebar-agent-main > span, .sidebar.collapsed .sidebar-agent-new, .sidebar.collapsed .direct-session-list, .sidebar.collapsed .group-nav-section, .sidebar.collapsed .nav-empty, .sidebar.collapsed .sidebar-footer button > span{
   display: none;
 }
 
@@ -197,6 +188,131 @@
 
 .sidebar.collapsed .sidebar-footer-actions {
   flex-direction: column;
+}
+
+.sidebar-rail {
+  width: var(--sidebar-collapsed-width);
+  min-height: 0;
+  flex: 1 1 auto;
+  align-self: flex-start;
+  display: flex;
+  overflow: hidden;
+}
+
+.sidebar-rail-scroll {
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 0 14px;
+  overflow-y: auto;
+}
+
+.sidebar-rail-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.sidebar-rail-item {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.sidebar-rail-item:hover,
+.sidebar-rail-item:focus-visible,
+.sidebar-rail-item.active {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.sidebar-rail-item > img,
+.sidebar-rail-item .agent-logo-cloud,
+.sidebar-rail-item .agent-logo-cloud img {
+  width: 28px;
+  height: 28px;
+}
+
+.sidebar-rail-item .agent-logo-cloud img {
+  object-fit: contain;
+}
+
+.sidebar-rail-item.unavailable img {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+
+.sidebar-rail-divider {
+  width: 26px;
+  height: 1px;
+  flex: 0 0 auto;
+  margin: 4px 0;
+  border-radius: 1px;
+  background: var(--border);
+}
+
+.sidebar-rail-count {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  min-width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+
+
+
+
+.sidebar-rail-item > .attention-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+
+.sidebar-rail-item .agent-attention-dot {
+  top: -1px;
+  right: -3px;
+}
+
+.sidebar-rail-add {
+  color: var(--muted);
+  border: 1px dashed var(--border);
+}
+
+.sidebar-rail-add:hover,
+.sidebar-rail-add:focus-visible {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.sidebar-rail-add svg {
+  width: 18px;
+  height: 18px;
 }
 
 .collapsed-group-switcher {
@@ -802,6 +918,311 @@
 .titlebar-preferences { display: flex; gap: 2px; }
 .app-shell:not([data-platform="darwin"]) { --desktop-titlebar-height: 32px; }
 .titlebar-actions .shortcut-menu { top: calc(100% + 8px); right: 0; }
+
+.nav-heading-chevron {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.project-room-heading {
+  cursor: default;
+}
+
+.project-room-heading .nav-heading-count {
+  margin-left: auto;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.project-room-list {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.project-room-entry {
+  min-width: 0;
+}
+
+.project-room-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px 24px;
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+
+.project-room-row:hover {
+  background: var(--surface-hover);
+}
+
+.project-room-row.active {
+  background: var(--surface-active);
+}
+
+.project-room-open {
+  min-width: 0;
+  height: 44px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-soft);
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-room-open:hover,
+.project-room-open:focus-visible {
+  outline: none;
+  color: var(--text);
+}
+
+.project-room-avatar {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.project-room-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.project-room-copy strong,
+.project-room-copy small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-room-copy strong {
+  font-size: var(--text-sm);
+}
+
+.project-room-copy small {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.project-room-copy small[data-tone="warning"] {
+  color: var(--warning);
+}
+
+
+
+
+
+
+
+.project-room-add svg, .project-room-delete svg{
+  width: 14px;
+  height: 14px;
+}
+
+.project-room-add,
+.project-room-delete {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  opacity: 0.45;
+  cursor: pointer;
+}
+
+.project-room-add:hover,
+.project-room-add:focus-visible {
+  outline: none;
+  background: var(--surface-active);
+  color: var(--accent);
+  opacity: 1;
+}
+
+.project-room-row:hover .project-room-add,
+.project-room-row:hover .project-room-delete,
+.project-room-row:focus-within .project-room-add,
+.project-room-row:focus-within .project-room-delete {
+  opacity: 1;
+}
+
+.project-room-delete:hover,
+.project-room-delete:focus-visible {
+  outline: none;
+  background: var(--surface-active);
+  color: var(--danger);
+  opacity: 1;
+}
+
+.project-room-groups {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  margin: 0 3px 4px 21px;
+  padding-left: 8px;
+  border-left: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+}
+
+.team-room-row {
+  grid-template-columns: minmax(0, 1fr) 28px 24px;
+}
+
+.team-room-heading .team-room-add {
+  margin-left: 2px;
+  opacity: 1;
+}
+
+.team-delete-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 139;
+}
+
+.team-room-chat-empty {
+  margin: 2px 3px 6px 29px;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.project-room-group-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.project-room-group {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-soft);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-room-group-delete {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  opacity: 0.35;
+  cursor: pointer;
+}
+
+.project-room-group-delete svg {
+  width: 13px;
+  height: 13px;
+}
+
+.project-room-group-row:hover .project-room-group-delete,
+.project-room-group-row:focus-within .project-room-group-delete {
+  opacity: 1;
+}
+
+.project-room-group-delete:hover,
+.project-room-group-delete:focus-visible {
+  outline: none;
+  background: var(--surface-active);
+  color: var(--danger);
+  opacity: 1;
+}
+
+.project-room-group:hover,
+.project-room-group:focus-visible {
+  outline: none;
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.project-room-group.active {
+  background: var(--surface-active);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.project-room-group-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-room-group-badge {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--surface-active);
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+}
+
+.project-room-group > .attention-mark,
+.project-room-group > .run-mark {
+  margin-left: auto;
+}
 
 @media (prefers-reduced-motion: no-preference) {
   .sidebar:not(.collapsed) .brand-button span,

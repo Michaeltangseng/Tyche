@@ -12,7 +12,7 @@ const {
 const { MemoryKnowledgeConnector } = require('../../src/knowledge/knowledge-connector-memory.cjs')
 
 function fixture(t, documents) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-knowledge-memory-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-knowledge-memory-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const contentBlobStore = new ContentBlobStore({
     rootPath: path.join(directory, 'private', 'blobs'),
@@ -101,7 +101,7 @@ test('enforces the same read-only authorization and bounded egress contract', (t
 })
 
 test('rejects duplicate locators and unsafe document metadata', (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-knowledge-memory-invalid-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-knowledge-memory-invalid-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const contentBlobStore = new ContentBlobStore({ rootPath: path.join(directory, 'blobs') })
   const document = {

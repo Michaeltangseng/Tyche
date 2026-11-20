@@ -18,12 +18,11 @@ const {
 } = require('./cli-runtime-events.cjs')
 const { connectorLimitedRuntimeEvent } = require('./cli-event-profiles.cjs')
 const {
-  KILL_SETTLE_MS,
   TERMINATE_GRACE_MS,
   agentExecutionError,
   childEnvironment,
   failedAgentProcessError,
-  terminateWindowsProcessTree,
+  terminateAgentProcess,
 } = require('./cli-process-support.cjs')
 const { createAcpOutboundPayload } = require('../../collaboration/outbound-payload.cjs')
 const { redactSecrets } = require('../../security/secret-redaction.cjs')
@@ -117,7 +116,7 @@ function acpTransportError(diagnostic) {
 
 // Returns the message to deliver, or null for traffic that is safe to ignore.
 // A newer Agent can send updates and notifications this client does not know;
-// failing the whole turn over them would break Meldwork on every Agent upgrade,
+// failing the whole turn over them would break Tyche on every Agent upgrade,
 // so only messages that decide what is executed or approved stay strict.
 function validateAcpInboundMessage(message, validators, replyState, protocolLabel) {
   if (!message || typeof message !== 'object' || Array.isArray(message)
@@ -477,38 +476,7 @@ function destroyChildPipes(child) {
 }
 
 async function terminateChild(child, platform, spawnFn) {
-  if (child.exitCode != null || child.signalCode != null) return
-  if (platform === 'win32') return terminateWindowsProcessTree(child, spawnFn)
-  await new Promise((resolve) => {
-    let settled = false
-    let forceKillTimeout
-    let forceSettleTimeout
-    const finish = () => {
-      if (settled) return
-      settled = true
-      clearTimeout(forceKillTimeout)
-      clearTimeout(forceSettleTimeout)
-      child.removeListener('close', finish)
-      child.removeListener('error', finish)
-      resolve()
-    }
-    child.once('close', finish)
-    child.once('error', finish)
-    const signalTree = (signal) => {
-      if (child.pid) {
-        try {
-          process.kill(-child.pid, signal)
-          return
-        } catch { /* fall back to the direct child */ }
-      }
-      try {
-        child.kill(signal)
-      } catch { /* the process has already exited */ }
-    }
-    signalTree('SIGTERM')
-    forceKillTimeout = setTimeout(() => signalTree('SIGKILL'), TERMINATE_GRACE_MS)
-    forceSettleTimeout = setTimeout(finish, TERMINATE_GRACE_MS + KILL_SETTLE_MS)
-  })
+  return terminateAgentProcess(child, { force: false, platform, spawnFn })
 }
 
 async function settleWithin(promise, timeoutMs) {
@@ -638,7 +606,7 @@ function runtimeSignature(agent, workdir, spec, profile, childEnv) {
         : '',
     environment,
     secretEnvironmentKeys: nativeSecretEnvKeys(childEnv[SECRET_ENV_KEYS]),
-    redactionSecrets: childEnv[Symbol.for('meldwork.project-secret-values')] || [],
+    redactionSecrets: childEnv[Symbol.for('tyche.project-secret-values')] || [],
   })).digest('hex')
 }
 
@@ -759,7 +727,7 @@ async function createAcpRuntime(input) {
     async requestPermission(params) {
       const turn = runtime.activeTurn
       if (turn?.completion?.completed) return { outcome: { outcome: 'cancelled' } }
-      // DeepSeek escalation can escape its sandbox. Meldwork's selected
+      // DeepSeek escalation can escape its sandbox. Tyche's selected
       // workspace mode is the entire grant for this process.
       if (runtime.agent.kind === 'deepseek') {
         return selectedPermissionOutcome(permissionRejection(params?.options))
@@ -778,6 +746,7 @@ async function createAcpRuntime(input) {
     },
     async sessionUpdate(params) {
       const turn = runtime.activeTurn
+      try { turn?.options?.traceSink?.ingest('acp', params.update) } catch { /* tracing is best-effort */ }
       try { turn?.noteActivity?.() } catch { /* activity is best-effort */ }
       const sequence = runtime.replyState.pendingUpdateSequences.shift()
       if (!turn || !runtime.replyState.collecting) return
@@ -984,10 +953,19 @@ async function runAcpTurn(runtime, prompt, options, spec, profile) {
     resolveContribution({ stopReason: 'end_turn' })
   }
   const operation = promise => Promise.race([promise, abortPromise, runtime.failurePromise])
-  const timeout = setTimeout(() => {
-    timeoutRequested = true
-    abort()
-  }, 2 * 60 * 60 * 1000)
+  const hardLimitMs = options.hardLimitMs === undefined
+    ? 2 * 60 * 60 * 1000
+    : (options.hardLimitMs === null
+      ? 0
+      : (Number.isFinite(options.hardLimitMs) && options.hardLimitMs > 0
+        ? options.hardLimitMs
+        : 2 * 60 * 60 * 1000))
+  const timeout = hardLimitMs > 0
+    ? setTimeout(() => {
+      timeoutRequested = true
+      abort()
+    }, hardLimitMs)
+    : null
   if (options.signal?.aborted) abort()
   else options.signal?.addEventListener('abort', abort, { once: true })
 

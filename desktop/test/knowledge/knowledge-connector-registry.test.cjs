@@ -18,7 +18,7 @@ const { MemoryKnowledgeConnector } = require('../../src/knowledge/knowledge-conn
 const { KnowledgeConnectorRegistry } = require('../../src/knowledge/knowledge-connector-registry.cjs')
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-knowledge-registry-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-knowledge-registry-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const contentBlobStore = new ContentBlobStore({
     rootPath: path.join(directory, 'private', 'blobs'),

@@ -77,7 +77,7 @@ class HumanGateCoordinator {
     const expired = this.store.decide(current.gateId, {
       status: 'rejected',
       optionId: rejected.optionId,
-      actorId: 'meldwork-system',
+      actorId: 'tyche-system',
       decidedAt: this.now(),
     })
     this.clearExpiry(expired.gateId)
@@ -154,7 +154,7 @@ class HumanGateCoordinator {
           rejectedRecord = this.store.decide(record.gateId, {
             status: 'rejected',
             optionId: rejected.optionId,
-            actorId: 'meldwork-system',
+            actorId: 'tyche-system',
             decidedAt: this.now(),
           })
           this.onResumed(rejectedRecord, rejectedRecord.decision)
@@ -294,7 +294,7 @@ class HumanGateCoordinator {
       const rejectedRecord = this.store.decide(record.gateId, {
         status: 'rejected',
         optionId: rejected.optionId,
-        actorId: 'meldwork-system',
+        actorId: 'tyche-system',
         decidedAt: this.now(),
       })
       reconciled.push(publicHumanGate(rejectedRecord))

@@ -1,10 +1,12 @@
 .conversation-pane {
-  --conversation-content-width: clamp(820px, 70vw, 1360px);
+  --conversation-content-width: clamp(720px, 62vw, 960px);
   height: 100%;
   display: grid;
   grid-template-rows: 68px minmax(0, 1fr) auto;
   background: transparent;
 }
+
+
 
 .conversation-header {
   min-width: 0;
@@ -30,6 +32,12 @@
   min-width: 0;
   flex: 1 1 auto;
 }
+
+.conversation-identity.has-team .conversation-title-block {
+  flex: 0 1 auto;
+}
+
+
 
 .conversation-identity h1 {
   overflow: hidden;
@@ -176,6 +184,23 @@
 
 .conversation-avatar.stack {
   position: relative;
+}
+
+.conversation-avatar.avatar-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.conversation-avatar.avatar-button:hover img,
+.conversation-avatar.avatar-button:focus-visible img {
+  filter: drop-shadow(0 1px 2px rgb(24 31 38 / 0.32));
+}
+
+.conversation-avatar.avatar-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .conversation-avatar.stack img {

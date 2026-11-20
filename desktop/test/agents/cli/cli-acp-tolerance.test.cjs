@@ -23,7 +23,7 @@ input.on('line', (line) => {
   try { message = JSON.parse(line) } catch { return }
   const sessionId = message.params?.sessionId || 'noisy-session'
   if (message.id >= 9001 && message.id <= 9004 && !message.method) {
-    fs.appendFileSync(process.env.MELDWORK_TEST_UNKNOWN_RESPONSE, JSON.stringify(message) + '\\n')
+    fs.appendFileSync(process.env.TYCHE_TEST_UNKNOWN_RESPONSE, JSON.stringify(message) + '\\n')
     return
   }
   if (message.method === 'initialize') {
@@ -55,7 +55,7 @@ input.on('line', (line) => {
 }
 
 test('ACP turns survive banners, unknown notifications, new update kinds and unknown requests', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-acp-tolerance-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-acp-tolerance-'))
   t.after(async () => {
     await adapters.shutdownAcpSessionRuntime?.()
     fs.rmSync(directory, { recursive: true, force: true })
@@ -65,7 +65,7 @@ test('ACP turns survive banners, unknown notifications, new update kinds and unk
 
   const result = await within(adapters.runAgent(agent, 'say something', directory, {
     acpPersistenceKey: 'workspace:hermes:tolerance',
-    env: { MELDWORK_TEST_UNKNOWN_RESPONSE: unknownResponse },
+    env: { TYCHE_TEST_UNKNOWN_RESPONSE: unknownResponse },
   }), 10000)
 
   assert.equal(result.text, 'acp answer despite the noise')

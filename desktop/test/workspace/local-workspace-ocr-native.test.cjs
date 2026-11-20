@@ -53,7 +53,7 @@ process.stdout.write(JSON.stringify({ status: 'complete', message: 'Selected rev
 })
 
 test('real OpenCodeReview uses the selected home in direct and group chats',
-  { skip: process.env.MELDWORK_TEST_REAL_OCR !== '1', timeout: 30000 }, async t => {
+  { skip: process.env.TYCHE_TEST_REAL_OCR !== '1', timeout: 30000 }, async t => {
     const { directory, options } = fixture()
     t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
     const repo = path.join(directory, 'repo')
@@ -61,7 +61,7 @@ test('real OpenCodeReview uses the selected home in direct and group chats',
     const config = path.join(home, '.opencodereview')
     fs.mkdirSync(repo)
     fs.mkdirSync(config, { recursive: true })
-    for (const args of [['init', '-q'], ['config', 'user.name', 'Meldwork Test'],
+    for (const args of [['init', '-q'], ['config', 'user.name', 'Tyche Test'],
       ['config', 'user.email', 'test@example.invalid']]) execFileSync('git', args, { cwd: repo })
     fs.writeFileSync(path.join(repo, 'app.js'), 'const value = 1;\n')
     execFileSync('git', ['add', 'app.js'], { cwd: repo })

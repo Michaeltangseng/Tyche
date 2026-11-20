@@ -37,13 +37,13 @@ test('manual group replies receive the attached document and tell each Agent its
   assert.equal(calls.length, 2)
   for (const call of calls) {
     assert.match(call.prompt, /Review the report/)
-    assert.match(call.prompt, /\.meldwork-input\/\.run-[^/]+\/1-report\.pdf/)
+    assert.match(call.prompt, /\.tyche-input\/\.run-[^/]+\/1-report\.pdf/)
     assert.equal(call.prompt.includes(sourceRoot), false)
     assert.match(call.prompt, /Everyone replies on their own at the same time/)
     assert.match(call.prompt, /This reply is read-only/)
-    assert.doesNotMatch(call.prompt, /MELDWORK_COLLABORATION|capabilit|intendedWork/)
+    assert.doesNotMatch(call.prompt, /TYCHE_COLLABORATION|capabilit|intendedWork/)
   }
-  assert.equal(fs.existsSync(path.join(directory, '.meldwork-input')), false)
+  assert.equal(fs.existsSync(path.join(directory, '.tyche-input')), false)
   assert.deepEqual(workspace.snapshot().messages[0].attachments, [attachment])
 })
 
@@ -59,7 +59,7 @@ test('an automatic discussion hands the attached document to every participant',
       prompts.push({ kind: agent.kind, prompt })
       return {
         outcome: 'completed',
-        text: `${agent.kind} read the report.\n\n[[MELDWORK_COLLABORATION:${JSON.stringify({
+        text: `${agent.kind} read the report.\n\n[[TYCHE_COLLABORATION:${JSON.stringify({
           summary: 'Reviewed.',
           taskDecision: { status: 'completed', reason: 'Done', deliverables: ['The review'] },
         })}]]`,
@@ -79,10 +79,10 @@ test('an automatic discussion hands the attached document to every participant',
 
   assert.ok(prompts.length >= 2)
   for (const { prompt } of prompts) {
-    assert.match(prompt, /\.meldwork-input\/\.run-[^/]+\/1-report\.pdf/)
+    assert.match(prompt, /\.tyche-input\/\.run-[^/]+\/1-report\.pdf/)
     assert.equal(prompt.includes(sourceRoot), false)
     assert.match(prompt, /Group: Report discussion/)
     assert.match(prompt, /Answer in English, the language of the user task/)
   }
-  assert.equal(fs.existsSync(path.join(directory, '.meldwork-input')), false)
+  assert.equal(fs.existsSync(path.join(directory, '.tyche-input')), false)
 })

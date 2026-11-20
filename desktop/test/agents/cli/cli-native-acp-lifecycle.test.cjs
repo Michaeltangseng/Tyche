@@ -33,7 +33,7 @@ const {
 } = require('../../support/cli-adapters-test-helpers.cjs')
 
 test('Hermes keeps one ACP process across workspace turns and streams each tool lifecycle', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-persistent-acp-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-persistent-acp-'))
   const spawnCountFile = path.join(directory, 'spawn-count.txt')
   const stoppedFile = path.join(directory, 'stopped.txt')
   const cli = executable(directory, 'hermes-persistent-acp.cjs', `
@@ -43,7 +43,7 @@ if (process.argv[2] !== 'acp') {
   process.stdout.write('legacy fallback')
   process.exit(0)
 }
-const countFile = process.env.MELDWORK_TEST_SPAWN_COUNT_FILE
+const countFile = process.env.TYCHE_TEST_SPAWN_COUNT_FILE
 const spawnCount = fs.existsSync(countFile) ? Number(fs.readFileSync(countFile, 'utf8')) : 0
 fs.writeFileSync(countFile, String(spawnCount + 1))
 const input = readline.createInterface({ input: process.stdin })
@@ -116,7 +116,7 @@ input.on('line', (line) => {
   const firstEvents = []
   const first = await adapters.runAgent(agent, 'first prompt', directory, {
     acpPersistenceKey: 'workspace:hermes:direct',
-    env: { HERMES_HOME: directory, MELDWORK_TEST_SPAWN_COUNT_FILE: spawnCountFile },
+    env: { HERMES_HOME: directory, TYCHE_TEST_SPAWN_COUNT_FILE: spawnCountFile },
     onEvent: event => firstEvents.push(event),
   })
   const secondEvents = []
@@ -124,7 +124,7 @@ input.on('line', (line) => {
     acpPersistenceKey: 'workspace:hermes:direct',
     sessionRef: first.sessionRef,
     sessionTransport: 'acp',
-    env: { HERMES_HOME: directory, MELDWORK_TEST_SPAWN_COUNT_FILE: spawnCountFile },
+    env: { HERMES_HOME: directory, TYCHE_TEST_SPAWN_COUNT_FILE: spawnCountFile },
     onEvent: event => secondEvents.push(event),
   })
 
@@ -148,7 +148,7 @@ input.on('line', (line) => {
     acpPersistenceKey: 'workspace:hermes:direct',
     sessionRef: first.sessionRef,
     sessionTransport: 'acp',
-    env: { MELDWORK_TEST_SPAWN_COUNT_FILE: spawnCountFile },
+    env: { TYCHE_TEST_SPAWN_COUNT_FILE: spawnCountFile },
   })
   assert.equal(resumed.text, 'resumed turn')
   assert.equal(resumed.sessionRef, first.sessionRef)
@@ -157,17 +157,17 @@ input.on('line', (line) => {
     acpPersistenceKey: 'workspace:hermes:direct',
     sessionRef: first.sessionRef,
     sessionTransport: 'acp',
-    env: { MELDWORK_TEST_SPAWN_COUNT_FILE: spawnCountFile },
+    env: { TYCHE_TEST_SPAWN_COUNT_FILE: spawnCountFile },
   }), error => error.message === 'LOCAL_AGENT_AUTH_REQUIRED'
     && error.failure?.category === 'authentication')
 })
 
 test('Hermes ACP does not reuse a process when credential redaction rules change', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-secret-reuse-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-secret-reuse-'))
   const count = path.join(directory, 'count')
   const cli = executable(directory, 'hermes-acp.cjs', `
 const fs = require('node:fs'), readline = require('node:readline')
-const count = process.env.MELDWORK_TEST_SPAWN_COUNT_FILE
+const count = process.env.TYCHE_TEST_SPAWN_COUNT_FILE
 fs.writeFileSync(count, String((fs.existsSync(count) ? Number(fs.readFileSync(count, 'utf8')) : 0) + 1))
 const send = value => process.stdout.write(JSON.stringify(value) + '\\n')
 readline.createInterface({ input: process.stdin }).on('line', line => {
@@ -187,7 +187,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   t.after(async () => { await adapters.shutdownAcpSessionRuntime(); fs.rmSync(directory, { recursive: true, force: true }) })
   const agent = { kind: 'hermes', name: 'Hermes', executable: cli }
   const options = { acpPersistenceKey: 'workspace:hermes:secret',
-    env: { OPENAI_BASE_URL: 'private-endpoint', MELDWORK_TEST_SPAWN_COUNT_FILE: count } }
+    env: { OPENAI_BASE_URL: 'private-endpoint', TYCHE_TEST_SPAWN_COUNT_FILE: count } }
   const first = await adapters.runAgent(agent, 'first', directory, options)
   assert.equal(first.text, 'value=private-endpoint')
   await assert.rejects(adapters.runAgent(agent, 'second', directory, {
@@ -201,12 +201,12 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
 })
 
 test('Hermes ACP refreshes redaction when native configuration secrets change', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-native-secret-reuse-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-native-secret-reuse-'))
   const config = path.join(directory, 'config.yaml')
   const count = path.join(directory, 'count')
   const cli = executable(directory, 'hermes-acp.cjs', `
 const fs = require('node:fs'), readline = require('node:readline')
-const count = process.env.MELDWORK_TEST_SPAWN_COUNT_FILE
+const count = process.env.TYCHE_TEST_SPAWN_COUNT_FILE
 fs.writeFileSync(count, String((fs.existsSync(count) ? Number(fs.readFileSync(count, 'utf8')) : 0) + 1))
 const send = value => process.stdout.write(JSON.stringify(value) + '\\n')
 readline.createInterface({ input: process.stdin }).on('line', line => {
@@ -226,7 +226,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   t.after(async () => { await adapters.shutdownAcpSessionRuntime(); fs.rmSync(directory, { recursive: true, force: true }) })
   const agent = { kind: 'hermes', name: 'Hermes', executable: cli }
   const options = { acpPersistenceKey: 'workspace:hermes:native-secret',
-    env: { HERMES_HOME: directory, MELDWORK_TEST_SPAWN_COUNT_FILE: count } }
+    env: { HERMES_HOME: directory, TYCHE_TEST_SPAWN_COUNT_FILE: count } }
   fs.writeFileSync(config, 'api_key: first-private-value\n')
   const first = await adapters.runAgent(agent, 'first', directory, options)
   assert.equal(first.text, '[redacted]')
@@ -241,14 +241,14 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
 
 
 test('DeepSeek ACP replaces the runtime when project dotenv changes', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-dsh-dotenv-reuse-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-dsh-dotenv-reuse-'))
   const workdir = path.join(directory, 'work')
   const config = path.join(workdir, '.env')
   const count = path.join(directory, 'count')
   fs.mkdirSync(workdir)
   const cli = executable(directory, 'dsh-acp.cjs', `
 const fs = require('node:fs'), readline = require('node:readline')
-const count = process.env.MELDWORK_TEST_SPAWN_COUNT_FILE
+const count = process.env.TYCHE_TEST_SPAWN_COUNT_FILE
 fs.writeFileSync(count, String((fs.existsSync(count) ? Number(fs.readFileSync(count, 'utf8')) : 0) + 1))
 const send = value => process.stdout.write(JSON.stringify(value) + '\\n')
 readline.createInterface({ input: process.stdin }).on('line', line => {
@@ -268,7 +268,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   t.after(async () => { await adapters.shutdownAcpSessionRuntime(); fs.rmSync(directory, { recursive: true, force: true }) })
   const agent = { kind: 'deepseek', name: 'DeepSeek', executable: cli }
   const options = { acpPersistenceKey: 'workspace:deepseek:dotenv',
-    env: { DSH_HOME: directory, MELDWORK_TEST_SPAWN_COUNT_FILE: count } }
+    env: { DSH_HOME: directory, TYCHE_TEST_SPAWN_COUNT_FILE: count } }
   fs.writeFileSync(config, 'MODEL_VARIANT=first\n')
   const first = await adapters.runAgent(agent, 'first', workdir, options)
   fs.writeFileSync(config, 'MODEL_VARIANT=second\n')
@@ -281,7 +281,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
 })
 
 test('Hermes ACP receives image attachments as content blocks or falls back when unsupported', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-acp-image-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-acp-image-'))
   const image = path.join(directory, 'diagram.png')
   fs.writeFileSync(image, Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
@@ -347,7 +347,7 @@ if (process.argv[2] !== 'acp') {
   process.stdout.write('legacy fallback')
   process.exit(0)
 }
-const countFile = process.env.MELDWORK_TEST_SPAWN_COUNT_FILE
+const countFile = process.env.TYCHE_TEST_SPAWN_COUNT_FILE
 const spawnCount = (fs.existsSync(countFile) ? Number(fs.readFileSync(countFile, 'utf8')) : 0) + 1
 fs.writeFileSync(countFile, String(spawnCount))
 const input = readline.createInterface({ input: process.stdin })
@@ -357,7 +357,7 @@ input.on('line', (line) => {
   const message = JSON.parse(line)
   const sessionId = message.params?.sessionId || 'hermes-resilient-session'
   if (message.method === 'initialize') {
-    if (process.env.MELDWORK_TEST_HANG_INIT === '1') return
+    if (process.env.TYCHE_TEST_HANG_INIT === '1') return
     send({ jsonrpc: '2.0', id: message.id, result: { protocolVersion: 1 } })
   } else if (message.method === 'session/new') {
     send({ jsonrpc: '2.0', id: message.id, result: { sessionId } })
@@ -372,7 +372,7 @@ input.on('line', (line) => {
     const text = message.params?.prompt?.[0]?.text || ''
     if (text === 'slow prompt') {
       pendingSlowPrompt = message.id
-      fs.writeFileSync(process.env.MELDWORK_TEST_PROMPT_FILE, 'received')
+      fs.writeFileSync(process.env.TYCHE_TEST_PROMPT_FILE, 'received')
       return
     }
     send({ jsonrpc: '2.0', method: 'session/update', params: { sessionId, update: {
@@ -385,18 +385,18 @@ input.on('line', (line) => {
 }
 
 test('a hanging ACP initialize times out and releases the conversation lock', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-acp-init-timeout-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-acp-init-timeout-'))
   const spawnCountFile = path.join(directory, 'spawn-count.txt')
   t.after(async () => {
     await adapters.shutdownAcpSessionRuntime?.()
     fs.rmSync(directory, { recursive: true, force: true })
   })
   const agent = { kind: 'hermes', executable: resilientHermes(directory), name: 'Hermes' }
-  const env = { MELDWORK_TEST_SPAWN_COUNT_FILE: spawnCountFile }
+  const env = { TYCHE_TEST_SPAWN_COUNT_FILE: spawnCountFile }
   const first = await within(adapters.runAgent(agent, 'first prompt', directory, {
     acpPersistenceKey: 'workspace:hermes:init-timeout',
     acpInitializeTimeoutMs: 300,
-    env: { ...env, MELDWORK_TEST_HANG_INIT: '1' },
+    env: { ...env, TYCHE_TEST_HANG_INIT: '1' },
   }), 5000)
   // The stuck initialize no longer blocks: the turn falls back instead of hanging.
   assert.equal(first.text, 'legacy fallback')
@@ -411,7 +411,7 @@ test('a hanging ACP initialize times out and releases the conversation lock', as
 })
 
 test('a stopped ACP turn keeps the persistent process and its session when cancel is honoured', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-acp-cancel-keep-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-acp-cancel-keep-'))
   const spawnCountFile = path.join(directory, 'spawn-count.txt')
   const promptFile = path.join(directory, 'prompt.txt')
   t.after(async () => {
@@ -419,7 +419,7 @@ test('a stopped ACP turn keeps the persistent process and its session when cance
     fs.rmSync(directory, { recursive: true, force: true })
   })
   const agent = { kind: 'hermes', executable: resilientHermes(directory), name: 'Hermes' }
-  const env = { MELDWORK_TEST_SPAWN_COUNT_FILE: spawnCountFile, MELDWORK_TEST_PROMPT_FILE: promptFile }
+  const env = { TYCHE_TEST_SPAWN_COUNT_FILE: spawnCountFile, TYCHE_TEST_PROMPT_FILE: promptFile }
   const sessionRefs = []
   const controller = new AbortController()
   const stopped = adapters.runAgent(agent, 'slow prompt', directory, {
@@ -445,7 +445,7 @@ test('a stopped ACP turn keeps the persistent process and its session when cance
 })
 
 test('a changed PATH between turns keeps the persistent ACP process and session', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-acp-path-churn-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-acp-path-churn-'))
   const spawnCountFile = path.join(directory, 'spawn-count.txt')
   t.after(async () => {
     await adapters.shutdownAcpSessionRuntime?.()
@@ -455,13 +455,13 @@ test('a changed PATH between turns keeps the persistent ACP process and session'
   const shellPath = shell => [`/tmp/fnm_multishells/${shell}/bin`, '/usr/bin', '/bin'].join(path.delimiter)
   const first = await adapters.runAgent(agent, 'first prompt', directory, {
     acpPersistenceKey: 'workspace:hermes:path-churn',
-    env: { MELDWORK_TEST_SPAWN_COUNT_FILE: spawnCountFile, PATH: shellPath('1001_1') },
+    env: { TYCHE_TEST_SPAWN_COUNT_FILE: spawnCountFile, PATH: shellPath('1001_1') },
   })
   const second = await adapters.runAgent(agent, 'second prompt', directory, {
     acpPersistenceKey: 'workspace:hermes:path-churn',
     sessionRef: first.sessionRef,
     sessionTransport: 'acp',
-    env: { MELDWORK_TEST_SPAWN_COUNT_FILE: spawnCountFile, PATH: shellPath('1002_2') },
+    env: { TYCHE_TEST_SPAWN_COUNT_FILE: spawnCountFile, PATH: shellPath('1002_2') },
   })
   assert.equal(second.sessionRef, first.sessionRef)
   assert.equal(second.text, 'acp answer 1')
@@ -469,7 +469,7 @@ test('a changed PATH between turns keeps the persistent ACP process and session'
 })
 
 test('ACP closes a start-only tool with the partial terminal outcome', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-acp-start-only-tool-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-acp-start-only-tool-'))
   const cli = executable(directory, 'acp-start-only-tool.cjs', `
 const readline = require('node:readline')
 const input = readline.createInterface({ input: process.stdin })
@@ -525,7 +525,7 @@ input.on('line', (line) => {
 })
 
 test('shutdown waits for SDK preparation and prevents a later persistent ACP spawn', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-acp-shutdown-sdk-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-acp-shutdown-sdk-'))
   const spawnFile = path.join(directory, 'spawned.txt')
   const cli = executable(directory, 'persistent-acp-delayed-sdk.cjs', `
 const fs = require('node:fs')
@@ -602,7 +602,7 @@ input.on('line', (line) => {
 })
 
 test('shutdown waits for disposable ACP preparation and prevents a later spawn', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-acp-disposable-shutdown-sdk-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-acp-disposable-shutdown-sdk-'))
   const spawnFile = path.join(directory, 'spawned.txt')
   const cli = executable(directory, 'disposable-acp-delayed-sdk.cjs', `
 const fs = require('node:fs')
@@ -671,7 +671,7 @@ input.on('line', (line) => {
 })
 
 test('shutdown closes a persistent ACP child that is still initializing', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-acp-shutdown-initialize-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-acp-shutdown-initialize-'))
   const initializingFile = path.join(directory, 'initializing.txt')
   const pidFile = path.join(directory, 'pid.txt')
   const stoppedFile = path.join(directory, 'stopped.txt')
@@ -724,13 +724,13 @@ setInterval(() => {}, 1000)
 })
 
 test('the seventeenth concurrent persistent ACP runtime reaches its first turn before eviction', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-acp-runtime-limit-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-acp-runtime-limit-'))
   const releaseFile = path.join(directory, 'release.txt')
   const cli = executable(directory, 'persistent-acp-runtime-limit.cjs', `
 const fs = require('node:fs')
 const readline = require('node:readline')
-const readyFile = process.env.MELDWORK_TEST_READY_FILE
-const releaseFile = process.env.MELDWORK_TEST_RELEASE_FILE
+const readyFile = process.env.TYCHE_TEST_READY_FILE
+const releaseFile = process.env.TYCHE_TEST_RELEASE_FILE
 const input = readline.createInterface({ input: process.stdin })
 const send = value => process.stdout.write(JSON.stringify(value) + '\\n')
 const update = (sessionId, value) => send({
@@ -773,8 +773,8 @@ input.on('line', (line) => {
     const settled = adapters.runAgent(agent, `prompt ${index}`, directory, {
       acpPersistenceKey: `workspace:hermes:limit:${index}`,
       env: {
-        MELDWORK_TEST_READY_FILE: readyFile,
-        MELDWORK_TEST_RELEASE_FILE: releaseFile,
+        TYCHE_TEST_READY_FILE: readyFile,
+        TYCHE_TEST_RELEASE_FILE: releaseFile,
       },
     }).then(
       value => ({ status: 'fulfilled', value }),
@@ -802,7 +802,7 @@ input.on('line', (line) => {
 })
 
 test('persistent ACP applies its inbound traffic budget to each turn', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-acp-turn-budget-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-acp-turn-budget-'))
   const cli = executable(directory, 'persistent-acp-turn-budget.cjs', `
 const readline = require('node:readline')
 const input = readline.createInterface({ input: process.stdin })
@@ -857,7 +857,7 @@ input.on('line', (line) => {
 })
 
 test('OpenClaw uses an authenticated loopback Gateway for pre-terminal ACP events', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-acp-gateway-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-acp-gateway-'))
   const workdir = path.join(directory, 'workspace')
   const gatewayProbeFile = path.join(directory, 'gateway.json')
   const healthProbeFile = path.join(directory, 'gateway-health.json')
@@ -948,7 +948,7 @@ input.on('line', (line) => {
     await resultPromise?.catch(() => {})
     fs.rmSync(directory, { recursive: true, force: true })
   })
-  const stableSessionRef = 'agent:main:desktop-meldwork-openclaw-acp'
+  const stableSessionRef = 'agent:main:desktop-tyche-openclaw-acp'
   const spec = adapters.invocation('openclaw', cli, workdir, stableSessionRef)
   assert.equal(spec.eventTransport, 'acp')
 
@@ -1026,7 +1026,7 @@ input.on('line', (line) => {
 })
 
 test('shutdown closes an active disposable OpenClaw ACP runtime and Gateway without a release file', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-acp-shutdown-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-acp-shutdown-'))
   const workdir = path.join(directory, 'workspace')
   const readyFile = path.join(directory, 'acp-ready')
   const acpStoppedFile = path.join(directory, 'acp-stopped')
@@ -1115,7 +1115,7 @@ input.on('line', (line) => {
 })
 
 test('shutdown closes a Gateway held before readiness without spawning ACP', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-gateway-shutdown-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-gateway-shutdown-'))
   const workdir = path.join(directory, 'workspace')
   const gatewayStartedFile = path.join(directory, 'gateway-started')
   const gatewayStoppedFile = path.join(directory, 'gateway-stopped')
@@ -1200,7 +1200,7 @@ input.on('line', (line) => {
 })
 
 test('shutdown closes a Gateway and held health child without spawning ACP', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-gateway-health-shutdown-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-gateway-health-shutdown-'))
   const workdir = path.join(directory, 'workspace')
   const healthStartedFile = path.join(directory, 'health-started')
   const healthStoppedFile = path.join(directory, 'health-stopped')
@@ -1292,13 +1292,13 @@ input.on('line', (line) => {
 })
 
 test('MiMo ACP replaces a cached process after its native project configuration changes', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-mimo-config-reuse-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-mimo-config-reuse-'))
   const count = path.join(directory, 'count')
   const config = path.join(directory, 'mimocode.json')
   fs.writeFileSync(config, JSON.stringify({ model: 'custom/first' }))
   const cli = executable(directory, 'mimo-config-reuse.cjs', `
 const fs = require('node:fs'), readline = require('node:readline')
-const count = process.env.MELDWORK_TEST_SPAWN_COUNT_FILE
+const count = process.env.TYCHE_TEST_SPAWN_COUNT_FILE
 fs.writeFileSync(count, String((fs.existsSync(count) ? Number(fs.readFileSync(count, 'utf8')) : 0) + 1))
 const send = value => process.stdout.write(JSON.stringify(value) + '\\n')
 readline.createInterface({ input: process.stdin }).on('line', line => {
@@ -1318,7 +1318,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   const agent = { kind: 'mimo', name: 'MiMo', executable: cli }
   const options = { acpPersistenceKey: 'workspace:mimo:config',
     env: { XDG_CONFIG_HOME: path.join(directory, 'xdg'), XDG_STATE_HOME: path.join(directory, 'state'),
-      MELDWORK_TEST_SPAWN_COUNT_FILE: count } }
+      TYCHE_TEST_SPAWN_COUNT_FILE: count } }
   const first = await adapters.runAgent(agent, 'first', directory, options)
   const second = await adapters.runAgent(agent, 'second', directory, {
     ...options, sessionRef: first.sessionRef, sessionTransport: 'acp',
@@ -1354,7 +1354,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
 })
 
 test('switching between read-only and write keeps one ACP process when only the session mode differs', async (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-acp-mode-switch-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-acp-mode-switch-'))
   const spawnCountFile = path.join(directory, 'spawn-count.txt')
   const modesFile = path.join(directory, 'modes.jsonl')
   t.after(async () => {
@@ -1365,7 +1365,7 @@ test('switching between read-only and write keeps one ACP process when only the 
 const fs = require('node:fs')
 const readline = require('node:readline')
 if (process.argv[2] !== 'acp') process.exit(2)
-const countFile = process.env.MELDWORK_TEST_SPAWN_COUNT_FILE
+const countFile = process.env.TYCHE_TEST_SPAWN_COUNT_FILE
 fs.writeFileSync(countFile, String((fs.existsSync(countFile) ? Number(fs.readFileSync(countFile, 'utf8')) : 0) + 1))
 const input = readline.createInterface({ input: process.stdin })
 const send = value => process.stdout.write(JSON.stringify(value) + '\\n')
@@ -1375,7 +1375,7 @@ input.on('line', (line) => {
   if (message.method === 'initialize') send({ jsonrpc: '2.0', id: message.id, result: { protocolVersion: 1 } })
   else if (message.method === 'session/new') send({ jsonrpc: '2.0', id: message.id, result: { sessionId } })
   else if (message.method === 'session/set_mode') {
-    fs.appendFileSync(process.env.MELDWORK_TEST_MODES_FILE, message.params.modeId + '\\n')
+    fs.appendFileSync(process.env.TYCHE_TEST_MODES_FILE, message.params.modeId + '\\n')
     send({ jsonrpc: '2.0', id: message.id, result: {} })
   } else if (message.method === 'session/prompt') {
     send({ jsonrpc: '2.0', method: 'session/update', params: { sessionId, update: {
@@ -1386,7 +1386,7 @@ input.on('line', (line) => {
 })
 `)
   const agent = { kind: 'mimo', executable: cli, name: 'MiMo' }
-  const env = { MELDWORK_TEST_SPAWN_COUNT_FILE: spawnCountFile, MELDWORK_TEST_MODES_FILE: modesFile }
+  const env = { TYCHE_TEST_SPAWN_COUNT_FILE: spawnCountFile, TYCHE_TEST_MODES_FILE: modesFile }
   const sessionRefs = []
   const turn = (sandbox, sessionRef) => within(adapters.runAgent(agent, `turn in ${sandbox}`, directory, {
     acpPersistenceKey: 'workspace:mimo:mode-switch',

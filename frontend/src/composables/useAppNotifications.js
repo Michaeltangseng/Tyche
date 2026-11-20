@@ -52,7 +52,7 @@ export function useAppNotifications() {
   }
 
   function showError(error) {
-    console.error('[Meldwork]', errorCode(error))
+    console.error('[Tyche]', errorCode(error))
     notify(translateError(error), { tone: 'error' })
   }
 

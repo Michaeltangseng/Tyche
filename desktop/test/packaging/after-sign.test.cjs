@@ -6,11 +6,11 @@ const verifyDeveloperIdSignature = require('../../scripts/after-sign.cjs')
 function context(platform = 'darwin') {
   return {
     electronPlatformName: platform,
-    appOutDir: '/tmp/meldwork-public',
+    appOutDir: '/tmp/tyche-public',
     packager: {
       appInfo: {
-        id: 'com.rydersun.meldwork',
-        productFilename: 'Meldwork',
+        id: 'com.rydersun.tyche',
+        productFilename: 'Tyche',
       },
     },
   }
@@ -26,7 +26,7 @@ function signedResult(details) {
 
 test('public afterSign accepts only the permanent Developer ID identity', () => {
   const details = [
-    'Identifier=com.rydersun.meldwork',
+    'Identifier=com.rydersun.tyche',
     'flags=0x10000(runtime) hashes=3+7 location=embedded',
     'Authority=Developer ID Application: Ryder Sun (TEAM123456)',
     'TeamIdentifier=TEAM123456',
@@ -37,7 +37,7 @@ test('public afterSign accepts only the permanent Developer ID identity', () => 
 
 test('public afterSign rejects ad-hoc, unhardened, or mismatched signatures', () => {
   const base = [
-    'Identifier=com.rydersun.meldwork',
+    'Identifier=com.rydersun.tyche',
     'flags=0x10000(runtime) hashes=3+7 location=embedded',
     'Authority=Developer ID Application: Ryder Sun (TEAM123456)',
     'TeamIdentifier=TEAM123456',

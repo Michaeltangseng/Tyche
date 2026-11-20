@@ -22,9 +22,11 @@ function terminalPlanRejection(options = []) {
 // A read-only turn stays read-only even when the Agent asks: only
 // side-effect-free tools are approved, while edits, deletes, moves, commands
 // and mode switches are refused.
-function automaticPermissionResponse(request, { allowWrite }) {
+function automaticPermissionResponse(request, { allowWrite, readExec = false } = {}) {
   const options = Array.isArray(request?.options) ? request.options : []
-  if (!allowWrite && !READ_ONLY_SAFE_TOOL_KINDS.has(request?.toolCall?.kind)) {
+  const safeKind = READ_ONLY_SAFE_TOOL_KINDS.has(request?.toolCall?.kind)
+    || (readExec && request?.toolCall?.kind === 'execute')
+  if (!allowWrite && !safeKind) {
     const rejection = terminalPlanRejection(options)
       || options.find(candidate => candidate?.kind === 'reject_once')
       || options.find(candidate => candidate?.kind === 'reject_always')

@@ -6,7 +6,7 @@ const {
   inspectImageDimensions,
 } = require('./image-dimensions.cjs')
 
-const MEDIA_SCHEME = 'meldwork-media'
+const MEDIA_SCHEME = 'tyche-media'
 const ATTACHMENT_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/
 const MAX_ATTACHMENT_PICK_REQUEST = 32
 const MAX_ATTACHMENT_DISCARD_REQUEST = 32

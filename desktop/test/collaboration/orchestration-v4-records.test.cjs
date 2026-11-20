@@ -1991,7 +1991,7 @@ test('parses result collaboration controls with bounded summaries and rejects un
     summary: 'x'.repeat(801),
   }), { code: 'ORCHESTRATION_V4_TEXT_INVALID' })
   const marked = parseCollaborationText(
-    'Answer.\n[[MELDWORK_COLLABORATION:{"version":1,"phase":"proposal","status":"completed","summary":"ok"}]]',
+    'Answer.\n[[TYCHE_COLLABORATION:{"version":1,"phase":"proposal","status":"completed","summary":"ok"}]]',
   )
   assert.equal(marked.text, 'Answer.')
   assert.equal(marked.collaboration.summary, 'ok')
@@ -2487,7 +2487,7 @@ test('returns the complete index without receipts when Agent prefixes exceed the
     deliveryWatermark: 1,
   }))
   const indexText = [
-    'MELDWORK_V4_COLLABORATION_PACKAGE_V1',
+    'TYCHE_V4_COLLABORATION_PACKAGE_V1',
     ...targetKinds.map(kind => `[index] ${kind}`),
   ].join('\n')
 
@@ -2518,7 +2518,7 @@ test('keeps valid receipts valid when the rendered package has only index space'
     deliveryWatermark: 2,
   })
   const indexText = [
-    'MELDWORK_V4_COLLABORATION_PACKAGE_V1',
+    'TYCHE_V4_COLLABORATION_PACKAGE_V1',
     '[index] codex',
     '[index] hermes',
   ].join('\n')

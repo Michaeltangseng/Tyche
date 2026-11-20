@@ -1,4 +1,6 @@
 const { createHash, randomUUID } = require('node:crypto')
+const fs = require('node:fs')
+const path = require('node:path')
 const { taskPermissionGroup } = require('./run-permission-cap.cjs')
 const { agentVerificationIdentity, projectVerificationIdentity } = require('./agent-verification-identity.cjs')
 const { NATIVE_PROJECT_CONFIG_PATHS } = require('../agents/native-config-directory.cjs')
@@ -18,6 +20,7 @@ const {
   cleanupStagedAgentInputs,
   stageAgentInputs,
 } = require('../agents/agent-input-staging.cjs')
+const { createManagedSpawn } = require('../agents/process/managed-spawn.cjs')
 const { createAnswerMarkerFilter } = require('../collaboration/answer-marker-filter.cjs')
 const {
   V4_AGENT_PHASES,
@@ -29,6 +32,7 @@ const {
 } = require('../collaboration/context-pack-records.cjs')
 const { normalizeOutcomeRefs, normalizeSessionMeta } = require('../runs/run-harness.cjs')
 const { createInvocationWatchdog } = require('../runs/invocation-watchdog.cjs')
+const { createTraceSink } = require('../runs/trace/trace-writer.cjs')
 const { processRunScheduler } = require('../runs/run-scheduler.cjs')
 const { assertLocalSkillExecution } = require('../skills/local-skill-contract.cjs')
 const {
@@ -182,6 +186,9 @@ async function awaitProjectEnvironment(refresh, workdir, kind, signals) {
 class LocalWorkspaceAgentInvocation {
   constructor(options) {
     this.state = options.state
+    this.now = typeof options.now === 'function'
+      ? options.now
+      : () => new Date().toISOString()
     this.getContextPack = options.getContextPack
     this.detectedAgents = options.detectedAgents
     this.activeRuns = options.activeRuns
@@ -226,6 +233,10 @@ class LocalWorkspaceAgentInvocation {
     this.projectIdentity = options.projectIdentity || projectVerificationIdentity
     this.addMessage = options.addMessage
     this.runScheduler = options.runScheduler || processRunScheduler
+    this.tracesRoot = options.tracesRoot || null
+    this.onTraceAppended = typeof options.onTraceAppended === 'function'
+      ? options.onTraceAppended
+      : null
     this.registerAgentController = options.registerAgentController
     this.unregisterAgentController = options.unregisterAgentController
     this.requestHumanGate = options.requestHumanGate
@@ -233,6 +244,9 @@ class LocalWorkspaceAgentInvocation {
     this.connectorRuntime = options.connectorRuntime || null
     this.attachmentSupport = options.attachmentSupport || (() => ({}))
     this.validateSkillSelections = options.validateSkillSelections || (async (_kind, selections) => selections)
+    this.processRegistry = options.processRegistry || null
+    this.managedSupervisorPath = options.managedSupervisorPath || ''
+    this.platform = options.platform || process.platform
     this.activeAgentSnapshots = new Map()
   }
 
@@ -298,17 +312,38 @@ class LocalWorkspaceAgentInvocation {
       else signal.addEventListener('abort', queuedAbortHandler, { once: true })
     }
     try {
+      let workdirRoot = ''
+      if (permissionMode === 'workspace-write') {
+        try {
+          workdirRoot = fs.realpathSync.native(path.resolve(group.workdir))
+        } catch (error) {
+          throw Object.assign(new Error('LOCAL_WORKDIR_UNRESOLVED'), {
+            code: 'LOCAL_WORKDIR_UNRESOLVED',
+            cause: error,
+          })
+        }
+      } else {
+        try {
+          fs.realpathSync.native(path.resolve(group.workdir))
+        } catch (error) {
+          // Read-only invocations keep their previous behavior; record the
+          // unresolved directory for diagnostics only.
+          console.warn('[tyche] read-only workdir unresolved', group.id,
+            error?.code || error?.message || error)
+        }
+      }
       return await this.runScheduler.withLease({
         taskId,
         workspaceKey,
         permissionMode,
+        workdirRoot: permissionMode === 'workspace-write' ? workdirRoot : '',
         signal: agentController.signal,
-      }, (lease) => {
+      }, async (lease) => {
         if (signal && queuedAbortHandler) {
           signal.removeEventListener('abort', queuedAbortHandler)
           queuedAbortHandler = null
         }
-        return this.invokeLeased(
+        return await this.invokeLeased(
           group,
           kind,
           mode,
@@ -318,6 +353,16 @@ class LocalWorkspaceAgentInvocation {
           { agentController, registration, lease },
         )
       })
+    } catch (error) {
+      if (permissionMode === 'workspace-write'
+          && typeof error?.code === 'string'
+          && error.code.startsWith('SCHEDULER_CLAIM_')) {
+        throw Object.assign(new Error('LOCAL_WORKDIR_UNRESOLVED'), {
+          code: 'LOCAL_WORKDIR_UNRESOLVED',
+          cause: error,
+        })
+      }
+      throw error
     } finally {
       if (signal && queuedAbortHandler) {
         signal.removeEventListener('abort', queuedAbortHandler)
@@ -331,6 +376,7 @@ class LocalWorkspaceAgentInvocation {
   async invokeLeased(
     group, kind, mode, signal, threadRootId = '', context = {}, invocation = {},
   ) {
+    let traceSink = null
     await awaitProjectEnvironment(this.refreshProjectEnvironment, group.workdir, kind,
       [signal, invocation.agentController?.signal])
     const detected = this.detectedAgents()
@@ -390,7 +436,9 @@ class LocalWorkspaceAgentInvocation {
     if (internal && !isolated) throw new Error('LOCAL_RUN_INTERNAL_CONTEXT_INVALID')
     const requestedPermission = context.permissionMode == null
       ? (group.allowWrite === true ? 'workspace-write' : 'read-only')
-      : (context.permissionMode === 'workspace-write' ? 'workspace-write' : 'read-only')
+      : (['workspace-write', 'read-exec'].includes(context.permissionMode)
+        ? context.permissionMode
+        : 'read-only')
     const writerKind = cleanText(context.singleWriterKind || context.writerKind, 80)
     const writerAllowed = !writerKind || writerKind === kind
     const supportsWorkspaceWrite = agentRuntimeCapabilities(kind, { agent })
@@ -399,6 +447,10 @@ class LocalWorkspaceAgentInvocation {
       && requestedPermission === 'workspace-write'
       && writerAllowed
       && supportsWorkspaceWrite
+      && !reviewOnly
+      && !isolated
+    const readExec = !allowWrite
+      && requestedPermission === 'read-exec'
       && !reviewOnly
       && !isolated
     const skillInputTypes = new Set(['text'])
@@ -547,24 +599,25 @@ class LocalWorkspaceAgentInvocation {
     const sessionContextOptions = (!isolated && !frozen && promptMode === 'continuation' && sameTaskSession)
       ? { ...(context.contextOptions || {}), afterMessageId: session.meta.lastDeliveredMessageId || '' }
       : (context.contextOptions || {})
+    const fixedPrompt = v4Prompt
     let packedContext = isolated || frozen
       ? {
-          text: v4Prompt,
+          text: fixedPrompt,
           sourceMessageIds: context.snapshotSourceMessageIds || [],
           sourceEntries: context.snapshotSourceEntries || [],
           omittedCount: 0,
-          charCount: v4Prompt.length,
+          charCount: fixedPrompt.length,
           context: {
             includedCount: 0,
             omittedCount: 0,
-            charCount: v4Prompt.length,
+            charCount: fixedPrompt.length,
             contextPackId: invocationContext.contextPackId,
             contextPackState: 'captured',
           },
-          currentTaskText: v4Prompt,
+          currentTaskText: fixedPrompt,
           stableText: '(frozen)',
           recentText: '(frozen)',
-          continuationText: v4Prompt,
+          continuationText: fixedPrompt,
         }
       : this.packedPromptContext(
           group.id, transcriptAfterKind, threadRootId, sessionContextOptions,
@@ -573,15 +626,17 @@ class LocalWorkspaceAgentInvocation {
       packedContext = withCollaborationPackage(
         packedContext, context.collaborationPackage,
       )
+      assertRequiredContextFits(packedContext)
     }
-    if (!isolated && !frozen) assertRequiredContextFits(packedContext)
     let deliveredContext = deliveredPackedContext(packedContext, promptMode)
     const harness = this.ensureRunHarness(group, activeRun, threadRootId)
     const harnessRun = harness?.beginAgent(kind, round, deliveredContext.sourceMessageIds, {
       turnSeq: context.turnSeq,
     })
     let deliveryContext = {
-      contextPackId: invocationContext?.contextPackId || activeRun?.contextPackId || '',
+      contextPackId: invocationContext?.contextPackId
+        || activeRun?.contextPackId
+        || '',
       deliveryRecordIds: [],
       sessionProvenance: session.provenance,
     }
@@ -633,13 +688,28 @@ class LocalWorkspaceAgentInvocation {
     // Automatic discussions must make progress between rounds even when an
     // Agent keeps emitting heartbeat events without ever returning a result,
     // so they get the strict startup and no-progress limits.
+    const watchdogOptions = context.watchdog || {}
     const watchdog = createInvocationWatchdog({
-      timeoutMs: this.runAgentTimeoutMs,
-      toolTimeoutMs: this.runAgentToolTimeoutMs,
+      timeoutMs: watchdogOptions.inactivityMs ?? this.runAgentTimeoutMs,
+      toolTimeoutMs: watchdogOptions.toolMs ?? this.runAgentToolTimeoutMs,
+      noProgressCapMs: watchdogOptions.noProgressCapMs,
       strict: mode === 'auto',
+      mode: watchdogOptions.onInactivity === 'remind' ? 'remind' : 'abort',
       isStopped: () => parentAbortObserved || Boolean(signal?.aborted)
         || agentController.signal.aborted,
       onTimeout: () => agentController.abort(),
+      onReminder: () => {
+        const reminder = {
+          type: 'agent-inactivity-reminder',
+          groupId: group.id,
+          agentKind: kind,
+          round,
+          inactivityMs: watchdogOptions.inactivityMs ?? this.runAgentTimeoutMs,
+        }
+        try { this.emitRunEvent?.(reminder) } catch { /* reminder is best effort */ }
+        try { this.onInactivityReminder?.(reminder) } catch { /* best effort */ }
+        try { watchdogOptions.onReminder?.(reminder) } catch { /* best effort */ }
+      },
     })
     const closeAgentCallbacks = () => {
       agentCallbacksClosed = true
@@ -711,6 +781,7 @@ class LocalWorkspaceAgentInvocation {
         watchdog.toolFinished(event.id)
       }
       this.emitRunEvent(event)
+      try { context.onEvent?.(event) } catch { /* live output is best effort */ }
       this.armAgentSilence(activeRun, kind, round, harnessRun.agentRunId)
       if (event.type !== 'answer_delta' || event.seq % 8 === 0) {
         this.scheduleRunCheckpoint(group.id, activeRun)
@@ -808,11 +879,11 @@ class LocalWorkspaceAgentInvocation {
         throw new Error('LOCAL_RUN_PERSIST_FAILED')
       }
       if (typeof context.onLeaseAcquired === 'function') {
-        context.onLeaseAcquired({
+        await context.onLeaseAcquired({
           operationId,
           agentRunId: harnessRun?.agentRunId || '',
-          permissionMode: allowWrite ? 'workspace-write' : 'read-only',
-          sideEffectsPossible: allowWrite,
+          permissionMode: allowWrite ? 'workspace-write' : (readExec ? 'read-exec' : 'read-only'),
+          sideEffectsPossible: allowWrite || readExec,
         })
       }
       await outputs.begin()
@@ -826,7 +897,9 @@ class LocalWorkspaceAgentInvocation {
       stagedInputs = isolated
         ? null
         : stageAgentInputs(group.workdir, context.attachmentSnapshots || [], nativeImageLimit)
-      const preferencesText = isolated ? '' : workPreferencesPrompt(this.state().workPreferences)
+      const preferencesText = isolated
+        ? ''
+        : workPreferencesPrompt(this.state().workPreferences)
       const buildPrompt = (afterKind, contextPackage) => [assembleInvocationPrompt({
         group,
         kind,
@@ -951,6 +1024,28 @@ class LocalWorkspaceAgentInvocation {
         this.emitChanged()
         return prompt
       }
+      traceSink = null
+      const traceRunId = activeRun?.runId || ''
+      const traceAgentRunId = harnessRun?.agentRunId || ''
+      if (this.tracesRoot && traceRunId && traceAgentRunId) {
+        try {
+          traceSink = createTraceSink({
+            tracesRoot: this.tracesRoot,
+            runId: traceRunId,
+            agentRunId: traceAgentRunId,
+            groupId: group.id,
+            projectId: group.projectId || null,
+            agentKind: kind,
+            outputFormat: traceOutputFormat(kind),
+            childEnv: process.env,
+            knownSessionRefs: session.ref ? [session.ref] : [],
+            now: () => this.now(),
+            onAppended: payload => {
+              try { this.onTraceAppended?.(payload) } catch { /* best effort */ }
+            },
+          })
+        } catch { traceSink = null }
+      }
       const runOptions = {
         turnCompletion: context.v4 === true
           && (context.allowMissingProposalReceipt === true || context.allowMissingV4Receipt === true),
@@ -969,7 +1064,30 @@ class LocalWorkspaceAgentInvocation {
           return { prompt: rebuildFreshSession() }
         },
         signal: agentController.signal,
-        sandbox: allowWrite ? 'workspace-write' : 'read-only',
+        sandbox: allowWrite ? 'workspace-write' : (readExec ? 'read-exec' : 'read-only'),
+        ...(traceSink ? { traceSink } : {}),
+        ...(context.watchdog && Object.hasOwn(context.watchdog, 'hardLimitMs')
+          ? { hardLimitMs: context.watchdog.hardLimitMs }
+          : {}),
+        ...((allowWrite || readExec) && this.platform !== 'win32'
+          && this.processRegistry && this.managedSupervisorPath
+          ? {
+              spawnFn: createManagedSpawn({
+                registry: this.processRegistry,
+                invocation: {
+                  invocationId: activeRun?.runId || null,
+                  groupId: group.id,
+                  projectId: group.projectId || null,
+                  workdir: group.workdir,
+                  permission: allowWrite ? 'workspace-write' : 'read-exec',
+                  claims: invocation.lease?.claims || [],
+                  agentKind: kind,
+                },
+                supervisorPath: this.managedSupervisorPath,
+                platform: this.platform,
+              }),
+            }
+          : {}),
         operationId,
         onActivity: () => {
           // A cloud request has no local process events while the remote CLI
@@ -995,7 +1113,7 @@ class LocalWorkspaceAgentInvocation {
           // `yolo: false`; sandbox and workspace authorization remain enforced
           // before this callback is reached.
           if ((context.yolo ?? this.defaultYolo) !== false) {
-            const automatic = automaticPermissionResponse(request, { allowWrite })
+            const automatic = automaticPermissionResponse(request, { allowWrite, readExec })
             if (automatic !== undefined) return Promise.resolve(automatic)
           }
           const pending = Promise.resolve().then(async () => {
@@ -1052,7 +1170,9 @@ class LocalWorkspaceAgentInvocation {
         // ACP runtimes are shared by the stable group/task session key. OpenClaw
         // is excluded because its gateway wrapper owns the process lifetime and
         // is intentionally torn down after each invocation.
-        ...(kind !== 'openclaw' ? { acpPersistenceKey: session.key } : {}),
+        // Writable ACP invocations run one disposable process per round (M3
+        // 3.9); only read-only invocations keep the persistent runtime key.
+        ...(kind !== 'openclaw' && !allowWrite ? { acpPersistenceKey: session.key } : {}),
         ...(kind === 'hermes'
           ? { hermesAcpAvailable: HERMES_WORKSPACE_ACP_ENABLED && agent.acpAvailable !== false }
           : {}),
@@ -1257,7 +1377,7 @@ class LocalWorkspaceAgentInvocation {
         result = requireTerminalAgentResult(result)
       } catch (error) {
         if (agent.connectorInstanceId && result?.outcome === 'failed' && result.failure?.retryable === false) {
-          Object.defineProperty(error, Symbol.for('meldwork.connector-nonretryable'), { value: true })
+          Object.defineProperty(error, Symbol.for('tyche.connector-nonretryable'), { value: true })
         }
         throw error
       }
@@ -1337,7 +1457,18 @@ class LocalWorkspaceAgentInvocation {
         outcomeRefs: auditOutcomeRefs,
         ...(collaborationReply.collaboration?.taskDecision
           ? { taskDecision: collaborationReply.collaboration.taskDecision } : {}),
-      })
+      }) || (traceSink ? {
+        // Project-room calls have no chat run harness; the trace sink still
+        // gives the message the ids needed to load the full trace.
+        runId: traceRunId,
+        agentRunId: traceAgentRunId,
+        status: finalStatus,
+        summary: '',
+        events: [],
+        sourceMessageIds: [],
+        truncated: false,
+        context: {},
+      } : null)
       const messageMetadata = {
         elapsedMs: Date.now() - startedAt,
         toolCalls,
@@ -1382,6 +1513,7 @@ class LocalWorkspaceAgentInvocation {
       return {
         message,
         pendingMessage,
+        trace,
         collaboration: collaborationReply.collaboration,
         outcomeRefs: producedOutcomeRefs,
         producedOutcomeRefs,
@@ -1409,7 +1541,7 @@ class LocalWorkspaceAgentInvocation {
           const graceMs = process.platform === 'win32' ? Math.max(this.runAbortGraceMs, 2500) : this.runAbortGraceMs
           await settleWithin(Promise.allSettled(cleanupPromises), graceMs)
         }
-        if (terminationFailure || (process.platform === 'win32' && !runSettled)) {
+        if (terminationFailure || !runSettled) {
           let failure = terminationFailure
           if (!failure) {
             failure = Object.assign(new Error('LOCAL_AGENT_TERMINATION_FAILED'), {
@@ -1418,9 +1550,9 @@ class LocalWorkspaceAgentInvocation {
             const pendingExit = runPromise.then(() => undefined, lateError => {
               if (lateError?.code !== 'LOCAL_AGENT_TERMINATION_FAILED'
                   && lateError?.message !== 'LOCAL_AGENT_TERMINATION_FAILED') return undefined
-              return lateError[Symbol.for('meldwork.pending-process-exit')] || new Promise(() => {})
+              return lateError[Symbol.for('tyche.pending-process-exit')] || new Promise(() => {})
             })
-            Object.defineProperty(failure, Symbol.for('meldwork.pending-process-exit'), { value: pendingExit })
+            Object.defineProperty(failure, Symbol.for('tyche.pending-process-exit'), { value: pendingExit })
           }
           stop = resolveInvocationStop({
             caughtError: failure,
@@ -1459,11 +1591,12 @@ class LocalWorkspaceAgentInvocation {
         outcomeCertainty: terminalFailureKnown
           ? 'known_failed'
           : (operationStarted || sideEffectsStarted ? 'unknown_outcome' : 'not_started'),
-        sideEffectsPossible: allowWrite && sideEffectsStarted,
+        sideEffectsPossible: (allowWrite || readExec) && sideEffectsStarted,
         operationId,
         idempotencyMode,
       })
     } finally {
+      try { traceSink?.end() } catch { /* tracing must not affect the call */ }
       closeAgentCallbacks()
       if (signal && parentAbortHandler) {
         signal.removeEventListener('abort', parentAbortHandler)
@@ -1514,6 +1647,12 @@ class LocalWorkspaceAgentInvocation {
       return changed
     })
   }
+}
+
+function traceOutputFormat(kind) {
+  if (kind === 'codex') return 'jsonl'
+  if (['claude', 'qwen', 'workbuddy', 'hermes'].includes(kind)) return 'stream-json'
+  return 'text'
 }
 
 module.exports = { LocalWorkspaceAgentInvocation }

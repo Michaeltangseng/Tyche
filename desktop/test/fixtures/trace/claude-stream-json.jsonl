@@ -1,0 +1,10 @@
+{"type":"stream_event","session_id":"claude-fixture-session","event":{"type":"message_start","message":{"id":"msg_fixture_1","role":"assistant"}}}
+{"type":"stream_event","session_id":"claude-fixture-session","event":{"type":"content_block_delta","index":0,"message_id":"msg_fixture_1","delta":{"type":"thinking_delta","thinking":"Let me inspect the file. "}}}
+{"type":"stream_event","session_id":"claude-fixture-session","event":{"type":"content_block_delta","index":0,"message_id":"msg_fixture_1","delta":{"type":"thinking_delta","thinking":"Then I will answer."}}}
+{"type":"stream_event","session_id":"claude-fixture-session","event":{"type":"content_block_delta","index":1,"message_id":"msg_fixture_1","delta":{"type":"text_delta","text":"I will read the file "}}}
+{"type":"stream_event","session_id":"claude-fixture-session","event":{"type":"content_block_delta","index":1,"message_id":"msg_fixture_1","delta":{"type":"text_delta","text":"and summarize it."}}}
+{"type":"stream_event","session_id":"claude-fixture-session","event":{"type":"content_block_start","index":2,"message_id":"msg_fixture_1","content_block":{"type":"tool_use","id":"toolu_fixture_1","name":"Read","input":{}}}}
+{"type":"stream_event","session_id":"claude-fixture-session","event":{"type":"content_block_delta","index":2,"message_id":"msg_fixture_1","delta":{"type":"input_json_delta","partial_json":"{\"file_path\":\"README.md\"}"}}}
+{"type":"assistant","session_id":"claude-fixture-session","message":{"id":"msg_fixture_1","role":"assistant","content":[{"type":"text","text":"I will read the file and summarize it."},{"type":"tool_use","id":"toolu_fixture_1","name":"Read","input":{"file_path":"README.md"}}]}}
+{"type":"user","session_id":"claude-fixture-session","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_fixture_1","content":[{"type":"text","text":"# Fixture README"}]}]}}
+{"type":"result","session_id":"claude-fixture-session","subtype":"success","is_error":false,"result":"I will read the file and summarize it."}

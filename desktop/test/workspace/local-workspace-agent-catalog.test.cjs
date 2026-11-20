@@ -10,7 +10,7 @@ const { NATIVE_CONFIG_IDENTITY_DIRECTORY, NATIVE_ENVIRONMENT_IDENTITY, NATIVE_AU
 const { LocalWorkspaceAgentCatalog } = catalogApi
 
 test('Gemini verification identity changes when an unrefreshable OAuth token expires', t => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-gemini-expiry-identity-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-gemini-expiry-identity-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const agent = { kind: 'gemini' }
   Object.defineProperty(agent, NATIVE_CONFIG_IDENTITY_DIRECTORY, { value: root })
@@ -27,7 +27,7 @@ test('Gemini verification identity changes when an unrefreshable OAuth token exp
 })
 
 test('Gemini trust changes invalidate default, absolute and relative configuration identities', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-gemini-trust-identity-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-gemini-trust-identity-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.gemini')
   fs.mkdirSync(root)
@@ -56,7 +56,7 @@ test('Gemini trust changes invalidate default, absolute and relative configurati
 })
 
 test('deep workspaces track ancestor configuration without disabling verification', t => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-deep-verification-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-deep-verification-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   fs.mkdirSync(path.join(root, '.git'))
   const workdir = path.join(root, ...Array(65).fill('d'))
@@ -77,7 +77,7 @@ test('deep workspaces track ancestor configuration without disabling verificatio
 })
 
 test('Agent verification identity changes when the executable is replaced', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-agent-identity-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-agent-identity-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const executable = path.join(directory, 'agent')
   fs.writeFileSync(executable, 'first binary')
@@ -144,7 +144,7 @@ function fixture(overrides = {}) {
 }
 
 test('project credential changes invalidate successful and late verification without exposing values', async t => {
-  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-project-env-'))
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-project-env-'))
   t.after(() => fs.rmSync(workdir, { recursive: true, force: true }))
   const agent = { kind: 'mimo', executable: '/tmp/agent', version: '1', available: true, compatibilityState: 'compatible' }
   let secret = 'first-project-secret'
@@ -163,7 +163,7 @@ test('project credential changes invalidate successful and late verification wit
 })
 
 test('late project environment capture cannot replace a newer result', async t => {
-  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-project-env-race-'))
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-project-env-race-'))
   t.after(() => fs.rmSync(workdir, { recursive: true, force: true }))
   const pending = deferred()
   let calls = 0
@@ -180,7 +180,7 @@ test('late project environment capture cannot replace a newer result', async t =
 })
 
 test('project credential changes do not invalidate another project', async t => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-project-env-isolation-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-project-env-isolation-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const first = path.join(root, 'first')
   const second = path.join(root, 'second')
@@ -203,7 +203,7 @@ test('project credential changes do not invalidate another project', async t => 
 })
 
 test('DeepSeek dotenv changes invalidate only the affected project verification', async t => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-dsh-project-identity-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-dsh-project-identity-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const native = path.join(root, 'native')
   const first = path.join(root, 'first')
@@ -226,7 +226,7 @@ test('DeepSeek dotenv changes invalidate only the affected project verification'
 })
 
 test('failed project environment capture prevents reusing or recording verification', async t => {
-  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-project-env-failed-'))
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-project-env-failed-'))
   t.after(() => fs.rmSync(workdir, { recursive: true, force: true }))
   const agent = { kind: 'zcode', version: '1', available: true, compatibilityState: 'compatible' }
   let fail = false
@@ -246,7 +246,7 @@ test('failed project environment capture prevents reusing or recording verificat
 })
 
 test('project credential changes clear a previous project-specific authentication block', async t => {
-  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-project-env-auth-'))
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-project-env-auth-'))
   t.after(() => fs.rmSync(workdir, { recursive: true, force: true }))
   const agent = { kind: 'mimo', version: '1', available: true, compatibilityState: 'compatible' }
   let secret = 'first-secret'
@@ -263,7 +263,7 @@ test('project credential changes clear a previous project-specific authenticatio
 })
 
 test('uninspectable project configuration cannot retain successful verification', t => {
-  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-uninspectable-config-'))
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-uninspectable-config-'))
   t.after(() => fs.rmSync(workdir, { recursive: true, force: true }))
   fs.mkdirSync(path.join(workdir, '.git'))
   fs.mkdirSync(path.join(workdir, '.codex'))
@@ -280,7 +280,7 @@ test('uninspectable project configuration cannot retain successful verification'
 })
 
 test('uninspectable native authentication files do not yield a stable verification identity', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-uninspectable-auth-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-uninspectable-auth-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const filename = path.join(directory, 'auth.json')
   const agent = { kind: 'codex' }
@@ -295,7 +295,7 @@ for (const [kind, config] of [['codex', '.codex/config.toml'], ['claude', '.clau
   ['mimo', '.mimocode/mimocode.json'], ['mimo', 'mimocode.json'], ['gemini', '.gemini/settings.json'],
   ['qwen', '.qwen/settings.json']]) {
   test(`${kind} project verification cannot cross directories or survive a configuration change`, t => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-project-verification-'))
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-project-verification-'))
     t.after(() => fs.rmSync(root, { recursive: true, force: true }))
     const first = path.join(root, 'first')
     const second = path.join(root, 'second')
@@ -310,7 +310,7 @@ for (const [kind, config] of [['codex', '.codex/config.toml'], ['claude', '.clau
     catalog.markRuntimeCredential(kind, 'ready', { verificationIdentity, projectIdentity, workdir: first })
     assert.equal(catalog.isRecentlyVerified(kind, first), true)
     assert.equal(catalog.isRecentlyVerified(kind, second), false)
-    assert.doesNotMatch(JSON.stringify(state.agentRuntime), /meldwork-project-verification/)
+    assert.doesNotMatch(JSON.stringify(state.agentRuntime), /tyche-project-verification/)
     fs.writeFileSync(filename, '{"model":"replacement"}')
     assert.equal(catalog.isRecentlyVerified(kind, first), false)
     catalog.markRuntimeCredential(kind, 'ready', { verificationIdentity, projectIdentity, workdir: first })
@@ -332,7 +332,7 @@ for (const [kind, relative, directory, filename] of [
   ['hermes', 'custom/credentials.json', false, 'custom/credentials.json'],
 ]) {
   test(`${kind} relative native configuration invalidates project verification`, t => {
-    const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-relative-config-'))
+    const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-relative-config-'))
     t.after(() => fs.rmSync(workdir, { recursive: true, force: true }))
     const file = path.join(workdir, filename)
     fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -351,7 +351,7 @@ for (const [kind, relative, directory, filename] of [
 }
 
 test('project authentication failures clear on CLI replacement or retry refresh', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-project-failure-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-project-failure-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   let current = { kind: 'zcode', executable: '/tmp/zcode-old', version: '1', available: true }
   let now = '2026-08-03T00:00:00.000Z'
@@ -457,7 +457,7 @@ test('probe failure cannot retain availability when the executable changes', asy
 })
 
 test('probe failure cannot retain availability after an in-place executable replacement', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-agent-replaced-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-agent-replaced-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const executable = path.join(directory, 'agent')
   fs.writeFileSync(executable, 'old executable')
@@ -507,7 +507,7 @@ test('a native environment change invalidates successful and late verification w
 })
 
 test('editing selected native configuration invalidates a previous and late successful run', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-agent-config-identity-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-agent-config-identity-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const config = path.join(directory, 'config.yaml')
   fs.writeFileSync(config, 'model: first\n')
@@ -528,7 +528,7 @@ test('editing selected native configuration invalidates a previous and late succ
 })
 
 test('credential files inside selected native directories participate in verification identity', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-agent-credential-identity-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-agent-credential-identity-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const credentials = path.join(directory, 'credentials')
   fs.mkdirSync(credentials)
@@ -542,7 +542,7 @@ test('credential files inside selected native directories participate in verific
 })
 
 test('Gemini native credential changes invalidate a successful verification', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-gemini-identity-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-gemini-identity-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const filename = path.join(directory, 'oauth_creds.json')
   fs.writeFileSync(filename, '{"refresh_token":"first"}')
@@ -566,7 +566,7 @@ test('Gemini native credential changes invalidate a successful verification', as
 })
 
 test('OpenCode authentication file changes invalidate successful and late verification', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-opencode-auth-identity-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-opencode-auth-identity-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const filename = path.join(directory, 'auth.json')
   fs.writeFileSync(filename, '{"provider":{"type":"api","key":"first"}}')
@@ -591,7 +591,7 @@ test('OpenCode authentication file changes invalidate successful and late verifi
 
 for (const [kind, key] of [['opencode', 'OPENCODE_CONFIG'], ['mimo', 'MIMOCODE_CONFIG']]) {
   test(`${kind} explicit configuration changes invalidate prior verification`, async t => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-explicit-config-identity-'))
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-explicit-config-identity-'))
     t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
     const filename = path.join(directory, 'custom.json')
     fs.writeFileSync(filename, '{"model":"first"}')
@@ -616,7 +616,7 @@ for (const [kind, key] of [['opencode', 'OPENCODE_CONFIG'], ['mimo', 'MIMOCODE_C
 }
 
 test('Gemini selected cloud credential changes invalidate prior and late verification', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-gemini-cloud-identity-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-gemini-cloud-identity-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const filename = path.join(directory, 'credentials.json')
   fs.writeFileSync(filename, '{"token":"first"}')
@@ -643,7 +643,7 @@ test('Gemini selected cloud credential changes invalidate prior and late verific
 })
 
 test('DeepSeek profile edits immediately invalidate routing verification without a catalog refresh', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-dsh-profile-identity-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-dsh-profile-identity-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const profile = path.join(directory, 'profiles', 'acp')
   fs.mkdirSync(profile, { recursive: true })
@@ -667,7 +667,7 @@ test('DeepSeek profile edits immediately invalidate routing verification without
 })
 
 test('automatically discovered native directories invalidate verification without exposing the path', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-agent-auto-identity-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-agent-auto-identity-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const config = path.join(directory, 'config.toml')
   fs.writeFileSync(config, 'model = "first"\n')
@@ -680,7 +680,7 @@ test('automatically discovered native directories invalidate verification withou
   catalog.markRuntimeCredential('codex', 'ready')
   assert.equal(catalog.isRecentlyVerified('codex'), true)
   assert.equal(Object.keys(agents()[0]).includes('nativeConfigIdentityDirectory'), false)
-  assert.doesNotMatch(JSON.stringify(agents()), /meldwork-agent-auto-identity/)
+  assert.doesNotMatch(JSON.stringify(agents()), /tyche-agent-auto-identity/)
   fs.writeFileSync(config, 'model = "different"\n')
   assert.equal(catalog.isRecentlyVerified('codex'), false)
 })

@@ -11,7 +11,7 @@ const {
 } = require('../../src/attachments/content-blob-store.cjs')
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-content-blobs-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-content-blobs-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const rootPath = path.join(directory, 'private', 'content-blobs')
   return { directory, rootPath, store: new ContentBlobStore({ rootPath }) }

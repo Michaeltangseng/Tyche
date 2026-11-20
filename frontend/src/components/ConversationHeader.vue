@@ -70,26 +70,6 @@
         </p>
       </div>
     </div>
-    <div class="conversation-header-actions">
-      <button
-        class="workspace-chip"
-        type="button"
-        :title="activeGroup.workdir"
-        @click="openGroupSettings"
-      >
-        <FolderOpenOutline />
-        <span>{{ compactPath(activeGroup.workdir) }}</span>
-      </button>
-      <button
-        class="icon-button"
-        type="button"
-        :title="t('conversation.settings')"
-        :aria-label="t('conversation.settings')"
-        @click="openGroupSettings"
-      >
-        <OptionsOutline />
-      </button>
-    </div>
   </header>
 </template>
 
@@ -98,9 +78,7 @@ import { ref } from 'vue'
 import {
   CheckmarkCircleOutline,
   CloseOutline,
-  FolderOpenOutline,
   PencilOutline,
-  OptionsOutline,
 } from '@vicons/ionicons5'
 import { agentLogo } from '../catalog.js'
 
@@ -115,12 +93,10 @@ const {
   agentSkillLabel,
   beginInlineTitleEdit,
   cancelInlineTitleEdit,
-  compactPath,
   conversationPermissionLabel,
   groupName,
   inlineTitleDraft,
   inlineTitleEditing,
-  openGroupSettings,
   saveInlineTitle,
   saving,
   t,

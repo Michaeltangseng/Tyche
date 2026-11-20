@@ -135,7 +135,7 @@ test('declared Hermes credentials reach only Hermes and are redacted even withou
 
 test('Codex uses only the selected native provider env_key and redacts it', t => {
   const { codexDeclaredCredentialKeys } = require('../../../src/agents/local-agent-readiness.cjs')
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-codex-provider-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-codex-provider-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   fs.writeFileSync(path.join(directory, 'config.toml'), `profile = 'work'\nmodel_provider = 'other'\n[profiles.work]\nmodel_provider = 'custom'\n[model_providers.custom]\nenv_key = 'CUSTOM_CREDENTIAL'\n[model_providers.other]\nenv_key = 'OTHER_SECRET'\n`)
   const env = { CODEX_HOME: directory, CUSTOM_CREDENTIAL: 'abc', OTHER_SECRET: 'other', NODE_OPTIONS: 'unsafe' }
@@ -154,7 +154,7 @@ test('Codex uses only the selected native provider env_key and redacts it', t =>
 })
 
 test('Hermes invocation receives declared credentials and redacts them from its reply', async t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-declared-key-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-declared-key-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const cli = executable(directory, 'hermes.cjs', "process.stdout.write('reply=' + process.env.CUSTOM_CREDENTIAL)")
   const result = await runAgent({ kind: 'hermes', name: 'Hermes', executable: cli }, 'hello', directory, {
@@ -165,7 +165,7 @@ test('Hermes invocation receives declared credentials and redacts them from its 
 })
 
 test('MiMo captures only the selected provider environment reference and redacts it', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-mimo-reference-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-mimo-reference-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   fs.mkdirSync(path.join(directory, 'mimocode'))
   const filename = path.join(directory, 'mimocode', 'mimocode.json')
@@ -192,7 +192,7 @@ test('MiMo captures only the selected provider environment reference and redacts
 })
 
 test('MiMo resolves the selected model from the native shell before finding its provider key', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-mimo-model-env-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-mimo-model-env-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   fs.writeFileSync(path.join(home, 'mimocode.json'), JSON.stringify({ model: '{env:MODEL_CHOICE}',
     provider: { custom: { options: { apiKey: '{env:CUSTOM_KEY}' } },
@@ -205,7 +205,7 @@ test('MiMo resolves the selected model from the native shell before finding its 
 })
 
 test('MiMo captures embedded key and header references for only the selected provider', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-mimo-headers-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-mimo-headers-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   fs.writeFileSync(path.join(home, 'mimocode.json'), JSON.stringify({ model: 'custom/model',
     provider: { custom: { options: { apiKey: 'prefix-{env:CUSTOM_KEY}', headers: { authorization: 'Bearer {env:HEADER_KEY}' } } },
@@ -224,7 +224,7 @@ test('MiMo captures embedded key and header references for only the selected pro
 })
 
 test('MiMo discovers the recent native model provider when no model is configured', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-mimo-recent-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-mimo-recent-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const state = path.join(home, 'state', 'mimocode')
   fs.mkdirSync(state, { recursive: true })
@@ -264,7 +264,7 @@ test('inline native provider credentials are redacted in complete and streamed o
 })
 
 test('MiMo resolves provider references across native configuration overrides', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-mimo-overrides-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-mimo-overrides-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const root = path.join(directory, 'xdg')
   const selected = path.join(directory, 'selected')
@@ -295,7 +295,7 @@ test('MiMo resolves provider references across native configuration overrides', 
 })
 
 test('MiMo selected native directory drives credential capture and child execution', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-mimo-selected-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-mimo-selected-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const selected = path.join(home, 'selected')
   fs.mkdirSync(selected)
@@ -318,7 +318,7 @@ test('MiMo selected native directory drives credential capture and child executi
 })
 
 test('MiMo selects project provider references for the current work directory', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-mimo-project-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-mimo-project-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, 'project')
   const workdir = path.join(root, 'nested')
@@ -346,7 +346,7 @@ test('MiMo selects project provider references for the current work directory', 
 })
 
 test('MiMo resolves relative native configuration paths against the chat work directory', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-mimo-relative-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-mimo-relative-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const workdir = path.join(home, 'work')
   const selected = path.join(workdir, 'selected')

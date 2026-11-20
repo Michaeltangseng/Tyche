@@ -4,19 +4,21 @@
     :class="{
       'sidebar-collapsed': sidebarCollapsed,
       'trace-panel-open': tracePanelOpen,
+      'project-drawer-open': roomDrawer != null,
     }"
+    :style="{ '--project-room-drawer-width': `${roomFilesWidth}px` }"
     :data-theme="theme"
     :data-platform="desktopPlatform"
     :aria-busy="agentDiscoveryPending ? 'true' : undefined"
   >
     <section v-if="booting" class="boot-state" aria-live="polite">
-      <img class="boot-logo" :src="productAppIcon" alt="Meldwork" />
+      <img class="boot-logo" :src="productAppIcon" alt="Tyche" />
       <p>{{ t('app.loading') }}</p>
       <WavePhysicsLoader :theme="theme" />
     </section>
 
     <section v-else-if="bridgeMissing" class="bridge-state">
-      <img class="bridge-logo" :src="productAppIcon" alt="Meldwork" />
+      <img class="bridge-logo" :src="productAppIcon" alt="Tyche" />
       <h1>{{ t('app.desktopRequired') }}</h1>
       <p>{{ t('app.desktopRequiredDetail') }}</p>
     </section>
@@ -80,6 +82,22 @@
           @select-group="selectGroup"
         />
 
+        <RoomWorkspace
+          v-else-if="activeView === 'rooms' && api?.teamRoom"
+          :api="api.teamRoom"
+          :pick-directory="() => workspace.pickDirectory()"
+          :agents="readyAgents"
+          :create-request="roomCreateRequest"
+          :open-request="teamRoomOpenRequest"
+          :files-open="roomDrawer === 'files'"
+          :usage-open="roomDrawer === 'usage'"
+          @create-request-consumed="roomCreateRequest = false"
+          @active-change="teamRoomNavigation.syncActive"
+          @toggle-files="toggleRoomDrawer('files')"
+          @toggle-usage="toggleRoomDrawer('usage')"
+          @usage-change="roomUsage = $event"
+        />
+
         <section v-else class="conversation-pane">
           <ConversationHeader ref="conversationHeader" :controller="conversationHeaderController" />
 
@@ -105,6 +123,21 @@
           @decide-human-gate="decideHumanGate"
           @select="selectTraceAgentRun"
           @jump-source="jumpToTraceSource"
+        />
+      </transition>
+
+      <transition name="project-drawer">
+        <RoomFilesDrawer
+          v-if="roomDrawer && activeView === 'rooms' && api?.teamRoom && activeTeamRoomId"
+          :key="activeTeamRoomId"
+          :api="api.teamRoom"
+          :room-id="activeTeamRoomId"
+          :width="roomFilesWidth"
+          :panel="roomDrawer"
+          :usage="roomUsage"
+          @close="roomDrawer = null"
+          @switch="roomDrawer = $event"
+          @resize="roomFilesWidth = $event"
         />
       </transition>
 
@@ -199,11 +232,13 @@ import {
   WarningOutline,
 } from '@vicons/ionicons5'
 import ConversationComposer from './components/ConversationComposer.vue'
+import RoomWorkspace from './components/RoomWorkspace.vue'
 import WindowTitlebar from './components/WindowTitlebar.vue'
 import ConversationHeader from './components/ConversationHeader.vue'
 import ConversationTimelineView from './components/ConversationTimelineView.vue'
 import HomeDashboard from './components/HomeDashboard.vue'
 import OnboardingDialog from './components/OnboardingDialog.vue'
+import RoomFilesDrawer from './components/RoomFilesDrawer.vue'
 import RunTracePanel from './components/RunTracePanel.vue'
 import SystemSettingsView from './components/SystemSettingsView.vue'
 import WorkspaceModalContent from './components/WorkspaceModalContent.vue'
@@ -237,6 +272,7 @@ import { useOnboarding } from './composables/useOnboarding.js'
 import { useOverlayLifecycle } from './composables/useOverlayLifecycle.js'
 import { useRunFinishedNotifications } from './composables/useRunFinishedNotifications.js'
 import { useSystemSettingsNavigation } from './composables/useSystemSettingsNavigation.js'
+import { useTeamRoomNavigation } from './composables/useTeamRoomNavigation.js'
 import { useWorkspaceNavigationState } from './composables/useWorkspaceNavigationState.js'
 import { desktopApi, emptySnapshot, normalizeSnapshot } from './desktop.js'
 import { locale, t, translateError, translateSystemMessage } from './i18n.js'
@@ -245,7 +281,6 @@ import { createWorkspaceControllers } from './workspaceControllers.js'
 const snapshot = ref(emptySnapshot())
 const shortcutDefinitions = Object.freeze([
   { labelKey: 'shortcut.toggleSidebar', keys: '⌘ B' },
-  { labelKey: 'shortcut.newGroup', keys: '⌘ G' },
   { labelKey: 'shortcut.previousConversation', keys: '⌘ [' },
   { labelKey: 'shortcut.nextConversation', keys: '⌘ ]' },
   { labelKey: 'shortcut.openAgents', keys: '⌘ ,' },
@@ -397,6 +432,31 @@ const {
   selectGroup,
   selectedGroupId,
 } = workspaceNavigationState
+const teamRoomNavigation = useTeamRoomNavigation({
+  roomApi: computed(() => api.value?.teamRoom || null),
+  activeView,
+  t,
+  showError,
+})
+const {
+  rooms: teamRooms,
+  openRequest: teamRoomOpenRequest,
+  activeRoomId: activeTeamRoomId,
+} = teamRoomNavigation
+const roomCreateRequest = ref(false)
+const PROJECT_DRAWER_DEFAULT_WIDTH = 420
+const roomDrawer = ref(null)
+const roomUsage = ref([])
+const roomFilesWidth = ref(PROJECT_DRAWER_DEFAULT_WIDTH)
+
+function toggleRoomDrawer(panel) {
+  roomDrawer.value = roomDrawer.value === panel ? null : panel
+}
+
+watch(activeView, (view) => {
+  if (view !== 'rooms') roomDrawer.value = null
+})
+
 const sending = computed(() => (
   Boolean(selectedGroupId.value && sendingGroupIds.value.has(selectedGroupId.value))
 ))
@@ -608,7 +668,9 @@ const {
 })
 const { messageDeleteArmedId } = messageActions
 const contentInteractionBlocked = computed(() => (
-  blockingOverlayOpen.value || traceDrawerBlocking.value || agentDiscoveryPending.value
+  blockingOverlayOpen.value
+    || traceDrawerBlocking.value
+    || agentDiscoveryPending.value
 ))
 const composerContext = useComposerContext({
   activeGroup,
@@ -891,6 +953,23 @@ const {
     openAgentManager,
     openSystemSettings,
     productMark,
+    addTeamChat: teamRoomNavigation.addChat,
+    deleteTeamChat: teamRoomNavigation.deleteChat,
+    deleteTeamRoom: teamRoomNavigation.deleteRoom,
+    handleTeamRoomClick: teamRoomNavigation.handleRoomClick,
+    isTeamChatSelected: teamRoomNavigation.isChatSelected,
+    isTeamRoomExpanded: teamRoomNavigation.isExpanded,
+    isTeamRoomSelected: teamRoomNavigation.isRoomSelected,
+    roomWorkspaceAvailable: computed(() => Boolean(api.value?.teamRoom)),
+    openRoomWorkspace: (options = {}) => {
+      closeTracePanel(); closeCollapsedGroupMenu(); teamRoomNavigation.openWorkspace()
+      if (options?.create) roomCreateRequest.value = true
+    },
+    openTeamRoomCreate: () => {
+      closeTracePanel(); closeCollapsedGroupMenu(); teamRoomNavigation.openCreate(); roomCreateRequest.value = true
+    },
+    selectTeamChat: teamRoomNavigation.selectChat,
+    teamRooms,
     refreshing,
     saving,
     selectGroup,

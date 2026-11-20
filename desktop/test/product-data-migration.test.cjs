@@ -17,7 +17,7 @@ function legacyPath(directory, suffix) {
 }
 
 function currentPath(directory, suffix) {
-  return path.join(directory, `meldwork-${suffix}`)
+  return path.join(directory, `tyche-${suffix}`)
 }
 
 function writeLegacyData(directory, suffix) {
@@ -30,8 +30,8 @@ function writeLegacyData(directory, suffix) {
   }
 }
 
-test('migrates legacy product data to Meldwork names without overwriting current data', (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-data-migration-'))
+test('migrates legacy product data to Tyche names without overwriting current data', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-data-migration-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const legacyWorkspace = path.join(directory, `${LEGACY_STEM}-workspace.json`)
   const legacyPrivate = path.join(directory, `${LEGACY_STEM}-private`)
@@ -41,18 +41,18 @@ test('migrates legacy product data to Meldwork names without overwriting current
   const migrated = migrateLegacyProductData(directory)
 
   assert.deepEqual(migrated.sort(), [
-    path.join(directory, 'meldwork-private'),
-    path.join(directory, 'meldwork-workspace.json'),
+    path.join(directory, 'tyche-private'),
+    path.join(directory, 'tyche-workspace.json'),
   ].sort())
   assert.equal(fs.existsSync(legacyWorkspace), false)
-  assert.equal(fs.readFileSync(path.join(directory, 'meldwork-workspace.json'), 'utf8'), '{"groups":[]}')
-  assert.equal(fs.readFileSync(path.join(directory, 'meldwork-private', 'outcomes.json'), 'utf8'), '{}')
+  assert.equal(fs.readFileSync(path.join(directory, 'tyche-workspace.json'), 'utf8'), '{"groups":[]}')
+  assert.equal(fs.readFileSync(path.join(directory, 'tyche-private', 'outcomes.json'), 'utf8'), '{}')
 })
 
 test('rolls back every completed rename when any migration position fails', async (t) => {
   for (let failurePosition = 1; failurePosition <= MIGRATION_SUFFIXES.length; failurePosition += 1) {
     await t.test(`rename ${failurePosition}`, () => {
-      const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-data-rollback-'))
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-data-rollback-'))
       t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
       for (const suffix of MIGRATION_SUFFIXES) writeLegacyData(directory, suffix)
       let forwardRenameCount = 0
@@ -68,7 +68,7 @@ test('rolls back every completed rename when any migration position fails', asyn
 
       assert.throws(
         () => migrateLegacyProductData(directory, { renameSync }),
-        error => error.code === 'MELDWORK_PRODUCT_DATA_MIGRATION_FAILED'
+        error => error.code === 'TYCHE_PRODUCT_DATA_MIGRATION_FAILED'
           && error.diagnostic?.status === 'rolled-back'
           && error.diagnostic?.failedStep === failurePosition,
       )
@@ -83,8 +83,8 @@ test('rolls back every completed rename when any migration position fails', asyn
   }
 })
 
-test('completes a mixed migration state without overwriting existing Meldwork targets', (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-data-mixed-'))
+test('completes a mixed migration state without overwriting existing Tyche targets', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-data-mixed-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   fs.writeFileSync(currentPath(directory, 'workspace.json'), '{"current":true}')
   fs.mkdirSync(currentPath(directory, 'private'))
@@ -100,7 +100,7 @@ test('completes a mixed migration state without overwriting existing Meldwork ta
 })
 
 test('reports rollback failure and a second launch recovers the remaining mixed state', (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-data-recovery-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-data-recovery-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   for (const suffix of MIGRATION_SUFFIXES) writeLegacyData(directory, suffix)
   let forwardRenameCount = 0
@@ -108,7 +108,7 @@ test('reports rollback failure and a second launch recovers the remaining mixed 
     if (path.basename(source).startsWith(`${LEGACY_STEM}-`)) {
       forwardRenameCount += 1
       if (forwardRenameCount === 3) throw Object.assign(new Error('TEST_FORWARD_FAILURE'), { code: 'EIO' })
-    } else if (path.basename(source) === 'meldwork-run-ledger.json') {
+    } else if (path.basename(source) === 'tyche-run-ledger.json') {
       throw Object.assign(new Error('TEST_ROLLBACK_FAILURE'), { code: 'EBUSY' })
     }
     fs.renameSync(source, destination)
@@ -116,7 +116,7 @@ test('reports rollback failure and a second launch recovers the remaining mixed 
 
   assert.throws(
     () => migrateLegacyProductData(directory, { renameSync }),
-    error => error.code === 'MELDWORK_PRODUCT_DATA_MIGRATION_RECOVERY_REQUIRED'
+    error => error.code === 'TYCHE_PRODUCT_DATA_MIGRATION_RECOVERY_REQUIRED'
       && error.diagnostic?.status === 'recovery-required'
       && error.diagnostic?.rollbackFailures?.length === 1,
   )

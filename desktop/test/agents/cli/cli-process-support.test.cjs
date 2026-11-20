@@ -24,7 +24,7 @@ process.stdout.write(JSON.stringify(configSecrets([root])))`
 })
 
 test('Claude project credentials are redacted from final and split streaming output', t => {
-  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-claude-project-secret-'))
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-claude-project-secret-'))
   t.after(() => fs.rmSync(workdir, { recursive: true, force: true }))
   fs.mkdirSync(path.join(workdir, '.claude'))
   fs.writeFileSync(path.join(workdir, '.claude', 'settings.json'), JSON.stringify({
@@ -52,7 +52,7 @@ test('Claude project credentials are redacted from final and split streaming out
 })
 
 test('MiMo native provider credentials are redacted from split streaming output', t => {
-  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-mimo-project-secret-'))
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-mimo-project-secret-'))
   t.after(() => fs.rmSync(workdir, { recursive: true, force: true }))
   fs.writeFileSync(path.join(workdir, 'mimocode.json'), JSON.stringify({
     model: 'custom/model', provider: { custom: { options: { apiKey: 'mimo-private-value' } } },
@@ -68,7 +68,7 @@ test('MiMo native provider credentials are redacted from split streaming output'
 })
 
 test('OpenCode native provider credentials are redacted from split streaming output', t => {
-  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-opencode-project-secret-'))
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-opencode-project-secret-'))
   t.after(() => fs.rmSync(workdir, { recursive: true, force: true }))
   fs.writeFileSync(path.join(workdir, 'opencode.json'), JSON.stringify({
     model: 'custom/model', provider: { custom: { options: { apiKey: 'opencode-private-value' } } },
@@ -84,7 +84,7 @@ test('OpenCode native provider credentials are redacted from split streaming out
 })
 
 test('Qwen project credentials are redacted from split streaming output', t => {
-  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-qwen-project-secret-'))
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-qwen-project-secret-'))
   t.after(() => fs.rmSync(workdir, { recursive: true, force: true }))
   fs.mkdirSync(path.join(workdir, '.qwen'))
   fs.writeFileSync(path.join(workdir, '.qwen', 'settings.json'), JSON.stringify({
@@ -103,7 +103,7 @@ test('Qwen project credentials are redacted from split streaming output', t => {
 })
 
 test('Hermes native configuration secrets are redacted without being added to child environment', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-config-secret-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-config-secret-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   fs.writeFileSync(path.join(home, 'config.yaml'), 'model:\n  api_key: config-private-value\n  token: none\n')
   fs.writeFileSync(path.join(home, 'auth.json'), JSON.stringify({ selected: { type: 'api_key', key: 'auth-private-value' } }))
@@ -124,12 +124,12 @@ test('Hermes native configuration secrets are redacted without being added to ch
 })
 
 test('Hermes native dotenv expansion redacts the values actually loaded by the CLI', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-hermes-dotenv-secret-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-dotenv-secret-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   fs.writeFileSync(path.join(home, '.env'), [
     'CUSTOM_BASE=file-value#with-hash',
     "FIRST_API_KEY='${CUSTOM_BASE}'",
-    'SECOND_TOKEN=${UNSET_MELDWORK_SECRET:-fallback-secret-value}',
+    'SECOND_TOKEN=${UNSET_TYCHE_SECRET:-fallback-secret-value}',
     "THIRD_API_KEY='escaped\\'credential'",
   ].join('\n'))
   const child = childEnvironment({ kind: 'hermes' }, home, {
@@ -141,7 +141,7 @@ test('Hermes native dotenv expansion redacts the values actually loaded by the C
 })
 
 test('DeepSeek native stored credentials are redacted from final and streamed output', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-dsh-secret-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-dsh-secret-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   fs.mkdirSync(path.join(home, 'profiles', 'acp'), { recursive: true })
   fs.writeFileSync(path.join(home, '.credentials.yaml'), [
@@ -164,7 +164,7 @@ test('DeepSeek native stored credentials are redacted from final and streamed ou
 })
 
 test('DeepSeek includes both native and project dotenv in runtime fingerprint and redaction', t => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-dsh-env-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-dsh-env-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const home = path.join(root, 'dsh')
   const workdir = path.join(root, 'workspace')
@@ -435,7 +435,7 @@ test('process diagnostics require explicit authentication failure evidence', () 
 })
 
 test('OpenClaw child environment keeps only its guarded runtime and selected credential', (t) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-openclaw-child-env-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-openclaw-child-env-'))
   const workdir = path.join(directory, 'workspace')
   fs.mkdirSync(workdir)
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
@@ -467,7 +467,7 @@ test('OpenClaw child environment keeps only its guarded runtime and selected cre
         https_proxy: 'http://proxy.example:3128',
         NO_PROXY: 'localhost,127.0.0.1,::1',
         NODE_EXTRA_CA_CERTS: '/certs/company.pem',
-        MELDWORK_OPENCLAW_API_KEY: 'legacy-openclaw-key',
+        TYCHE_OPENCLAW_API_KEY: 'legacy-openclaw-key',
         GITHUB_TOKEN: 'caller-secret',
         ANTHROPIC_API_KEY: 'caller-anthropic-secret',
         XDG_CONFIG_HOME: '/tmp/caller-config',
@@ -476,13 +476,13 @@ test('OpenClaw child environment keeps only its guarded runtime and selected cre
     process.platform,
   )
 
-  assert.equal(env.MELDWORK_OPENCLAW_NATIVE_API_KEY, 'selected-openclaw-key')
+  assert.equal(env.TYCHE_OPENCLAW_NATIVE_API_KEY, 'selected-openclaw-key')
   assert.equal(env.https_proxy, 'http://proxy.example:3128')
   assert.equal(env.NO_PROXY, 'localhost,127.0.0.1,::1')
   assert.equal(env.NODE_EXTRA_CA_CERTS, '/certs/company.pem')
   assert.equal(env.OPENCLAW_GATEWAY_TOKEN, runtime.env.OPENCLAW_GATEWAY_TOKEN)
   assert.equal(env.OPENCLAW_DISABLE_BONJOUR, '1')
-  assert.equal(Object.hasOwn(env, 'MELDWORK_OPENCLAW_API_KEY'), false)
+  assert.equal(Object.hasOwn(env, 'TYCHE_OPENCLAW_API_KEY'), false)
   assert.equal(Object.hasOwn(env, 'GITHUB_TOKEN'), false)
   assert.equal(Object.hasOwn(env, 'ANTHROPIC_API_KEY'), false)
   assert.equal(env.OPENCLAW_WORKSPACE_DIR, workdir)

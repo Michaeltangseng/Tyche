@@ -21,7 +21,7 @@ const {
   readHermesMessageWatermark,
   redactChildSecrets,
   runtimeCommandSummary,
-  stripExactMeldworkPromptEcho,
+  stripExactTychePromptEcho,
   structuredCliError,
 } = require('./cli-runtime-events.cjs')
 const {
@@ -126,6 +126,7 @@ function createBoundedOutputCapture(maxBytes) {
 
 async function runAgent(agent, prompt, workdir, options = {}) {
   if (options.signal?.aborted) throw agentExecutionError('LOCAL_AGENT_EXECUTION_STOPPED')
+  try { options.traceSink?.setChildEnv?.(options.env) } catch { /* tracing is best effort */ }
   const noteActivity = () => {
     try { options.onActivity?.() } catch { /* activity is best-effort */ }
   }
@@ -298,6 +299,7 @@ async function runAgent(agent, prompt, workdir, options = {}) {
       && ['jsonl', 'jsonrpc-jsonl'].includes(profile.framing)
       && typeof profile.createDecoder === 'function'
       ? profile.createDecoder((event) => {
+          try { options.traceSink?.ingest('structured', event) } catch { /* tracing is best effort */ }
           structuredOutput.ingest?.(event)
           observeTerminalEvent(event)
           const progressEvent = profile.mapProgress(event)
@@ -326,6 +328,14 @@ async function runAgent(agent, prompt, workdir, options = {}) {
       callback()
     }
     const signalProcessTree = (signal) => {
+      if (child[Symbol.for('tyche.managed-process')]) {
+        // Managed children must stop through the supervisor's fd 3 protocol;
+        // signalling the supervisor directly would skip its finalKill report.
+        try {
+          child.stop({ force: signal === 'SIGKILL' })
+        } catch { /* the control channel has already closed */ }
+        return
+      }
       if (platform !== 'win32' && child.pid) {
         try {
           process.kill(-child.pid, signal)
@@ -393,13 +403,25 @@ async function runAgent(agent, prompt, workdir, options = {}) {
         }), KILL_SETTLE_MS)
       }, TERMINATE_GRACE_MS)
     }
-    timeout = setTimeout(() => {
-      timeoutRequested = true
-      abort()
-    }, 2 * 60 * 60 * 1000)
+    const hardLimitMs = options.hardLimitMs === undefined
+      ? 2 * 60 * 60 * 1000
+      : (options.hardLimitMs === null
+        ? 0
+        : (Number.isFinite(options.hardLimitMs) && options.hardLimitMs > 0
+          ? options.hardLimitMs
+          : 2 * 60 * 60 * 1000))
+    if (hardLimitMs > 0) {
+      timeout = setTimeout(() => {
+        timeoutRequested = true
+        abort()
+      }, hardLimitMs)
+    }
     if (options.signal?.aborted) abort()
     else options.signal?.addEventListener('abort', abort, { once: true })
     child.stdout.on('data', (chunk) => {
+      try {
+        if (!runtimeStreamParser) options.traceSink?.ingest('stdout', chunk.toString('utf8'))
+      } catch { /* tracing is best effort */ }
       stdout.push(chunk)
       noteActivity()
       structuredOutput.capture?.(chunk)
@@ -407,6 +429,7 @@ async function runAgent(agent, prompt, workdir, options = {}) {
       runtimeStreamParser?.write(chunk)
     })
     child.stderr.on('data', (chunk) => {
+      try { options.traceSink?.ingest('stderr', chunk.toString('utf8')) } catch { /* tracing is best effort */ }
       stderr.push(chunk)
       noteActivity()
     })
@@ -507,7 +530,7 @@ async function runAgent(agent, prompt, workdir, options = {}) {
         })
         result = {
           ...result,
-          text: stripExactMeldworkPromptEcho(result.text, prompt),
+          text: stripExactTychePromptEcho(result.text, prompt),
         }
         if (progress.length) result.progress = progress
         const redactedText = redactChildSecrets(result.text, childEnv)

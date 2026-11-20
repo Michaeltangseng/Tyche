@@ -10,7 +10,7 @@ const { parseTaskDecision, parseLenientTaskDecision } = require('../../src/colla
 const { captureArtifactOutputState, captureAgentOutcomeDescriptors } = require('../../src/agents/agent-output-importer.cjs')
 
 function reply(text, status = 'continue', extra = {}) {
-  return `${text}\n[[MELDWORK_COLLABORATION:${JSON.stringify({ summary: text.slice(0, 500),
+  return `${text}\n[[TYCHE_COLLABORATION:${JSON.stringify({ summary: text.slice(0, 500),
     taskDecision: { status, reason: text.slice(0, 500), deliverables: status === 'completed' ? ['Answer'] : [], ...extra },
   })}]]`
 }
@@ -176,7 +176,7 @@ test('a native file edit during confirmation withdraws the candidate and require
     if (phase === 'proposal') return 'Independent result'
     assert.equal(runOptions.sandbox, 'workspace-write')
     const version = versionFrom(prompt)
-    const filename = path.join(workdir, '.meldwork-output', 'result.txt')
+    const filename = path.join(workdir, '.tyche-output', 'result.txt')
     if (version) {
       versions.push(version)
       if (!revised) {
@@ -203,14 +203,14 @@ test('the invited writable peer can take over edits using the group authorizatio
     if (version) return reply('Approved', 'completed', { reviewedVersion: version })
     assert.equal(runOptions.sandbox, 'workspace-write')
     if (kind === 'codex') return reply('@hermes implement the correction.', 'continue', { nextKinds: ['hermes'] })
-    fs.mkdirSync(path.join(workdir, '.meldwork-output'), { recursive: true })
-    fs.writeFileSync(path.join(workdir, '.meldwork-output', 'result.txt'), 'Corrected result')
+    fs.mkdirSync(path.join(workdir, '.tyche-output'), { recursive: true })
+    fs.writeFileSync(path.join(workdir, '.tyche-output', 'result.txt'), 'Corrected result')
     return reply('Corrected result.txt', 'completed')
   }, { allowWrite: true })
   assert.equal(result.record.status, 'completed', JSON.stringify(result.workspace.snapshot().messages))
   assert.ok(result.calls.some(call => call.kind === 'hermes' && call.runOptions.sandbox === 'workspace-write'))
   const candidate = result.workspace.autoRunner.v4NaturalConsensus(result.group, result.controller, result.controller.threadRootId)
-  assert.equal(candidate.files[0].path, '.meldwork-output/result.txt')
+  assert.equal(candidate.files[0].path, '.tyche-output/result.txt')
 })
 
 test('automatic turns can finish more than twelve tools and retain their answer', async t => {

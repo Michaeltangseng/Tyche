@@ -13,7 +13,7 @@ const {
 } = require('../../src/knowledge/local-knowledge-connectors.cjs')
 
 function fixture(t) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-local-connectors-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-local-connectors-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const vaultPath = path.join(directory, 'Obsidian Vault')
   fs.mkdirSync(path.join(vaultPath, 'notes'), { recursive: true })

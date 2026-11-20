@@ -171,7 +171,7 @@ test('actual generated files are imported, exported and carried into a revision 
     captureAgentOutputs: captureAgentOutputState,
     importAgentOutputs: input => importAgentOutputs(input, store),
     runAgent: async (_agent, _prompt, workdir) => {
-      const output = path.join(workdir, '.meldwork-output')
+      const output = path.join(workdir, '.tyche-output')
       fs.mkdirSync(output, { recursive: true })
       const filename = path.join(output, `brief-${++fileNumber}.csv`)
       fs.writeFileSync(filename, 'project,progress\nAlpha,75\n')

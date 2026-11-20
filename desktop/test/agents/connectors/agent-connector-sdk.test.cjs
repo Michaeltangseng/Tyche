@@ -32,7 +32,7 @@ function fakeSafeStorage() {
 }
 
 function fixture(t, fetch, extra = {}) {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-connector-sdk-'))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-connector-sdk-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const packageStore = new AgentConnectorPackageStore({
     rootPath: path.join(directory, 'private', 'packages'),
@@ -70,7 +70,7 @@ function httpPackage(sessionOverrides = {}) {
     label: 'HTTP JSON Test',
     description: 'Conformance fixture for the bounded HTTP JSON provider.',
     transport: { type: 'http', protocol: 'json' },
-    upstream: { id: 'meldwork-sdk', minVersion: '1.0.0', maxVersion: '1.0.0' },
+    upstream: { id: 'tyche-sdk', minVersion: '1.0.0', maxVersion: '1.0.0' },
     invocation: { recipeId: SDK_HTTP_JSON_RECIPE_ID },
     domains: ['general'],
     session: { supported: true, resume: true, cancel: true, checkpoint: false, ...sessionOverrides },

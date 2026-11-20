@@ -51,10 +51,10 @@ function loadPreload(protocol) {
   return { api: exposed, exposedName, invocations, listeners }
 }
 
-test('local preload exposes the local-only Meldwork API', async () => {
+test('local preload exposes the local-only Tyche API', async () => {
   const { api, exposedName, invocations } = loadPreload('file:')
 
-  assert.equal(exposedName, 'meldworkDesktop')
+  assert.equal(exposedName, 'tycheDesktop')
   assert.equal(Object.isFrozen(api), true)
   assert.equal(api.localOnly, true)
   assert.equal(api.platform, process.platform)
@@ -82,6 +82,19 @@ test('local preload exposes the local-only Meldwork API', async () => {
   )
   assert.equal('configure' in api.localWorkspace, false)
   assert.equal('cancelConfigure' in api.localWorkspace, false)
+  assert.equal(Object.isFrozen(api.teamRoom), true)
+  assert.deepEqual(Object.keys(api.teamRoom).sort(), [
+    'acceptTask', 'answerAttention', 'bootstrap', 'chatMessages', 'createChat', 'createRole',
+    'deleteChat', 'deleteRole', 'deleteRoom', 'filesList', 'filesRead', 'listRooms',
+    'onChanged', 'onRuntimeEvents', 'runtimeEvents', 'setCaptain', 'setWriteAuthorized',
+    'snapshot', 'stopReply', 'submitMessage', 'updateRole',
+  ].sort())
+  await api.teamRoom.snapshot({ roomId: 'room-1' })
+  assert.deepEqual(invocations, [{
+    channel: 'team-room:snapshot',
+    args: [{ roomId: 'room-1' }],
+  }])
+  invocations.length = 0
   assert.equal('localAgentProvider' in api, false)
   await api.localWorkspace.deleteMessage('group-1', 'message-1')
   assert.deepEqual(invocations, [{
@@ -89,6 +102,22 @@ test('local preload exposes the local-only Meldwork API', async () => {
     args: ['group-1', 'message-1'],
   }])
   invocations.length = 0
+
+
+  assert.equal(Object.isFrozen(api.trace), true)
+  assert.deepEqual(
+    Object.keys(api.trace).sort(),
+    ['blob', 'diskUsage', 'onAppended', 'page', 'prune', 'status'],
+  )
+  const cancelTrace = api.trace.onAppended(() => {})
+  cancelTrace()
+  await api.trace.status({ runId: 'run-1', agentRunId: 'agent-1' })
+  assert.deepEqual(invocations, [{
+    channel: 'trace:status',
+    args: [{ runId: 'run-1', agentRunId: 'agent-1' }],
+  }])
+  invocations.length = 0
+
 
   assert.deepEqual(
     Object.keys(api.localAgentConnector).sort(),
@@ -139,6 +168,60 @@ test('local preload exposes the local-only Meldwork API', async () => {
       args: ['custom-0123456789abcdef'],
     },
   ])
+})
+
+test('team-room preload forwards only validated domain requests', async () => {
+  const { api, invocations } = loadPreload('file:')
+  await api.teamRoom.listRooms()
+  await api.teamRoom.bootstrap({ name: 'Room', workspace: '/tmp/work', providers: ['codex'] })
+  await api.teamRoom.snapshot({ roomId: 'room' })
+  await api.teamRoom.chatMessages({ roomId: 'room', chatId: 'chat', beforeSeq: 10, limit: 25 })
+  await api.teamRoom.createChat({ roomId: 'room', title: 'Team' })
+  await api.teamRoom.deleteChat({ roomId: 'room', chatId: 'chat' })
+  await api.teamRoom.deleteRoom({ roomId: 'room' })
+  await api.teamRoom.createRole({ roomId: 'room', chatId: 'chat', displayName: 'Writer', provider: 'codex' })
+  await api.teamRoom.updateRole({ roomId: 'room', roleId: 'role', prompt: 'write' })
+  await api.teamRoom.setCaptain({ roomId: 'room', roleId: 'role' })
+  await api.teamRoom.deleteRole({ roomId: 'room', roleId: 'role' })
+  await api.teamRoom.answerAttention({ roomId: 'room', chatId: 'chat', attentionId: 'a', resolution: 'ok', commandId: 'c' })
+  await api.teamRoom.submitMessage({ roomId: 'room', chatId: 'chat', content: 'hello', clientId: 'c1' })
+  await api.teamRoom.acceptTask({ roomId: 'room', taskId: 'task', commandId: 'c2' })
+  await api.teamRoom.stopReply({ roomId: 'room', replyId: 'reply' })
+  await api.teamRoom.filesList({ roomId: 'room', relPath: 'docs' })
+  await api.teamRoom.filesRead({ roomId: 'room', relPath: 'docs/README.md' })
+  await api.teamRoom.setWriteAuthorized({ roomId: 'room', authorized: true })
+  await api.teamRoom.runtimeEvents({ roomId: 'room', chatId: 'chat', limit: 10 })
+  assert.deepEqual(invocations.map(item => item.channel), [
+    'team-room:list', 'team-room:bootstrap', 'team-room:snapshot', 'team-room:chat-messages',
+    'team-room:chat-create', 'team-room:chat-delete', 'team-room:room-delete',
+    'team-room:role-create', 'team-room:role-update', 'team-room:role-set-captain',
+    'team-room:role-delete',
+    'team-room:attention-answer', 'team-room:message-submit', 'team-room:accept-task',
+    'team-room:stop-reply', 'team-room:files-list', 'team-room:files-read',
+    'team-room:write-authorized', 'team-room:runtime-events',
+  ])
+})
+
+test('team-room preload exposes cancellable change and runtime-event subscriptions', () => {
+  const { api, listeners } = loadPreload('file:')
+  const received = []
+  const unsubscribe = api.teamRoom.onChanged(payload => received.push(payload))
+  const listener = listeners.get('team-room:changed')
+  assert.equal(typeof listener, 'function')
+  listener({}, { revision: 1 })
+  assert.deepEqual(received, [{ revision: 1 }])
+  unsubscribe()
+  assert.equal(listeners.has('team-room:changed'), false)
+
+  const runtime = []
+  const unsubscribeRuntime = api.teamRoom.onRuntimeEvents(payload => runtime.push(payload))
+  const runtimeListener = listeners.get('team-room:runtime-events')
+  assert.equal(typeof runtimeListener, 'function')
+  const batch = [{ runId: 'run-1', event: { kind: 'text_delta', text: 'hi' } }]
+  runtimeListener({}, batch)
+  assert.deepEqual(runtime, [batch])
+  unsubscribeRuntime()
+  assert.equal(listeners.has('team-room:runtime-events'), false)
 })
 
 test('local preload exposes the complete narrow Knowledge Connector lifecycle', async () => {
@@ -506,7 +589,7 @@ test('local preload rejects unbounded or unsupported renderer attachment payload
 test('remote preload does not expose local credentials, workspace, or installer APIs', () => {
   const { api, exposedName } = loadPreload('https:')
 
-  assert.equal(exposedName, 'meldworkDesktop')
+  assert.equal(exposedName, 'tycheDesktop')
   assert.equal(api.isDesktop, true)
   assert.equal(api.localOnly, true)
   assert.equal('getAuthToken' in api, false)
@@ -522,6 +605,7 @@ test('remote preload does not expose local credentials, workspace, or installer 
   assert.equal('localAttachments' in api, false)
   assert.equal('localAgentProvider' in api, false)
   assert.equal('localKnowledgeBase' in api, false)
+  assert.equal('room' in api, false)
 })
 
 test('native Agent configuration preload exposes only scoped directory operations', async () => {

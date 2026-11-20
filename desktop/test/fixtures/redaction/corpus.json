@@ -1,0 +1,452 @@
+[
+  {
+    "name": "Private key RSA block",
+    "category": "private-key",
+    "input": "before\n-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA1234567890abcdef\n-----END RSA PRIVATE KEY-----\nafter",
+    "expected": "before\n[redacted private key]\nafter"
+  },
+  {
+    "name": "Private key EC block",
+    "category": "private-key",
+    "input": "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEIA==\n-----END EC PRIVATE KEY-----",
+    "expected": "[redacted private key]"
+  },
+  {
+    "name": "Private key OPENSSH block",
+    "category": "private-key",
+    "input": "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXk=\n-----END OPENSSH PRIVATE KEY-----",
+    "expected": "[redacted private key]"
+  },
+  {
+    "name": "Private key generic block",
+    "category": "private-key",
+    "input": "-----BEGIN PRIVATE KEY-----\nMIIBVwIBADANBgkq\n-----END PRIVATE KEY-----",
+    "expected": "[redacted private key]"
+  },
+  {
+    "name": "Private key marked redacted already",
+    "category": "private-key",
+    "input": "-----BEGIN RSA PRIVATE KEY-----\n[redacted]\n-----END RSA PRIVATE KEY-----",
+    "expected": "[redacted private key]"
+  },
+  {
+    "name": "Bearer token",
+    "category": "bearer",
+    "input": "Authorization: Bearer abc.def-ghi_123",
+    "expected": "credential=[redacted] [redacted]"
+  },
+  {
+    "name": "Bearer with punctuation",
+    "category": "bearer",
+    "input": "curl -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig\"",
+    "expected": "curl -H \"credential=[redacted] [redacted]\""
+  },
+  {
+    "name": "Bearer lowercase",
+    "category": "bearer",
+    "input": "authorization: bearer tokenvalue",
+    "expected": "credential=[redacted] [redacted]"
+  },
+  {
+    "name": "Bearer at line start",
+    "category": "bearer",
+    "input": "Bearer abcdefghijklmnop==",
+    "expected": "Bearer [redacted]"
+  },
+  {
+    "name": "Basic valid base64",
+    "category": "basic-auth",
+    "input": "Authorization: Basic dXNlcjpwYXNz",
+    "expected": "credential=[redacted] [redacted]"
+  },
+  {
+    "name": "Basic valid base64 padded",
+    "category": "basic-auth",
+    "input": "Authorization: Basic dXNlcjpwYXNzMTIz==",
+    "expected": "credential=[redacted] [redacted]"
+  },
+  {
+    "name": "Basic invalid base64 (no colon)",
+    "category": "basic-auth",
+    "input": "Authorization: Basic dXNlcg==",
+    "expected": "credential=[redacted] dXNlcg=="
+  },
+  {
+    "name": "Basic non base64 text",
+    "category": "basic-auth",
+    "input": "Basic not-base64!",
+    "expected": "Basic not-base64!"
+  },
+  {
+    "name": "Basic lowercase",
+    "category": "basic-auth",
+    "input": "authorization: basic dXNlcjpwYXNz",
+    "expected": "credential=[redacted] [redacted]"
+  },
+  {
+    "name": "sk token",
+    "category": "token-prefix",
+    "input": "key=sk_live_1234567890abcdef",
+    "expected": "key=[redacted]"
+  },
+  {
+    "name": "sk dash token",
+    "category": "token-prefix",
+    "input": "key=sk-proj-abcdefghijklmnop",
+    "expected": "key=[redacted]"
+  },
+  {
+    "name": "rk token",
+    "category": "token-prefix",
+    "input": "rk_test_abcdefghijklmnop",
+    "expected": "[redacted]"
+  },
+  {
+    "name": "pk token",
+    "category": "token-prefix",
+    "input": "pk_live_abcdefghijklmnop",
+    "expected": "[redacted]"
+  },
+  {
+    "name": "ghp token",
+    "category": "token-prefix",
+    "input": "ghp_abcdefghijklmnop1234",
+    "expected": "[redacted]"
+  },
+  {
+    "name": "github_pat token",
+    "category": "token-prefix",
+    "input": "github_pat_abcdefghijklmnop",
+    "expected": "[redacted]"
+  },
+  {
+    "name": "xoxb token",
+    "category": "token-prefix",
+    "input": "xoxb-1234567890-abcdefghij",
+    "expected": "[redacted]"
+  },
+  {
+    "name": "xoxp token",
+    "category": "token-prefix",
+    "input": "xoxp-abcdefghijklmnop",
+    "expected": "[redacted]"
+  },
+  {
+    "name": "xoxa token",
+    "category": "token-prefix",
+    "input": "xoxa-abcdefghijklmnop",
+    "expected": "[redacted]"
+  },
+  {
+    "name": "short prefix is not redacted",
+    "category": "token-prefix",
+    "input": "sk_short",
+    "expected": "sk_short"
+  },
+  {
+    "name": "AWS access key id",
+    "category": "aws-access-key",
+    "input": "AKIAIOSFODNN7EXAMPLE",
+    "expected": "[redacted]"
+  },
+  {
+    "name": "AWS in env style",
+    "category": "aws-access-key",
+    "input": "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE",
+    "expected": "credential=[redacted]"
+  },
+  {
+    "name": "AWS lowercase is not matched",
+    "category": "aws-access-key",
+    "input": "akiaIOSFODNN7EXAMPLE",
+    "expected": "akiaIOSFODNN7EXAMPLE"
+  },
+  {
+    "name": "Google API key",
+    "category": "google-api-key",
+    "input": "AIzaSyA1234567890abcdefghijklmnopqrstuv",
+    "expected": "[redacted]"
+  },
+  {
+    "name": "Google API key with surrounding text",
+    "category": "google-api-key",
+    "input": "key:AIzaSyA1234567890abcdefghijklmnopqrstuv,end",
+    "expected": "key:[redacted],end"
+  },
+  {
+    "name": "JWT three segments",
+    "category": "jose",
+    "input": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature123",
+    "expected": "[redacted]"
+  },
+  {
+    "name": "JWT five segments",
+    "category": "jose",
+    "input": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhIjoxfQ.eyJiIjoyfQ.eyJjIjozfQ.signature",
+    "expected": "[redacted]"
+  },
+  {
+    "name": "Dotted version string is not JOSE",
+    "category": "jose",
+    "input": "version 1.2.3 build",
+    "expected": "version 1.2.3 build"
+  },
+  {
+    "name": "Dotted file names are not JOSE",
+    "category": "jose",
+    "input": "docs/foo.bar.baz.md",
+    "expected": "docs/foo.bar.baz.md"
+  },
+  {
+    "name": "HTTPS URL credentials",
+    "category": "url-credentials",
+    "input": "https://user:password@example.com/path",
+    "expected": "https://[redacted]@example.com/path"
+  },
+  {
+    "name": "Postgres URL credentials",
+    "category": "url-credentials",
+    "input": "postgres://admin:s3cret@db.local:5432/app",
+    "expected": "postgres://[redacted]@db.local:5432/app"
+  },
+  {
+    "name": "SSH URL credentials",
+    "category": "url-credentials",
+    "input": "ssh://deploy:token123@host.example/repo",
+    "expected": "ssh://[redacted]@host.example/repo"
+  },
+  {
+    "name": "URL without credentials",
+    "category": "url-credentials",
+    "input": "https://example.com/path",
+    "expected": "https://example.com/path"
+  },
+  {
+    "name": "URL with port and no credentials",
+    "category": "url-credentials",
+    "input": "http://localhost:3000/api",
+    "expected": "http://localhost:3000/api"
+  },
+  {
+    "name": "token assignment",
+    "category": "sensitive-assignment",
+    "input": "token=abcdef123456",
+    "expected": "credential=[redacted]"
+  },
+  {
+    "name": "api key assignment",
+    "category": "sensitive-assignment",
+    "input": "api_key = \"abcdef123456\"",
+    "expected": "credential=[redacted]"
+  },
+  {
+    "name": "api-key assignment",
+    "category": "sensitive-assignment",
+    "input": "API-KEY=abcdef123456",
+    "expected": "credential=[redacted]"
+  },
+  {
+    "name": "password assignment",
+    "category": "sensitive-assignment",
+    "input": "password: hunter2",
+    "expected": "credential=[redacted]"
+  },
+  {
+    "name": "secret assignment single quotes",
+    "category": "sensitive-assignment",
+    "input": "secret='my-secret-value'",
+    "expected": "credential=[redacted]"
+  },
+  {
+    "name": "authorization assignment",
+    "category": "sensitive-assignment",
+    "input": "authorization: Bearer abcdef",
+    "expected": "credential=[redacted] [redacted]"
+  },
+  {
+    "name": "database url assignment",
+    "category": "sensitive-assignment",
+    "input": "DATABASE_URL=postgres://user:pass@host/db",
+    "expected": "credential=[redacted]]@host/db"
+  },
+  {
+    "name": "connection string assignment",
+    "category": "sensitive-assignment",
+    "input": "connection_string = \"Server=local;Password=abc\"",
+    "expected": "credential=[redacted]"
+  },
+  {
+    "name": "dsn assignment",
+    "category": "sensitive-assignment",
+    "input": "dsn=postgres://user:pass@host/db",
+    "expected": "credential=[redacted]]@host/db"
+  },
+  {
+    "name": "access token assignment",
+    "category": "sensitive-assignment",
+    "input": "access_token=abc123",
+    "expected": "credential=[redacted]"
+  },
+  {
+    "name": "refresh token assignment",
+    "category": "sensitive-assignment",
+    "input": "refresh_token: abc123",
+    "expected": "credential=[redacted]"
+  },
+  {
+    "name": "auth token assignment",
+    "category": "sensitive-assignment",
+    "input": "auth_token = abc123",
+    "expected": "credential=[redacted]"
+  },
+  {
+    "name": "session ref assignment",
+    "category": "sensitive-assignment",
+    "input": "session_ref=session-123",
+    "expected": "credential=[redacted]"
+  },
+  {
+    "name": "private key assignment",
+    "category": "sensitive-assignment",
+    "input": "private_key = \"abc123\"",
+    "expected": "credential=[redacted]"
+  },
+  {
+    "name": "credential assignment",
+    "category": "sensitive-assignment",
+    "input": "credential=abc123",
+    "expected": "credential=[redacted]"
+  },
+  {
+    "name": "JSON token field",
+    "category": "sensitive-assignment",
+    "input": "{\"token\":\"abcdef123456\"}",
+    "expected": "{credential=[redacted]}"
+  },
+  {
+    "name": "JSON password field",
+    "category": "sensitive-assignment",
+    "input": "{\"password\": \"hunter2\"}",
+    "expected": "{credential=[redacted]}"
+  },
+  {
+    "name": "code calling getToken is redacted",
+    "category": "sensitive-assignment",
+    "input": "const token = getToken()",
+    "expected": "const credential=[redacted]"
+  },
+  {
+    "name": "environment read is not assignment",
+    "category": "sensitive-assignment",
+    "input": "process.env.TOKEN",
+    "expected": "process.env.TOKEN"
+  },
+  {
+    "name": "word token in prose",
+    "category": "sensitive-assignment",
+    "input": "the token was stored elsewhere",
+    "expected": "the token was stored elsewhere"
+  },
+  {
+    "name": "nested apiKey style",
+    "category": "sensitive-assignment",
+    "input": "config.apiKey = \"abcdef123456\"",
+    "expected": "credential=[redacted]"
+  },
+  {
+    "name": "Mixed secrets",
+    "category": "mixed",
+    "input": "Authorization: Bearer abc123; api_key=sk_live_abcdefghijklmnop; url https://u:p@h/x",
+    "expected": "credential=[redacted] [redacted]; credential=[redacted]; url https://[redacted]@h/x"
+  },
+  {
+    "name": "Mixed with private key and token",
+    "category": "mixed",
+    "input": "token=abcdef\n-----BEGIN RSA PRIVATE KEY-----\nabc\n-----END RSA PRIVATE KEY-----\nAKIAIOSFODNN7EXAMPLE",
+    "expected": "credential=[redacted]\n[redacted private key]\n[redacted]"
+  },
+  {
+    "name": "Plain prose",
+    "category": "plain",
+    "input": "The build completed in 12.4 seconds.",
+    "expected": "The build completed in 12.4 seconds."
+  },
+  {
+    "name": "Code snippet",
+    "category": "plain",
+    "input": "function add(a, b) { return a + b; }",
+    "expected": "function add(a, b) { return a + b; }"
+  },
+  {
+    "name": "File path",
+    "category": "plain",
+    "input": "/Users/example/project/docs/requirements.md",
+    "expected": "/Users/example/project/docs/requirements.md"
+  },
+  {
+    "name": "Shell command",
+    "category": "plain",
+    "input": "npm --prefix desktop test",
+    "expected": "npm --prefix desktop test"
+  },
+  {
+    "name": "URL without credentials plain",
+    "category": "plain",
+    "input": "https://github.com/example/project/pull/42",
+    "expected": "https://github.com/example/project/pull/42"
+  },
+  {
+    "name": "JSON without secrets",
+    "category": "plain",
+    "input": "{\"name\":\"demo\",\"count\":3,\"ok\":true}",
+    "expected": "{\"name\":\"demo\",\"count\":3,\"ok\":true}"
+  },
+  {
+    "name": "Markdown heading",
+    "category": "plain",
+    "input": "# Requirements\n\n- First item\n- Second item",
+    "expected": "# Requirements\n\n- First item\n- Second item"
+  },
+  {
+    "name": "UUID",
+    "category": "plain",
+    "input": "123e4567-e89b-12d3-a456-426614174000",
+    "expected": "123e4567-e89b-12d3-a456-426614174000"
+  },
+  {
+    "name": "Base64-looking blob without colon",
+    "category": "plain",
+    "input": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==",
+    "expected": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="
+  },
+  {
+    "name": "Long hex digest",
+    "category": "plain",
+    "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "expected": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  {
+    "name": "Error message",
+    "category": "plain",
+    "input": "Error: ENOENT: no such file or directory, open /tmp/missing",
+    "expected": "Error: ENOENT: no such file or directory, open /tmp/missing"
+  },
+  {
+    "name": "Environment variable name only",
+    "category": "plain",
+    "input": "TEST_API_KEY",
+    "expected": "TEST_API_KEY"
+  },
+  {
+    "name": "Sentence with basic word",
+    "category": "plain",
+    "input": "This is a basic example of the feature.",
+    "expected": "This is a basic example of the feature."
+  },
+  {
+    "name": "Sentence with bearer word",
+    "category": "plain",
+    "input": "The bearer of the flag arrived.",
+    "expected": "The Bearer [redacted] the flag arrived."
+  }
+]

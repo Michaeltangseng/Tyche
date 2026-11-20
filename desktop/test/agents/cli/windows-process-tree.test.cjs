@@ -7,8 +7,8 @@ const path = require('node:path')
 test('Windows cancellation terminates a real process and its descendant', {
   skip: process.platform !== 'win32', timeout: 30000,
 }, async t => {
-  const modulePath = process.env.MELDWORK_TEST_PACKAGED_APP
-    ? path.join(process.env.MELDWORK_TEST_PACKAGED_APP, 'src/agents/cli/cli-process-support.cjs')
+  const modulePath = process.env.TYCHE_TEST_PACKAGED_APP
+    ? path.join(process.env.TYCHE_TEST_PACKAGED_APP, 'src/agents/cli/cli-process-support.cjs')
     : '../../../src/agents/cli/cli-process-support.cjs'
   const { terminateWindowsProcessTree } = require(modulePath)
   const child = spawn(process.execPath, ['-e', `

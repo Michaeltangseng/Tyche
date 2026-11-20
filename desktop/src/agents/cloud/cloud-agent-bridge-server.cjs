@@ -5,7 +5,7 @@ const path = require('node:path')
 const { StringDecoder } = require('node:string_decoder')
 const { spawn, spawnSync } = require('node:child_process')
 
-const requestedPort = Number(process.env.MELDWORK_AGENT_BRIDGE_PORT || 8765)
+const requestedPort = Number(process.env.TYCHE_AGENT_BRIDGE_PORT || 8765)
 const PORT = Number.isInteger(requestedPort) && requestedPort >= 1024 && requestedPort <= 65535
   ? requestedPort
   : 8765
@@ -361,9 +361,9 @@ function runAgent(agentId, prompt, sessionRef = '', signal = null) {
 
 function createServer() {
   return http.createServer(async (req, res) => {
-    if (req.method === 'GET' && req.url === '/.well-known/meldwork-agent-bridge') {
+    if (req.method === 'GET' && req.url === '/.well-known/tyche-agent-bridge') {
       return json(res, 200, {
-        protocol: 'meldwork-agent-bridge', version: 1,
+        protocol: 'tyche-agent-bridge', version: 1,
         server: { id: 'ssh-session', label: 'SSH Agent Server' },
         agents: discoverAgents(),
       })
@@ -398,7 +398,7 @@ function startServer() {
   }, 1000)
   server.once('close', () => clearInterval(parentTimer))
   server.listen(PORT, '127.0.0.1', () => {
-    process.stdout.write(`MELDWORK_AGENT_BRIDGE_READY ${PORT}\n`)
+    process.stdout.write(`TYCHE_AGENT_BRIDGE_READY ${PORT}\n`)
   })
   process.once('SIGTERM', () => server.close(() => process.exit(0)))
   process.once('SIGINT', () => server.close(() => process.exit(0)))

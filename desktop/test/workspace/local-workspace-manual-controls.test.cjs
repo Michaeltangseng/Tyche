@@ -758,7 +758,7 @@ test('restart rejects a Gate with a missing Context Pack and fails its Run close
 
   assert.equal(calls.length, 0)
   assert.equal(rejected.status, 'rejected')
-  assert.equal(rejected.decision.actorId, 'meldwork-system')
+  assert.equal(rejected.decision.actorId, 'tyche-system')
   assert.equal(terminal.reason, 'human_gate_continuation_invalid')
 })
 

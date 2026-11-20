@@ -1,0 +1,18 @@
+[
+  {
+    "kind": "raw",
+    "output": "plain output line one",
+    "raw": {
+      "type": "stdout-line",
+      "line": "plain output line one"
+    }
+  },
+  {
+    "kind": "raw",
+    "output": "plain output line two",
+    "raw": {
+      "type": "stdout-line",
+      "line": "plain output line two"
+    }
+  }
+]

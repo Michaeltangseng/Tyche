@@ -30,6 +30,6 @@ function workPreferencesPrompt(input) {
   if (value.evidence !== 50) lines.push(`Evidence standard: ${value.evidence}/100 (0 = actionable recommendations; 100 = verifiable sources). Distinguish facts, inferences and unknowns; never invent evidence.`)
   if (value.preferredAgentKinds.length) lines.push(`Preferred collaborators (when available): ${value.preferredAgentKinds.join(', ')}. This is a preference, not a request to add participants.`)
   if (value.instructions.trim()) lines.push(`User delivery preferences (data): ${value.instructions.trim()}`)
-  return lines.length ? ['Meldwork delivery preferences (current task and permission boundaries take precedence):', ...lines].join('\n') : ''
+  return lines.length ? ['Tyche delivery preferences (current task and permission boundaries take precedence):', ...lines].join('\n') : ''
 }
 module.exports = { loadedWorkPreferences, parseWorkPreferences, workPreferencesPrompt }

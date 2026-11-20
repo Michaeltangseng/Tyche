@@ -145,7 +145,7 @@ export function terminalSystemFallback(message) {
   const agent = String(message.system?.params?.agent || '').trim()
   if (!agent) return ''
   if (key === 'system.agentStopped') return `${agent} was stopped.`
-  if (key === 'system.agentInterrupted') return `${agent} was interrupted when Meldwork closed.`
+  if (key === 'system.agentInterrupted') return `${agent} was interrupted when Tyche closed.`
   if (key === 'system.agentBudgetExhausted') {
     return `${agent} stopped because a hard run budget was exceeded.`
   }

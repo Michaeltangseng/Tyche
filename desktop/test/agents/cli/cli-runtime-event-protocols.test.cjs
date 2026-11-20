@@ -624,7 +624,7 @@ test('protocol profiles publish collision-resistant lifecycle IDs for opaque ups
 
   for (const id of opaqueIds) {
     for (const event of profile.mapEvent({
-      type: 'tool_use', tool_id: id, tool_name: 'search', parameters: { query: 'Meldwork' },
+      type: 'tool_use', tool_id: id, tool_name: 'search', parameters: { query: 'Tyche' },
     }, state)) runtimeEvents.emit(event)
     for (const event of profile.mapEvent({
       type: 'tool_result', tool_id: id, status: 'success', output: 'one result',

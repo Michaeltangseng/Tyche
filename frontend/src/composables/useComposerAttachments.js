@@ -168,7 +168,7 @@ export function useComposerAttachments({
     const id = String(attachment?.id || '')
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(id)
         || !['image', 'audio', 'video'].includes(attachmentKind(attachment))) return ''
-    return `meldwork-media://attachment/${id}`
+    return `tyche-media://attachment/${id}`
   }
 
   function attachmentTypeLabel(attachment) {
@@ -203,7 +203,7 @@ export function useComposerAttachments({
       const result = await attachmentsApi.value.discard(ids)
       forgetAttachmentPreviews(Array.isArray(result?.discardedIds) ? result.discardedIds : [])
     } catch (error) {
-      console.error('[Meldwork]', errorCode(error))
+      console.error('[Tyche]', errorCode(error))
     }
   }
 

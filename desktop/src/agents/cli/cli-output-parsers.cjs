@@ -110,7 +110,7 @@ function stripPiInternalPromptEcho(value) {
       continue
     }
     if (inRecords) {
-      if (/^MELDWORK_V4_COLLABORATION_PACKAGE_V1$/i.test(valueLine)
+      if (/^TYCHE_V4_COLLABORATION_PACKAGE_V1$/i.test(valueLine)
           || /^\[index\]\s+\S+/i.test(valueLine)
           || /^Artifact:\s+\S+/i.test(valueLine)
           || /^Evidence:\s+\S+/i.test(valueLine)) continue
@@ -136,7 +136,7 @@ function stripPiPromptEcho(value, prompt) {
   return stripPiInternalPromptEcho(text)
 }
 
-function stripExactMeldworkPromptEcho(value, prompt) {
+function stripExactTychePromptEcho(value, prompt) {
   const text = String(value || '')
   const expected = String(prompt || '').trim()
   if (!expected.includes('Current user task (authoritative):')
@@ -997,7 +997,7 @@ module.exports = {
   readHermesFinalResponse,
   readHermesMessageWatermark,
   stripAnsi,
-  stripExactMeldworkPromptEcho,
+  stripExactTychePromptEcho,
   structuredCliError,
   classifyCliOutcome,
 }

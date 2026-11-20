@@ -2,7 +2,7 @@ const crypto = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
 
-const OUTPUT_DIRECTORY = '.meldwork-output'
+const OUTPUT_DIRECTORY = '.tyche-output'
 const MAX_OUTPUT_ATTACHMENTS = 4
 const MAX_SCANNED_ENTRIES = 512
 const SUPPORTED_EXTENSIONS = new Set([
@@ -447,7 +447,7 @@ function importAgentOutputs(input, attachmentStore) {
       // run outside the input staging folder are imported.
       if (!stat.isFile() || !SUPPORTED_EXTENSIONS.has(extension)
           || stat.size > 64 * 1024 * 1024 || !isInside(workdirRealPath, realPath)
-          || realPath.split(path.sep).includes('.meldwork-input')
+          || realPath.split(path.sep).includes('.tyche-input')
           || stat.mtimeMs < startedAt - 2000) continue
       reportedCandidates.push({
         name: path.basename(realPath), path: realPath, size: stat.size,

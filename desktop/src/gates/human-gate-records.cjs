@@ -5,7 +5,7 @@ const { canonicalJson } = require('../collaboration/outcome-records.cjs')
 const { redactSecrets } = require('../security/secret-redaction.cjs')
 
 const HUMAN_GATE_VERSION = 1
-const SYSTEM_REJECT_OPTION_ID = 'meldwork-system-reject'
+const SYSTEM_REJECT_OPTION_ID = 'tyche-system-reject'
 const PUBLIC_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/
 const GATE_ID = /^human-gate-[a-f0-9]{64}$/
 const SHA256 = /^[a-f0-9]{64}$/
@@ -87,7 +87,7 @@ const gateRecordSchema = z.strictObject({
   if (record.decision
       && !record.options.some(option => option.optionId === record.decision.optionId)
       && !(record.decision.status === 'rejected'
-        && record.decision.actorId === 'meldwork-system'
+        && record.decision.actorId === 'tyche-system'
         && record.decision.optionId === SYSTEM_REJECT_OPTION_ID)) {
     context.addIssue({ code: 'custom', path: ['decision', 'optionId'], message: 'unknown option' })
   }
@@ -156,7 +156,7 @@ function decideHumanGateRecord(recordInput, decisionInput) {
   const record = parseHumanGateRecord(recordInput)
   const decision = validated(decisionSchema, decisionInput)
   const systemReject = decision.status === 'rejected'
-    && decision.actorId === 'meldwork-system'
+    && decision.actorId === 'tyche-system'
     && decision.optionId === SYSTEM_REJECT_OPTION_ID
   if (!systemReject && !record.options.some(option => option.optionId === decision.optionId)) {
     fail('HUMAN_GATE_DECISION_INVALID')

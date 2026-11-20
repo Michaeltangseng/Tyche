@@ -7,7 +7,7 @@ const { geminiNativeAuth } = require('../../../src/agents/cli/gemini-native-conf
 const { nativeCredentialState } = require('../../../src/agents/local-agent-readiness.cjs')
 
 test('Gemini resolves auth through native settings and workspace trust', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-gemini-auth-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-gemini-auth-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.gemini')
   const project = path.join(home, 'project')
@@ -30,7 +30,7 @@ test('Gemini resolves auth through native settings and workspace trust', t => {
 })
 
 test('Gemini readiness checks credentials for its selected auth mode', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-gemini-ready-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-gemini-ready-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const root = path.join(home, '.gemini')
   fs.mkdirSync(root)
@@ -59,7 +59,7 @@ test('Gemini readiness checks credentials for its selected auth mode', t => {
 })
 
 test('Gemini auth inference and overrides follow native CLI precedence', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-gemini-inferred-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-gemini-inferred-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const env = { GEMINI_CLI_SYSTEM_SETTINGS_PATH: path.join(home, 'missing.json'), GEMINI_API_KEY: 'unrelated' }
   assert.equal(geminiNativeAuth({ home, env }).authType, 'gemini-api-key')
@@ -75,7 +75,7 @@ test('Gemini auth inference and overrides follow native CLI precedence', t => {
 })
 
 test('Gemini readiness rejects a selected mode that violates enforced authentication', t => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'meldwork-gemini-enforced-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-gemini-enforced-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const system = path.join(home, 'system.json')
   const env = { GEMINI_CLI_SYSTEM_SETTINGS_PATH: system, GEMINI_API_KEY: 'synthetic' }
