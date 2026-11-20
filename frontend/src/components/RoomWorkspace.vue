@@ -29,14 +29,21 @@
           :key="role.id"
           class="room-agent-chip"
           type="button"
+          :data-speaking="roleSpeaking(role) ? 'true' : undefined"
+          :data-quiet="role.provider && !canSpeak(role.provider) ? 'true' : undefined"
+          :style="chipStyle(role)"
           :title="agentTitle(role)"
           :aria-label="`${t('room.configureRole')}: ${roleLabel(role)}`"
           @click="openRoleSettings(role.id)"
         >
-          <img v-if="role.provider" class="room-portrait" :src="faceSrc(role)" alt="" />
-          <span>{{ roleLabel(role) }}</span>
-          <span v-if="role.provider && !canSpeak(role.provider)" class="room-agent-quiet">{{ t('room.cannotSpeak') }}</span>
-          <span v-if="role.is_captain" class="room-agent-badge">{{ t('room.captain') }}</span>
+          <span v-if="role.provider" class="room-chip-face">
+            <span class="room-chip-photo">
+              <img class="room-portrait" :src="faceSrc(role)" alt="" />
+            </span>
+            <span v-if="role.is_captain" class="room-captain-mark" :title="t('room.captain')">⚓</span>
+          </span>
+          <span class="room-chip-name">{{ roleLabel(role) }}</span>
+          <span v-if="role.provider && !canSpeak(role.provider)" class="room-agent-mute" aria-hidden="true">🔇</span>
         </button>
         <span v-if="!roles.length" class="room-agent-idle">{{ t('room.teamIdle') }}</span>
         <button
@@ -852,6 +859,17 @@ function faceSrc(role) {
   return rolePortrait(role?.portrait || role?.provider)
 }
 
+function chipStyle(role) {
+  return { '--chip-tint': portraitGlow(role?.portrait || role?.provider) }
+}
+
+function roleSpeaking(role) {
+  return messages.value.some(message => (
+    message.author_id === role?.id
+    && ['queued', 'working', 'starting'].includes(message.status)
+  ))
+}
+
 function showPortraitPage(id) {
   const index = rolePortraits().findIndex(item => item.id === id)
   portraitPage.value = index < 0 ? 0 : Math.floor(index / portraitPageSize)
@@ -1084,7 +1102,7 @@ async function create() {
   const result = await createRoom({
     name: name.value.trim(),
     workspace: directory.value,
-    title: name.value.trim(),
+    title: t('room.lobby'),
     providers,
     roles,
   })
@@ -1296,17 +1314,23 @@ onBeforeUnmount(() => {
 .room-chat-title:hover, .room-chat-title:focus-visible { outline: none; color: var(--accent-text); }
 .room-chat-title:hover svg, .room-chat-title:focus-visible svg { color: var(--accent-text); }
 .room-subtitle { max-width: 34ch; overflow: hidden; color: var(--faint); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
-.room-agent-strip { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
+.room-agent-strip { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: 12px; align-items: center; min-width: 0; }
 .room-roster { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .room-roster-card { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 168px; max-width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .room-roster-card:hover { border-color: var(--border-strong); background: var(--surface-hover); }
 .room-roster-card img { width: 22px; height: 22px; object-fit: contain; }
 .room-roster-name { max-width: 100%; overflow: hidden; font-size: var(--text-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .room-roster-duty { display: -webkit-box; overflow: hidden; color: var(--text-soft); font-size: var(--text-2xs); line-height: 1.4; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-.room-agent-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 320px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-raised); color: inherit; font: inherit; font-size: var(--text-xs); cursor: pointer; }
-.room-agent-chip:hover { border-color: var(--border-strong); background: var(--surface-hover); }
-.room-agent-chip img { width: 22px; height: 22px; flex: 0 0 22px; border-radius: 50%; object-fit: cover; background: #1b2124; }
-.room-agent-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-agent-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 180px; padding: 2px 6px 2px 2px; border: 0; border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: var(--text-xs); cursor: pointer; }
+.room-agent-chip:hover { background: rgb(255 255 255 / 0.06); }
+.room-chip-face { position: relative; width: 22px; height: 22px; flex: 0 0 22px; display: grid; }
+.room-chip-photo { display: grid; overflow: hidden; width: 22px; height: 22px; border-radius: 50%; background: color-mix(in srgb, var(--chip-tint, var(--accent)) 15%, transparent); }
+.room-chip-photo img { width: 100%; height: 100%; border: 0; border-radius: 0; background: transparent; object-fit: cover; object-position: center 12%; transform: scale(1.55); }
+.room-agent-chip[data-speaking="true"] .room-chip-photo { box-shadow: 0 0 0 2px color-mix(in srgb, var(--chip-tint, var(--accent)) 75%, white); }
+.room-agent-chip[data-quiet="true"] .room-chip-photo { opacity: 0.5; }
+.room-captain-mark { position: absolute; right: -3px; bottom: -3px; width: 10px; height: 10px; display: grid; place-items: center; border-radius: 50%; background: #2a1c12; color: #ff8a3d; font-size: 8px; line-height: 1; }
+.room-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-agent-mute { flex: 0 0 auto; font-size: 11px; line-height: 1; opacity: 0.8; }
 .room-agent-quiet { color: var(--text-muted); font-size: var(--text-xs); }
 .room-agent-badge { flex: 0 0 auto; margin-left: 2px; padding: 1px 5px; border-radius: 999px; background: var(--surface-active); color: var(--text-soft); font-size: 10px; font-weight: 600; }
 .room-agent-idle { flex: 1 1 auto; color: var(--faint); font-size: var(--text-xs); }
@@ -1342,11 +1366,11 @@ onBeforeUnmount(() => {
 .room-welcome-prompts button:hover, .room-welcome-prompts button:focus-visible { outline: none; border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); color: var(--text); }
 .room-message { display: flex; gap: 12px; align-items: flex-start; margin: 0 0 24px; }
 .room-message-user { flex-direction: row-reverse; }
-.room-message-avatar { display: grid; flex: 0 0 32px; place-items: center; width: 32px; height: 32px; color: var(--text-soft); font-size: var(--text-xs); font-weight: 600; }
-.room-message-avatar img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; background: #1b2124; }
+.room-message-avatar { display: grid; flex: 0 0 44px; place-items: center; width: 44px; height: 44px; color: var(--text-soft); font-size: var(--text-xs); font-weight: 600; }
+.room-message-avatar img { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; background: #1b2124; }
 .room-user-avatar { border-radius: 50%; background: var(--surface-active); }
-.room-user-avatar svg { width: 18px; height: 18px; }
-.room-message-body { min-width: 0; max-width: min(760px, calc(100% - 48px)); padding: 4px 2px; }
+.room-user-avatar svg { width: 22px; height: 22px; }
+.room-message-body { min-width: 0; max-width: min(760px, calc(100% - 60px)); padding: 4px 2px; }
 .room-message-user .room-message-body { max-width: min(640px, 82%); padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--surface-active) 72%, transparent); }
 .room-message header { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: baseline; margin-bottom: 4px; }
 .room-message header strong { font-size: var(--text-sm); }

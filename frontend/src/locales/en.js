@@ -23,6 +23,7 @@ export default {
     "room.captainDuty": "Builds the team and assigns the work",
     "room.promptCount": "{count} characters",
     "room.primaryChat": "Primary",
+    "room.lobby": "Lobby",
     "room.addChat": "New chat in {name}",
     "room.openChat": "Open chat: {name}",
     "room.expandChats": "Expand chats in {name}",

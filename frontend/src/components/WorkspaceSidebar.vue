@@ -113,8 +113,8 @@
                 type="button"
                 :title="agent.ready ? `${agent.label} · ${memberStatus(agent)}` : `${agent.label}: ${agentState(agent).label}`"
                 :disabled="isDirectCreationPending(agent.kind)"
-                :aria-expanded="directGroupsFor(agent.kind).length ? String(isSidebarAgentExpanded(agent.kind)) : undefined"
-                :aria-controls="directGroupsFor(agent.kind).length ? sidebarAgentSessionListId(agent.kind) : undefined"
+                :aria-expanded="directGroupsFor(agent.kind).length > 1 ? String(isSidebarAgentExpanded(agent.kind)) : undefined"
+                :aria-controls="directGroupsFor(agent.kind).length > 1 ? sidebarAgentSessionListId(agent.kind) : undefined"
                 @click="handleSidebarAgentMain(agent)"
               >
                 <span class="agent-logo-cloud" :class="{ cloud: agent.cloud }">
@@ -146,6 +146,7 @@
               v-if="matchingSessions(agent).length && sessionsOpen(agent)"
               :id="sidebarAgentSessionListId(agent.kind)"
               class="direct-session-list"
+              :class="{ 'direct-session-solo': matchingSessions(agent).length === 1 }"
             >
               <div
                 v-for="group in matchingSessions(agent)"
@@ -495,7 +496,12 @@ function orderedMembers(members) {
 
 function stackedMembers(members, limit = 3) {
   const list = orderedMembers(members)
-  return { faces: list.slice(0, limit), extra: Math.max(0, list.length - limit) }
+  const spoken = list.filter(member => Number(member?.last_seq) > 0)
+  const source = spoken.length
+    ? spoken
+    : list.filter(member => member?.is_captain).slice(0, 1)
+  const visible = source.length ? source : list.slice(0, 1)
+  return { faces: visible.slice(0, limit), extra: Math.max(0, visible.length - limit) }
 }
 
 function roomFaces(room) {
@@ -539,7 +545,8 @@ function chatTime(chat) {
 }
 
 function teamChatLabel(room, chat) {
-  return chat?.is_primary && chat.title === room?.name ? t('room.primaryChat') : chat?.title
+  if (chat?.is_primary && (chat.title === room?.name || chat.title === t('room.lobby'))) return t('room.lobby')
+  return chat?.title
 }
 
 const teamDeleteTarget = ref(null)

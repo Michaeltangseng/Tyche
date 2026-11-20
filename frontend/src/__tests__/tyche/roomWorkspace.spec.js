@@ -136,7 +136,7 @@ describe('team room workspace', () => {
     expect(wrapper.get('.room-project-name').text()).toContain('Demo room')
     expect(wrapper.get('.room-subtitle').text()).toContain('demo')
     expect(wrapper.findAll('.room-agent-chip')).toHaveLength(2)
-    expect(wrapper.get('.room-agent-badge').text()).toBe('Captain')
+    expect(wrapper.get('.room-captain-mark').attributes('title')).toBe('Captain')
     expect(wrapper.get('.room-message').text()).toContain('Please write the docs')
     expect(wrapper.get('.room-mention-chip').text()).toBe('@Writer')
     expect(wrapper.get('.room-report-card').text()).toContain('Docs are ready')
@@ -168,7 +168,7 @@ describe('team room workspace', () => {
     expect(bridge.bootstrap).toHaveBeenCalledWith({
       name: 'Alpha',
       workspace: '/tmp/demo',
-      title: 'Alpha',
+      title: 'Lobby',
       providers: ['codex', 'claude'],
       roles: [
         { displayName: 'Codex', provider: 'codex', prompt: '', isCaptain: true },
@@ -582,8 +582,10 @@ describe('team room workspace', () => {
     await flushPromises()
     const chip = wrapper.findAll('.room-agent-chip').find(node => node.text().includes('Hermes'))
     const writer = wrapper.findAll('.room-agent-chip').find(node => node.text().includes('Writer'))
-    expect(chip.text()).toContain('Cannot speak in this chat')
-    expect(writer.text()).not.toContain('Cannot speak')
+    expect(chip.attributes('title')).toContain('Cannot speak in this chat')
+    expect(chip.text()).toContain('🔇')
+    expect(chip.attributes('data-quiet')).toBe('true')
+    expect(writer.attributes('title') || '').not.toContain('Cannot speak')
   })
 
   it('opens the room and chat requested by the sidebar', async () => {

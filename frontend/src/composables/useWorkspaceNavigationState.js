@@ -55,8 +55,13 @@ export function useWorkspaceNavigationState({
       void openDirect(agent)
       return
     }
-    if (directGroupsFor(agent.kind).length) {
+    const groups = directGroupsFor(agent.kind)
+    if (groups.length > 1) {
       toggleSidebarAgentExpanded(agent.kind)
+      return
+    }
+    if (groups.length === 1) {
+      selectGroup(groups[0].id)
       return
     }
     void openDirect(agent)

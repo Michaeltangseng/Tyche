@@ -23,6 +23,7 @@ export default {
     "room.captainDuty": "负责组建团队与分配任务",
     "room.promptCount": "{count} 字",
     "room.primaryChat": "主聊天",
+    "room.lobby": "大厅",
     "room.addChat": "在 {name} 中新建聊天",
     "room.openChat": "打开聊天：{name}",
     "room.expandChats": "展开 {name} 的聊天",
