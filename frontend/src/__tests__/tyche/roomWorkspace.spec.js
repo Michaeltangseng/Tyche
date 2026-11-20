@@ -303,6 +303,32 @@ describe('team room workspace', () => {
     expect(wrapper.emitted('toggle-usage')).toHaveLength(1)
   })
 
+  it('shows stored thinking and the settled tool trace without loading runtime events', async () => {
+    const snapshot = data()
+    snapshot.messages = [{
+      id: 'reply-1', chat_id: 'chat-1', sequence: 2, author_type: 'agent', author_id: 'worker',
+      author_name: 'Writer', content: '**Done**', status: 'done', created_at: '2026-11-15T10:01:00Z',
+      data: {
+        thinking: 'Checking the table',
+        trace: [{ callId: 'call-1', name: 'shell', input: 'ls', output: 'README.md', status: 'completed' }],
+      },
+    }]
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    const body = wrapper.get('.room-message-body')
+    expect(body.get('.room-reasoning').text()).toContain('Checking the table')
+    expect(body.html().indexOf('room-reasoning')).toBeLessThan(body.html().indexOf('markdown-body'))
+    const trace = wrapper.get('.room-run-trace')
+    expect(trace.text()).toContain('1 steps')
+    trace.element.open = true
+    await trace.trigger('toggle')
+    await flushPromises()
+    expect(bridge.runtimeEvents).not.toHaveBeenCalledWith(expect.objectContaining({ runId: 'reply-1' }))
+    expect(trace.text()).toContain('Run')
+    expect(trace.text()).toContain('README.md')
+  })
+
   it('shows token usage stored on a finished reply', async () => {
     const snapshot = data()
     snapshot.messages = [{

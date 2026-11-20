@@ -86,6 +86,26 @@ function roleView(row, prompt) {
   }
 }
 
+function safeTrace(steps, room) {
+  if (!Array.isArray(steps)) return null
+  const safe = []
+  for (const step of steps) {
+    if (!step || typeof step !== 'object' || Array.isArray(step)) continue
+    const name = scrubWorkspace(typeof step.name === 'string' ? step.name.slice(0, 120) : '', room)
+    if (!name) continue
+    const item = {
+      callId: typeof step.callId === 'string' && step.callId ? step.callId.slice(0, 160) : name,
+      name,
+      input: scrubWorkspace(typeof step.input === 'string' ? step.input.slice(0, 4096) : '', room),
+      output: scrubWorkspace(typeof step.output === 'string' ? step.output.slice(0, 2000) : '', room),
+      status: step.status === 'failed' || step.status === 'running' ? step.status : 'completed',
+    }
+    if (Number.isInteger(step.exitCode)) item.exitCode = step.exitCode
+    safe.push(item)
+  }
+  return safe.length > 0 ? safe : null
+}
+
 function safeMessageData(data, room = null) {
   if (data === null || typeof data !== 'object' || Array.isArray(data)) return null
   const safe = {}
@@ -102,6 +122,8 @@ function safeMessageData(data, room = null) {
   }
   const usage = safeUsage(data.usage)
   if (usage) safe.usage = usage
+  const trace = safeTrace(data.trace, room)
+  if (trace) safe.trace = trace
   return Object.keys(safe).length > 0 ? safe : null
 }
 

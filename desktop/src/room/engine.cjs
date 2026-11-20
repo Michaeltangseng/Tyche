@@ -1,6 +1,29 @@
 const { routeUserMessage, resolveNamed } = require('./routing.cjs')
 const { briefing, rosterProviders } = require('./briefing.cjs')
-const { safeUsage } = require('./runtime-event-view.cjs')
+const { safeEvent, safeUsage } = require('./runtime-event-view.cjs')
+
+function settleTrace(steps, event) {
+  const safe = safeEvent(event)
+  if (!safe || !['tool_call_started', 'tool_call_input', 'tool_call_ended'].includes(safe.kind)) return steps
+  const callId = safe.callId || `${safe.toolName || 'tool'}-${steps.length}`
+  let step = steps.find(item => item.callId === callId)
+  if (!step) {
+    step = {
+      callId,
+      name: safe.toolName || 'tool',
+      input: '',
+      output: '',
+      status: 'running',
+    }
+    steps.push(step)
+  }
+  if (safe.toolName) step.name = safe.toolName
+  if (typeof safe.input === 'string' && safe.input) step.input = safe.input
+  if (typeof safe.output === 'string') step.output = safe.output
+  if (safe.status) step.status = safe.status
+  if (Number.isInteger(safe.exitCode)) step.exitCode = safe.exitCode
+  return steps
+}
 
 function mergeSettledUsage(previous, raw) {
   const next = safeUsage(raw)
@@ -112,9 +135,11 @@ function createEngine({
         if (!claimed) throw new Error('ROOM_REPLY_EFFECT_NOT_PENDING')
         let handle
         let settledUsage = null
+        const settledTrace = []
         const finishData = (data) => {
           const finalData = data && typeof data === 'object' ? { ...data } : {}
           if (settledUsage) finalData.usage = settledUsage
+          if (settledTrace.length) finalData.trace = settledTrace.map(step => ({ ...step }))
           return Object.keys(finalData).length > 0 ? finalData : null
         }
         try {
@@ -186,6 +211,7 @@ function createEngine({
             signal: controller.signal,
             onEvent: event => {
               if (event?.kind === 'usage') settledUsage = mergeSettledUsage(settledUsage, event.usage)
+              settleTrace(settledTrace, event)
               onEvent({
                 runId: reply.id,
                 chatId: reply.chatId,

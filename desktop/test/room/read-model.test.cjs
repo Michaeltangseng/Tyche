@@ -194,6 +194,47 @@ test('display text replaces the absolute room workspace path', t => {
   context.roomDb.close()
 })
 
+test('a reply snapshot keeps the settled trace and thinking, and hides raw activity', t => {
+  const context = setup(t)
+  context.timeline.append({
+    chatId: context.chatId,
+    authorType: 'agent',
+    authorId: context.workerRoleId,
+    content: 'traced reply',
+    status: 'done',
+    data: {
+      thinking: `checked ${context.directory}/docs`,
+      trace: [{
+        callId: 'call-1',
+        name: 'shell',
+        input: `ls ${context.directory}`,
+        output: 'README.md',
+        status: 'completed',
+        exitCode: 0,
+        sessionId: 'secret',
+      }],
+      activity: [{ name: 'Bash', input: context.directory }],
+    },
+  })
+  const model = createRoomReadModel({ roomDb: context.roomDb })
+  const snapshot = model.snapshot({ roomId: context.roomId, messageLimit: 20 })
+  const message = snapshot.messages.find(item => item.content === 'traced reply')
+  const label = path.basename(context.directory)
+  assert.equal(message.data.thinking, `checked ${label}/docs`)
+  assert.deepEqual(message.data.trace, [{
+    callId: 'call-1',
+    name: 'shell',
+    input: `ls ${label}`,
+    output: 'README.md',
+    status: 'completed',
+    exitCode: 0,
+  }])
+  assert.equal(message.data.activity, undefined)
+  assert.equal(JSON.stringify(message.data).includes('secret'), false)
+  assert.equal(JSON.stringify(message.data).includes(context.directory), false)
+  context.roomDb.close()
+})
+
 test('a reply snapshot keeps settled token usage and drops private usage fields', t => {
   const context = setup(t)
   context.timeline.append({

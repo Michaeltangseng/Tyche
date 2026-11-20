@@ -46,6 +46,7 @@ const props = defineProps({
   chatId: { type: String, required: true },
   runId: { type: String, required: true },
   live: { type: Object, default: null },
+  steps: { type: Array, default: null },
 })
 
 const events = ref([])
@@ -56,6 +57,7 @@ let loaded = false
 
 const tools = computed(() => {
   if (props.live?.tools?.length) return props.live.tools
+  if (props.steps?.length) return props.steps
   const byCallId = new Map()
   for (const event of events.value) {
     const payload = event.payload || {}
@@ -127,7 +129,7 @@ async function load() {
 }
 
 function onToggle(event) {
-  if (!event.target?.open || loaded || props.live) return
+  if (!event.target?.open || loaded || props.live || props.steps?.length) return
   void load()
 }
 </script>

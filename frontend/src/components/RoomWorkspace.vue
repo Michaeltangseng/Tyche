@@ -118,9 +118,9 @@
                     <span class="room-message-status" :data-status="entry.message.status">{{ statusLabel(entry.message.status) }}</span>
                     <span v-if="turnUsage(entry.message)" class="room-turn-usage">{{ turnUsage(entry.message) }}</span>
                   </header>
-                  <details v-if="liveFor(entry.message)?.reasoning" class="room-reasoning">
+                  <details v-if="replyThinking(entry.message)" class="room-reasoning">
                     <summary>{{ t('room.thinking') }}</summary>
-                    <p>{{ liveFor(entry.message).reasoning }}</p>
+                    <p>{{ replyThinking(entry.message) }}</p>
                   </details>
                   <MarkdownMessage
                     v-if="entry.message.content"
@@ -165,6 +165,7 @@
                     :chat-id="chatId"
                     :run-id="entry.message.id"
                     :live="liveFor(entry.message)"
+                    :steps="entry.message.data?.trace || null"
                   />
                   <div v-if="entry.message.status === 'waiting_for_input'" class="room-actions">
                     <span class="room-muted">{{ t('room.waitingForInput') }}</span>
@@ -825,6 +826,10 @@ function isWorking(message) {
 
 function liveFor(message) {
   return liveRuns.value[message.id] || null
+}
+
+function replyThinking(message) {
+  return liveFor(message)?.reasoning || message?.data?.thinking || ''
 }
 
 function canStop(message) {

@@ -190,6 +190,65 @@ test('a finished reply keeps the settled token usage on the message', async t =>
   roomDb.close()
 })
 
+test('a finished reply keeps the settled tool trace and the thinking text', async t => {
+  const { roomDb, chatId, timeline, runtime, engine } = setup(t)
+  const { replies } = engine.submitUserMessage({ chatId, content: 'hi' })
+  const pending = engine.startReply(replies[0].id)
+  await pending.launched
+  const emit = runtime.starts[0].onEvent
+  emit({
+    kind: 'tool_call_started',
+    callId: 'call-1',
+    toolName: 'shell',
+    input: 'ls token=secret-value',
+  })
+  emit({
+    kind: 'tool_call_ended',
+    callId: 'call-1',
+    tool: 'shell',
+    result: 'completed',
+    exitCode: 0,
+    content: [{ type: 'text', text: 'README.md' }],
+  })
+  emit({
+    kind: 'tool_call_started',
+    callId: 'call-2',
+    toolName: 'create_roles',
+    input: '{}',
+  })
+  emit({
+    kind: 'tool_call_ended',
+    callId: 'call-2',
+    tool: 'create_roles',
+    result: 'completed',
+    content: [{ type: 'text', text: 'role-secret-id' }],
+  })
+  runtime.finish({ status: 'done', text: 'ok', thinking: 'Looked at the files' })
+  await pending.done
+  const finished = timeline.get(replies[0].id)
+  assert.equal(finished.data.thinking, 'Looked at the files')
+  assert.deepEqual(finished.data.trace, [
+    {
+      callId: 'call-1',
+      name: 'shell',
+      input: 'ls credential=[redacted]',
+      output: 'README.md',
+      status: 'completed',
+      exitCode: 0,
+    },
+    {
+      callId: 'call-2',
+      name: 'create_roles',
+      input: '{}',
+      output: '',
+      status: 'completed',
+    },
+  ])
+  assert.equal(JSON.stringify(finished.data.trace).includes('secret-value'), false)
+  assert.equal(JSON.stringify(finished.data.trace).includes('role-secret-id'), false)
+  roomDb.close()
+})
+
 test('finishing a reply preserves existing data flags such as reviewReply', async t => {
   const { roomDb, chatId, roleId, timeline, outbox, runtime, engine } = setup(t)
   const trigger = timeline.append({
