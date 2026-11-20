@@ -198,6 +198,14 @@ test('files are read from the room workspace without renderer paths', async (t) 
   assert.equal(read.kind, 'text')
   assert.equal(read.text, 'hello room\n')
 
+  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-upload-'))
+  const outside = path.join(outsideDir, 'upload-note.txt')
+  fs.writeFileSync(outside, 'brought in\n')
+  const imported = await host.importWorkspaceFiles({ roomId: created.roomId, sources: [outside] })
+  assert.deepEqual(imported, { files: [{ name: 'upload-note.txt' }] })
+  assert.equal(fs.readFileSync(path.join(workspace, 'upload-note.txt'), 'utf8'), 'brought in\n')
+  assert.equal(JSON.stringify(imported).includes(workspace), false)
+
   await assert.rejects(
     () => host.filesRead({ roomId: created.roomId, relPath: '../outside.txt' }),
     /ROOM_FILE_PATH_REJECTED/,

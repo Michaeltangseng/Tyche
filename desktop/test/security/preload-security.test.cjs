@@ -85,7 +85,7 @@ test('local preload exposes the local-only Tyche API', async () => {
   assert.equal(Object.isFrozen(api.teamRoom), true)
   assert.deepEqual(Object.keys(api.teamRoom).sort(), [
     'acceptTask', 'answerAttention', 'bootstrap', 'chatMessages', 'createChat', 'createRole',
-    'deleteChat', 'deleteRole', 'deleteRoom', 'filesList', 'filesRead', 'listRooms',
+    'deleteChat', 'deleteRole', 'deleteRoom', 'filesList', 'filesRead', 'importFiles', 'listRooms',
     'onChanged', 'onRuntimeEvents', 'runtimeEvents', 'setCaptain', 'setWriteAuthorized',
     'snapshot', 'stopReply', 'submitMessage', 'updateRole',
   ].sort())
@@ -189,6 +189,7 @@ test('team-room preload forwards only validated domain requests', async () => {
   await api.teamRoom.stopReply({ roomId: 'room', replyId: 'reply' })
   await api.teamRoom.filesList({ roomId: 'room', relPath: 'docs' })
   await api.teamRoom.filesRead({ roomId: 'room', relPath: 'docs/README.md' })
+  await api.teamRoom.importFiles({ roomId: 'room' })
   await api.teamRoom.setWriteAuthorized({ roomId: 'room', authorized: true })
   await api.teamRoom.runtimeEvents({ roomId: 'room', chatId: 'chat', limit: 10 })
   assert.deepEqual(invocations.map(item => item.channel), [
@@ -197,7 +198,7 @@ test('team-room preload forwards only validated domain requests', async () => {
     'team-room:role-create', 'team-room:role-update', 'team-room:role-set-captain',
     'team-room:role-delete',
     'team-room:attention-answer', 'team-room:message-submit', 'team-room:accept-task',
-    'team-room:stop-reply', 'team-room:files-list', 'team-room:files-read',
+    'team-room:stop-reply', 'team-room:files-list', 'team-room:files-read', 'team-room:files-import',
     'team-room:write-authorized', 'team-room:runtime-events',
   ])
 })

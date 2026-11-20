@@ -23,6 +23,7 @@ const CHANNELS = Object.freeze({
   stopReply: 'team-room:stop-reply',
   filesList: 'team-room:files-list',
   filesRead: 'team-room:files-read',
+  importFiles: 'team-room:files-import',
   writeAuthorized: 'team-room:write-authorized',
   runtimeEvents: 'team-room:runtime-events',
 })
@@ -55,7 +56,7 @@ function optionalInteger(value, { min = 0, max = Number.MAX_SAFE_INTEGER } = {})
   return value
 }
 
-function registerTeamRoomIpc({ registerTrustedHandle, getHost }) {
+function registerTeamRoomIpc({ registerTrustedHandle, getHost, dialog, getMainWindow }) {
   if (typeof registerTrustedHandle !== 'function') throw new TypeError('TEAM_ROOM_IPC_DEPENDENCIES_REQUIRED')
   const host = () => {
     const value = getHost?.()
@@ -237,6 +238,18 @@ function registerTeamRoomIpc({ registerTrustedHandle, getHost }) {
       throw ipcError('TEAM_ROOM_INPUT_INVALID')
     }
     return host().filesList(parsed)
+  })
+
+  registerTrustedHandle(CHANNELS.importFiles, async input => {
+    const parsed = assertInput(input, ['roomId'])
+    text(parsed.roomId)
+    if (!dialog?.showOpenDialog) throw ipcError('TEAM_ROOM_INPUT_INVALID')
+    const selected = await dialog.showOpenDialog(getMainWindow?.(), {
+      properties: ['openFile', 'multiSelections'],
+    })
+    const sources = selected?.canceled ? [] : (selected?.filePaths || [])
+    if (!sources.length) return { files: [] }
+    return host().importWorkspaceFiles({ roomId: parsed.roomId, sources })
   })
 
   registerTrustedHandle(CHANNELS.filesRead, input => {

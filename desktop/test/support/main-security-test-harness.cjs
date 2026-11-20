@@ -112,6 +112,7 @@ const LOCAL_IPC_CHANNELS = Object.freeze([
   'team-room:stop-reply',
   'team-room:files-list',
   'team-room:files-read',
+  'team-room:files-import',
   'team-room:write-authorized',
   'team-room:runtime-events',
 ])

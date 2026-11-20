@@ -740,6 +740,50 @@ function createRoomHost({
     }
   }
 
+  function uploadName(source) {
+    const base = path.basename(String(source || '')).normalize('NFC').replace(/[\u0000-\u001f]/g, '').trim()
+    if (!base || base === '.' || base === '..' || base.length > 180) return ''
+    if (base.includes('/') || base.includes('\\')) return ''
+    return base
+  }
+
+  function availableUploadName(directory, name) {
+    if (!fs.existsSync(path.join(directory, name))) return name
+    const extension = path.extname(name)
+    const stem = extension ? name.slice(0, -extension.length) : name
+    let index = 2
+    let candidate = `${stem} ${index}${extension}`
+    while (fs.existsSync(path.join(directory, candidate))) {
+      index += 1
+      candidate = `${stem} ${index}${extension}`
+    }
+    return candidate
+  }
+
+  async function importWorkspaceFiles(input = {}) {
+    const roomId = roomIdOf(input.roomId)
+    const sources = Array.isArray(input.sources) ? input.sources : []
+    if (!sources.length || sources.length > 16) throw hostError('TEAM_ROOM_INPUT_INVALID')
+    const rootInfo = await rootInfoFor(roomId)
+    const saved = []
+    for (const source of sources) {
+      if (typeof source !== 'string' || !path.isAbsolute(source)) throw hostError('TEAM_ROOM_INPUT_INVALID')
+      const name = uploadName(source)
+      if (!name) throw hostError('TEAM_ROOM_INPUT_INVALID')
+      let stat
+      try { stat = fs.statSync(source) } catch { throw hostError('ROOM_UPLOAD_UNAVAILABLE') }
+      if (!stat.isFile()) throw hostError('ROOM_UPLOAD_UNAVAILABLE')
+      if (stat.size > 100 * 1024 * 1024) throw hostError('ROOM_UPLOAD_TOO_LARGE')
+      const filename = availableUploadName(rootInfo.realRoot, name)
+      const destination = path.join(rootInfo.realRoot, filename)
+      const parent = path.dirname(destination)
+      if (parent !== rootInfo.realRoot) throw hostError('ROOM_FILE_PATH_REJECTED')
+      fs.copyFileSync(source, destination)
+      saved.push({ name: filename })
+    }
+    return { files: saved }
+  }
+
   async function filesRead(input = {}) {
     const roomId = roomIdOf(input.roomId)
     const relPath = cleanText(input.relPath, 4096, 'relPath')
@@ -865,6 +909,7 @@ function createRoomHost({
     stopReply,
     filesList,
     filesRead,
+    importWorkspaceFiles,
     setWriteAuthorized,
     runtimeEvents,
   }

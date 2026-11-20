@@ -159,6 +159,7 @@
                   <MarkdownMessage
                     v-if="entry.message.content"
                     :content="entry.message.content"
+                    :mention-profiles="mentionProfiles"
                     :class="{ 'room-message-streaming': isWorking(entry.message) }"
                   />
                   <MarkdownMessage
@@ -166,6 +167,7 @@
                     class="room-live-output"
                     :class="{ 'room-message-streaming': isWorking(entry.message) }"
                     :content="liveFor(entry.message).text"
+                    :mention-profiles="mentionProfiles"
                     aria-live="polite"
                   />
                   <p v-else-if="isWorking(entry.message) && !entry.handoffs.length" class="room-live-output" aria-live="polite">{{ t('room.liveOutput') }}</p>
@@ -174,6 +176,7 @@
                     :key="handoff.message.id"
                     class="room-message-handoff"
                     :content="handoff.message.content"
+                    :mention-profiles="mentionProfiles"
                   />
                   <div v-if="entry.mentions.length" class="room-mention-row">
                     <span v-for="name in entry.mentions" :key="name" class="room-mention-chip">@{{ name }}</span>
@@ -260,32 +263,48 @@
                 @{{ roleLabel(role) }}
               </button>
             </div>
-            <button
-              class="room-composer-tool"
-              type="button"
-              :title="t('room.mentionHint')"
-              :aria-label="t('room.mentionHint')"
-              :disabled="busy || !roles.length"
-              @click="focusComposer"
-            >
-              <AtOutline />
-            </button>
-            <div class="room-composer-field">
-              <textarea
-                ref="composerInput"
-                v-model="draft"
-                :placeholder="t('room.messageHint')"
-                :aria-label="t('room.message')"
-                rows="1"
-                maxlength="100000"
-                :disabled="busy || !chat"
-                @keydown="handleComposerKeydown"
-              />
+            <div v-if="uploadedFiles.length" class="room-upload-row">
+              <span v-for="name in uploadedFiles" :key="name">{{ name }}</span>
             </div>
-            <button class="room-composer-send" type="submit" :aria-label="t('room.send')" :disabled="busy || !draft.trim() || !chat">
-              <SendOutline />
-            </button>
+            <p v-if="uploadError" class="room-upload-error">{{ t('room.uploadFailed') }}</p>
+            <textarea
+              ref="composerInput"
+              v-model="draft"
+              :placeholder="t('room.messageHint', { name: activeChatLabel })"
+              :aria-label="t('room.message')"
+              rows="1"
+              maxlength="100000"
+              :disabled="busy || !chat"
+              @keydown="handleComposerKeydown"
+            />
+            <div class="room-composer-bar">
+              <button
+                class="room-composer-tool"
+                type="button"
+                :title="t('room.uploadFile')"
+                :aria-label="t('room.uploadFile')"
+                :disabled="uploading || !roomId"
+                @click="uploadWorkspaceFiles"
+              >
+                <AttachOutline />
+              </button>
+              <button
+                class="room-composer-tool"
+                type="button"
+                :title="t('room.mentionHint')"
+                :aria-label="t('room.mentionHint')"
+                :disabled="busy || !roles.length"
+                @click="focusComposer"
+              >
+                <AtOutline />
+              </button>
+              <span class="room-composer-hint">{{ t('room.composerNewline') }}</span>
+              <button class="room-composer-send" type="submit" :aria-label="t('room.send')" :disabled="busy || !draft.trim() || !chat">
+                <ArrowUpOutline />
+              </button>
+            </div>
           </form>
+          <!-- <p v-if="composerCaptain" class="room-composer-note">{{ t('room.composerScope', { name: roleLabel(composerCaptain) }) }}</p> -->
         </div>
       </section>
 
@@ -611,6 +630,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   AddOutline,
   AtOutline,
+  AttachOutline,
   CheckmarkCircleOutline,
   ChevronBackOutline,
   ChevronDownOutline,
@@ -622,7 +642,7 @@ import {
   PencilOutline,
   PersonOutline,
   PulseOutline,
-  SendOutline,
+  ArrowUpOutline,
   TrashOutline,
 } from '@vicons/ionicons5'
 import { agentLogo } from '../catalog.js'
@@ -727,6 +747,14 @@ const activeChatLabel = computed(() => {
   if (!item) return snapshot.value ? t('room.chat') : t('room.title')
   return item.id === snapshot.value?.room?.primary_chat_id ? t('room.primaryChat') : item.title
 })
+const composerCaptain = computed(() => roles.value.find(role => role.is_captain) || null)
+const mentionProfiles = computed(() => roles.value.map(role => ({
+  kind: role.provider || role.id,
+  label: role.display_name || role.provider || '',
+})).filter(profile => profile.label))
+const uploadedFiles = ref([])
+const uploading = ref(false)
+const uploadError = ref(false)
 const workdirName = computed(() => snapshot.value?.room?.workspace_label || '')
 const rolesById = computed(() => new Map(roles.value.map(role => [role.id, role])))
 const tasksById = computed(() => new Map((snapshot.value?.tasks || []).map(task => [task.id, task])))
@@ -1015,6 +1043,26 @@ const mentionOptions = computed(() => {
   if (mentionQuery.value == null) return []
   const query = mentionQuery.value.toLowerCase()
   return roles.value.filter(role => roleLabel(role).toLowerCase().includes(query))
+})
+
+async function uploadWorkspaceFiles() {
+  if (uploading.value || !roomId.value || typeof props.api?.importFiles !== 'function') return
+  uploading.value = true
+  uploadError.value = false
+  try {
+    const result = await props.api.importFiles({ roomId: roomId.value })
+    const names = (result?.files || []).map(file => file?.name).filter(Boolean)
+    if (names.length) uploadedFiles.value = [...new Set([...uploadedFiles.value, ...names])]
+  } catch {
+    uploadError.value = true
+  } finally {
+    uploading.value = false
+  }
+}
+
+watch(chatId, () => {
+  uploadedFiles.value = []
+  uploadError.value = false
 })
 
 function focusComposer() {
@@ -1437,23 +1485,37 @@ button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.
 .room-attention-card p { margin: 0 0 10px; line-height: 1.55; }
 .room-attention-card form { display: flex; flex-wrap: wrap; gap: 8px; }
 .room-attention-card select, .room-attention-card input { flex: 1; min-width: min(220px, 100%); }
-.room-composer-wrap { padding: 8px clamp(18px, 4vw, 48px) 18px; background: transparent; }
-.room-composer { position: relative; display: flex; align-items: flex-end; gap: 6px; width: min(760px, 100%); margin: 0 auto; padding: 8px 8px 8px 6px; border-radius: 22px; background: color-mix(in srgb, var(--surface-raised) 88%, var(--surface-active) 12%); box-shadow: 0 10px 28px rgb(0 0 0 / 0.22); }
+.room-composer-wrap { padding: 4px clamp(18px, 4vw, 48px) 14px; background: transparent; }
+.room-composer { position: relative; display: flex; flex-direction: column; gap: 8px; width: min(820px, 100%); margin: 0 auto; padding: 12px 12px 8px; border: 1px solid color-mix(in srgb, var(--text) 8%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--surface-raised) 92%, #000); box-shadow: none; }
+.room-upload-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.room-upload-row span { max-width: 220px; overflow: hidden; padding: 1px 7px; border-radius: 6px; background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text-soft); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
+.room-upload-error { margin: 0; color: var(--danger, #f97066); font-size: var(--text-2xs); }
+.room-composer-bar { display: flex; align-items: center; gap: 4px; }
+.room-workspace :deep(.agent-inline-mention) { display: inline-block; margin: 0 1px; padding: 0 6px; border-radius: 6px; background: color-mix(in srgb, var(--mention, #8ab4ff) 24%, transparent); color: color-mix(in srgb, var(--mention, #8ab4ff) 72%, white); font-weight: 600; line-height: 1.55; }
+.room-workspace :deep(.agent-inline-mention[data-agent-kind="claude"]) { --mention: #ff8a3d; }
+.room-workspace :deep(.agent-inline-mention[data-agent-kind="codex"]) { --mention: #4c93ff; }
+.room-workspace :deep(.agent-inline-mention[data-agent-kind="pi"]) { --mention: #8fd0ff; }
+.room-workspace :deep(.agent-inline-mention[data-agent-kind="gemini"]) { --mention: #b388ff; }
+.room-workspace :deep(.agent-inline-mention[data-agent-kind="hermes"]) { --mention: #3ecf8e; }
+.room-workspace :deep(.agent-inline-mention[data-agent-kind="deepseek"]) { --mention: #5b7cff; }
+.room-workspace :deep(.agent-inline-mention[data-agent-kind="kimi"]) { --mention: #67d4ff; }
+.room-workspace :deep(.agent-inline-mention[data-agent-kind="qwen"]) { --mention: #f0b429; }
+.room-composer-hint { margin-left: auto; color: var(--faint); font-size: var(--text-2xs); }
+.room-composer-note { width: min(820px, 100%); margin: 8px auto 0; color: var(--faint); font-size: var(--text-2xs); text-align: center; }
 .room-mention-menu { position: absolute; right: 12px; bottom: calc(100% + 8px); left: 12px; z-index: 5; display: flex; flex-direction: column; max-height: 220px; overflow: auto; padding: 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); box-shadow: var(--elev-2); }
 .room-mention-option { display: flex; align-items: center; width: 100%; min-height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer; }
 .room-mention-option:hover, .room-mention-option:focus-visible { outline: none; background: var(--surface-hover); }
-.room-composer:focus-within { box-shadow: 0 12px 30px rgb(0 0 0 / 0.28); }
+.room-composer:focus-within { border-color: color-mix(in srgb, var(--text) 16%, transparent); }
 .room-composer-tool, .room-composer-send { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; cursor: pointer; }
-.room-composer-tool { width: 32px; height: 32px; border-radius: 10px; background: transparent; color: var(--muted); }
+.room-composer-tool { width: 28px; height: 28px; border-radius: 8px; background: transparent; color: var(--muted); }
 .room-composer-tool:hover:not(:disabled), .room-composer-tool:focus-visible { color: var(--text); background: var(--surface-hover); }
 .room-composer-tool svg, .room-composer-send svg { width: 16px; height: 16px; }
-.room-composer-field { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 2px 0; }
-.room-composer textarea { flex: 1 1 160px; width: auto; min-width: 120px; min-height: 28px; max-height: 120px; margin: 0; padding: 4px 2px; border: 0; border-radius: 0; background: transparent; resize: none; line-height: 1.45; }
+.room-composer textarea { width: 100%; min-height: 44px; max-height: 140px; margin: 0; padding: 2px 2px 0; border: 0; border-radius: 0; background: transparent; resize: none; line-height: 1.5; }
 .room-composer textarea:focus-visible { outline: none; }
-.room-composer-send { width: 34px; height: 34px; border-radius: 50%; background: var(--surface-active); color: var(--faint); }
-.room-composer-send:disabled { opacity: 1; }
-.room-composer-send:not(:disabled) { background: var(--accent); color: #fff; }
-.room-composer-send:hover:not(:disabled) { background: var(--accent-hover); }
+.room-composer-send { width: 28px; height: 28px; border-radius: 50%; background: color-mix(in srgb, var(--text) 14%, transparent); color: var(--text-soft); }
+.room-composer-send:disabled { opacity: 0.45; cursor: default; }
+.room-composer-send:not(:disabled) { background: var(--text); color: var(--surface); }
+.room-composer-send:hover:not(:disabled) { background: var(--text); }
 .room-ledger { display: flex; flex: 0 0 min(340px, 36%); flex-direction: column; min-height: 0; overflow: auto; padding: 14px; border-left: 1px solid var(--border); background: var(--surface-raised); }
 .room-ledger-header { display: flex; gap: 10px; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
 .room-ledger-header h2 { margin: 0; }

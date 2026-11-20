@@ -1089,6 +1089,8 @@ function registerIpc() {
   registerTeamRoomIpc({
     registerTrustedHandle,
     getHost: () => teamRoomHost,
+    dialog,
+    getMainWindow: () => mainWindow,
   })
 }
 
