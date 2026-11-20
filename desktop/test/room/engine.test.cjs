@@ -162,6 +162,34 @@ test('completion watermark does not jump over an in-flight peer reply', async t 
   roomDb.close()
 })
 
+test('a finished reply keeps the settled token usage on the message', async t => {
+  const { roomDb, chatId, timeline, runtime, engine } = setup(t)
+  const { replies } = engine.submitUserMessage({ chatId, content: 'hi' })
+  const pending = engine.startReply(replies[0].id)
+  await pending.launched
+  const emit = runtime.starts[0].onEvent
+  emit({
+    kind: 'usage',
+    usage: {
+      tokens: { input: 44744, output: 790, cacheRead: 29824, cacheWrite: 0 },
+      sessionId: 'secret',
+    },
+  })
+  emit({
+    kind: 'usage',
+    usage: { context: { tokens: 15497, contextWindow: 1000000, percent: 2 } },
+  })
+  runtime.finish({ status: 'done', text: 'ok' })
+  await pending.done
+  assert.deepEqual(timeline.get(replies[0].id).data.usage, {
+    inputTokens: 14920,
+    outputTokens: 790,
+    cachedInputTokens: 29824,
+    context: { tokens: 15497, contextWindow: 1000000, percent: 2 },
+  })
+  roomDb.close()
+})
+
 test('finishing a reply preserves existing data flags such as reviewReply', async t => {
   const { roomDb, chatId, roleId, timeline, outbox, runtime, engine } = setup(t)
   const trigger = timeline.append({

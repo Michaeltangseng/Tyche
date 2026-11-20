@@ -10,6 +10,7 @@
  * directly.
  */
 const path = require('node:path')
+const { safeUsage } = require('./runtime-event-view.cjs')
 
 function parseJson(value, fallback) {
   if (value === null || value === undefined) return fallback
@@ -99,6 +100,8 @@ function safeMessageData(data, room = null) {
   if (typeof data.thinking === 'string' && data.thinking.length > 0) {
     safe.thinking = scrubWorkspace(data.thinking, room)
   }
+  const usage = safeUsage(data.usage)
+  if (usage) safe.usage = usage
   return Object.keys(safe).length > 0 ? safe : null
 }
 

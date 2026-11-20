@@ -693,7 +693,7 @@ watch(agentUsage, rows => emit('usage-change', rows), { immediate: true })
 
 function turnUsage(message) {
   if (message?.author_type !== 'agent') return ''
-  return formatUsageLine(liveFor(message)?.usage || usageByRun.value[message.id])
+  return formatUsageLine(liveFor(message)?.usage || message?.data?.usage || usageByRun.value[message.id])
 }
 
 const workCount = computed(() => (

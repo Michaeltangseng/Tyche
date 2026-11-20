@@ -86,6 +86,23 @@ describe('room usage', () => {
     expect(rows[1].usage).toEqual({ inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 })
   })
 
+  it('sums token totals stored on finished replies when the live index is empty', () => {
+    const rows = agentUsageRows({
+      roles: [{ id: 'captain', display_name: 'Claude Code', provider: 'claude' }],
+      messages: [{
+        id: 'm1',
+        author_type: 'agent',
+        author_id: 'captain',
+        status: 'done',
+        data: { usage: { inputTokens: 1000, outputTokens: 200, cachedInputTokens: 50, context: { percent: 6 } } },
+      }],
+      usageByRun: {},
+      liveRuns: {},
+    })
+    expect(rows[0].usage).toEqual({ inputTokens: 1000, outputTokens: 200, cachedInputTokens: 50 })
+    expect(rows[0].contextPercent).toBe(6)
+  })
+
   it('names a tool step by its verb and file', () => {
     expect(toolActivity({ name: 'Read', input: '/repo/README.zh-CN.md' })).toEqual({
       verb: 'read',

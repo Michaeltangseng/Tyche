@@ -193,3 +193,36 @@ test('display text replaces the absolute room workspace path', t => {
   assert.equal(message.content, `wrote ${path.basename(context.directory)}/docs/room.md`)
   context.roomDb.close()
 })
+
+test('a reply snapshot keeps settled token usage and drops private usage fields', t => {
+  const context = setup(t)
+  context.timeline.append({
+    chatId: context.chatId,
+    authorType: 'agent',
+    authorId: context.workerRoleId,
+    content: 'usage reply',
+    status: 'done',
+    data: {
+      usage: {
+        inputTokens: 14920,
+        outputTokens: 790,
+        cachedInputTokens: 29824,
+        context: { tokens: 15497, contextWindow: 1000000, percent: 2 },
+        sessionId: 'secret',
+      },
+      activity: [{ name: 'Bash', input: context.directory }],
+    },
+  })
+  const model = createRoomReadModel({ roomDb: context.roomDb })
+  const snapshot = model.snapshot({ roomId: context.roomId, messageLimit: 20 })
+  const message = snapshot.messages.find(item => item.content === 'usage reply')
+  assert.deepEqual(message.data.usage, {
+    inputTokens: 14920,
+    outputTokens: 790,
+    cachedInputTokens: 29824,
+    context: { tokens: 15497, contextWindow: 1000000, percent: 2 },
+  })
+  assert.equal(JSON.stringify(message.data).includes('secret'), false)
+  assert.equal(JSON.stringify(message.data).includes(context.directory), false)
+  context.roomDb.close()
+})

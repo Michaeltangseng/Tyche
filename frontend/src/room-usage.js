@@ -56,7 +56,7 @@ export function agentUsageRows({ roles = [], messages = [], usageByRun = {}, liv
     if (['queued', 'working', 'waiting_for_input'].includes(message.status) || live?.status === 'running') {
       working.add(roleId)
     }
-    const usage = live?.usage || usageByRun[message.id]
+    const usage = live?.usage || message.data?.usage || usageByRun[message.id]
     if (!usage) continue
     const total = totals.get(roleId) || emptyUsage()
     for (const key of ['inputTokens', 'outputTokens', 'cachedInputTokens']) {

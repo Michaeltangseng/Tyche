@@ -1,5 +1,18 @@
 const { routeUserMessage, resolveNamed } = require('./routing.cjs')
 const { briefing, rosterProviders } = require('./briefing.cjs')
+const { safeUsage } = require('./runtime-event-view.cjs')
+
+function mergeSettledUsage(previous, raw) {
+  const next = safeUsage(raw)
+  if (!next) return previous || null
+  if (!previous) return next
+  const context = next.context || previous.context
+  return {
+    ...previous,
+    ...next,
+    ...(context ? { context } : {}),
+  }
+}
 
 function mentionNames(content) {
   const names = []
@@ -98,6 +111,12 @@ function createEngine({
         const claimed = outbox.claim(effect.id)
         if (!claimed) throw new Error('ROOM_REPLY_EFFECT_NOT_PENDING')
         let handle
+        let settledUsage = null
+        const finishData = (data) => {
+          const finalData = data && typeof data === 'object' ? { ...data } : {}
+          if (settledUsage) finalData.usage = settledUsage
+          return Object.keys(finalData).length > 0 ? finalData : null
+        }
         try {
           const role = repository.getRole(reply.authorId)
           if (!role) throw new Error('ROOM_ROLE_NOT_FOUND')
@@ -165,13 +184,16 @@ function createEngine({
             prompt,
             nativeSessionRef: sessionRow?.native_session_ref ?? null,
             signal: controller.signal,
-            onEvent: event => onEvent({
-              runId: reply.id,
-              chatId: reply.chatId,
-              roleId: role.id,
-              mode: 'chat',
-              event,
-            }),
+            onEvent: event => {
+              if (event?.kind === 'usage') settledUsage = mergeSettledUsage(settledUsage, event.usage)
+              onEvent({
+                runId: reply.id,
+                chatId: reply.chatId,
+                roleId: role.id,
+                mode: 'chat',
+                event,
+              })
+            },
           })
           const launchResult = await handle.launch
           if (launchResult?.nativeSessionRef) {
@@ -190,7 +212,7 @@ function createEngine({
               status: outcome.status,
               text: outcome.text ?? '',
               thinking: outcome.thinking ?? '',
-              data: Object.keys(finalData).length > 0 ? finalData : null,
+              data: finishData(finalData),
             })
             sessions.setParticipantLastSeq({ chatId: reply.chatId, roleId: role.id, seq: watermark })
             resolveDone()
@@ -199,7 +221,7 @@ function createEngine({
               timeline.finish(reply.id, {
                 status: 'failed',
                 text: error?.message ?? '',
-                data: { error: error?.message ?? String(error) },
+                data: finishData({ error: error?.message ?? String(error) }),
               })
             } catch { /* preserve the completion error */ }
             rejectDone(error)
@@ -211,7 +233,7 @@ function createEngine({
             timeline.finish(reply.id, {
               status: 'failed',
               text: error?.message ?? '',
-              data: { error: error?.message ?? String(error) },
+              data: finishData({ error: error?.message ?? String(error) }),
             })
           } catch { /* preserve the launch error */ }
           throw error

@@ -303,6 +303,18 @@ describe('team room workspace', () => {
     expect(wrapper.emitted('toggle-usage')).toHaveLength(1)
   })
 
+  it('shows token usage stored on a finished reply', async () => {
+    const snapshot = data()
+    snapshot.messages = [{
+      id: 'reply-1', chat_id: 'chat-1', sequence: 2, author_type: 'agent', author_id: 'worker',
+      author_name: 'Writer', content: 'Done', status: 'done', created_at: '2026-11-15T10:01:00Z',
+      data: { usage: { inputTokens: 1200, outputTokens: 340, cachedInputTokens: 8100 } },
+    }]
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+    expect(wrapper.get('.room-turn-usage').text()).toBe('in 1.2k · out 340 · cache 8.1k')
+  })
+
   it('loads a persisted trace for a completed reply', async () => {
     const snapshot = data()
     snapshot.messages = [{
