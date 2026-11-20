@@ -1203,8 +1203,87 @@
 }
 
 .team-room-row .project-room-open {
-  height: 32px;
-  grid-template-columns: 14px 26px minmax(0, 1fr);
+  height: auto;
+  min-height: 44px;
+  grid-template-columns: auto minmax(0, 1fr) 14px;
+  padding: 6px 4px;
+}
+
+.team-face-stack {
+  display: flex;
+  align-items: center;
+  min-width: 22px;
+}
+
+.team-face-stack img,
+.team-face-more {
+  width: 22px;
+  height: 22px;
+  margin-left: -7px;
+  border: 2px solid var(--sidebar);
+  border-radius: 50%;
+  background: #1b2124;
+}
+
+.team-face-stack img {
+  object-fit: cover;
+}
+
+.team-face-stack img:first-child,
+.team-face-more:first-child {
+  margin-left: 0;
+}
+
+.team-face-more {
+  display: grid;
+  place-items: center;
+  background: var(--surface-active);
+  color: var(--text-soft);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.team-room-chats .project-room-group {
+  height: auto;
+  min-height: 46px;
+  align-items: flex-start;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.team-chat-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.team-chat-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.team-chat-title time {
+  margin-left: auto;
+  color: var(--faint);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.team-chat-copy small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-room-chats .project-room-group.active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 70%, transparent);
 }
 
 .team-room-row.active .project-room-copy strong {

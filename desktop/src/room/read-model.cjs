@@ -328,13 +328,50 @@ function createRoomReadModel({ roomDb } = {}) {
     return { rows: rows.slice(0, limit).reverse(), hasMore }
   }
 
+  function chatMembers(chatId) {
+    return database.prepare(`
+      SELECT display_name, provider, is_captain
+      FROM chat_roles
+      WHERE chat_id = ? AND status = 'active'
+      ORDER BY is_captain DESC, created_at ASC, rowid ASC
+    `).all(chatId).map(role => ({
+      name: role.display_name,
+      provider: role.provider,
+      is_captain: role.is_captain === 1,
+    }))
+  }
+
+  function chatActivity(chatId, room) {
+    const message = database.prepare(`
+      SELECT author_type, author_id, content, status, created_at
+      FROM messages
+      WHERE chat_id = ? AND deleted_at IS NULL AND audience = 'chat' AND kind != 'captain_review'
+      ORDER BY seq DESC LIMIT 1
+    `).get(chatId)
+    if (!message) return null
+    const role = message.author_type === 'agent'
+      ? database.prepare('SELECT display_name FROM chat_roles WHERE id = ?').get(message.author_id)
+      : null
+    const text = scrubWorkspace(String(message.content || '').replace(/\s+/g, ' ').trim(), room).slice(0, 80)
+    return {
+      name: role?.display_name || '',
+      status: message.status,
+      text,
+      created_at: message.created_at,
+    }
+  }
+
   function listRooms() {
     return database.prepare('SELECT * FROM rooms ORDER BY created_at ASC, rowid ASC').all().map(row => {
       const chats = chatsOf(row.id)
       return {
         ...roomView(row, chats),
         chat_count: chats.length,
-        chats: chats.map(chatView),
+        chats: chats.map(chat => ({
+          ...chatView(chat),
+          members: chatMembers(chat.id),
+          activity: chatActivity(chat.id, row),
+        })),
       }
     })
   }

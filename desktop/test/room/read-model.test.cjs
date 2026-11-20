@@ -150,6 +150,9 @@ test('listRooms exposes a label and chats, not the absolute workspace', t => {
   assert.equal(typeof rooms[0].workspace_label, 'string')
   assert.equal(rooms[0].chat_count, 1)
   assert.equal(rooms[0].chats[0].id, context.chatId)
+  assert.equal(rooms[0].chats[0].members.some(member => member.name === 'Captain' && member.is_captain), true)
+  assert.equal(JSON.stringify(rooms[0].chats[0].members).includes('route'), false)
+  assert.equal(typeof rooms[0].chats[0].activity?.text, 'string')
   context.roomDb.close()
 })
 

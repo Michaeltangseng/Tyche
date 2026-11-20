@@ -99,7 +99,7 @@ describe('workspace sidebar rail', () => {
     expect(wrapper.get('.team-room-nav-section').text()).toContain('Team Alpha')
     const chats = wrapper.findAll('.team-room-chats .project-room-group')
     expect(chats).toHaveLength(2)
-    expect(chats[0].text()).toContain('room.primaryChat')
+    expect(chats[0].text()).toContain('Team chat')
 
     await chats[1].trigger('click')
     expect(fixture.selectTeamChat).toHaveBeenCalledWith('team-1', 'chat-2')

@@ -251,11 +251,15 @@
                 :aria-controls="`team-room-chats-${room.id}`"
                 @click="handleTeamRoomClick(room)"
               >
-                <ChevronForwardOutline class="team-room-chevron" :class="{ open: searching || isTeamRoomExpanded(room.id) }" />
-                <span class="project-room-avatar" aria-hidden="true">{{ projectInitial(room.name) }}</span>
+                <span v-if="roomFaces(room).faces.length" class="team-face-stack" aria-hidden="true">
+                  <img v-for="member in roomFaces(room).faces" :key="member.provider || member.name" :src="rolePortrait(member.provider)" alt="" />
+                </span>
+                <span v-else class="project-room-avatar" aria-hidden="true">{{ projectInitial(room.name) }}</span>
                 <span class="project-room-copy">
                   <strong>{{ room.name }}</strong>
+                  <small>{{ roomSummary(room) }}</small>
                 </span>
+                <ChevronForwardOutline class="team-room-chevron" :class="{ open: searching || isTeamRoomExpanded(room.id) }" />
               </button>
               <button
                 class="project-room-add team-room-add-chat"
@@ -290,9 +294,16 @@
                   :aria-current="isTeamChatSelected(room.id, chat.id) ? 'page' : undefined"
                   @click="selectTeamChat(room.id, chat.id)"
                 >
-                  <span class="project-room-group-name">{{ teamChatLabel(room, chat) }}</span>
-                  <span v-if="chat.is_primary && teamChatLabel(room, chat) !== t('room.primaryChat')" class="project-room-group-badge">
-                    {{ t('room.primaryChat') }}
+                  <span v-if="stackedMembers(chat.members).faces.length" class="team-face-stack" aria-hidden="true">
+                    <img v-for="member in stackedMembers(chat.members).faces" :key="member.provider || member.name" :src="rolePortrait(member.provider)" alt="" />
+                    <span v-if="stackedMembers(chat.members).extra" class="team-face-more">+{{ stackedMembers(chat.members).extra }}</span>
+                  </span>
+                  <span class="team-chat-copy">
+                    <span class="team-chat-title">
+                      <span class="project-room-group-name">{{ teamChatLabel(room, chat) }}</span>
+                      <time v-if="chatTime(chat)">{{ chatTime(chat) }}</time>
+                    </span>
+                    <small v-if="chatActivityLabel(chat)">{{ chatActivityLabel(chat) }}</small>
                   </span>
                 </button>
                 <button
@@ -392,6 +403,8 @@ import {
   TrashOutline,
 } from '@vicons/ionicons5'
 
+import { rolePortrait } from '../role-portraits.js'
+
 const props = defineProps({
   controller: { type: Object, required: true },
 })
@@ -468,6 +481,53 @@ function isSelectedConversation(group) {
 
 function projectInitial(name) {
   return String(name || '').trim().slice(0, 1).toUpperCase() || '•'
+}
+
+function memberList(chat) {
+  return Array.isArray(chat?.members) ? chat.members : []
+}
+
+function stackedMembers(members, limit = 3) {
+  const list = Array.isArray(members) ? members : []
+  return { faces: list.slice(0, limit), extra: Math.max(0, list.length - limit) }
+}
+
+function roomFaces(room) {
+  const seen = new Set()
+  const faces = []
+  for (const chat of room.chats || []) {
+    for (const member of memberList(chat)) {
+      const key = member.provider || member.name
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      faces.push(member)
+    }
+  }
+  return stackedMembers(faces, 4)
+}
+
+function roomSummary(room) {
+  const faces = roomFaces(room)
+  const members = faces.faces.length + faces.extra
+  const chats = room.chatTotal ?? room.chats?.length ?? 0
+  if (!members) return t('room.chatCount', { count: chats })
+  return t('room.roomFaces', { members, chats })
+}
+
+function chatActivityLabel(chat) {
+  const activity = chat?.activity
+  if (!activity) return ''
+  if (['working', 'queued', 'starting', 'running'].includes(activity.status) && activity.name) {
+    return t('room.memberWorking', { name: activity.name })
+  }
+  return activity.text || ''
+}
+
+function chatTime(chat) {
+  const value = chat?.activity?.created_at || chat?.updated_at
+  const date = new Date(value || '')
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
 
 function teamChatLabel(room, chat) {
