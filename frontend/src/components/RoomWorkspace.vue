@@ -96,48 +96,19 @@
               {{ loadingOlderMessages ? t('room.loadingOlder') : t('room.loadOlder') }}
             </button>
             <div v-if="!entries.length && !attentions.length && !hasWork" class="room-welcome">
-              <div v-if="welcomeRoles.length" class="room-welcome-stage">
+              <div v-if="welcomeRoles.length" class="room-welcome-team">
                 <button
-                  v-if="welcomeCard"
-                  class="room-welcome-card-backdrop"
+                  v-for="role in welcomeRoles"
+                  :key="role.id"
+                  class="room-welcome-face"
+                  :class="{ captain: role.is_captain }"
                   type="button"
-                  tabindex="-1"
-                  aria-hidden="true"
-                  @click="dismissWelcomeCard"
-                />
-                <div class="room-welcome-team">
-                  <button
-                    v-for="role in welcomeRoles"
-                    :key="role.id"
-                    class="room-welcome-face"
-                    :class="{ captain: role.is_captain, open: welcomeCard?.id === role.id }"
-                    type="button"
-                    :aria-expanded="welcomeCard?.id === role.id ? 'true' : 'false'"
-                    :aria-label="roleLabel(role)"
-                    @click.stop="toggleWelcomeCard(role)"
-                  >
-                    <img class="room-portrait" :src="faceSrc(role)" alt="" />
-                    <span v-if="role.is_captain" class="room-welcome-wave">{{ t('room.welcomeWave') }}</span>
-                  </button>
-                </div>
-                <div v-if="welcomeCard" class="room-welcome-card" role="dialog" :aria-label="roleLabel(welcomeCard)">
-                  <header>
-                    <strong>{{ roleLabel(welcomeCard) }}</strong>
-                    <span v-if="welcomeCard.is_captain" class="room-agent-badge">{{ t('room.captain') }}</span>
-                  </header>
-                  <dl>
-                    <div>
-                      <dt>{{ t('room.roleEngine') }}</dt>
-                      <dd>{{ providerLabel(welcomeCard.provider) }}</dd>
-                    </div>
-                    <div>
-                      <dt>{{ t('room.nativePermission') }}</dt>
-                      <dd>{{ welcomePermission(welcomeCard) }}</dd>
-                    </div>
-                  </dl>
-                  <p v-if="welcomeCard.is_captain">{{ t('room.captainDuty') }}</p>
-                  <button class="room-welcome-card-config" type="button" @click="openWelcomeRole">{{ t('room.configureRole') }}</button>
-                </div>
+                  :aria-label="`${t('room.configureRole')}: ${roleLabel(role)}`"
+                  @click="openRoleSettings(role.id)"
+                >
+                  <img class="room-portrait" :src="faceSrc(role)" alt="" />
+                  <span v-if="role.is_captain" class="room-welcome-wave">{{ t('room.welcomeWave') }}</span>
+                </button>
               </div>
               <h2>{{ t('room.emptyTitle') }}</h2>
               <p class="room-muted">{{ t('room.emptyHint') }}</p>
@@ -158,7 +129,17 @@
                   'room-message-captain': entry.isCaptain,
                 }"
               >
-                <span v-if="!entry.isUser && !entry.isSystem" class="room-message-avatar">
+                <button
+                  v-if="!entry.isUser && !entry.isSystem && entry.roleId"
+                  class="room-message-avatar"
+                  type="button"
+                  :aria-label="`${t('room.configureRole')}: ${entry.author}`"
+                  @click="openRoleSettings(entry.roleId)"
+                >
+                  <img v-if="entry.provider || entry.portrait" class="room-portrait" :src="rolePortrait(entry.portrait || entry.provider)" alt="" />
+                  <span v-else>{{ entry.author.slice(0, 1) }}</span>
+                </button>
+                <span v-else-if="!entry.isUser && !entry.isSystem" class="room-message-avatar">
                   <img v-if="entry.provider || entry.portrait" class="room-portrait" :src="rolePortrait(entry.portrait || entry.provider)" alt="" />
                   <span v-else>{{ entry.author.slice(0, 1) }}</span>
                 </span>
@@ -773,6 +754,7 @@ const entries = computed(() => {
         : message.author_type === 'system'
           ? t('room.system')
           : message.author_name || role?.display_name || t('room.system'),
+      roleId: role?.id || '',
       provider: role?.provider || '',
       portrait: role?.portrait || '',
       mentions: (message.mentions || []).map(id => rolesById.value.get(id)?.display_name).filter(Boolean),
@@ -856,8 +838,6 @@ const visiblePortraits = computed(() => rolePortraits().slice(portraitPage.value
 const welcomeRoles = computed(() => [...roles.value]
   .sort((a, b) => Number(b.is_captain) - Number(a.is_captain))
   .slice(0, 4))
-const welcomeCardId = ref('')
-const welcomeCard = computed(() => roles.value.find(role => role.id === welcomeCardId.value) || null)
 const welcomePrompts = computed(() => {
   const captain = roles.value.find(role => role.is_captain) || roles.value[0]
   const other = roles.value.find(role => role && role !== captain)
@@ -1205,49 +1185,6 @@ function openNewRole() {
   nextTick(() => roleSettingsRef.value?.focus?.())
 }
 
-function toggleWelcomeCard(role) {
-  welcomeCardId.value = welcomeCardId.value === role?.id ? '' : (role?.id || '')
-}
-
-function dismissWelcomeCard() {
-  welcomeCardId.value = ''
-}
-
-function welcomePermission(role) {
-  const modes = permissionModesFor(role?.provider)
-  const mode = modes.find(item => item.id === role?.native_permission) || modes[0]
-  return mode ? permissionModeLabel(mode) : ''
-}
-
-function openWelcomeRole() {
-  const roleId = welcomeCardId.value
-  welcomeCardId.value = ''
-  if (roleId) openRoleSettings(roleId)
-}
-
-function onWelcomeCardKey(event) {
-  if (event.key === 'Escape') dismissWelcomeCard()
-}
-
-function onWelcomePointer(event) {
-  const target = event.target
-  if (target?.closest?.('.room-welcome-card, .room-welcome-face')) return
-  dismissWelcomeCard()
-}
-
-function unbindWelcomeCard() {
-  if (typeof document === 'undefined') return
-  document.removeEventListener('keydown', onWelcomeCardKey)
-  document.removeEventListener('pointerdown', onWelcomePointer)
-}
-
-watch(welcomeCardId, (id) => {
-  unbindWelcomeCard()
-  if (!id || typeof document === 'undefined') return
-  document.addEventListener('keydown', onWelcomeCardKey)
-  document.addEventListener('pointerdown', onWelcomePointer)
-})
-
 function openRoleSettings(roleId) {
   const role = roles.value.find(item => item.id === roleId)
   if (!role) return
@@ -1378,7 +1315,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleEscape)
-  unbindWelcomeCard()
   document.body.classList.remove('room-overlay-open')
 })
 </script>
@@ -1439,45 +1375,39 @@ onBeforeUnmount(() => {
 .room-welcome { max-width: 620px; margin: clamp(32px, 9vh, 96px) auto 0; text-align: center; }
 .room-welcome h2 { margin: 0 0 8px; font-size: var(--text-2xl); }
 .room-welcome p { margin: 0 0 8px; line-height: 1.65; }
-.room-welcome-stage { position: relative; z-index: 2; }
-.room-welcome-card-backdrop { position: fixed; inset: 0; z-index: 4; border: 0; background: transparent; cursor: default; }
-.room-welcome-team { position: relative; z-index: 6; display: flex; justify-content: center; align-items: flex-end; gap: 14px; margin-bottom: 18px; }
+.room-welcome-team { display: flex; justify-content: center; align-items: flex-end; gap: 18px; margin-bottom: 18px; }
 .room-welcome-face { position: relative; display: block; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .room-welcome-face img { width: 48px; height: 48px; border: 1.5px solid #12161a; border-radius: 50%; object-fit: cover; background: #1b2124; box-shadow: 0 8px 20px rgb(0 0 0 / 0.28); transform-origin: 50% 85%; transition: transform 0.18s ease; }
 .room-welcome-face.captain img { width: 64px; height: 64px; }
 .room-welcome-face:hover img,
-.room-welcome-face:focus-visible img,
-.room-welcome-face.open img { animation: room-welcome-wobble 0.62s ease-in-out; transform: scale(1.16); }
+.room-welcome-face:focus-visible img { animation: room-welcome-wobble 0.62s ease-in-out; transform: scale(1.5); }
 .room-welcome-face:focus-visible { outline: none; }
 @keyframes room-welcome-wobble {
   0% { transform: scale(1) rotate(0deg); }
-  30% { transform: scale(1.18) rotate(-7deg); }
-  58% { transform: scale(1.14) rotate(5deg); }
-  100% { transform: scale(1.16) rotate(0deg); }
+  30% { transform: scale(1.5) rotate(-7deg); }
+  58% { transform: scale(1.42) rotate(5deg); }
+  100% { transform: scale(1.5) rotate(0deg); }
 }
 @media (prefers-reduced-motion: reduce) {
   .room-welcome-face:hover img,
-  .room-welcome-face:focus-visible img,
-  .room-welcome-face.open img { animation: none; transform: scale(1.08); }
+  .room-welcome-face:focus-visible img { animation: none; transform: scale(1.5); }
 }
 .room-welcome-wave { position: absolute; top: -6px; right: -18px; padding: 2px 7px; border-radius: 999px; background: var(--surface-raised); color: var(--text); font-size: var(--text-2xs); box-shadow: 0 4px 12px rgb(0 0 0 / 0.25); pointer-events: none; }
-.room-welcome-card { position: absolute; z-index: 6; left: 50%; top: calc(100% - 10px); width: min(260px, calc(100vw - 48px)); transform: translateX(-50%); padding: 12px 14px 10px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-raised); box-shadow: var(--elev-2); text-align: left; }
-.room-welcome-card header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.room-welcome-card header strong { font-size: var(--text-sm); }
-.room-welcome-card dl { display: grid; gap: 6px; margin: 0; }
-.room-welcome-card dl div { display: flex; justify-content: space-between; gap: 12px; }
-.room-welcome-card dt { color: var(--faint); font-size: var(--text-2xs); }
-.room-welcome-card dd { margin: 0; color: var(--text); font-size: var(--text-xs); text-align: right; }
-.room-welcome-card p { margin: 8px 0 0; color: var(--text-soft); font-size: var(--text-2xs); line-height: 1.45; }
-.room-welcome-card-config { margin-top: 10px; padding: 0; border: 0; background: transparent; color: var(--accent-text); font: inherit; font-size: var(--text-xs); cursor: pointer; }
-.room-welcome-card-config:hover, .room-welcome-card-config:focus-visible { outline: none; text-decoration: underline; }
 .room-welcome-prompts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
 .room-welcome-prompts button { padding: 7px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text-soft); font-family: inherit; font-size: var(--text-xs); cursor: pointer; }
 .room-welcome-prompts button:hover, .room-welcome-prompts button:focus-visible { outline: none; border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); color: var(--text); }
 .room-message { display: flex; gap: 12px; align-items: flex-start; margin: 0 0 24px; }
 .room-message-user { flex-direction: row-reverse; }
-.room-message-avatar { display: grid; flex: 0 0 44px; place-items: center; width: 44px; height: 44px; color: var(--text-soft); font-size: var(--text-xs); font-weight: 600; }
-.room-message-avatar img { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; background: #1b2124; }
+.room-message-avatar { display: grid; flex: 0 0 44px; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: var(--text-soft); font: inherit; font-size: var(--text-xs); font-weight: 600; }
+button.room-message-avatar { cursor: pointer; }
+button.room-message-avatar:focus-visible { outline: none; }
+.room-message-avatar img { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; background: #1b2124; transform-origin: 50% 85%; transition: transform 0.18s ease; }
+button.room-message-avatar:hover img,
+button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.62s ease-in-out; transform: scale(1.5); }
+@media (prefers-reduced-motion: reduce) {
+  button.room-message-avatar:hover img,
+  button.room-message-avatar:focus-visible img { animation: none; transform: scale(1.5); }
+}
 .room-user-avatar { border-radius: 50%; background: var(--surface-active); }
 .room-user-avatar svg { width: 22px; height: 22px; }
 .room-message-body { min-width: 0; max-width: min(760px, calc(100% - 60px)); padding: 4px 2px; }
