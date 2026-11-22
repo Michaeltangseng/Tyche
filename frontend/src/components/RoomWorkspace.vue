@@ -385,27 +385,46 @@
     </div>
 
     <div v-if="creating" class="room-modal-backdrop" @click.self="creating = false" @wheel.self.prevent>
-      <form class="room-create room-modal" @submit.prevent="create" @keydown.esc.stop="creating = false">
-        <header class="room-modal-header">
-          <h2>{{ t('room.create') }}</h2>
-          <button class="secondary-button" type="button" @click="creating = false">{{ t('common.close') }}</button>
+      <form class="room-create room-modal" role="dialog" aria-modal="true" aria-labelledby="room-create-title" @submit.prevent="create" @keydown.esc.stop="creating = false">
+        <header class="room-create-header">
+          <h2 id="room-create-title">{{ t('room.create') }}</h2>
+          <button class="room-icon-button" type="button" :aria-label="t('common.close')" @click="creating = false">
+            <CloseOutline />
+          </button>
         </header>
-        <p v-if="error || pickerError" class="room-error" role="alert">{{ t('room.error') }}</p>
-        <label>{{ t('room.name') }}<input v-model="name" maxlength="120" required /></label>
-        <div class="room-directory">
-          <button class="secondary-button" type="button" :disabled="busy || picking" @click="chooseDirectory">{{ t('room.chooseDirectory') }}</button>
-          <span>{{ directory || t('room.noDirectory') }}</span>
-        </div>
-        <p v-if="!availableAgents.length" class="room-error">{{ t('room.noProviders') }}</p>
-        <div v-else class="room-provider-picker">
-          <span>{{ t('room.availableAgents') }}</span>
-          <label v-for="agent in availableAgents" :key="agent.kind" class="room-provider-option">
-            <input v-model="selectedProviders" type="checkbox" :value="agent.kind" />
-            <img :src="agentLogo(agent.kind)" alt="" />
-            <span>{{ agent.label || providerLabel(agent.kind) }}</span>
+        <div class="room-create-body">
+          <p v-if="error || pickerError" class="room-error" role="alert">{{ t('room.error') }}</p>
+          <label class="room-create-field">
+            <span>{{ t('room.name') }}</span>
+            <input v-model="name" maxlength="120" required autofocus />
           </label>
+          <div class="room-create-field">
+            <span>{{ t('room.directory') }}</span>
+            <div class="room-directory">
+              <input :value="directory" readonly :placeholder="t('room.noDirectory')" :aria-label="t('room.directory')" />
+              <button class="secondary-button" type="button" :disabled="busy || picking" @click="chooseDirectory">
+                <FolderOutline aria-hidden="true" />
+                {{ t('room.chooseDirectory') }}
+              </button>
+            </div>
+          </div>
+          <fieldset class="room-create-field">
+            <legend class="room-create-legend">
+              <span>{{ t('room.availableAgents') }}</span>
+              <small>{{ t('group.selectedCount', { count: selectedProviders.length }) }}</small>
+            </legend>
+            <p v-if="!availableAgents.length" class="room-error">{{ t('room.noProviders') }}</p>
+            <div v-else class="room-provider-picker" role="group" :aria-label="t('room.availableAgents')">
+              <label v-for="agent in availableAgents" :key="agent.kind" class="room-provider-option">
+                <input v-model="selectedProviders" type="checkbox" :value="agent.kind" />
+                <img :src="agentLogo(agent.kind)" alt="" />
+                <span>{{ agent.label || providerLabel(agent.kind) }}</span>
+                <CheckmarkCircleOutline class="room-provider-check" aria-hidden="true" />
+              </label>
+            </div>
+          </fieldset>
         </div>
-        <div class="room-actions">
+        <div class="room-actions room-create-footer">
           <button class="secondary-button" type="button" :disabled="busy" @click="creating = false">{{ t('common.cancel') }}</button>
           <button class="primary-button" :disabled="busy || picking || !canCreate">{{ t('room.create') }}</button>
         </div>
@@ -1544,12 +1563,26 @@ button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.
 .room-modal-backdrop, .room-settings-backdrop { position: fixed; inset: 0; z-index: 100; background: rgb(0 0 0 / 0.34); }
 .room-settings-backdrop { display: grid; place-items: center; padding: 20px; }
 .room-modal-backdrop { display: grid; place-items: center; padding: 20px; }
-.room-modal { width: min(560px, 100%); max-height: calc(100vh - 40px); overflow: auto; background: var(--surface-raised); box-shadow: 0 24px 70px rgb(0 0 0 / 0.28); }
+.room-modal { width: min(560px, 100%); max-height: calc(100vh - 40px); overflow: auto; background: var(--surface-raised); box-shadow: var(--elev-3); }
 .room-modal-header { display: flex; gap: 12px; justify-content: space-between; align-items: center; }
 .room-modal-header h2 { margin: 0; }
-.room-create { display: grid; gap: 12px; padding: 18px; border: 1px solid var(--border); border-radius: 12px; }
-.room-create label { display: grid; gap: 6px; }
-.room-directory { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; overflow-wrap: anywhere; }
+.room-create { display: flex; flex-direction: column; width: min(520px, 100%); padding: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; }
+.room-create-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 60px; padding: 14px 14px 14px 20px; border-bottom: 1px solid var(--border); }
+.room-create-header h2 { margin: 0; font-size: 18px; font-weight: 650; }
+.room-create-header .room-icon-button { border-color: transparent; background: transparent; }
+.room-create-header .room-icon-button svg { width: 18px; height: 18px; }
+.room-create-header .room-icon-button:hover { background: var(--surface-hover); }
+.room-create-body { display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow: auto; padding: 18px 20px 6px; }
+.room-create-field { display: flex; flex-direction: column; gap: 7px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.room-create-field > span, .room-create-legend { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-soft); font-size: 12px; font-weight: 650; }
+.room-create-legend { width: 100%; padding: 0; }
+.room-create-legend small { color: var(--muted); font-size: 11px; font-weight: 500; }
+.room-create-field input:not([type="checkbox"]) { width: 100%; height: 38px; padding: 0 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); }
+.room-directory { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.room-directory input { min-width: 0; overflow: hidden; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; text-overflow: ellipsis; }
+.room-directory .secondary-button { display: inline-flex; align-items: center; gap: 6px; height: 38px; white-space: nowrap; }
+.room-directory .secondary-button svg { width: 15px; height: 15px; }
+.room-create-footer { justify-content: flex-end; padding: 14px 20px 16px; }
 .room-settings-modal { display: flex; flex-direction: column; width: min(880px, 100%); max-height: calc(100vh - 40px); overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-raised); box-shadow: 0 24px 70px rgb(0 0 0 / 0.28); outline: none; }
 .room-project-settings-modal, .room-chat-settings-modal { width: min(720px, 100%); }
 .room-role-modal { display: flex; flex-direction: column; width: min(920px, 100%); max-height: calc(100vh - 40px); overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-raised); box-shadow: 0 24px 70px rgb(0 0 0 / 0.28); outline: none; }
@@ -1718,11 +1751,19 @@ body.room-overlay-open { overflow: hidden; }
 .room-run-row > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .room-report-row { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
 .room-review-card p { white-space: pre-wrap; }
-.room-provider-picker { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.room-provider-option { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font-size: var(--text-xs); cursor: pointer; }
+.room-provider-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.room-provider-option { position: relative; min-width: 0; height: 52px; display: grid; grid-template-columns: 28px minmax(0, 1fr) 16px; align-items: center; gap: 8px; margin: 0; padding: 0 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); cursor: pointer; }
+.room-provider-option:hover { border-color: var(--border-strong); }
+.room-provider-option:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .room-provider-option:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
-.room-provider-option img { width: 16px; height: 16px; object-fit: contain; }
-.room-provider-option input { margin: 0; }
+.room-provider-option img { width: 28px; height: 28px; object-fit: contain; }
+.room-provider-option > span { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.room-provider-option input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
+.room-provider-check { width: 16px; height: 16px; color: transparent; }
+.room-provider-option:has(input:checked) .room-provider-check { color: var(--accent); }
+@media (max-width: 520px) {
+  .room-provider-picker, .room-directory { grid-template-columns: 1fr; }
+}
 @media (max-width: 950px) {
   .room-run-row { grid-template-columns: minmax(0, 1fr) auto auto; }
   .room-run-row > span:nth-child(2) { display: none; }
