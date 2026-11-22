@@ -1,7 +1,11 @@
+const SETTINGS_SECTIONS = new Set([
+  'agents', 'orchestration', 'permissions', 'general', 'workspace',
+  'integrations', 'usage', 'preferences', 'diagnostics', 'about',
+])
+
 function normalizedSection(section) {
-  if (section === 'cloud-agents') return 'cloud-agents'
-  if (section === 'knowledge-bases') return 'agents'
-  if (section === 'general') return 'general'
+  if (section === 'knowledge-bases' || section === 'cloud-agents' || section === 'skills' || section === 'collaboration') return 'agents'
+  if (SETTINGS_SECTIONS.has(section)) return section
   return 'agents'
 }
 
@@ -28,18 +32,12 @@ export function useSystemSettingsNavigation({
     focusedAgentKind.value = systemSettingsSection.value === 'agents' ? kind : ''
     installConfirmKind.value = ''
     formError.value = ''
-    if (systemSettingsSection.value !== 'general') {
-      void loadKnowledgeBaseStatuses()
-    }
   }
 
   function selectSystemSettingsSection(section) {
     if (section === systemSettingsSection.value) return
     systemSettingsSection.value = normalizedSection(section)
     formError.value = ''
-    if (systemSettingsSection.value !== 'general') {
-      void loadKnowledgeBaseStatuses()
-    }
   }
 
   return {

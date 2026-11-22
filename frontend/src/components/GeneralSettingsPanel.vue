@@ -43,8 +43,13 @@
         </div>
       </div>
     </div>
-    <WorkPreferences />
-    <SkillTrustSettings v-if="skillTrustAvailable" />
+    <section class="general-preferences" :aria-label="t('generalSettings.preferencesTitle')">
+      <div class="general-settings-copy">
+        <h2>{{ t('generalSettings.preferencesTitle') }}</h2>
+        <p>{{ t('generalSettings.preferencesHint') }}</p>
+      </div>
+      <WorkPreferences />
+    </section>
   </section>
 </template>
 
@@ -53,8 +58,6 @@ import { computed, unref } from 'vue'
 import { DesktopOutline, MoonOutline, SunnyOutline } from '@vicons/ionicons5'
 import { locale as currentLocale, setLocale, t } from '../i18n.js'
 import WorkPreferences from './WorkPreferences.vue'
-import SkillTrustSettings from './SkillTrustSettings.vue'
-import { desktopApi } from '../desktop.js'
 
 const props = defineProps({
   setThemePreference: { type: Function, required: true },
@@ -73,10 +76,15 @@ const themeOptions = [
 ]
 
 const locale = currentLocale
-const skillTrustAvailable = Boolean(desktopApi()?.localSkillTrust)
 const themePreference = computed(() => unref(props.themePreference))
 
 function setThemePreference(value) {
   props.setThemePreference(value)
 }
 </script>
+
+<style scoped>
+.general-preferences { margin-top: 28px; }
+.general-preferences > .general-settings-copy { margin-bottom: 8px; }
+.general-preferences :deep(.work-preferences) { margin-top: 0; }
+</style>

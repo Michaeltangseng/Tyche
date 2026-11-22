@@ -9,12 +9,10 @@
       </div>
     </div>
     <section v-for="category in agentCatalogGroups" :key="category.id" class="agent-catalog-category">
-      <SettingsCardRail v-if="category.agents.length" :label="t(category.titleKey)">
-        <template #heading>
-          <header class="agent-catalog-category-header"><div>
-            <h2><component :is="category.id === 'cloud' ? CloudOutline : TerminalOutline" class="category-icon" />{{ t(category.titleKey) }}<slot v-if="category.id === 'cloud'" name="toolbar" /></h2>
-          </div></header>
-        </template>
+      <header class="agent-catalog-category-header"><div>
+        <h2><component :is="category.id === 'cloud' ? CloudOutline : TerminalOutline" class="category-icon" />{{ t(category.titleKey) }}<slot v-if="category.id === 'cloud'" name="toolbar" /></h2>
+      </div></header>
+      <div v-if="category.agents.length" class="agent-list">
         <article
           v-for="agent in category.agents"
           :key="agent.kind"
@@ -40,6 +38,10 @@
                   {{ agentState(agent).label }}
                 </span>
               </span>
+              <small v-if="agentVersion(agent) || agentCommand(agent)" class="agent-list-meta">
+                <span v-if="agentVersion(agent)">{{ agentVersion(agent) }}</span>
+                <span v-if="agentCommand(agent)">{{ agentCommand(agent) }}</span>
+              </small>
             </span>
           </button>
           <div v-if="installConfirmKind === agent.kind" class="install-confirm">
@@ -88,7 +90,7 @@
           </div>
           </div>
         </article>
-      </SettingsCardRail>
+      </div>
       <div v-else class="custom-agent-empty">
         <span>{{ t('customAgent.empty') }}</span>
       </div>
@@ -109,7 +111,16 @@ import {
   RefreshOutline,
 } from '@vicons/ionicons5'
 import { t } from '../i18n.js'
-import SettingsCardRail from './SettingsCardRail.vue'
+
+function agentVersion(agent) {
+  return String(agent?.resolvedVersion || agent?.version || '').trim()
+}
+
+function agentCommand(agent) {
+  const name = String(agent?.commandName || '').trim()
+  if (!name || /[\\/]/.test(name)) return ''
+  return name
+}
 
 defineProps({
   agentCatalogGroups: { type: Array, required: true },
@@ -140,6 +151,9 @@ defineEmits([
 </script>
 
 <style scoped>
+.agent-list { display: flex; flex-direction: column; gap: 8px; }
+.agent-list-meta { color: var(--muted); font-size: 12px; font-weight: 500; }
+.agent-list-meta span + span::before { content: ' · '; }
 .agent-catalog-category-header h2 { display:flex; align-items:center; gap:8px; margin:0; font-size:14px; }
 .cloud-empty-copy { margin:12px 0 20px; color:var(--muted); font-size:12px; }
 .category-icon { width:17px; height:17px; flex:none; }

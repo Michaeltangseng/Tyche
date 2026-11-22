@@ -1,96 +1,184 @@
 <template>
   <section class="system-settings-page" :aria-label="t('systemSettings.title')">
     <div class="system-settings-body">
-      <nav class="settings-tabs" role="tablist" :aria-label="t('systemSettings.title')">
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="systemSettingsSection !== 'general'"
-          :class="{ active: systemSettingsSection !== 'general' }"
-          @click="selectSystemSettingsSection('agents')"
-        >
-          <TerminalOutline />
-          {{ t('systemSettings.agents') }}
+      <aside class="settings-nav-column">
+        <button class="settings-back" type="button" @click="closeSettings">
+          <ChevronBackOutline />
+          {{ t('systemSettings.title') }}
         </button>
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="systemSettingsSection === 'general'"
-          :class="{ active: systemSettingsSection === 'general' }"
-          @click="selectSystemSettingsSection('general')"
-        >
-          <OptionsOutline />
-          {{ t('systemSettings.general') }}
-        </button>
-      </nav>
+        <label class="settings-search">
+          <SearchOutline />
+          <input type="search" :placeholder="t('systemSettings.search')" :aria-label="t('systemSettings.search')" />
+          <kbd>{{ searchShortcut }}</kbd>
+        </label>
+        <nav class="settings-tabs" role="tablist" :aria-label="t('systemSettings.title')">
+          <div v-for="group in groups" :key="group.id" class="settings-nav-group">
+            <p class="settings-nav-label">{{ t(group.labelKey) }}</p>
+            <button
+              v-for="item in group.items"
+              :key="item.id"
+              type="button"
+              role="tab"
+              class="settings-nav-item"
+              :aria-selected="systemSettingsSection === item.id"
+              :class="{ active: systemSettingsSection === item.id }"
+              @click="selectSystemSettingsSection(item.id)"
+            >
+              <component :is="item.icon" />
+              {{ t(item.labelKey) }}
+            </button>
+          </div>
+        </nav>
+      </aside>
 
-      <div v-if="systemSettingsSection !== 'general'" class="unified-agent-catalog">
-      <AgentSettingsPanel
-        v-if="systemSettingsSection !== 'general'"
-        :agent-catalog-groups="agentCatalogGroups"
-        :agent-description="agentDescription"
-        :agent-image-label="agentImageLabel"
-        :agent-skill-label="agentSkillLabel"
-        :agent-state="agentState"
-        :agent-state-note="agentStateNote"
-        :focused-agent-kind="focusedAgentKind"
-        :install-confirm-kind="installConfirmKind"
-        :installed-count="installedCount"
-        :installer-busy="installerBusy"
-        :installer-phase-label="installerPhaseLabel"
-        :installer-state="installerState"
-        :is-direct-creation-pending="isDirectCreationPending"
-        :ready-count="readyCount"
-        :refreshing="refreshing"
-        @cancel-install="cancelInstall"
-        @open-agent-detail="openAgentDetail"
-        @open-direct="openDirect"
-        @refresh-agents="refreshAgents"
-        @refresh-cloud-agents="cloudAgentBridges.refresh"
-        @request-install="requestInstall"
-      >
-        <template #toolbar><span class="catalog-cloud-toolbar"><button v-if="connectorAvailable" ref="connectorButton" type="button" class="cloud-edit-button" :aria-expanded="connectorExpanded" @click="connectorExpanded = !connectorExpanded">{{ t('connectorPackages.title') }}</button><button type="button" class="cloud-edit-button" :title="t('systemSettings.editCloudServers')" :aria-label="t('systemSettings.editCloudServers')" :aria-expanded="cloudExpanded" @click="openCloudDialog"><CreateOutline />{{ t('systemSettings.configureServers') }}</button></span></template>
-      </AgentSettingsPanel>
+      <div class="settings-main">
+        <section v-if="systemSettingsSection === 'agents'" class="settings-agent-page" :aria-label="t('systemSettings.agentPageTitle')">
+          <header class="settings-page-head">
+            <div>
+              <h1>{{ t('systemSettings.agentPageTitle') }}</h1>
+              <p>{{ t('systemSettings.agentPageHint') }}</p>
+            </div>
+            <div class="settings-page-actions">
+              <button class="secondary-button" type="button" :disabled="refreshing" @click="refreshAgents">
+                <RefreshOutline :class="{ spinning: refreshing }" />
+                {{ t('installer.refresh') }}
+              </button>
+              <button class="primary-button" type="button">
+                <AddOutline />
+                {{ t('systemSettings.addCustomAgent') }}
+              </button>
+            </div>
+          </header>
 
-      <section v-if="cloudExpanded" ref="cloudInline" class="cloud-inline" @keydown.esc="closeCloud"><button type="button" class="cloud-back" @click="closeCloud"><CloseOutline />{{ t('common.close') }}</button><CloudAgentBridgePanel :controller="cloudAgentBridges" /></section>
-      <ConnectorPackagesPanel v-if="connectorExpanded && connectorAvailable" @close="closeConnectors" />
-      <KnowledgeBaseSettingsPanel
-        v-if="systemSettingsSection !== 'general'"
-        :icon="knowledgeBaseIcon"
-        :loading="knowledgeBaseLoading"
-        :local-entries="localKnowledgeBaseEntries"
-        :location-label="knowledgeBaseLocationLabel"
-        :pending="knowledgeBasePending"
-        :planned-entries="plannedKnowledgeBaseEntries"
-        :primary-action-label="knowledgeBasePrimaryActionLabel"
-        :ready-count="readyKnowledgeBaseCount"
-        :status-label="knowledgeBaseStatusLabel"
-        :tag-items="knowledgeBaseTagItems"
-        :tone="knowledgeBaseTone"
-        @primary-action="runKnowledgeBasePrimaryAction"
-        @refresh="loadKnowledgeBaseStatuses"
-      />
+          <div class="settings-subtabs" role="tablist" :aria-label="t('systemSettings.agentPageTitle')">
+            <button type="button" role="tab" :aria-selected="agentTab === 'local'" :class="{ active: agentTab === 'local' }" @click="agentTab = 'local'">
+              {{ t('systemSettings.localAgents', { count: localAgents.length }) }}
+            </button>
+            <button type="button" role="tab" :aria-selected="agentTab === 'cloud'" :class="{ active: agentTab === 'cloud' }" @click="agentTab = 'cloud'">
+              {{ t('systemSettings.cloudAgentsCount', { count: cloudAgents.length }) }}
+            </button>
+            <button type="button" role="tab" :aria-selected="agentTab === 'connector'" :class="{ active: agentTab === 'connector' }" @click="agentTab = 'connector'">
+              {{ t('systemSettings.connectorTab') }}
+            </button>
+          </div>
+
+          <div v-if="agentTab === 'local' || agentTab === 'cloud'" class="agent-table">
+            <div class="agent-table-head">
+              <span>Agent</span>
+              <span>{{ t('systemSettings.columnStatus') }}</span>
+              <span>{{ t('systemSettings.columnVersion') }}</span>
+              <span>{{ t('systemSettings.columnPath') }}</span>
+              <span>{{ t('systemSettings.columnAuth') }}</span>
+              <span>{{ t('systemSettings.columnActions') }}</span>
+            </div>
+            <article
+              v-for="agent in visibleAgents"
+              :key="agent.kind"
+              class="agent-table-item settings-agent-card"
+              :class="{ focused: focusedAgentKind === agent.kind }"
+            >
+              <div class="agent-table-row">
+                <span class="agent-identity">
+                  <img :src="agent.logo" :alt="agent.label" />
+                  <strong>{{ agent.label }}</strong>
+                </span>
+                <span class="agent-state" :class="agentState(agent).tone">
+                  <i class="status-dot" aria-hidden="true" />
+                  {{ agentState(agent).label }}
+                </span>
+                <span class="agent-mono">{{ versionOf(agent) }}</span>
+                <span class="agent-mono">—</span>
+                <span class="agent-mono">{{ authOf(agent) }}</span>
+                <span class="settings-agent-actions">
+                  <button
+                    v-if="!agent.installed && agent.installSupported"
+                    class="settings-row-button"
+                    type="button"
+                    :disabled="installerBusy"
+                    @click="requestInstall(agent)"
+                  >
+                    {{ installConfirmKind === agent.kind ? t('installer.confirmAction') : t('installer.install') }}
+                  </button>
+                  <button
+                    v-else-if="agent.installed"
+                    class="settings-row-button"
+                    type="button"
+                    :disabled="refreshing"
+                    @click="refreshAgents"
+                  >
+                    {{ t('systemSettings.testConnection') }}
+                  </button>
+                  <button
+                    class="settings-row-chevron"
+                    type="button"
+                    :aria-expanded="expandedKind === agent.kind"
+                    :aria-label="t('systemSettings.toggleConfig', { agent: agent.label })"
+                    @click="expandedKind = expandedKind === agent.kind ? '' : agent.kind"
+                  >
+                    <ChevronDownOutline v-if="expandedKind === agent.kind" />
+                    <ChevronForwardOutline v-else />
+                  </button>
+                </span>
+              </div>
+              <p v-if="installConfirmKind === agent.kind" class="install-inline">{{ t('installer.confirmHint') }}</p>
+              <p v-else-if="installerState.kind === agent.kind && installerState.phase !== 'idle'" class="install-inline">{{ installerPhaseLabel }}</p>
+              <div v-if="expandedKind === agent.kind" class="agent-config">
+                <label>
+                  <span>{{ t('systemSettings.defaultModel') }}</span>
+                  <input readonly tabindex="-1" />
+                </label>
+                <label>
+                  <span>{{ t('systemSettings.launchArgs') }}</span>
+                  <input readonly tabindex="-1" />
+                </label>
+                <label>
+                  <span>{{ t('systemSettings.defaultDirectory') }}</span>
+                  <input readonly tabindex="-1" />
+                </label>
+                <label>
+                  <span>{{ t('systemSettings.environment') }}</span>
+                  <input readonly tabindex="-1" />
+                </label>
+                <label class="agent-config-wide">
+                  <span>{{ t('systemSettings.systemPrompt') }}</span>
+                  <textarea readonly tabindex="-1" rows="3" />
+                </label>
+                <button class="agent-config-link" type="button">{{ t('systemSettings.editSeparately') }}</button>
+              </div>
+            </article>
+          </div>
+
+          <div v-if="agentTab === 'local' && !cloudAgents.length" class="cloud-empty-card">
+            <strong>{{ t('systemSettings.cloudEmptyTitle') }}</strong>
+            <p>{{ t('systemSettings.cloudEmptyHint') }}</p>
+          </div>
+        </section>
+        <section v-else class="settings-blank" :aria-label="blankLabel" />
       </div>
-
-      <GeneralSettingsPanel
-        v-else-if="systemSettingsSection === 'general'"
-        :set-theme-preference="setThemePreference"
-        :theme-preference="themePreference"
-      />
     </div>
-
   </section>
 </template>
 
 <script setup>
-import { ref, nextTick, watch } from 'vue'
-import { CreateOutline, CloseOutline, OptionsOutline, TerminalOutline } from '@vicons/ionicons5'
-import AgentSettingsPanel from './AgentSettingsPanel.vue'
-import CloudAgentBridgePanel from './CloudAgentBridgePanel.vue'
-import GeneralSettingsPanel from './GeneralSettingsPanel.vue'
-import KnowledgeBaseSettingsPanel from './KnowledgeBaseSettingsPanel.vue'
-import ConnectorPackagesPanel from './ConnectorPackagesPanel.vue'
-import { desktopApi } from '../desktop.js'
+import { computed, ref } from 'vue'
+import {
+  AddOutline,
+  BarChartOutline,
+  ChevronBackOutline,
+  ChevronDownOutline,
+  ChevronForwardOutline,
+  ExtensionPuzzleOutline,
+  FolderOutline,
+  InformationCircleOutline,
+  OptionsOutline,
+  PersonOutline,
+  PulseOutline,
+  RefreshOutline,
+  SearchOutline,
+  ShieldCheckmarkOutline,
+  SwapHorizontalOutline,
+  TerminalOutline,
+} from '@vicons/ionicons5'
 
 const props = defineProps({
   controller: { type: Object, required: true },
@@ -98,89 +186,109 @@ const props = defineProps({
 
 const {
   agentCatalogGroups,
-  agentDescription,
-  agentImageLabel,
-  agentSkillLabel,
   agentState,
-  agentStateNote,
-  cancelInstall,
-  cloudAgentBridges,
+  closeSettings,
   focusedAgentKind,
   installConfirmKind,
-  installedCount,
   installerBusy,
   installerPhaseLabel,
   installerState,
-  isDirectCreationPending,
-  knowledgeBaseIcon,
-  knowledgeBaseLoading,
-  knowledgeBaseLocationLabel,
-  knowledgeBasePending,
-  knowledgeBasePrimaryActionLabel,
-  knowledgeBaseStatusLabel,
-  knowledgeBaseTagItems,
-  knowledgeBaseTone,
-  loadKnowledgeBaseStatuses,
-  localKnowledgeBaseEntries,
-  openAgentDetail,
-  openDirect,
-  plannedKnowledgeBaseEntries,
-  readyCount,
-  readyKnowledgeBaseCount,
   refreshAgents,
   refreshing,
   requestInstall,
-  runKnowledgeBasePrimaryAction,
   selectSystemSettingsSection,
-  setThemePreference,
   systemSettingsSection,
   t,
-  themePreference,
 } = props.controller
-const cloudExpanded = ref(systemSettingsSection.value === 'cloud-agents')
-const connectorAvailable = Boolean(desktopApi()?.localAgentConnector)
-const connectorExpanded = ref(false)
-const connectorButton = ref(null)
-function closeConnectors() {
-  connectorExpanded.value = false
-  nextTick(() => connectorButton.value?.focus())
+
+const groups = [
+  {
+    id: 'core',
+    labelKey: 'systemSettings.groupCore',
+    items: [
+      { id: 'agents', labelKey: 'systemSettings.agentPageTitle', icon: TerminalOutline },
+      { id: 'orchestration', labelKey: 'systemSettings.orchestration', icon: SwapHorizontalOutline },
+      { id: 'permissions', labelKey: 'systemSettings.permissions', icon: ShieldCheckmarkOutline },
+    ],
+  },
+  {
+    id: 'app',
+    labelKey: 'systemSettings.groupApp',
+    items: [
+      { id: 'general', labelKey: 'systemSettings.general', icon: OptionsOutline },
+      { id: 'workspace', labelKey: 'systemSettings.workspace', icon: FolderOutline },
+      { id: 'integrations', labelKey: 'systemSettings.integrations', icon: ExtensionPuzzleOutline },
+      { id: 'usage', labelKey: 'systemSettings.usage', icon: BarChartOutline },
+    ],
+  },
+  {
+    id: 'other',
+    labelKey: 'systemSettings.groupOther',
+    items: [
+      { id: 'preferences', labelKey: 'systemSettings.preferences', icon: PersonOutline },
+      { id: 'diagnostics', labelKey: 'systemSettings.diagnostics', icon: PulseOutline },
+      { id: 'about', labelKey: 'systemSettings.about', icon: InformationCircleOutline },
+    ],
+  },
+]
+
+const agentTab = ref('local')
+const expandedKind = ref('')
+const searchShortcut = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘F' : 'Ctrl F'
+
+const localAgents = computed(() => (agentCatalogGroups.value || [])
+  .filter(group => group.id !== 'cloud')
+  .flatMap(group => group.agents || []))
+const cloudAgents = computed(() => (agentCatalogGroups.value || [])
+  .filter(group => group.id === 'cloud')
+  .flatMap(group => group.agents || []))
+const visibleAgents = computed(() => agentTab.value === 'cloud' ? cloudAgents.value : localAgents.value)
+const blankLabel = computed(() => {
+  const item = groups.flatMap(group => group.items).find(entry => entry.id === systemSettingsSection.value)
+  return item ? t(item.labelKey) : t('systemSettings.title')
+})
+
+function versionOf(agent) {
+  const value = String(agent?.resolvedVersion || agent?.version || '').trim()
+  return value || '—'
 }
-const cloudInline = ref(null)
-async function openCloudDialog() {
-  cloudExpanded.value = !cloudExpanded.value
-  if (cloudExpanded.value) {
-    await nextTick()
-    cloudInline.value?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
-    cloudInline.value?.querySelector('input')?.focus({ preventScroll: true })
-  }
+
+function authOf(agent) {
+  if (!agent?.installed) return '—'
+  if (agent.credentialState === 'ready') return t('systemSettings.authReady')
+  if (agent.credentialState === 'missing') return t('systemSettings.authMissing')
+  return '—'
 }
-function closeCloud() {
-  cloudExpanded.value = false
-  nextTick(() => document.querySelector('.catalog-cloud-toolbar button')?.focus())
-}
-watch(systemSettingsSection, section => { cloudExpanded.value = section === 'cloud-agents' })
 </script>
 
 <style scoped>
-.unified-agent-catalog { min-height: 0; overflow-y: auto; padding-bottom: 16px; }
-.unified-agent-catalog :deep(.settings-panel) { overflow: visible; padding-top: 4px; padding-bottom: 8px; }
-.unified-agent-catalog :deep(.manager-toolbar) { position: static; margin: 0 0 12px; }
-.catalog-cloud-toolbar { display: flex; }
-.cloud-inline { margin: 0 0 10px; padding: 24px; border-radius: 16px; background: var(--surface-raised); }
-.cloud-back { display: flex; align-items: center; gap: 6px; margin-left: auto; border: 0; background: transparent; color: var(--muted); cursor: pointer; min-height: 44px; }
-.cloud-back svg { width: 18px; }
-.unified-agent-catalog { padding-top: 12px; }
-.unified-agent-catalog :deep(.agent-catalog-category) { margin: 0 0 10px; }
-.unified-agent-catalog :deep(.agent-catalog-category-header h2) { font-size: 14px; }
-.unified-agent-catalog :deep(.knowledge-base-toolbar) { margin-bottom: 0; }
-
-.cloud-edit-button { display:flex; align-items:center; gap:5px; width:auto; height:32px; border:0; padding:6px 8px; font-size:12px; font-weight:500; border-radius:8px; background:transparent; color:var(--muted); cursor:pointer; }
-.cloud-edit-button svg { width:17px; height:17px; }
-.cloud-edit-button:hover { background:var(--surface-raised); color:var(--accent-text); }
-.cloud-edit-button:focus-visible { outline:2px solid var(--accent-text); }
-.unified-agent-catalog :deep(.manager-toolbar) { margin:0; min-height:32px; }
-.unified-agent-catalog :deep(.knowledge-base-toolbar) { min-height:0; height:0; position:relative; }
-.unified-agent-catalog :deep(.knowledge-base-toolbar > button) { position:absolute; right:0; top:0; z-index:1; font-size:12px; border:0; background:transparent; min-height:32px; }
-.unified-agent-catalog :deep(.knowledge-base-group-header h3) { margin:0; font-size:14px; }
-.unified-agent-catalog :deep(.knowledge-base-group-header) { margin:0; min-height:32px; display:flex; align-items:center; }
+.settings-nav-item {
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+}
+.settings-nav-item svg { width: 16px; height: 16px; flex: none; }
+.settings-page-actions :deep(svg) { width: 15px; height: 15px; }
+.settings-page-actions .secondary-button,
+.settings-page-actions .primary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
 </style>

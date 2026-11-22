@@ -100,7 +100,7 @@ describe('Tyche workbench', () => {
     await wrapper.get('.sidebar-settings-entry').trigger('click')
     const body = wrapper.get('.system-settings-body').element
     const navigation = wrapper.get('.settings-tabs').element
-    for (const index of [0, 1, 0]) {
+    for (const index of [0, 1, 2, 3, 0]) {
       await wrapper.findAll('.settings-tabs button')[index].trigger('click')
       await flushPromises()
       expect(wrapper.get('.system-settings-body').element).toBe(body)
@@ -111,20 +111,16 @@ describe('Tyche workbench', () => {
     }
     wrapper.unmount()
   })
-  it('expands cloud-server management inline and returns to the catalog', async () => {
+  it('shows the agent management shell and leaves the other settings pages blank', async () => {
     const { wrapper } = await mountApp()
 
     await wrapper.get('.sidebar-settings-entry').trigger('click')
-    expect(wrapper.find('.cloud-inline').exists()).toBe(false)
-    await wrapper.get('.catalog-cloud-toolbar button').trigger('click')
-    expect(wrapper.find('dialog').exists()).toBe(false)
-    expect(wrapper.find('.cloud-inline').exists()).toBe(true)
-    await wrapper.get('.cloud-back').trigger('click')
-    expect(wrapper.find('.cloud-inline').exists()).toBe(false)
-    await wrapper.get('.catalog-cloud-toolbar button').trigger('click')
-
-    expect(wrapper.get('.cloud-agent-bridge-panel h2').text()).toBe('Cloud servers')
-    expect(wrapper.get('.cloud-agent-connect-form').exists()).toBe(true)
+    expect(wrapper.get('.settings-agent-page').text()).toContain('Agent management')
+    expect(wrapper.find('.cloud-empty-card').exists()).toBe(true)
+    expect(wrapper.find('.knowledge-base-panel').exists()).toBe(false)
+    await wrapper.findAll('.settings-tabs button')[1].trigger('click')
+    expect(wrapper.find('.settings-agent-page').exists()).toBe(false)
+    expect(wrapper.get('.settings-blank').exists()).toBe(true)
     wrapper.unmount()
   })
 
@@ -272,15 +268,12 @@ describe('Tyche workbench', () => {
     wrapper.unmount()
   })
 
-  it('loads knowledge on the unified Agents page and refreshes it explicitly', async () => {
-    const { wrapper, bridge } = await mountApp()
+  it('does not host knowledge sources inside settings', async () => {
+    const { wrapper } = await mountApp()
     await wrapper.get('.sidebar-settings-entry').trigger('click')
     await flushPromises()
-    expect(bridge.localKnowledgeBase.status).toHaveBeenCalledTimes(2)
-    await wrapper.findAll('.knowledge-base-item .knowledge-base-action')[1].trigger('click')
-    await flushPromises()
-    expect(bridge.localKnowledgeBase.status).toHaveBeenCalledTimes(3)
-    expect(wrapper.get('.knowledge-base-ready-summary').text()).toContain('1 ready, 3 total')
+    expect(wrapper.find('.knowledge-base-panel').exists()).toBe(false)
+    expect(wrapper.get('.settings-agent-page').exists()).toBe(true)
     wrapper.unmount()
   })
 
@@ -300,164 +293,5 @@ describe('Tyche workbench', () => {
     ]) {
       expect(readFileSync(resolve(process.cwd(), `public/knowledge-base-logos/${filename}`), 'utf8')).toContain(`Source: ${source}`)
     }
-
-    const { wrapper, bridge } = await mountApp()
-
-    await wrapper.get('.sidebar-settings-entry').trigger('click')
-    await flushPromises()
-
-    expect(bridge.localKnowledgeBase.status).toHaveBeenCalled()
-    const panelText = wrapper.get('.knowledge-base-panel').text()
-    expect(panelText).toContain('Feishu Docs')
-    expect(panelText).toContain('DingTalk Docs')
-    expect(panelText).toContain('Obsidian')
-    expect(panelText).not.toContain('Notion')
-    expect(panelText).not.toContain('Confluence')
-    expect(panelText).not.toContain('Google Drive')
-    expect(panelText).not.toContain('SharePoint')
-    expect(panelText).toContain('Knowledge bases')
-    expect(panelText).not.toContain('Connect local document sources')
-
-    const sourceGroups = wrapper.findAll('.knowledge-base-group')
-    expect(sourceGroups).toHaveLength(1)
-    expect(sourceGroups[0].get('h3').text()).toBe('Knowledge bases')
-    expect(sourceGroups[0].findAll('.knowledge-base-item')).toHaveLength(3)
-    expect(wrapper.get('.knowledge-base-ready-summary').text()).toContain('1 ready, 3 total')
-    expect(wrapper.get('.knowledge-base-panel').attributes('aria-busy')).toBe('false')
-    expect(wrapper.get('.knowledge-base-ready-summary').attributes('role')).toBe('status')
-
-    expect(wrapper.find('.knowledge-base-future-item').exists()).toBe(false)
-
-    const obsidianItem = wrapper.findAll('.knowledge-base-item')
-      .find(item => item.text().includes('Obsidian'))
-    expect(obsidianItem.exists()).toBe(true)
-    expect(obsidianItem.text()).toContain('Vault not selected')
-    await obsidianItem.get('.knowledge-base-action').trigger('click')
-    await flushPromises()
-
-    expect(bridge.localKnowledgeBase.pickObsidianVault).toHaveBeenCalledTimes(1)
-    expect(wrapper.findAll('.knowledge-base-item').at(2).find('.knowledge-base-path').exists()).toBe(false)
-    wrapper.unmount()
-  })
-
-  it('reports verified CLI knowledge access as read-only', async () => {
-    const readyCliSource = kind => ({
-      kind,
-      accessMode: 'cli',
-      installed: true,
-      configured: true,
-      connected: true,
-      loginState: 'ready',
-      permissionState: 'ready',
-      commandName: kind === 'feishu' ? 'lark-cli' : 'dws',
-      readable: true,
-      writable: false,
-      probeState: 'ready',
-      errorCode: '',
-      ready: true,
-    })
-    const { wrapper } = await mountApp(({ bridge }) => {
-      bridge.localKnowledgeBase.status.mockResolvedValue([
-        readyCliSource('feishu'),
-        readyCliSource('dingtalk'),
-        {
-          kind: 'obsidian',
-          accessMode: 'vault',
-          installed: true,
-          configured: false,
-          connected: false,
-          vaultPath: '',
-          vaultDetails: { exists: false, directory: false, readable: false, writable: false },
-          readable: false,
-          writable: false,
-          probeState: 'ready',
-          errorCode: '',
-          ready: false,
-        },
-      ])
-    })
-
-    await wrapper.get('.sidebar-settings-entry').trigger('click')
-    await flushPromises()
-
-    expect(wrapper.get('.knowledge-base-ready-summary').text()).toContain('2 ready, 3 total')
-    for (const label of ['Feishu Docs', 'DingTalk Docs']) {
-      const card = wrapper.findAll('.knowledge-base-item')
-        .find(item => item.text().includes(label))
-      expect(card.get('.knowledge-base-status').text()).toContain('Ready')
-      const tags = card.findAll('.knowledge-base-tag')
-      expect(tags).toHaveLength(0)
-      expect(card.text()).not.toContain('Read enabled')
-      expect(card.text()).not.toContain('Write not verified')
-    }
-    wrapper.unmount()
-  })
-
-  it('keeps local knowledge cards in Checking state until detection finishes', async () => {
-    const statusResult = deferred()
-    const { wrapper, bridge } = await mountApp(({ bridge }) => {
-      bridge.localKnowledgeBase.status.mockReturnValue(statusResult.promise)
-    })
-
-    await wrapper.get('.sidebar-settings-entry').trigger('click')
-    await wrapper.vm.$nextTick()
-
-    const localItems = wrapper.findAll('.knowledge-base-item')
-    expect(localItems).toHaveLength(3)
-    for (const item of localItems) {
-      expect(item.get('.knowledge-base-status').text()).toContain('Checking')
-      const tags = item.findAll('.knowledge-base-tag')
-      expect(tags).toHaveLength(0)
-      expect(item.get('.knowledge-base-action').text()).toContain('Checking')
-      expect(item.get('.knowledge-base-action').attributes()).toHaveProperty('disabled')
-      expect(item.text()).not.toMatch(/CLI not installed|CLI missing|Obsidian not installed|App missing|Vault not selected/)
-    }
-    expect(wrapper.get('.knowledge-base-panel').attributes('aria-busy')).toBe('true')
-    expect(wrapper.get('.knowledge-base-ready-summary').text()).toBe('Checking')
-
-    expect(wrapper.findAll('.knowledge-base-future-item')).toHaveLength(0)
-
-    statusResult.resolve([])
-    await flushPromises()
-
-    expect(wrapper.get('.knowledge-base-panel').attributes('aria-busy')).toBe('false')
-    expect(wrapper.get('.knowledge-base-ready-summary').text()).toContain('0 ready, 3 total')
-    const unknownItems = wrapper.findAll('.knowledge-base-item')
-    for (const item of unknownItems) {
-      expect(item.get('.knowledge-base-status').text()).toContain('Could not verify')
-      expect(item.findAll('.knowledge-base-tag')).toHaveLength(0)
-      expect(item.text()).not.toContain('Read not verified')
-      expect(item.text()).not.toContain('Write not verified')
-      expect(item.get('.knowledge-base-action').text()).toContain('Recheck')
-      expect(item.get('.knowledge-base-action').attributes()).not.toHaveProperty('disabled')
-      expect(item.text()).not.toMatch(/CLI not installed|CLI missing|Obsidian not installed|App missing|Vault not selected/)
-    }
-
-    await unknownItems[0].get('.knowledge-base-action').trigger('click')
-    await flushPromises()
-    expect(bridge.localKnowledgeBase.status).toHaveBeenCalledTimes(2)
-    expect(bridge.localKnowledgeBase.status).toHaveBeenLastCalledWith('feishu')
-    expect(wrapper.findAll('.knowledge-base-item')[0].get('.knowledge-base-status').text()).toContain('Could not verify')
-    wrapper.unmount()
-  })
-
-  it('shows knowledge probe failures without misreporting a missing CLI', async () => {
-    const { wrapper } = await mountApp(({ bridge }) => {
-      bridge.localKnowledgeBase.status.mockRejectedValue(Object.assign(
-        new Error('probe unavailable'),
-        { code: 'KNOWLEDGE_BASE_PROBE_FAILED' },
-      ))
-    })
-
-    await wrapper.get('.sidebar-settings-entry').trigger('click')
-    await flushPromises()
-
-    const feishuCard = wrapper.findAll('.knowledge-base-item')
-      .find(card => card.text().includes('Feishu Docs'))
-    expect(feishuCard.exists()).toBe(true)
-    expect(feishuCard.get('.knowledge-base-status').text()).toContain('Detection failed')
-    expect(feishuCard.text()).not.toContain('CLI not installed')
-    expect(feishuCard.text()).not.toContain('CLI missing')
-    wrapper.unmount()
   })
 })

@@ -177,10 +177,10 @@ describe('Tyche workbench', () => {
     expect(wrapper.findAll('.sidebar-agent').some(agent => agent.text().includes('OpenCodeReview'))).toBe(true)
 
     await wrapper.get('.sidebar-settings-entry').trigger('click')
-    expect(wrapper.get('.agent-manager').text()).toContain('OpenCodeReview')
-    const card = wrapper.findAll('.settings-agent-card')
-      .find(node => node.text().includes('OpenCodeReview'))
-    await card.findAll('button').find(button => button.text().includes('Open chat')).trigger('click')
+    expect(wrapper.get('.settings-agent-page').text()).toContain('OpenCodeReview')
+    await wrapper.get('.settings-back').trigger('click')
+    const row = wrapper.findAll('.sidebar-agent').find(agent => agent.text().includes('OpenCodeReview'))
+    await row.get('.sidebar-agent-new').trigger('click')
     await flushPromises()
 
     expect(bridge.localWorkspace.createGroup).toHaveBeenCalledWith(expect.objectContaining({
@@ -237,17 +237,12 @@ describe('Tyche workbench', () => {
     await wrapper.get('.modal-header .icon-button').trigger('click')
 
     await wrapper.get('.sidebar-settings-entry').trigger('click')
-    const cloudCard = wrapper.findAll('.settings-agent-card')
+    await wrapper.get('.settings-subtabs').findAll('button')[1].trigger('click')
+    const cloudRow = wrapper.findAll('.settings-agent-card')
       .find(card => card.text().includes('Codex @ Research server'))
-    expect(cloudCard.get('.settings-agent-logo.cloud').exists()).toBe(true)
-    expect(cloudCard.text()).not.toContain('Version 0.146.1')
-    await cloudCard.get('.agent-card-main').trigger('click')
-    await flushPromises()
-
-    expect(wrapper.get('.agent-detail-logo.cloud img').attributes('src'))
-      .toContain('agent-logos/codex.svg')
-    expect(wrapper.get('.agent-detail-skill-grid').text()).toContain('@Review')
-    expect(bridge.agentInstaller.skills).toHaveBeenCalledWith(cloudKind)
+    expect(cloudRow.get('img').attributes('src')).toContain('agent-logos/codex.svg')
+    expect(cloudRow.text()).not.toContain('Version 0.146.1')
+    expect(bridge.agentInstaller.skills).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 
@@ -293,11 +288,8 @@ describe('Tyche workbench', () => {
     })
 
     await wrapper.get('.sidebar-settings-entry').trigger('click')
-    expect(wrapper.findAll('.agent-catalog-category').map(category => category.get('h2').text()))
-      .toEqual(['Local Agents', 'Custom Agents', 'Cloud AgentsConfigure servers'])
-    expect(wrapper.get('.manager-toolbar-actions').text()).not.toContain('Add custom Agent')
+    expect(wrapper.get('.settings-agent-page').text()).toContain('Repository Reviewer')
     expect(wrapper.find('.custom-agent-form').exists()).toBe(false)
-    expect(wrapper.findAll('.agent-card').some(card => card.text().includes('Repository Reviewer'))).toBe(true)
     expect(bridge.customAgent.create).not.toHaveBeenCalled()
     expect(bridge.customAgent.delete).not.toHaveBeenCalled()
     wrapper.unmount()

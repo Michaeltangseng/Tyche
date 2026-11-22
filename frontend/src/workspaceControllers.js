@@ -111,6 +111,7 @@ export function createWorkspaceControllers({
     refreshing: app.refreshing,
     requestInstall: agentManagement.requestInstall,
     runKnowledgeBasePrimaryAction: knowledgeBase.runKnowledgeBasePrimaryAction,
+    closeSettings: app.goHome,
     selectSystemSettingsSection: app.selectSystemSettingsSection,
     setThemePreference: app.setThemePreference,
     systemSettingsSection: app.systemSettingsSection,
