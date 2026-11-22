@@ -371,6 +371,15 @@ function ensureRoomSchema(database) {
     }
   }
   ensurePortraitColumn(database)
+  ensureChatTitleLock(database)
+}
+
+function ensureChatTitleLock(database) {
+  const table = database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'chats'").get()
+  if (!table) return
+  const columns = database.prepare('PRAGMA table_info(chats)').all()
+  if (columns.some(column => column.name === 'title_locked')) return
+  database.exec('ALTER TABLE chats ADD COLUMN title_locked INTEGER NOT NULL DEFAULT 0')
 }
 
 module.exports = { ROOM_SCHEMA_VERSION, ensureRoomSchema }

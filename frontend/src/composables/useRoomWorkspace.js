@@ -282,6 +282,18 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
     })
   }
 
+  async function renameChat(title) {
+    const targetRoom = roomId.value
+    const targetChat = chatId.value
+    const next = String(title || '').trim()
+    if (!targetRoom || !targetChat || !next) return null
+    return mutate(async () => {
+      const result = await api.renameChat({ roomId: targetRoom, chatId: targetChat, title: next })
+      if (!disposed && roomId.value === targetRoom) await refresh({ afterCurrent: true })
+      return result
+    })
+  }
+
   async function deleteChat(targetChatId) {
     const targetRoom = roomId.value
     return mutate(async () => {
@@ -519,6 +531,7 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
     openRoom,
     createRoom,
     createChat,
+    renameChat,
     deleteChat,
     deleteRoom,
     send,

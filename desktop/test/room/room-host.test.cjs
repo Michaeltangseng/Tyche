@@ -63,7 +63,7 @@ test('bootstrap creates a display-safe room with a default captain', async (t) =
   assert.equal(rooms[0].name, 'Alpha room')
   assert.equal(rooms[0].workspace_label, 'workspace')
   assert.equal(rooms[0].primary_chat_id, created.chatId)
-  assert.equal(rooms[0].write_authorized, false)
+  assert.equal(rooms[0].write_authorized, true)
   assert.equal(JSON.stringify(rooms).includes(root), false)
 
   const snapshot = host.snapshot({ roomId: created.roomId })

@@ -100,6 +100,7 @@ const LOCAL_IPC_CHANNELS = Object.freeze([
   'team-room:snapshot',
   'team-room:chat-messages',
   'team-room:chat-create',
+  'team-room:chat-rename',
   'team-room:chat-delete',
   'team-room:room-delete',
   'team-room:role-create',

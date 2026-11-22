@@ -114,6 +114,7 @@ if (isLocalDocument) Object.assign(desktopApi, {
     snapshot: input => ipcRenderer.invoke('team-room:snapshot', input),
     chatMessages: input => ipcRenderer.invoke('team-room:chat-messages', input),
     createChat: input => ipcRenderer.invoke('team-room:chat-create', input),
+    renameChat: input => ipcRenderer.invoke('team-room:chat-rename', input),
     deleteChat: input => ipcRenderer.invoke('team-room:chat-delete', input),
     deleteRoom: input => ipcRenderer.invoke('team-room:room-delete', input),
     createRole: input => ipcRenderer.invoke('team-room:role-create', input),

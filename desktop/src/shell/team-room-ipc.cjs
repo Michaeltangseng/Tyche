@@ -11,6 +11,7 @@ const CHANNELS = Object.freeze({
   snapshot: 'team-room:snapshot',
   chatMessages: 'team-room:chat-messages',
   createChat: 'team-room:chat-create',
+  renameChat: 'team-room:chat-rename',
   deleteChat: 'team-room:chat-delete',
   deleteRoom: 'team-room:room-delete',
   createRole: 'team-room:role-create',
@@ -101,6 +102,14 @@ function registerTeamRoomIpc({ registerTrustedHandle, getHost, dialog, getMainWi
     text(parsed.title)
     if (parsed.sourceChatId !== undefined) text(parsed.sourceChatId)
     return host().createChat(parsed)
+  })
+
+  registerTrustedHandle(CHANNELS.renameChat, input => {
+    const parsed = assertInput(input, ['roomId', 'chatId', 'title'])
+    text(parsed.roomId)
+    text(parsed.chatId)
+    text(parsed.title, 80)
+    return host().renameChat(parsed)
   })
 
   registerTrustedHandle(CHANNELS.deleteChat, input => {

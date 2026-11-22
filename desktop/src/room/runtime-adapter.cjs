@@ -176,7 +176,7 @@ function createOarRuntimeAdapter({
       if (laneKind !== 'executor') return ['mention', 'read_chat', 'comment_task']
       return ['mention', 'read_chat', 'create_task', 'comment_task', 'finish_task']
     }
-    if (role.isCaptain === true) return ['mention', 'read_chat', 'assign_in_group', 'post_in_chat', 'create_roles']
+    if (role.isCaptain === true) return ['mention', 'read_chat', 'assign_in_group', 'post_in_chat', 'create_roles', 'rename_chat']
     return ['mention', 'read_chat', 'create_task', 'comment_task']
   }
 

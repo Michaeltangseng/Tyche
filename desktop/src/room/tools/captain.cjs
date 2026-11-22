@@ -225,6 +225,27 @@ function registerCaptainTools({
     },
   })
 
+  dispatcher.register('rename_chat', async (args, context) => {
+    const role = repository.getRole(context.roleId)
+    if (!role || !role.isCaptain || role.chatId !== context.chatId) throw new Error('ROOM_CAPTAIN_REQUIRED')
+    const title = typeof args.title === 'string' ? args.title.replace(/\s+/g, ' ').trim() : ''
+    if (!title || title.length > 80 || title.includes('\u0000')) throw new Error('ROOM_CHAT_TITLE_INVALID')
+    const row = database.prepare('SELECT title, title_locked FROM chats WHERE id = ?').get(context.chatId)
+    if (!row) throw new Error('ROOM_CHAT_NOT_FOUND')
+    if (row.title_locked) return { renamed: false, title: row.title, locked: true }
+    if (row.title === title) return { renamed: false, title, locked: false }
+    database.prepare('UPDATE chats SET title = ?, updated_at = ? WHERE id = ?')
+      .run(title, new Date().toISOString(), context.chatId)
+    return { renamed: true, title, locked: false }
+  }, {
+    description: 'Rename this chat to one short sentence that states the user request. Skip when the result says the title is locked.',
+    inputSchema: {
+      type: 'object',
+      properties: { title: { type: 'string' } },
+      required: ['title'],
+    },
+  })
+
   dispatcher.register('post_in_chat', async (args, context) => {
     const role = repository.getRole(context.roleId)
     if (!role || !role.isCaptain || role.chatId !== context.chatId) throw new Error('ROOM_CAPTAIN_REQUIRED')

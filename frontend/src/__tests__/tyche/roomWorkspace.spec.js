@@ -45,7 +45,7 @@ function api(snapshot = data()) {
     snapshot: vi.fn(async () => structuredClone(snapshot)),
     chatMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
     bootstrap: vi.fn(async () => ({ roomId: 'room-1', chatId: 'chat-1' })),
-    createChat: vi.fn(async () => ({ roomId: 'room-1', chatId: 'chat-2' })),
+    renameChat: vi.fn(async ({ title }) => ({ chatId: 'chat-1', title })),
     deleteChat: vi.fn(async () => ({ deleted: true, chatId: 'chat-2' })),
     deleteRoom: vi.fn(async () => ({ deleted: true, roomId: 'room-1' })),
     createRole: vi.fn(async () => ({ roomId: 'room-1', chatId: 'chat-1', roleId: 'new-role' })),
@@ -133,8 +133,7 @@ describe('team room workspace', () => {
     const wrapper = mountRoom(bridge)
     await flushPromises()
 
-    expect(wrapper.get('.room-project-name').text()).toContain('Demo room')
-    expect(wrapper.get('.room-subtitle').text()).toContain('demo')
+    expect(wrapper.get('.room-chat-title-text').text()).toBe('Main chat')
     expect(wrapper.findAll('.room-agent-chip')).toHaveLength(2)
     expect(wrapper.get('.room-captain-mark').attributes('title')).toBe('Captain')
     expect(wrapper.get('.room-message').text()).toContain('Please write the docs')
@@ -149,7 +148,7 @@ describe('team room workspace', () => {
     expect(wrapper.get('.room-ledger').text()).toContain('Writer')
   })
 
-  it('creates a room with the selected providers and roles', async () => {
+  it('creates a room with one captain and no extra members', async () => {
     const bridge = api()
     bridge.listRooms.mockResolvedValueOnce([])
     const wrapper = mountRoom(bridge)
@@ -160,7 +159,9 @@ describe('team room workspace', () => {
     await wrapper.get('.room-create input').setValue('Alpha')
     await wrapper.get('.room-directory button').trigger('click')
     await flushPromises()
+    expect(wrapper.get('.room-create-legend').text()).toContain('Captain')
     const providers = wrapper.findAll('.room-provider-option input')
+    expect(providers.every(input => input.element.type === 'radio')).toBe(true)
     await providers[1].setValue(true)
     await wrapper.get('.room-create form, form.room-create').trigger('submit')
     await flushPromises()
@@ -168,11 +169,10 @@ describe('team room workspace', () => {
     expect(bridge.bootstrap).toHaveBeenCalledWith({
       name: 'Alpha',
       workspace: '/tmp/demo',
-      title: 'Lobby',
-      providers: ['codex', 'claude'],
+      title: 'New chat',
+      providers: ['claude'],
       roles: [
-        { displayName: 'Codex', provider: 'codex', prompt: '', isCaptain: true },
-        { displayName: 'Claude Code', provider: 'claude', prompt: '', isCaptain: false },
+        { displayName: 'Claude Code', provider: 'claude', prompt: '', isCaptain: true },
       ],
     })
   })
@@ -522,32 +522,23 @@ describe('team room workspace', () => {
     expect(bridge.setCaptain).toHaveBeenCalledWith({ roomId: 'room-1', roleId: 'worker' })
   })
 
-  it('toggles room write authorization and requests the files drawer', async () => {
+  it('renames the open chat from the title without opening settings', async () => {
     const bridge = api()
     const wrapper = mountRoom(bridge)
     await flushPromises()
 
-    await wrapper.get('.room-project-name').trigger('click')
-    await flushPromises()
-    await wrapper.get('.room-overview .secondary-button').trigger('click')
-    await flushPromises()
-    expect(bridge.setWriteAuthorized).toHaveBeenCalledWith({ roomId: 'room-1', authorized: true })
-
-    await wrapper.get('.room-files-toggle').trigger('click')
-    expect(wrapper.emitted('toggle-files')).toHaveLength(1)
-  })
-
-  it('creates a chat from chat settings', async () => {
-    const bridge = api()
-    const wrapper = mountRoom(bridge)
-    await flushPromises()
-
+    expect(wrapper.find('.room-settings-modal').exists()).toBe(false)
     await wrapper.get('.room-chat-title').trigger('click')
     await flushPromises()
-    await wrapper.get('.room-new-chat input').setValue('Research')
-    await wrapper.get('.room-new-chat').trigger('submit')
+    const editor = wrapper.get('.room-chat-title.editing [role="textbox"]')
+    editor.element.textContent = 'Plan the snake page'
+    await editor.trigger('blur')
     await flushPromises()
-    expect(bridge.createChat).toHaveBeenCalledWith({ roomId: 'room-1', title: 'Research' })
+    expect(bridge.renameChat).toHaveBeenCalledWith({
+      roomId: 'room-1',
+      chatId: 'chat-1',
+      title: 'Plan the snake page',
+    })
   })
 
   it('refreshes the active room after a ledger change notification', async () => {

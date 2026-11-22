@@ -167,6 +167,30 @@ test('create_roles can use a provider that can speak even when the room did not 
   assert.deepEqual(repo.getRoom(roomId).providers, ['claude', 'codex'])
 })
 
+test('rename_chat stores one sentence and then respects a user lock', async t => {
+  const { roomDb, repo, chatId, captain, dispatcher } = setup(t)
+  dispatcher.bindRun('run1', { chatId, roleId: captain, allowedTools: ['rename_chat'] })
+  const renamed = await dispatcher.invoke({
+    runId: 'run1',
+    callId: 'rename-1',
+    name: 'rename_chat',
+    args: { title: 'Plan the snake page' },
+  })
+  assert.deepEqual(renamed, { renamed: true, title: 'Plan the snake page', locked: false })
+  assert.equal(repo.getChat(chatId).title, 'Plan the snake page')
+
+  roomDb.database.prepare('UPDATE chats SET title_locked = 1 WHERE id = ?').run(chatId)
+  const locked = await dispatcher.invoke({
+    runId: 'run1',
+    callId: 'rename-2',
+    name: 'rename_chat',
+    args: { title: 'A different name' },
+  })
+  assert.equal(locked.renamed, false)
+  assert.equal(locked.locked, true)
+  assert.equal(repo.getChat(chatId).title, 'Plan the snake page')
+})
+
 test('create_roles rejects a caller that is not the captain', async t => {
   const { repo, chatId, dispatcher } = setup(t)
   const worker = repo.createRole({ chatId, displayName: 'Worker', provider: 'codex', prompt: 'work' })

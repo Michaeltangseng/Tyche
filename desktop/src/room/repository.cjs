@@ -97,9 +97,9 @@ function createRoomRepository(roomDb) {
       const id = crypto.randomUUID()
       const at = timestamp()
       database.prepare(`
-        INSERT INTO rooms (id, name, workspace, providers_json, allowed_capabilities_json, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(id, name, workspace, JSON.stringify(providers), JSON.stringify(allowedCapabilities), at, at)
+        INSERT INTO rooms (id, name, workspace, write_authorized_root, providers_json, allowed_capabilities_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, name, workspace, workspace, JSON.stringify(providers), JSON.stringify(allowedCapabilities), at, at)
       return id
     },
 

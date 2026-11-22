@@ -2,25 +2,37 @@
   <section class="room-workspace">
     <header class="room-toolbar room-header">
       <div class="room-heading">
-        <button class="room-project-name" type="button" :aria-label="t('room.projectSettings')" @click="openProjectSettings">
-          <span>{{ projectLabel }}</span>
-          <ChevronDownOutline aria-hidden="true" />
-        </button>
         <div class="room-title-row">
           <h1>
-            <button class="room-chat-title" type="button" :aria-label="t('room.chatSettings')" @click="openChatSettings">
-              <span>{{ activeChatLabel }}</span>
-              <ChevronDownOutline aria-hidden="true" />
-            </button>
+            <div
+              v-if="!titleEditing"
+              class="room-chat-title"
+              role="button"
+              tabindex="0"
+              :aria-label="t('room.renameChat')"
+              @click="beginTitleEdit"
+              @keydown.enter.prevent="beginTitleEdit"
+              @mouseenter="measureTitle"
+            >
+              <span ref="titleClip" class="room-chat-title-clip" :class="{ marquee: titleOverflows }">
+                <span class="room-chat-title-text">{{ activeChatLabel }}</span>
+              </span>
+            </div>
+            <div v-else class="room-chat-title editing">
+              <span
+                ref="titleText"
+                class="room-chat-title-text"
+                contenteditable="plaintext-only"
+                role="textbox"
+                spellcheck="false"
+                :aria-label="t('room.renameChat')"
+                @blur="commitTitleEdit"
+                @keydown.enter.prevent="event => event.target.blur()"
+                @keydown.esc.prevent="cancelTitleEdit"
+              />
+            </div>
           </h1>
         </div>
-        <span v-if="snapshot && workdirName" class="room-subtitle">
-          {{ workdirName }}
-          <span class="room-subtitle-divider">·</span>
-          <span :data-tone="writeAuthorized ? 'ready' : 'neutral'">
-            {{ writeAuthorized ? t('room.writeEnabled') : t('room.readOnly') }}
-          </span>
-        </span>
       </div>
 
       <div v-if="snapshot" class="room-agent-strip" :aria-label="t('room.members', { count: roles.length })">
@@ -410,13 +422,13 @@
           </div>
           <fieldset class="room-create-field">
             <legend class="room-create-legend">
-              <span>{{ t('room.availableAgents') }}</span>
-              <small>{{ t('group.selectedCount', { count: selectedProviders.length }) }}</small>
+              <span>{{ t('room.captain') }}</span>
+              <small>{{ t('room.captainOnlyHint') }}</small>
             </legend>
             <p v-if="!availableAgents.length" class="room-error">{{ t('room.noProviders') }}</p>
-            <div v-else class="room-provider-picker" role="group" :aria-label="t('room.availableAgents')">
+            <div v-else class="room-provider-picker" role="radiogroup" :aria-label="t('room.captain')">
               <label v-for="agent in availableAgents" :key="agent.kind" class="room-provider-option">
-                <input v-model="selectedProviders" type="checkbox" :value="agent.kind" />
+                <input v-model="selectedCaptain" type="radio" name="room-captain" :value="agent.kind" />
                 <img :src="agentLogo(agent.kind)" alt="" />
                 <span>{{ agent.label || providerLabel(agent.kind) }}</span>
                 <CheckmarkCircleOutline class="room-provider-check" aria-hidden="true" />
@@ -429,71 +441,6 @@
           <button class="primary-button" :disabled="busy || picking || !canCreate">{{ t('room.create') }}</button>
         </div>
       </form>
-    </div>
-
-    <div v-show="settingsOpen" class="room-modal-backdrop room-settings-backdrop" @click.self="closeProjectSettings" @wheel.self.prevent>
-      <aside ref="settingsRef" class="room-settings-modal room-project-settings-modal" role="dialog" aria-modal="true" :aria-label="t('room.projectSettings')" tabindex="-1" @keydown.esc.stop="closeProjectSettings">
-        <header class="room-settings-header">
-          <div>
-            <strong>{{ t('room.projectSettings') }}</strong>
-            <span v-if="snapshot">{{ snapshot.room.name }}</span>
-          </div>
-          <button class="secondary-button" type="button" @click="closeProjectSettings">{{ t('common.close') }}</button>
-        </header>
-        <div class="room-settings-body">
-          <section class="room-settings-section">
-            <div v-if="snapshot" class="room-overview" :aria-label="t('room.overview')">
-              <div><strong>{{ t('room.directory') }}</strong><span class="room-workspace-path">{{ snapshot.room.workspace_label || t('room.noDirectory') }}</span></div>
-              <div><strong>{{ t('room.availableAgents') }}</strong><span>{{ (snapshot.room.providers || []).map(providerLabel).join(' · ') || t('room.noProviders') }}</span></div>
-              <div>
-                <strong>{{ t('room.writeAccess') }}</strong>
-                <button class="secondary-button" type="button" :disabled="busy" @click="toggleWriteAuthorization">
-                  {{ writeAuthorized ? t('room.disableWrite') : t('room.enableWrite') }}
-                </button>
-                <span class="room-muted">{{ writeAuthorized ? t('room.writeEnabledHint') : t('room.writeDisabledHint') }}</span>
-              </div>
-            </div>
-          </section>
-        </div>
-      </aside>
-    </div>
-
-    <div v-show="chatSettingsOpen" class="room-modal-backdrop room-settings-backdrop" @click.self="closeChatSettings" @wheel.self.prevent>
-      <aside ref="chatSettingsRef" class="room-settings-modal room-chat-settings-modal" role="dialog" aria-modal="true" :aria-label="t('room.chatSettings')" tabindex="-1" @keydown.esc.stop="closeChatSettings">
-        <header class="room-settings-header">
-          <div>
-            <strong>{{ t('room.chatSettings') }}</strong>
-            <span v-if="chat">{{ chat.title }}</span>
-          </div>
-          <button class="secondary-button" type="button" @click="closeChatSettings">{{ t('common.close') }}</button>
-        </header>
-        <div class="room-settings-body">
-          <section class="room-settings-section">
-            <div class="room-chat-settings">
-              <label class="room-setting-field">
-                <span>{{ t('room.chat') }}</span>
-                <select v-model="chatId" :disabled="busy || !snapshot?.chats?.length">
-                  <option v-for="item in snapshot?.chats || []" :key="item.id" :value="item.id">{{ item.title }}</option>
-                </select>
-              </label>
-              <form class="room-new-chat" @submit.prevent="newChat">
-                <input v-model="chatTitle" :placeholder="t('room.chatName')" :aria-label="t('room.chatName')" maxlength="120" />
-                <button class="secondary-button" :disabled="busy || !chatTitle.trim()">{{ t('room.newChat') }}</button>
-              </form>
-              <p class="room-muted">{{ t('room.newChatInheritHint') }}</p>
-              <button
-                v-if="snapshot && chatId"
-                class="danger-button"
-                type="button"
-                :disabled="busy"
-                @click="removeCurrentChat"
-              >
-                {{ t('room.deleteChat') }}
-              </button>
-            </div>
-          </section>
-        </div>
-      </aside>
     </div>
 
     <div v-if="roleSettingsOpen" class="room-modal-backdrop room-role-backdrop" @click.self="closeRoleSettings" @wheel.self.prevent>
@@ -652,7 +599,6 @@ import {
   AttachOutline,
   CheckmarkCircleOutline,
   ChevronBackOutline,
-  ChevronDownOutline,
   ChevronForwardOutline,
   CloseOutline,
   CreateOutline,
@@ -709,14 +655,12 @@ const {
   refresh,
   openRoom,
   createRoom,
-  createChat,
-  deleteChat,
+  renameChat,
   send,
   loadOlderMessages,
   acceptTask: acceptTaskCommand,
   stopReply: stopReplyCommand,
   answerAttention,
-  setWriteAuthorized,
   createRole,
   updateRole,
   setCaptain,
@@ -738,10 +682,6 @@ const FALLBACK_PERMISSION_MODES = {
 }
 
 const creating = ref(false)
-const settingsOpen = ref(false)
-const settingsRef = ref(null)
-const chatSettingsOpen = ref(false)
-const chatSettingsRef = ref(null)
 const roleSettingsOpen = ref(false)
 const roleSettingsRef = ref(null)
 const roleDraft = ref(null)
@@ -750,7 +690,11 @@ const roleDeleteArmed = ref(false)
 const workPanelOpen = ref(true)
 const name = ref('')
 const directory = ref('')
-const chatTitle = ref('')
+const titleEditing = ref(false)
+const titleOverflows = ref(false)
+const titleClip = ref(null)
+const titleText = ref(null)
+let titleEditCancelled = false
 const draft = ref('')
 const composerInput = ref(null)
 const answers = ref({})
@@ -759,12 +703,12 @@ const pickerError = ref(false)
 const timeline = ref(null)
 
 const availableAgents = computed(() => props.agents.filter(agent => agent && agent.kind))
-const selectedProviders = ref([])
+const selectedCaptain = ref('')
 const projectLabel = computed(() => snapshot.value?.room?.name || rooms.value.find(room => room.id === roomId.value)?.name || t('room.title'))
 const activeChatLabel = computed(() => {
   const item = chat.value
   if (!item) return snapshot.value ? t('room.chat') : t('room.title')
-  return item.id === snapshot.value?.room?.primary_chat_id ? t('room.primaryChat') : item.title
+  return item.title
 })
 const composerCaptain = computed(() => roles.value.find(role => role.is_captain) || null)
 const mentionProfiles = computed(() => roles.value.map(role => ({
@@ -866,7 +810,7 @@ const workCount = computed(() => (
 ))
 const hasWork = computed(() => workCount.value > 0)
 const showWorkPanel = computed(() => workPanelOpen.value && hasWork.value)
-const canCreate = computed(() => Boolean(name.value.trim() && directory.value && selectedProviders.value.length))
+const canCreate = computed(() => Boolean(name.value.trim() && directory.value && selectedCaptain.value))
 
 const roleProviders = computed(() => {
   const room = snapshot.value?.room
@@ -1158,7 +1102,7 @@ function startCreating() {
   pickerError.value = false
   directory.value = ''
   name.value = ''
-  selectedProviders.value = availableAgents.value.slice(0, 1).map(agent => agent.kind)
+  selectedCaptain.value = availableAgents.value[0]?.kind || ''
   creating.value = true
 }
 
@@ -1178,17 +1122,18 @@ async function chooseDirectory() {
 
 async function create() {
   if (!canCreate.value) return
-  const providers = [...selectedProviders.value]
-  const roles = providers.map((provider, index) => ({
+  const provider = selectedCaptain.value
+  const providers = [provider]
+  const roles = [{
     displayName: availableAgents.value.find(agent => agent.kind === provider)?.label || provider,
     provider,
     prompt: '',
-    isCaptain: index === 0,
-  }))
+    isCaptain: true,
+  }]
   const result = await createRoom({
     name: name.value.trim(),
     workspace: directory.value,
-    title: t('room.lobby'),
+    title: t('room.newChatTitle'),
     providers,
     roles,
   })
@@ -1199,39 +1144,43 @@ async function create() {
   }
 }
 
-function openProjectSettings() {
-  settingsOpen.value = true
-  nextTick(() => settingsRef.value?.focus?.())
+function measureTitle() {
+  const clip = titleClip.value
+  const text = clip?.querySelector('.room-chat-title-text')
+  titleOverflows.value = Boolean(text && text.scrollWidth > clip.clientWidth + 1)
 }
 
-function closeProjectSettings() {
-  settingsOpen.value = false
+function beginTitleEdit() {
+  if (titleEditing.value || !chat.value) return
+  titleEditCancelled = false
+  titleEditing.value = true
+  nextTick(() => {
+    const el = titleText.value
+    if (!el) return
+    el.textContent = chat.value?.title || ''
+    el.focus()
+    const range = document.createRange()
+    range.selectNodeContents(el)
+    const selection = window.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  })
 }
 
-async function toggleWriteAuthorization() {
-  await setWriteAuthorized(!writeAuthorized.value)
+function cancelTitleEdit() {
+  titleEditCancelled = true
+  titleEditing.value = false
 }
 
-function openChatSettings() {
-  chatSettingsOpen.value = true
-  chatTitle.value = ''
-  nextTick(() => chatSettingsRef.value?.focus?.())
-}
-
-function closeChatSettings() {
-  chatSettingsOpen.value = false
-}
-
-async function newChat() {
-  const title = chatTitle.value.trim()
-  if (!title) return
-  const result = await createChat(title)
-  if (result) chatTitle.value = ''
-}
-
-async function removeCurrentChat() {
-  if (!chatId.value) return
-  await deleteChat(chatId.value)
+async function commitTitleEdit(event) {
+  const next = String(event?.target?.textContent || '').replace(/\s+/g, ' ').trim()
+  titleEditing.value = false
+  if (titleEditCancelled) {
+    titleEditCancelled = false
+    return
+  }
+  if (!next || next === chat.value?.title) return
+  await renameChat(next)
 }
 
 function openNewRole() {
@@ -1335,12 +1284,9 @@ function handleEscape(event) {
   if (roleSettingsOpen.value) {
     event.preventDefault()
     closeRoleSettings()
-  } else if (chatSettingsOpen.value) {
+  } else if (titleEditing.value) {
     event.preventDefault()
-    closeChatSettings()
-  } else if (settingsOpen.value) {
-    event.preventDefault()
-    closeProjectSettings()
+    cancelTitleEdit()
   } else if (creating.value) {
     event.preventDefault()
     creating.value = false
@@ -1371,7 +1317,9 @@ watch(() => props.openRequest, (request) => {
   void openRoom(request.roomId, request.chatId)
 }, { immediate: true, flush: 'post' })
 
-watch([creating, settingsOpen, chatSettingsOpen, roleSettingsOpen], (values) => {
+watch(activeChatLabel, () => nextTick(measureTitle))
+
+watch([creating, roleSettingsOpen], (values) => {
   document.body.classList.toggle('room-overlay-open', values.some(Boolean))
 })
 
@@ -1389,16 +1337,21 @@ onBeforeUnmount(() => {
 .room-workspace { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; padding: 0; gap: 0; background: var(--surface); color: var(--text); }
 .room-toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px clamp(16px, 3vw, 28px); border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 94%, var(--surface-raised)); }
 .room-heading { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.room-project-name { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: var(--faint); font-size: var(--text-2xs); cursor: pointer; }
-.room-project-name svg { width: 12px; height: 12px; }
-.room-project-name:hover, .room-project-name:focus-visible { outline: none; color: var(--accent-text); }
+.room-project-name { align-self: flex-start; display: inline-flex; align-items: center; color: var(--faint); font-size: var(--text-2xs); }
 .room-title-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.room-title-row h1 { margin: 0; font-size: var(--text-xl); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.room-chat-title { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
-.room-chat-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.room-chat-title svg { width: 14px; height: 14px; flex: 0 0 14px; color: var(--faint); }
-.room-chat-title:hover, .room-chat-title:focus-visible { outline: none; color: var(--accent-text); }
-.room-chat-title:hover svg, .room-chat-title:focus-visible svg { color: var(--accent-text); }
+.room-title-row h1 { margin: 0; min-width: 0; font-size: var(--text-xl); font-weight: 650; line-height: 1.2; }
+.room-chat-title { display: inline-flex; align-items: center; max-width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: text; }
+.room-chat-title-clip { display: block; max-width: 10ch; overflow: hidden; }
+.room-chat-title-text { display: inline-block; white-space: nowrap; outline: none; }
+.room-chat-title.editing .room-chat-title-text { min-width: 4ch; max-width: 36ch; }
+.room-chat-title-clip.marquee:hover .room-chat-title-text { animation: room-title-marquee 7s ease-in-out infinite; }
+@keyframes room-title-marquee {
+  0%, 18% { transform: translateX(0); }
+  82%, 100% { transform: translateX(calc(10ch - 100%)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .room-chat-title-clip.marquee:hover .room-chat-title-text { animation: none; }
+}
 .room-subtitle { max-width: 34ch; overflow: hidden; color: var(--faint); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
 .room-agent-strip { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: 12px; align-items: center; min-width: 0; }
 .room-roster { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }

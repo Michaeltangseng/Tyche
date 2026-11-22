@@ -32,6 +32,8 @@ const PROVIDER = /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/
 const PORTRAIT_IDS = new Set(['claude', 'codex', 'pi', 'gemini', 'hermes', 'deepseek', 'kimi', 'qwen'])
 const PREVIOUS_CAPTAIN_PROMPT = [
   'You are the Captain of this chat.',
+  'When the current members cannot cover the request, call create_roles with a name, provider, responsibilities, and prompt for each new member.',
+  'Do not call assign_in_group in the same turn as create_roles. The next user message is the instruction to start or change the team.',
   'Use assign_in_group to give work to other roles.',
   'Reply directly for normal answers; use post_in_chat only for a separate public notice, without duplicating your reply.',
   'Do not create tasks yourself; the assigned role owns its task.',
@@ -44,6 +46,7 @@ const DEFAULT_CAPTAIN_PROMPT = [
   'Use assign_in_group to give work to other roles.',
   'Reply directly for normal answers; use post_in_chat only for a separate public notice, without duplicating your reply.',
   'Do not create tasks yourself; the assigned role owns its task.',
+  'When the user states a request, call rename_chat once with one short sentence that names this chat. Skip it when rename_chat says the title is locked or already fits.',
   'Keep replies short and quote task numbers when useful.',
 ].join(' ')
 const DEFAULT_WORKER_PROMPT = [
@@ -835,6 +838,24 @@ function createRoomHost({
     }
   }
 
+  function authorizeOpenRooms() {
+    roomDb.database.prepare(`
+      UPDATE rooms
+      SET write_authorized_root = workspace, updated_at = ?
+      WHERE write_authorized_root IS NULL OR write_authorized_root = ''
+    `).run(new Date(now()).toISOString())
+  }
+
+  function renameChat(input = {}) {
+    const room = requireRoom(input.roomId)
+    const chat = requireChat(input.chatId, room.id)
+    const title = cleanText(input.title, 80, 'title').replace(/\s+/g, ' ')
+    roomDb.database.prepare(
+      'UPDATE chats SET title = ?, title_locked = 1, updated_at = ? WHERE id = ?',
+    ).run(title, new Date(now()).toISOString(), chat.id)
+    return { chatId: chat.id, title }
+  }
+
   function setWriteAuthorized(input = {}) {
     const room = requireRoom(input.roomId)
     if (typeof input.authorized !== 'boolean') throw hostError('TEAM_ROOM_INPUT_INVALID')
@@ -867,6 +888,7 @@ function createRoomHost({
         try { service.runtimeEvents.prune() } catch { /* retention is best-effort */ }
         service.requestTick()
         service.requestLiveness()
+        try { authorizeOpenRooms() } catch { /* write access repair is best-effort */ }
       })()
     }
     await started
@@ -893,6 +915,7 @@ function createRoomHost({
     chatMessages,
     bootstrap,
     createChat,
+    renameChat,
     deleteChat,
     deleteRoom,
     createRole,

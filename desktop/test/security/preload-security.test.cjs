@@ -86,7 +86,7 @@ test('local preload exposes the local-only Tyche API', async () => {
   assert.deepEqual(Object.keys(api.teamRoom).sort(), [
     'acceptTask', 'answerAttention', 'bootstrap', 'chatMessages', 'createChat', 'createRole',
     'deleteChat', 'deleteRole', 'deleteRoom', 'filesList', 'filesRead', 'importFiles', 'listRooms',
-    'onChanged', 'onRuntimeEvents', 'runtimeEvents', 'setCaptain', 'setWriteAuthorized',
+    'onChanged', 'onRuntimeEvents', 'renameChat', 'runtimeEvents', 'setCaptain', 'setWriteAuthorized',
     'snapshot', 'stopReply', 'submitMessage', 'updateRole',
   ].sort())
   await api.teamRoom.snapshot({ roomId: 'room-1' })
@@ -177,6 +177,7 @@ test('team-room preload forwards only validated domain requests', async () => {
   await api.teamRoom.snapshot({ roomId: 'room' })
   await api.teamRoom.chatMessages({ roomId: 'room', chatId: 'chat', beforeSeq: 10, limit: 25 })
   await api.teamRoom.createChat({ roomId: 'room', title: 'Team' })
+  await api.teamRoom.renameChat({ roomId: 'room', chatId: 'chat', title: 'Plan' })
   await api.teamRoom.deleteChat({ roomId: 'room', chatId: 'chat' })
   await api.teamRoom.deleteRoom({ roomId: 'room' })
   await api.teamRoom.createRole({ roomId: 'room', chatId: 'chat', displayName: 'Writer', provider: 'codex' })
@@ -194,7 +195,7 @@ test('team-room preload forwards only validated domain requests', async () => {
   await api.teamRoom.runtimeEvents({ roomId: 'room', chatId: 'chat', limit: 10 })
   assert.deepEqual(invocations.map(item => item.channel), [
     'team-room:list', 'team-room:bootstrap', 'team-room:snapshot', 'team-room:chat-messages',
-    'team-room:chat-create', 'team-room:chat-delete', 'team-room:room-delete',
+    'team-room:chat-create', 'team-room:chat-rename', 'team-room:chat-delete', 'team-room:room-delete',
     'team-room:role-create', 'team-room:role-update', 'team-room:role-set-captain',
     'team-room:role-delete',
     'team-room:attention-answer', 'team-room:message-submit', 'team-room:accept-task',
