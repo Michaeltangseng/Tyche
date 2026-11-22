@@ -482,7 +482,7 @@
               </form>
               <p class="room-muted">{{ t('room.newChatInheritHint') }}</p>
               <button
-                v-if="snapshot && snapshot.chats.length > 1 && chatId !== snapshot.room.primary_chat_id"
+                v-if="snapshot && chatId"
                 class="danger-button"
                 type="button"
                 :disabled="busy"

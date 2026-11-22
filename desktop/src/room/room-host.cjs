@@ -342,10 +342,6 @@ function createRoomHost({
   function deleteChat(input = {}) {
     const room = requireRoom(input.roomId)
     const chat = requireChat(input.chatId, room.id)
-    const primaryChatId = roomDb.database.prepare(
-      'SELECT id FROM chats WHERE room_id = ? ORDER BY created_at ASC, rowid ASC LIMIT 1',
-    ).get(room.id)?.id
-    if (chat.id === primaryChatId) throw hostError('ROOM_PRIMARY_CHAT_UNDELETABLE')
     const busyReply = roomDb.database.prepare(`
       SELECT COUNT(*) AS n FROM messages
       WHERE chat_id = ? AND author_type = 'agent'

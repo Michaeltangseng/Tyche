@@ -252,11 +252,6 @@
                 :aria-controls="`team-room-chats-${room.id}`"
                 @click="handleTeamRoomClick(room)"
               >
-                <span v-if="roomFaces(room).faces.length" class="team-face-stack team-face-stack-room" aria-hidden="true">
-                  <img v-for="(member, index) in roomFaces(room).faces" :key="`${member.provider}-${member.name}-${index}`" :src="rolePortrait(member.portrait || member.provider)" alt="" />
-                  <span v-if="roomFaces(room).extra" class="team-face-more">+{{ roomFaces(room).extra }}</span>
-                </span>
-                <span v-else class="project-room-avatar" aria-hidden="true">{{ projectInitial(room.name) }}</span>
                 <span class="project-room-copy">
                   <strong>{{ room.name }}</strong>
                   <small>{{ roomSummary(room) }}</small>
@@ -296,7 +291,7 @@
                   :aria-current="isTeamChatSelected(room.id, chat.id) ? 'page' : undefined"
                   @click="selectTeamChat(room.id, chat.id)"
                 >
-                  <span v-if="stackedMembers(chat.members).faces.length" class="team-face-stack team-face-stack-chat" aria-hidden="true">
+                  <span class="team-face-stack team-face-stack-chat" aria-hidden="true">
                     <img v-for="(member, index) in stackedMembers(chat.members).faces" :key="`${member.provider}-${member.name}-${index}`" :src="rolePortrait(member.portrait || member.provider)" alt="" />
                     <span v-if="stackedMembers(chat.members).extra" class="team-face-more">+{{ stackedMembers(chat.members).extra }}</span>
                   </span>
@@ -309,7 +304,6 @@
                   </span>
                 </button>
                 <button
-                  v-if="!chat.is_primary || room.chats.length > 1"
                   class="project-room-group-delete team-room-delete-chat"
                   type="button"
                   :title="t('room.deleteChat', { name: teamChatLabel(room, chat) })"
@@ -479,10 +473,6 @@ const {
 
 function isSelectedConversation(group) {
   return unref(activeView) === 'conversation' && unref(selectedGroupId) === group.id
-}
-
-function projectInitial(name) {
-  return String(name || '').trim().slice(0, 1).toUpperCase() || '•'
 }
 
 function memberList(chat) {

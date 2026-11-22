@@ -117,7 +117,7 @@ test('bootstrap honours explicit roles and a single captain', (t) => {
   assert.deepEqual(snapshot.roles.map(role => role.is_captain), [true, false])
 })
 
-test('a new chat clones the primary roles and chat deletion is guarded', (t) => {
+test('a new chat clones the primary roles and any chat can be deleted', (t) => {
   const { workspace, host } = createHost(t)
   const created = host.bootstrap({
     name: 'Rooms',
@@ -136,15 +136,16 @@ test('a new chat clones the primary roles and chat deletion is guarded', (t) => 
   assert.deepEqual(secondRoles.map(role => role.display_name), ['Captain', 'Worker'])
   assert.deepEqual(secondRoles.map(role => role.is_captain), [true, false])
 
-  assert.throws(
-    () => host.deleteChat({ roomId: created.roomId, chatId: created.chatId }),
-    /ROOM_PRIMARY_CHAT_UNDELETABLE/,
-  )
+  assert.deepEqual(host.deleteChat({ roomId: created.roomId, chatId: created.chatId }), {
+    deleted: true,
+    chatId: created.chatId,
+  })
+  assert.equal(host.snapshot({ roomId: created.roomId }).chats.length, 1)
   assert.deepEqual(host.deleteChat({ roomId: created.roomId, chatId: second.chatId }), {
     deleted: true,
     chatId: second.chatId,
   })
-  assert.equal(host.snapshot({ roomId: created.roomId }).chats.length, 1)
+  assert.equal(host.snapshot({ roomId: created.roomId }).chats.length, 0)
 })
 
 test('messages are queued without exposing the runtime and chat pages stay scoped', (t) => {

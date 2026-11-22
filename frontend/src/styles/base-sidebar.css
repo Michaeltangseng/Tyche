@@ -1211,11 +1211,10 @@
   --room-preview-line: 18px;
   --room-label-gap: 2px;
   --room-label-height: calc(var(--room-title-line) + var(--room-label-gap) + var(--room-preview-line));
-  --room-face: calc(var(--room-label-height) * 0.8);
   height: auto;
   min-height: 0;
-  grid-template-columns: auto minmax(0, 1fr) 14px;
-  padding: 4px 4px;
+  grid-template-columns: minmax(0, 1fr) 14px;
+  padding: 4px 8px;
 }
 
 .team-room-row .project-room-copy {
@@ -1333,9 +1332,17 @@
 .team-room-chats .project-room-group {
   height: auto;
   min-height: 0;
+  display: grid;
+  grid-template-columns: calc(var(--chat-face) * 2.45) minmax(0, 1fr);
   align-items: center;
+  gap: 8px;
   padding-top: 2px;
   padding-bottom: 2px;
+}
+
+.team-face-stack-chat {
+  width: calc(var(--chat-face) * 2.45);
+  overflow: hidden;
 }
 
 .team-chat-copy {
