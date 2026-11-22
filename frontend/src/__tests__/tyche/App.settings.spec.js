@@ -111,16 +111,22 @@ describe('Tyche workbench', () => {
     }
     wrapper.unmount()
   })
-  it('shows the agent management shell and leaves the other settings pages blank', async () => {
+  it('shows the agent management shell and a layout for the next settings page', async () => {
     const { wrapper } = await mountApp()
 
     await wrapper.get('.sidebar-settings-entry').trigger('click')
     expect(wrapper.get('.settings-agent-page').text()).toContain('Agent management')
     expect(wrapper.find('.cloud-empty-card').exists()).toBe(true)
     expect(wrapper.find('.knowledge-base-panel').exists()).toBe(false)
-    await wrapper.findAll('.settings-tabs button')[1].trigger('click')
-    expect(wrapper.find('.settings-agent-page').exists()).toBe(false)
-    expect(wrapper.get('.settings-blank').exists()).toBe(true)
+    for (const button of wrapper.findAll('.settings-tabs button')) {
+      await button.trigger('click')
+      await flushPromises()
+      const agentPage = wrapper.find('.settings-agent-page').exists()
+      const layoutPage = wrapper.find('.settings-page').exists()
+      expect(agentPage || layoutPage).toBe(true)
+      expect(agentPage && layoutPage).toBe(false)
+    }
+    expect(wrapper.get('.settings-page').text()).toContain('About')
     wrapper.unmount()
   })
 

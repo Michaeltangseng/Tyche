@@ -153,7 +153,12 @@
             <p>{{ t('systemSettings.cloudEmptyHint') }}</p>
           </div>
         </section>
-        <section v-else class="settings-blank" :aria-label="blankLabel" />
+        <SettingsPages
+          v-else
+          :section="systemSettingsSection"
+          :set-theme-preference="setThemePreference"
+          :theme-preference="themePreference"
+        />
       </div>
     </div>
   </section>
@@ -176,9 +181,11 @@ import {
   RefreshOutline,
   SearchOutline,
   ShieldCheckmarkOutline,
+  SparklesOutline,
   SwapHorizontalOutline,
   TerminalOutline,
 } from '@vicons/ionicons5'
+import SettingsPages from './SettingsPages.vue'
 
 const props = defineProps({
   controller: { type: Object, required: true },
@@ -197,8 +204,10 @@ const {
   refreshing,
   requestInstall,
   selectSystemSettingsSection,
+  setThemePreference,
   systemSettingsSection,
   t,
+  themePreference,
 } = props.controller
 
 const groups = [
@@ -207,6 +216,7 @@ const groups = [
     labelKey: 'systemSettings.groupCore',
     items: [
       { id: 'agents', labelKey: 'systemSettings.agentPageTitle', icon: TerminalOutline },
+      { id: 'skills', labelKey: 'systemSettings.skills', icon: SparklesOutline },
       { id: 'orchestration', labelKey: 'systemSettings.orchestration', icon: SwapHorizontalOutline },
       { id: 'permissions', labelKey: 'systemSettings.permissions', icon: ShieldCheckmarkOutline },
     ],
@@ -243,10 +253,6 @@ const cloudAgents = computed(() => (agentCatalogGroups.value || [])
   .filter(group => group.id === 'cloud')
   .flatMap(group => group.agents || []))
 const visibleAgents = computed(() => agentTab.value === 'cloud' ? cloudAgents.value : localAgents.value)
-const blankLabel = computed(() => {
-  const item = groups.flatMap(group => group.items).find(entry => entry.id === systemSettingsSection.value)
-  return item ? t(item.labelKey) : t('systemSettings.title')
-})
 
 function versionOf(agent) {
   const value = String(agent?.resolvedVersion || agent?.version || '').trim()
