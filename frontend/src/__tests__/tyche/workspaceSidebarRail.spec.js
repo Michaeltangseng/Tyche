@@ -128,7 +128,7 @@ describe('workspace sidebar rail', () => {
     await wrapper.get('.team-room-row .project-room-open').trigger('click')
     expect(fixture.handleTeamRoomClick).toHaveBeenCalledWith(expect.objectContaining({ id: 'team-1' }))
 
-    await wrapper.get('.team-room-add-chat').trigger('click')
+    await wrapper.get('.team-room-new-chat').trigger('click')
     expect(fixture.addTeamChat).toHaveBeenCalledWith('team-1')
 
     await wrapper.get('.team-room-delete').trigger('click')

@@ -256,16 +256,6 @@
                   <strong>{{ room.name }}</strong>
                   <small>{{ roomSummary(room) }}</small>
                 </span>
-                <ChevronForwardOutline class="team-room-chevron" :class="{ open: searching || isTeamRoomExpanded(room.id) }" />
-              </button>
-              <button
-                class="project-room-add team-room-add-chat"
-                type="button"
-                :title="t('room.addChat', { name: room.name })"
-                :aria-label="t('room.addChat', { name: room.name })"
-                @click.stop="addTeamChat(room.id)"
-              >
-                <AddOutline />
               </button>
               <button
                 class="project-room-delete team-room-delete"
@@ -276,6 +266,7 @@
               >
                 <TrashOutline />
               </button>
+              <ChevronForwardOutline class="team-room-chevron" :class="{ open: searching || isTeamRoomExpanded(room.id) }" />
             </div>
             <div
               v-if="searching || isTeamRoomExpanded(room.id)"

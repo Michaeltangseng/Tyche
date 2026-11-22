@@ -1212,15 +1212,43 @@
   border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
 }
 
+.team-room-row {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  column-gap: 2px;
+}
+
 .team-room-row .project-room-open {
   --room-title-line: 20px;
   --room-preview-line: 16px;
   --room-label-gap: 1px;
   --room-label-height: calc(var(--room-title-line) + var(--room-label-gap) + var(--room-preview-line));
+  grid-column: 1 / -1;
+  grid-row: 1;
   height: auto;
   min-height: 0;
-  grid-template-columns: minmax(0, 1fr) 14px;
-  padding: 6px 8px 4px;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 6px 40px 4px 8px;
+}
+
+.team-room-row .team-room-delete {
+  position: absolute;
+  top: 8px;
+  right: 22px;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.team-room-row:hover .team-room-delete,
+.team-room-row:focus-within .team-room-delete {
+  pointer-events: auto;
+}
+
+.team-room-row .team-room-chevron {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  pointer-events: none;
 }
 
 .team-room-row .project-room-copy {
@@ -1291,20 +1319,35 @@
 .team-face-stack-chat img {
   width: 36px;
   height: 36px;
-  margin-left: -14px;
+  margin-left: -26px;
   border-width: 2px;
   border-color: color-mix(in srgb, var(--text) 82%, var(--sidebar));
+  transition: margin-left 160ms ease;
 }
 
 .team-face-stack-chat .team-face-more {
-  width: 24px;
-  height: 24px;
-  margin-left: -10px;
+  z-index: 5;
+  width: 22px;
+  height: 22px;
+  margin-left: -14px;
   border: 2px solid color-mix(in srgb, var(--text) 82%, var(--sidebar));
   background: #3a3b40;
   color: color-mix(in srgb, var(--text-soft) 62%, transparent);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
+  transition: margin-left 160ms ease;
+}
+
+.team-room-chats .project-room-group.active .team-face-stack-chat img:not(:first-child),
+.team-face-stack-chat:hover img:not(:first-child),
+.team-face-stack-chat:focus-within img:not(:first-child) {
+  margin-left: -10px;
+}
+
+.team-room-chats .project-room-group.active .team-face-stack-chat .team-face-more,
+.team-face-stack-chat:hover .team-face-more,
+.team-face-stack-chat:focus-within .team-face-more {
+  margin-left: -6px;
 }
 
 .team-face-stack img {
@@ -1335,8 +1378,8 @@
 }
 
 .team-room-chats {
-  margin: 2px 4px 8px 18px;
-  padding: 2px 0 2px 12px;
+  margin: 2px 2px 8px 10px;
+  padding: 2px 0 2px 8px;
   border-left: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
   gap: 2px;
 }
@@ -1345,17 +1388,15 @@
   position: relative;
   height: 56px;
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
-  padding: 0 8px;
+  gap: 4px;
+  padding: 0 6px 0 2px;
   border-radius: 10px;
 }
 
 .team-face-stack-chat {
-  width: 84px;
   height: 36px;
-  overflow: hidden;
 }
 
 .team-chat-copy {
@@ -1447,7 +1488,6 @@
   transform: rotate(90deg);
 }
 
-.team-room-row .team-room-add-chat,
 .team-room-row .team-room-delete,
 .project-room-group-delete {
   opacity: 0;
