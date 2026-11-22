@@ -136,6 +136,8 @@ export default {
     "room.controllerRetry": "重试路由",
     "room.chatName": "新聊天名称",
     "room.newChat": "新建聊天",
+    "room.newChatAction": "新建会话",
+    "room.freshReply": "有新回复",
     "room.newChatInheritHint": "新聊天会复制当前角色作为独立默认值；之后的修改只影响该聊天。",
     "room.allowWrite": "允许 Agent 修改此项目目录",
     "room.writeHint": "授权覆盖整个目录；运行中或退出未确认时不能变更。",

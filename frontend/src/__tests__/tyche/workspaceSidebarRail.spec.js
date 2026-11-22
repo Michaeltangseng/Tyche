@@ -115,7 +115,11 @@ describe('workspace sidebar rail', () => {
     expect(chats[0].findAll('.team-face-stack img')).toHaveLength(3)
     expect(chats[0].get('.team-face-stack img').attributes('src')).toContain('codex')
     expect(chats[0].get('.team-face-more').text()).toBe('+1')
+    expect(chats[0].find('.team-chat-dot').exists()).toBe(true)
+    expect(chats[1].find('.team-chat-dot').exists()).toBe(false)
+    expect(chats[1].get('small').attributes('data-empty')).toBe('true')
     expect(chats[1].text()).toContain('room.noMessages')
+    expect(wrapper.get('.team-room-new-chat').text()).toContain('room.newChatAction')
     expect(wrapper.text()).toContain('room.roomFaces')
 
     await chats[1].trigger('click')

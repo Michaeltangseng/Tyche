@@ -136,6 +136,8 @@ export default {
     "room.controllerRetry": "Retry routing",
     "room.chatName": "New chat name",
     "room.newChat": "New chat",
+    "room.newChatAction": "New chat",
+    "room.freshReply": "New reply",
     "room.newChatInheritHint": "A new chat copies the current roles as independent defaults; later edits stay inside that chat.",
     "room.allowWrite": "Allow agents to modify this project directory",
     "room.writeHint": "Permission covers the entire directory and cannot change while execution is running or its exit is unconfirmed.",

@@ -278,10 +278,13 @@
               </button>
             </div>
             <div
-              v-if="room.chats?.length && (searching || isTeamRoomExpanded(room.id))"
+              v-if="searching || isTeamRoomExpanded(room.id)"
               :id="`team-room-chats-${room.id}`"
               class="project-room-groups team-room-chats"
             >
+              <p v-if="!room.chats?.length" class="team-room-chat-empty">
+                {{ t('room.noChats') }}
+              </p>
               <div v-for="chat in room.chats" :key="chat.id" class="project-room-group-row">
                 <button
                   class="project-room-group"
@@ -298,9 +301,16 @@
                   <span class="team-chat-copy">
                     <span class="team-chat-title">
                       <span class="project-room-group-name">{{ teamChatLabel(room, chat) }}</span>
+                      <span
+                        v-if="chatHasFreshReply(room, chat)"
+                        class="team-chat-dot"
+                        role="img"
+                        :title="t('room.freshReply')"
+                        :aria-label="t('room.freshReply')"
+                      />
                       <time v-if="chatTime(chat)">{{ chatTime(chat) }}</time>
                     </span>
-                    <small>{{ chatActivityLabel(chat) }}</small>
+                    <small :data-empty="chat.activity?.text ? undefined : 'true'">{{ chatActivityLabel(chat) }}</small>
                   </span>
                 </button>
                 <button
@@ -313,10 +323,11 @@
                   <TrashOutline />
                 </button>
               </div>
+              <button class="team-room-new-chat" type="button" @click="addTeamChat(room.id)">
+                <AddOutline aria-hidden="true" />
+                <span>{{ t('room.newChatAction') }}</span>
+              </button>
             </div>
-            <p v-else-if="isTeamRoomExpanded(room.id) && !room.chats?.length" class="team-room-chat-empty">
-              {{ t('room.noChats') }}
-            </p>
           </div>
         </div>
       </section>
@@ -515,6 +526,11 @@ function roomSummary(room) {
   const chats = room.chatTotal ?? room.chats?.length ?? 0
   if (!members) return t('room.chatCount', { count: chats })
   return t('room.roomFaces', { members, chats })
+}
+
+function chatHasFreshReply(room, chat) {
+  if (isTeamChatSelected(room.id, chat.id)) return false
+  return chat?.activity?.author === 'agent' && Boolean(chat?.activity?.text)
 }
 
 function chatActivityLabel(chat) {

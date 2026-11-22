@@ -1206,15 +1206,21 @@
   border-left: 0;
 }
 
+.team-room-entry + .team-room-entry {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+}
+
 .team-room-row .project-room-open {
-  --room-title-line: 22px;
-  --room-preview-line: 18px;
-  --room-label-gap: 2px;
+  --room-title-line: 20px;
+  --room-preview-line: 16px;
+  --room-label-gap: 1px;
   --room-label-height: calc(var(--room-title-line) + var(--room-label-gap) + var(--room-preview-line));
   height: auto;
   min-height: 0;
   grid-template-columns: minmax(0, 1fr) 14px;
-  padding: 4px 8px;
+  padding: 6px 8px 4px;
 }
 
 .team-room-row .project-room-copy {
@@ -1225,11 +1231,17 @@
 
 .team-room-row .project-room-copy strong {
   height: var(--room-title-line);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 650;
   line-height: var(--room-title-line);
 }
 
 .team-room-row .project-room-copy small {
   height: var(--room-preview-line);
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 450;
   line-height: var(--room-preview-line);
 }
 
@@ -1269,23 +1281,26 @@
 }
 
 .team-room-chats .project-room-group {
-  --chat-title-line: 22px;
-  --chat-preview-line: 18px;
-  --chat-label-gap: 3px;
+  --chat-face: 36px;
+  --chat-title-line: 18px;
+  --chat-preview-line: 16px;
+  --chat-label-gap: 2px;
   --chat-label-height: calc(var(--chat-title-line) + var(--chat-label-gap) + var(--chat-preview-line));
-  --chat-face: calc(var(--chat-label-height) * 0.75);
 }
 
 .team-face-stack-chat img {
-  width: var(--chat-face);
-  height: var(--chat-face);
-  margin-left: calc(var(--chat-face) * -0.45);
+  width: 36px;
+  height: 36px;
+  margin-left: -14px;
+  border-width: 2px;
+  border-color: color-mix(in srgb, var(--text) 82%, var(--sidebar));
 }
 
 .team-face-stack-chat .team-face-more {
-  width: calc(var(--chat-face) * 0.68);
-  height: calc(var(--chat-face) * 0.68);
-  margin-left: calc(var(--chat-face) * -0.36);
+  width: 24px;
+  height: 24px;
+  margin-left: -10px;
+  border: 2px solid color-mix(in srgb, var(--text) 82%, var(--sidebar));
   background: #3a3b40;
   color: color-mix(in srgb, var(--text-soft) 62%, transparent);
   font-size: 11px;
@@ -1301,16 +1316,6 @@
 .team-face-stack-chat img:first-child,
 .team-face-stack-chat .team-face-more:first-child {
   margin-left: 0;
-}
-
-.project-room-group:hover .team-face-stack-chat img,
-.project-room-group:focus-visible .team-face-stack-chat img {
-  margin-left: calc(var(--chat-face) * -0.25);
-}
-
-.project-room-group:hover .team-face-stack-chat .team-face-more,
-.project-room-group:focus-visible .team-face-stack-chat .team-face-more {
-  margin-left: calc(var(--chat-face) * -0.2);
 }
 
 .project-room-group:hover .team-face-stack-chat img:first-child,
@@ -1329,19 +1334,27 @@
   font-weight: 600;
 }
 
+.team-room-chats {
+  margin: 2px 4px 8px 18px;
+  padding: 2px 0 2px 12px;
+  border-left: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  gap: 2px;
+}
+
 .team-room-chats .project-room-group {
-  height: auto;
-  min-height: 0;
+  position: relative;
+  height: 56px;
   display: grid;
-  grid-template-columns: calc(var(--chat-face) * 2.45) minmax(0, 1fr);
+  grid-template-columns: 84px minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
-  padding-top: 2px;
-  padding-bottom: 2px;
+  gap: 10px;
+  padding: 0 8px;
+  border-radius: 10px;
 }
 
 .team-face-stack-chat {
-  width: calc(var(--chat-face) * 2.45);
+  width: 84px;
+  height: 36px;
   overflow: hidden;
 }
 
@@ -1367,8 +1380,16 @@
 .team-chat-title time {
   margin-left: auto;
   color: var(--faint);
-  font-size: var(--text-2xs);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
+}
+
+.team-chat-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--accent);
 }
 
 .team-chat-copy small {
@@ -1376,20 +1397,43 @@
   min-height: 0;
   overflow: hidden;
   color: var(--muted);
-  font-size: var(--text-2xs);
+  font-size: 11px;
   line-height: var(--chat-preview-line);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.team-chat-copy small[data-empty="true"] {
+  color: var(--faint);
+  font-style: italic;
+}
+
+.team-room-chats .project-room-group:hover,
+.team-room-chats .project-room-group:focus-visible {
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+
 .team-room-chats .project-room-group.active {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 70%, transparent);
+  border-color: transparent;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+  color: var(--text);
+  font-weight: 450;
+}
+
+.team-room-chats .project-room-group-name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.team-room-chats .project-room-group.active:hover,
+.team-room-chats .project-room-group.active:focus-visible {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .team-room-row.active .project-room-copy strong {
   color: var(--text);
-  font-weight: 600;
+  font-weight: 650;
 }
 
 .team-room-chevron {
@@ -1409,8 +1453,28 @@
   opacity: 0;
 }
 
+.team-room-heading {
+  height: 24px;
+  padding: 0 4px 0 8px;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 .team-room-heading .team-room-add {
+  width: 22px;
+  height: 22px;
   margin-left: auto;
+  border: 1px solid transparent;
+  color: var(--faint);
+  opacity: 0.72;
+}
+
+.team-room-heading .team-room-add:hover,
+.team-room-heading .team-room-add:focus-visible {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text-soft);
   opacity: 1;
 }
 
@@ -1421,9 +1485,39 @@
 }
 
 .team-room-chat-empty {
-  margin: 2px 3px 6px 29px;
-  color: var(--muted);
+  margin: 2px 0 4px;
+  color: var(--faint);
   font-size: var(--text-xs);
+  font-style: italic;
+}
+
+.team-room-new-chat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  margin-top: 2px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.team-room-new-chat svg {
+  width: 14px;
+  height: 14px;
+}
+
+.team-room-new-chat:hover,
+.team-room-new-chat:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  color: var(--text);
 }
 
 .project-room-group-row {
