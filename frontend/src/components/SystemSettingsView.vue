@@ -60,9 +60,18 @@
             <button type="button" role="tab" :aria-selected="agentTab === 'connector'" :class="{ active: agentTab === 'connector' }" @click="agentTab = 'connector'">
               {{ t('systemSettings.connectorTab') }}
             </button>
+            <button type="button" role="tab" :aria-selected="agentTab === 'mcp'" :class="{ active: agentTab === 'mcp' }" @click="agentTab = 'mcp'">
+              {{ t('systemSettings.mcpTab') }}
+            </button>
           </div>
 
-          <div v-if="agentTab === 'local' || agentTab === 'cloud'" class="agent-table">
+          <SettingsPages
+            v-if="agentTab === 'mcp'"
+            section="mcp"
+            :set-theme-preference="setThemePreference"
+            :theme-preference="themePreference"
+          />
+          <div v-else-if="agentTab === 'local' || agentTab === 'cloud'" class="agent-table">
             <div class="agent-table-head">
               <span>Agent</span>
               <span>{{ t('systemSettings.columnStatus') }}</span>
@@ -172,8 +181,6 @@ import {
   ChevronBackOutline,
   ChevronDownOutline,
   ChevronForwardOutline,
-  ExtensionPuzzleOutline,
-  FolderOutline,
   InformationCircleOutline,
   OptionsOutline,
   PersonOutline,
@@ -226,8 +233,6 @@ const groups = [
     labelKey: 'systemSettings.groupApp',
     items: [
       { id: 'general', labelKey: 'systemSettings.general', icon: OptionsOutline },
-      { id: 'workspace', labelKey: 'systemSettings.workspace', icon: FolderOutline },
-      { id: 'integrations', labelKey: 'systemSettings.integrations', icon: ExtensionPuzzleOutline },
       { id: 'usage', labelKey: 'systemSettings.usage', icon: BarChartOutline },
     ],
   },

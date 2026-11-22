@@ -115,7 +115,7 @@ describe('Tyche workbench', () => {
     const { wrapper } = await mountApp()
 
     await wrapper.get('.sidebar-settings-entry').trigger('click')
-    expect(wrapper.get('.settings-agent-page').text()).toContain('Agent management')
+    expect(wrapper.get('.settings-agent-page').text()).toContain('Agent & MCP')
     expect(wrapper.find('.cloud-empty-card').exists()).toBe(true)
     expect(wrapper.find('.knowledge-base-panel').exists()).toBe(false)
     for (const button of wrapper.findAll('.settings-tabs button')) {

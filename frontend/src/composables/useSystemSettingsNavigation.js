@@ -1,10 +1,10 @@
 const SETTINGS_SECTIONS = new Set([
-  'agents', 'skills', 'orchestration', 'permissions', 'general', 'workspace',
-  'integrations', 'usage', 'preferences', 'diagnostics', 'about',
+  'agents', 'skills', 'orchestration', 'permissions', 'general',
+  'usage', 'preferences', 'diagnostics', 'about',
 ])
 
 function normalizedSection(section) {
-  if (section === 'knowledge-bases' || section === 'cloud-agents' || section === 'collaboration') return 'agents'
+  if (section === 'knowledge-bases' || section === 'cloud-agents' || section === 'collaboration' || section === 'workspace' || section === 'integrations') return 'agents'
   if (SETTINGS_SECTIONS.has(section)) return section
   return 'agents'
 }
