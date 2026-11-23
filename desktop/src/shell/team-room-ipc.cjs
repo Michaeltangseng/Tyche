@@ -28,6 +28,9 @@ const CHANNELS = Object.freeze({
   writeAuthorized: 'team-room:write-authorized',
   runtimeEvents: 'team-room:runtime-events',
   skillInventory: 'team-room:skill-inventory',
+  usageReport: 'team-room:usage-report',
+  usageSettings: 'team-room:usage-settings',
+  updateUsageSettings: 'team-room:usage-settings-update',
   rememberSkillDefault: 'team-room:skill-remember-default',
 })
 
@@ -291,6 +294,22 @@ function registerTeamRoomIpc({ registerTrustedHandle, getHost, dialog, getMainWi
   })
 
   registerTrustedHandle(CHANNELS.skillInventory, () => host().skillInventoryList())
+
+  registerTrustedHandle(CHANNELS.usageReport, input => {
+    const parsed = optionalInput(input, ['range'])
+    if (parsed.range !== undefined) text(parsed.range, 16)
+    return host().usageReport(parsed)
+  })
+
+  registerTrustedHandle(CHANNELS.usageSettings, () => host().usageSettings())
+
+  registerTrustedHandle(CHANNELS.updateUsageSettings, input => {
+    const parsed = assertInput(input, [
+      'monthlyBudgetUsd', 'warnAtPercent', 'overBudgetAction', 'roomDailyLimitUsd', 'maxTokensPerTurn',
+    ])
+    if (!Object.keys(parsed).length) throw ipcError('TEAM_ROOM_INPUT_INVALID')
+    return host().updateUsageSettings(parsed)
+  })
 
   registerTrustedHandle(CHANNELS.rememberSkillDefault, input => {
     const parsed = assertInput(input, ['agent', 'skillIds'])

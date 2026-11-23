@@ -13,6 +13,7 @@ const path = require('node:path')
 const { openRoomDatabase } = require('./db.cjs')
 const { createRoomRepository } = require('./repository.cjs')
 const { createRoomReadModel } = require('./read-model.cjs')
+const { createUsageReport } = require('./usage-report.cjs')
 const { createRoomService } = require('./room-service.cjs')
 const { createOarRuntimeAdapter } = require('./runtime-adapter.cjs')
 const { sanitizeRuntimeEvent, sanitizeStoredEvent } = require('./runtime-event-view.cjs')
@@ -199,6 +200,7 @@ function createRoomHost({
   const roomDb = openRoomDatabase({ directory })
   const repository = createRoomRepository(roomDb)
   const readModel = createRoomReadModel({ roomDb })
+  const usageReport = createUsageReport({ roomDb, privateRoot })
   const service = createRoomService({
     roomDb,
     repository,
@@ -945,6 +947,21 @@ function createRoomHost({
     return requireSkillInventory().list()
   }
 
+  function usageReportFor(input = {}) {
+    const range = input?.range === undefined ? 'month' : cleanText(input.range, 16, 'range')
+    if (!['today', 'week', 'month'].includes(range)) throw hostError('TEAM_ROOM_INPUT_INVALID')
+    return usageReport.report(range)
+  }
+
+  function usageSettings() {
+    return usageReport.settings()
+  }
+
+  function updateUsageSettings(input = {}) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw hostError('TEAM_ROOM_INPUT_INVALID')
+    return usageReport.updateSettings(input)
+  }
+
   function rememberSkillDefault(input = {}) {
     const agent = cleanText(input.agent, 40, 'agent')
     if (!Array.isArray(input.skillIds)) throw hostError('TEAM_ROOM_INPUT_INVALID')
@@ -978,6 +995,9 @@ function createRoomHost({
     acceptTask,
     stopReply,
     skillInventoryList,
+    usageReport: usageReportFor,
+    usageSettings,
+    updateUsageSettings,
     rememberSkillDefault,
     filesList,
     filesRead,

@@ -131,6 +131,9 @@ if (isLocalDocument) Object.assign(desktopApi, {
     setWriteAuthorized: input => ipcRenderer.invoke('team-room:write-authorized', input),
     runtimeEvents: input => ipcRenderer.invoke('team-room:runtime-events', input),
     skillInventory: () => ipcRenderer.invoke('team-room:skill-inventory'),
+    usageReport: input => ipcRenderer.invoke('team-room:usage-report', input),
+    usageSettings: () => ipcRenderer.invoke('team-room:usage-settings'),
+    updateUsageSettings: input => ipcRenderer.invoke('team-room:usage-settings-update', input),
     rememberSkillDefault: input => ipcRenderer.invoke('team-room:skill-remember-default', input),
     onChanged: callback => {
       const listener = (_event, payload) => callback(payload)

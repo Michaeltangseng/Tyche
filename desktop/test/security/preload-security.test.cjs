@@ -91,6 +91,7 @@ test('local preload exposes the local-only Tyche API', async () => {
     'importFiles', 'listRooms', 'onChanged', 'onRuntimeEvents', 'rememberSkillDefault', 'renameChat',
     'runtimeEvents', 'setCaptain', 'setWriteAuthorized',
     'skillInventory', 'snapshot', 'stopReply', 'submitMessage', 'updateRole',
+    'updateUsageSettings', 'usageReport', 'usageSettings',
   ].sort())
   assert.equal(Object.isFrozen(api.skillLibrary), true)
   assert.deepEqual(Object.keys(api.skillLibrary).sort(), [
