@@ -4,8 +4,8 @@
       <form class="skill-dialog skill-editor" role="dialog" aria-modal="true" :aria-label="t('settingsUi.newSkillTitle')" @submit.prevent="submit" @keydown.esc.stop="close">
         <header class="skill-dialog-head">
           <div>
-            <h2>{{ t('settingsUi.newSkillTitle') }}</h2>
-            <p>{{ t('settingsUi.newSkillLead') }}</p>
+            <h2>{{ t(editing ? 'settingsUi.editSkillTitle' : 'settingsUi.newSkillTitle') }}</h2>
+            <p>{{ t(editing ? 'settingsUi.editSkillLead' : 'settingsUi.newSkillLead') }}</p>
           </div>
           <button class="skill-dialog-close" type="button" :aria-label="t('common.cancel')" @click="close">×</button>
         </header>
@@ -15,8 +15,8 @@
         <div class="skill-editor-grid">
           <label>
             <span>{{ t('settingsUi.newSkillName') }}</span>
-            <input v-model.trim="name" type="text" maxlength="64" :placeholder="t('settingsUi.newSkillNamePlaceholder')" @input="nameTouched = true" />
-            <small :class="{ 'skill-invalid': nameTouched && !validName }">{{ t('settingsUi.newSkillNameHint') }}</small>
+            <input v-model.trim="name" type="text" maxlength="64" :disabled="editing" :placeholder="t('settingsUi.newSkillNamePlaceholder')" @input="nameTouched = true" />
+            <small :class="{ 'skill-invalid': !editing && nameTouched && !validName }">{{ t(editing ? 'settingsUi.nameReadonly' : 'settingsUi.newSkillNameHint') }}</small>
           </label>
           <label>
             <span>{{ t('settingsUi.newSkillDescription') }}</span>
@@ -26,11 +26,11 @@
 
         <label class="skill-editor-body">
           <span>{{ t('settingsUi.newSkillBody') }}</span>
-          <textarea v-model="body" rows="12" :placeholder="bodyPlaceholder" />
+          <textarea v-model="body" rows="12" maxlength="100000" :placeholder="bodyPlaceholder" />
           <small>{{ t('settingsUi.newSkillBodyHint') }}</small>
         </label>
 
-        <div class="skill-editor-targets">
+        <div v-if="!editing" class="skill-editor-targets">
           <span>{{ t('settingsUi.newSkillTargets') }}</span>
           <p v-if="!targetAgents.length" class="settings-note">{{ t('settingsUi.noAgents') }}</p>
           <label v-for="agent in targetAgents" :key="agent" class="skill-editor-target">
@@ -41,7 +41,7 @@
 
         <footer class="skill-dialog-foot">
           <button class="secondary-button" type="button" @click="close">{{ t('common.cancel') }}</button>
-          <button class="primary-button" type="submit" :disabled="busy || !canSubmit">{{ t('settingsUi.createSkill') }}</button>
+          <button class="primary-button" type="submit" :disabled="busy || !canSubmit">{{ t(editing ? 'settingsUi.saveSkill' : 'settingsUi.createSkill') }}</button>
         </footer>
       </form>
     </div>
@@ -49,11 +49,12 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { t, translateError } from '../../i18n.js'
 
 const props = defineProps({
   api: { type: Object, required: true },
+  skill: { type: Object, default: null },
   agents: { type: Array, default: () => [] },
   agentLabels: { type: Object, default: () => ({}) },
   agentCapabilities: { type: Object, default: () => ({}) },
@@ -68,10 +69,21 @@ const nameTouched = ref(false)
 const busy = ref(false)
 const error = ref('')
 
-const validName = computed(() => /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(name.value))
+const editing = computed(() => Boolean(props.skill?.id))
+const validName = computed(() => editing.value
+  || /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(name.value))
 const canSubmit = computed(() => validName.value && description.value.trim().length > 0)
 const targetAgents = computed(() => props.agents.filter(agent => props.agentCapabilities[agent]?.projectable !== false))
 const bodyPlaceholder = computed(() => `# ${name.value || 'my-skill'}\n\n${t('settingsUi.newSkillBodyPlaceholder')}`)
+
+watch(() => props.skill, (value) => {
+  name.value = value?.name || ''
+  description.value = value?.description || ''
+  body.value = value?.editorBody || ''
+  targets.value = []
+  nameTouched.value = false
+  error.value = ''
+}, { immediate: true })
 
 function agentLabel(agent) {
   return props.agentLabels[agent] || agent
@@ -82,13 +94,19 @@ async function submit() {
   busy.value = true
   error.value = ''
   try {
-    const created = await props.api.create({
-      name: name.value,
-      description: description.value,
-      body: body.value,
-      targets: targets.value,
-    })
-    emit('done', created)
+    const result = editing.value
+      ? await props.api.update({
+          id: props.skill.id,
+          description: description.value,
+          body: body.value,
+        })
+      : await props.api.create({
+          name: name.value,
+          description: description.value,
+          body: body.value,
+          targets: targets.value,
+        })
+    emit('done', result)
   } catch (caught) {
     error.value = translateError(caught) || t('settingsUi.errorGeneric')
   } finally {

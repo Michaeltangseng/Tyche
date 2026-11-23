@@ -137,6 +137,10 @@ describe('skill library presentation', () => {
     expect(wrapper.text()).toContain('Shared library')
     expect(wrapper.text()).toContain('Trusted')
     expect(wrapper.get('.settings-side').text()).toContain('Distributed to')
+    const rows = wrapper.findAll('tbody tr')
+    expect(rows[0].text()).toContain('Update')
+    expect(rows[0].text()).toContain('Delete')
+    expect(rows[1].text()).toContain('—')
 
     await wrapper.get('tbody tr:first-child .settings-switch').trigger('click')
     await flushPromises()

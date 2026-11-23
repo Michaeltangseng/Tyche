@@ -8,7 +8,7 @@
       <div class="settings-actions">
         <button class="secondary-button" type="button" disabled :title="t('settingsUi.marketLater')">{{ t('settingsUi.browseMarket') }}</button>
         <button class="secondary-button" type="button" :disabled="busy || !api" @click="importOpen = true">{{ t('settingsUi.importAgents') }}</button>
-        <button class="primary-button" type="button" :disabled="busy || !api" @click="editorOpen = true">+ {{ t('settingsUi.newSkill') }}</button>
+        <button class="primary-button" type="button" :disabled="busy || !api" @click="openCreate">+ {{ t('settingsUi.newSkill') }}</button>
       </div>
     </header>
 
@@ -43,6 +43,7 @@
                 <th v-for="agent in matrixAgents" :key="agent" class="skills-agent-head">{{ agentLabel(agent) }}</th>
                 <th>{{ t('settingsUi.trust') }}</th>
                 <th>{{ t('settingsUi.updated') }}</th>
+                <th>{{ t('settingsUi.actions') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -79,6 +80,21 @@
                   <i class="settings-dot" :class="trustTone(skill.trust)" />{{ t(`settingsUi.trustState.${skill.trust}`) }}
                 </td>
                 <td class="skills-updated-cell"><small>{{ relative(skill.updatedAt) }}</small></td>
+                <td class="skills-actions-cell">
+                  <template v-if="skill.source === 'native'">
+                    <span class="skills-unsupported" :title="t('settingsUi.nativeReadonly')">—</span>
+                  </template>
+                  <template v-else>
+                    <button
+                      class="skills-row-action"
+                      type="button"
+                      :disabled="busy || skill.sourceKind !== 'shared'"
+                      :title="skill.sourceKind === 'shared' ? t('settingsUi.updateSkillHint') : t('settingsUi.marketUpdateLater')"
+                      @click.stop="openEdit(skill)"
+                    >{{ t('settingsUi.updateSkill') }}</button>
+                    <button class="skills-row-action danger" type="button" :disabled="busy" @click.stop="openDelete(skill)">{{ t('settingsUi.deleteSkill') }}</button>
+                  </template>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -111,11 +127,19 @@
     <SkillEditorDialog
       v-if="editorOpen && api"
       :api="api"
+      :skill="editingSkill"
       :agents="editableAgents"
       :agent-labels="agentLabelsAll"
       :agent-capabilities="inventory.agentCapabilities"
       @close="editorOpen = false"
-      @done="afterCreate"
+      @done="afterEditor"
+    />
+    <SkillDeleteDialog
+      v-if="deleteOpen && api && deleteTarget"
+      :api="api"
+      :skill="deleteTarget"
+      @close="deleteOpen = false"
+      @done="afterDelete"
     />
   </div>
 </template>
@@ -133,6 +157,7 @@ import {
   trustTone,
   visibleSkills,
 } from '../../skillLibrary.js'
+import SkillDeleteDialog from './SkillDeleteDialog.vue'
 import SkillDetailPanel from './SkillDetailPanel.vue'
 import SkillEditorDialog from './SkillEditorDialog.vue'
 import SkillImportDialog from './SkillImportDialog.vue'
@@ -161,6 +186,9 @@ const busy = ref(false)
 const error = ref('')
 const importOpen = ref(false)
 const editorOpen = ref(false)
+const editingSkill = ref(null)
+const deleteOpen = ref(false)
+const deleteTarget = ref(null)
 
 const skills = computed(() => inventory.value.skills || [])
 const agents = computed(() => inventory.value.agents || [])
@@ -386,13 +414,49 @@ function afterImport(result) {
   load()
 }
 
-function afterCreate(created) {
+function openCreate() {
+  editingSkill.value = null
+  editorOpen.value = true
+}
+
+async function openEdit(skill) {
+  if (busy.value || skill.sourceKind !== 'shared') return
+  error.value = ''
+  try {
+    const value = skill.id === detail.value?.id ? detail.value : await props.api.detail({ id: skill.id })
+    if (!value?.canEdit) {
+      error.value = t('settingsUi.editUnavailable')
+      return
+    }
+    selectedId.value = skill.id
+    detail.value = value
+    editingSkill.value = value
+    editorOpen.value = true
+  } catch (caught) {
+    error.value = errorText(caught)
+  }
+}
+
+function openDelete(skill) {
+  if (busy.value) return
+  deleteTarget.value = skill
+  deleteOpen.value = true
+}
+
+function afterEditor(result) {
   editorOpen.value = false
-  if (created?.id) selectedId.value = created.id
-  if (Array.isArray(created?.targetErrors) && created.targetErrors.length) {
-    error.value = t('settingsUi.projectFailed', { count: created.targetErrors.length })
+  editingSkill.value = null
+  if (result?.id) selectedId.value = result.id
+  if (Array.isArray(result?.targetErrors) && result.targetErrors.length) {
+    error.value = t('settingsUi.projectFailed', { count: result.targetErrors.length })
   }
   load()
+}
+
+function afterDelete(result) {
+  deleteOpen.value = false
+  deleteTarget.value = null
+  if (result?.removed) load()
 }
 
 let unsubscribe = null
@@ -416,8 +480,12 @@ onBeforeUnmount(() => {
 .chip.warn { border-color: #f5a524; color: #f5a524; }
 .skills-matrix-card { min-width: 0; }
 .skills-table-wrap { overflow-x: auto; }
-.skills-table { min-width: 560px; }
+.skills-table { min-width: 680px; }
 .skills-agent-head, .skills-cell { width: 64px; text-align: center; }
+.skills-actions-cell { white-space: nowrap; text-align: right; }
+.skills-row-action { border: 0; background: transparent; color: var(--accent-text); font: inherit; font-size: 11px; cursor: pointer; padding: 0 4px; }
+.skills-row-action:disabled { color: var(--faint); cursor: default; }
+.skills-row-action.danger { color: #f2555a; }
 .skills-name-cell { max-width: 320px; }
 .skills-name-line { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
 .skills-name-line strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -41,7 +41,7 @@ const MAX_ROLE_SKILLS = 8
 const MAX_CAPTAIN_SKILLS = 24
 const CAPTAIN_DESCRIPTION_LIMIT = 80
 const SCAN_CACHE_MS = 1500
-const MAX_BODY_INPUT = 40000
+const MAX_BODY_INPUT = 100000
 
 function nowIso(now) {
   return now().toISOString()
@@ -394,18 +394,31 @@ class SkillLibrary {
     return report
   }
 
+  editorBodyFor(record) {
+    if (record.kind !== 'shared' || record.sourceKind !== 'shared') return null
+    try {
+      const raw = fs.readFileSync(path.join(record.sourceDirectory, 'SKILL.md'), 'utf8')
+      const body = frontmatterFields(raw).body
+      return body.length > MAX_BODY_INPUT ? null : body
+    } catch {
+      return null
+    }
+  }
+
   detailDto(record, store) {
     const approved = store.approvedHashes[record.contentHash]
     const previous = record.approvedHash ? store.approvedHashes[record.approvedHash] : null
     const origin = record.kind === 'native'
       ? { type: 'native', agent: record.originKind, namespace: record.namespace, slug: record.slug }
       : (record.origin || { type: 'library' })
+    const editorBody = this.editorBodyFor(record)
     return {
       ...this.listDto(record),
       contentHash: record.contentHash,
       approvedHash: record.approvedHash,
       approvedAt: approved?.approvedAt || previous?.approvedAt || null,
       preview: record.preview,
+      editorBody,
       files: record.fileManifest.map(file => ({
         path: file.path,
         size: file.size,
@@ -415,7 +428,7 @@ class SkillLibrary {
       origin,
       approvedManifest: approved?.fileManifest || previous?.fileManifest || [],
       approvedPreview: approved?.preview || previous?.preview || '',
-      canEdit: record.kind === 'shared' && record.sourceKind === 'shared',
+      canEdit: record.kind === 'shared' && record.sourceKind === 'shared' && editorBody !== null,
       canRemove: record.kind === 'shared',
       canProject: record.kind === 'shared' && record.trust === 'trusted',
       projectableAgents: record.kind === 'shared'
