@@ -562,7 +562,7 @@
             <section class="room-role-v2-section room-role-v2-skills">
               <h3>{{ t('room.roleSkills') }}</h3>
               <p class="room-agent-quiet">{{ t('room.roleSkillsHint') }}</p>
-              <p v-if="!roleSkillChoices.length" class="room-agent-quiet">{{ t('room.roleSkillsEmpty') }}</p>
+              <p v-if="!roleSkillChoices.length && !unavailableSkillChoices.length" class="room-agent-quiet">{{ t('room.roleSkillsEmpty') }}</p>
               <label v-for="skill in roleSkillChoices" :key="skill.id" class="room-skill-option">
                 <input
                   type="checkbox"
@@ -571,6 +571,21 @@
                 />
                 <span>{{ skill.name }}</span>
               </label>
+              <div v-if="unavailableSkillChoices.length" class="room-skill-unavailable">
+                <p class="room-agent-quiet">{{ t('room.skillNeedsAction') }}</p>
+                <div v-for="item in unavailableSkillChoices" :key="item.skill.id" class="room-skill-unavailable-row">
+                  <span>{{ item.skill.name }}</span>
+                  <small>{{ t(`room.skillReason.${item.reason}`) }}</small>
+                  <button
+                    class="secondary-button"
+                    type="button"
+                    :disabled="resolvingSkillId === item.skill.id"
+                    @click="resolveRoleSkill(item)"
+                  >{{ t('room.skillResolveAction') }}</button>
+                </div>
+                <p v-if="skillResolveError" class="room-error">{{ skillResolveError }}</p>
+              </div>
+              <p v-if="otherAgentSkillCount" class="room-agent-quiet">{{ t('room.skillOtherAgents', { count: otherAgentSkillCount }) }}</p>
               <p v-if="droppedSkillIds.length" class="room-agent-quiet">{{ t('room.skillUnavailable', { ids: droppedSkillIds.join(', ') }) }}</p>
               <p class="room-agent-quiet">{{ t('room.skillTokens', { count: skillTokenEstimate(roleDraft.skills.length) }) }}</p>
               <button class="secondary-button" type="button" :disabled="busy || !roleDraft.provider" @click="rememberRoleSkills">{{ t('room.rememberSkillDefault') }}</button>
@@ -629,7 +644,7 @@ import {
 import { agentLogo } from '../catalog.js'
 import { portraitGlow, portraitId, rolePortrait, rolePortraits } from '../role-portraits.js'
 import { t } from '../i18n.js'
-import { keptSkillIds, selectableSkills, skillTokenEstimate } from '../skillInventory.js'
+import { keptSkillIds, selectableSkills, skillTokenEstimate, skillUnavailableReason } from '../skillInventory.js'
 import { useRoomWorkspace } from '../composables/useRoomWorkspace.js'
 import { agentUsageRows, formatUsageLine } from '../room-usage.js'
 import MarkdownMessage from './MarkdownMessage.vue'
@@ -702,6 +717,8 @@ const creating = ref(false)
 const roleSettingsOpen = ref(false)
 const skillInventoryState = ref({ agents: [], skills: [], defaults: {} })
 const droppedSkillIds = ref([])
+const resolvingSkillId = ref('')
+const skillResolveError = ref('')
 const roleSettingsRef = ref(null)
 const roleDraft = ref(null)
 const roleSettingsWasCaptain = ref(false)
@@ -1203,6 +1220,45 @@ async function commitTitleEdit(event) {
 }
 
 const roleSkillChoices = computed(() => selectableSkills(skillInventoryState.value.skills, roleDraft.value?.provider))
+
+const unavailableSkillChoices = computed(() => {
+  const agent = roleDraft.value?.provider
+  if (!agent) return []
+  return (skillInventoryState.value.skills || [])
+    .map(skill => ({ skill, reason: skillUnavailableReason(skill, agent) }))
+    .filter(item => item.reason && item.reason !== 'otherAgent')
+})
+
+const otherAgentSkillCount = computed(() => {
+  const agent = roleDraft.value?.provider
+  if (!agent) return 0
+  return (skillInventoryState.value.skills || [])
+    .filter(skill => skill.source === 'native' && skill.originKind !== agent).length
+})
+
+async function resolveRoleSkill(item) {
+  const provider = roleDraft.value?.provider
+  if (!provider || !item?.skill || resolvingSkillId.value) return
+  resolvingSkillId.value = item.skill.id
+  skillResolveError.value = ''
+  try {
+    if (item.reason !== 'enable' && typeof props.api?.trustSkill === 'function') {
+      await props.api.trustSkill({ id: item.skill.id })
+    }
+    if (item.skill.source === 'native' && typeof props.api?.setSkillEligible === 'function') {
+      await props.api.setSkillEligible({ id: item.skill.id, agent: provider, enabled: true })
+    }
+    await loadSkillInventory()
+    const selectable = selectableSkills(skillInventoryState.value.skills, provider)
+      .some(skill => skill.id === item.skill.id)
+    const current = roleDraft.value?.skills || []
+    if (selectable && !current.includes(item.skill.id)) roleDraft.value.skills = [...current, item.skill.id]
+  } catch {
+    skillResolveError.value = t('room.skillResolveFailed')
+  } finally {
+    resolvingSkillId.value = ''
+  }
+}
 
 async function loadSkillInventory() {
   if (typeof props.api?.skillInventory !== 'function') return
@@ -1719,6 +1775,10 @@ button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.
 .room-new-chat { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .room-new-chat input { flex: 1; min-width: min(100%, 200px); }
 .room-skill-option { display: inline-flex; gap: 6px; align-items: center; margin: 6px 14px 6px 0; font-size: var(--text-xs); }
+.room-skill-unavailable { display: grid; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
+.room-skill-unavailable-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: var(--text-xs); }
+.room-skill-unavailable-row small { color: var(--warning, #9a6700); }
+.room-skill-unavailable-row button { margin-left: auto; }
 .room-permissions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--border); font-size: var(--text-xs); }
 .room-permissions label { display: inline-flex; gap: 6px; align-items: center; }
 .room-error { color: var(--danger, #b94c4c); font-size: var(--text-xs); }

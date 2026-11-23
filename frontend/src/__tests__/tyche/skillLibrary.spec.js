@@ -137,14 +137,16 @@ describe('skill library presentation', () => {
     expect(wrapper.text()).toContain('pptx')
     expect(wrapper.text()).toContain('review')
     expect(wrapper.text()).toContain('Shared library')
+    expect(wrapper.text()).toContain('Claude native')
+    expect(wrapper.text()).toContain('Review changes')
     expect(wrapper.text()).toContain('Trusted')
     expect(wrapper.get('.settings-side').text()).toContain('Distributed to')
     const rows = wrapper.findAll('tbody tr')
     expect(rows[0].text()).toContain('Update')
     expect(rows[0].text()).toContain('Delete')
-    expect(rows[1].text()).toContain('—')
+    expect(rows[1].text()).toContain('Enabled')
 
-    await wrapper.get('tbody tr:first-child .settings-switch').trigger('click')
+    await wrapper.get('tbody tr:first-child .skills-cell-state').trigger('click')
     await flushPromises()
     expect(api.project).toHaveBeenCalledWith({ id: 'shared/library/pptx', agent: 'claude' })
 
@@ -152,6 +154,25 @@ describe('skill library presentation', () => {
     await flushPromises()
     expect(wrapper.get('table').text()).not.toContain('pptx')
     expect(wrapper.get('table').text()).toContain('review')
+    wrapper.unmount()
+  })
+
+  it('shows a needs-attention bar and hides empty agent columns', async () => {
+    const api = mockApi()
+    api.list.mockResolvedValue({
+      ...listPayload(),
+      skills: [
+        { ...shared, trust: 'changed', conflict: { name: 'pptx' }, updateAvailable: true },
+        { ...native, id: 'hermes/global/review', originKind: 'hermes', trust: 'untrusted', eligible: [] },
+      ],
+    })
+    const wrapper = mount(SkillsPage, { props: { api } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Needs attention')
+    expect(wrapper.text()).toContain('1 conflicts')
+    expect(wrapper.text()).toContain('1 need re-approval')
+    expect(wrapper.text()).toContain('1 upstream updates')
+    expect(wrapper.find('.skills-agent-head').exists()).toBe(false)
     wrapper.unmount()
   })
 
@@ -285,7 +306,7 @@ describe('skill library presentation', () => {
     await flushPromises()
 
     const row = wrapper.findAll('tbody tr').find(item => item.text().includes('review'))
-    await row.get('.settings-switch').trigger('click')
+    await row.get('.skills-native-toggle').trigger('click')
     await flushPromises()
     expect(api.setEligible).toHaveBeenCalledWith({
       id: 'claude/global/review',

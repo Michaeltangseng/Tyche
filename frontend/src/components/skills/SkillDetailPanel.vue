@@ -4,7 +4,7 @@
       <div>
         <h3>{{ skill.name }}</h3>
         <p>
-          {{ t(sourceLabelKey(skill.source)) }}
+          {{ sourceText(skill) }}
           <template v-if="skill.version"> · v{{ skill.version }}</template>
         </p>
         <p v-if="skill.origin?.type === 'market'" class="skill-market-origin">{{ skill.origin.url }}@{{ String(skill.origin.commit || '').slice(0, 8) }}</p>
@@ -13,29 +13,6 @@
       <i class="settings-dot" :class="trustTone(skill.trust)" />
     </header>
     <p class="skill-detail-desc">{{ skill.description || t('settingsUi.noDescription') }}</p>
-
-    <div class="skill-detail-trust">
-      <span class="skill-trust-state">
-        <i class="settings-dot" :class="trustTone(skill.trust)" />
-        {{ t(`settingsUi.trustState.${skill.trust}`) }}
-      </span>
-      <small v-if="skill.approvedAt">{{ t('settingsUi.approvedAt', { time: relative(skill.approvedAt) }) }}</small>
-      <button
-        v-if="skill.trust !== 'trusted'"
-        class="primary-button"
-        type="button"
-        :disabled="busy || skill.trust === 'unavailable'"
-        @click="$emit('trust')"
-      >{{ t(skill.trust === 'changed' ? 'settingsUi.retrustSkill' : 'settingsUi.trustSkill') }}</button>
-      <template v-else>
-        <button v-if="!revokeArmed" class="secondary-button danger" type="button" :disabled="busy" @click="revokeArmed = true">{{ t('settingsUi.revokeTrust') }}</button>
-        <span v-else class="skill-confirm">
-          <span>{{ t('settingsUi.revokeConfirm') }}</span>
-          <button type="button" @click="revokeArmed = false">{{ t('common.cancel') }}</button>
-          <button type="button" class="danger" @click="revokeArmed = false; $emit('revoke')">{{ t('settingsUi.revokeTrust') }}</button>
-        </span>
-      </template>
-    </div>
 
     <div v-if="skill.risk?.labels?.length" class="skill-risk">
       <div>
@@ -100,6 +77,29 @@
       </ul>
     </section>
 
+    <div class="skill-detail-trust">
+      <span class="skill-trust-state">
+        <i class="settings-dot" :class="trustTone(skill.trust)" />
+        {{ t(`settingsUi.trustState.${skill.trust}`) }}
+      </span>
+      <small v-if="skill.approvedAt">{{ t('settingsUi.approvedAt', { time: relative(skill.approvedAt) }) }}</small>
+      <button
+        v-if="skill.trust !== 'trusted'"
+        class="primary-button"
+        type="button"
+        :disabled="busy || skill.trust === 'unavailable'"
+        @click="$emit('trust')"
+      >{{ t(skill.trust === 'changed' ? 'settingsUi.retrustSkill' : 'settingsUi.trustSkill') }}</button>
+      <template v-else>
+        <button v-if="!revokeArmed" class="secondary-button danger" type="button" :disabled="busy" @click="revokeArmed = true">{{ t('settingsUi.revokeTrust') }}</button>
+        <span v-else class="skill-confirm">
+          <span>{{ t('settingsUi.revokeConfirm') }}</span>
+          <button type="button" @click="revokeArmed = false">{{ t('common.cancel') }}</button>
+          <button type="button" class="danger" @click="revokeArmed = false; $emit('revoke')">{{ t('settingsUi.revokeTrust') }}</button>
+        </span>
+      </template>
+    </div>
+
     <div class="settings-actions skill-detail-actions">
       <button class="secondary-button" type="button" :disabled="busy" @click="$emit('reveal')">{{ t('settingsUi.openSource') }}</button>
       <button v-if="skill.canRemove" class="secondary-button danger" type="button" :disabled="busy" @click="removeArmed = true">{{ t('settingsUi.deleteSkill') }}</button>
@@ -162,6 +162,13 @@ watch(() => props.skill?.id, () => {
 
 function humanAgent(agent) {
   return props.agentLabels[agent] || agent
+}
+
+function sourceText(skill) {
+  if (skill.source === 'native') {
+    return t('settingsUi.sourceNativeOf', { agent: humanAgent(skill.originKind) })
+  }
+  return t(sourceLabelKey(skill.source))
 }
 
 function relative(iso) {

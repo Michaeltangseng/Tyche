@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { keptSkillIds, selectableSkills, skillTokenEstimate } from '../../skillInventory.js'
+import { keptSkillIds, selectableSkills, skillTokenEstimate, skillUnavailableReason } from '../../skillInventory.js'
 
 const skills = [
   { id: 'claude/global/frontend-design', trust: 'trusted', eligible: ['claude'] },
@@ -15,6 +15,14 @@ describe('skill inventory selection', () => {
       skills,
       'claude',
     )).toEqual(['claude/global/frontend-design'])
+  })
+
+  it('explains why a Skill is unavailable to a role', () => {
+    expect(skillUnavailableReason({ source: 'shared', trust: 'untrusted' }, 'claude')).toBe('trust')
+    expect(skillUnavailableReason({ source: 'shared', trust: 'changed' }, 'claude')).toBe('reauth')
+    expect(skillUnavailableReason({ source: 'shared', trust: 'trusted', available: [] }, 'claude')).toBe('enable')
+    expect(skillUnavailableReason({ source: 'native', originKind: 'hermes', trust: 'trusted', available: ['hermes'] }, 'claude')).toBe('otherAgent')
+    expect(skillUnavailableReason({ source: 'shared', trust: 'trusted', available: ['claude'] }, 'claude')).toBe('')
   })
 
   it('does not cap the number of equipped skills', () => {
