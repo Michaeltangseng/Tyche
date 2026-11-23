@@ -1,15 +1,12 @@
 <template>
   <section class="settings-page mock" :aria-label="t(titleKey)">
-    <header v-if="section !== 'skills'" class="settings-page-title">
+    <header v-if="section !== 'skills' && section !== 'usage'" class="settings-page-title">
       <div>
         <h1>
           {{ t(titleKey) }}
           <span v-if="section === 'orchestration'" class="settings-badge">{{ t('settingsUi.globalDefault') }}</span>
         </h1>
         <p>{{ t(hintKey) }}</p>
-      </div>
-      <div v-if="section === 'usage'" class="settings-seg">
-        <button v-for="item in ranges" :key="item" type="button" :class="{ active: range === item }" @click="range = item">{{ t(`settingsUi.range.${item}`) }}</button>
       </div>
     </header>
 
@@ -120,72 +117,7 @@
       </article>
     </template>
 
-    <template v-else-if="section === 'usage'">
-      <div class="stat-grid">
-        <article class="settings-card stat-card">
-          <header><span>{{ t('settingsUi.monthFee') }}</span></header>
-          <h2>$42.80</h2>
-          <small>{{ t('settingsUi.budgetLine') }}</small>
-          <div class="fee-meter"><i /></div>
-        </article>
-        <article class="settings-card stat-card"><header><span>{{ t('settingsUi.totalTokens') }}</span></header><h2>8.6M</h2></article>
-        <article class="settings-card stat-card"><header><span>{{ t('settingsUi.handoffCount') }}</span></header><h2>214</h2></article>
-        <article class="settings-card stat-card"><header><span>{{ t('settingsUi.stoppedLoopsTitle') }}</span></header><h2>3</h2></article>
-      </div>
-      <div class="usage-split">
-        <article class="settings-card">
-          <div class="usage-card-head">
-            <h2>{{ t('settingsUi.dailyTrend') }}</h2>
-            <p class="legend"><i class="swatch codex" />Codex <i class="swatch claude" />Claude <i class="swatch pi" />Pi <i class="swatch gemini" />Gemini</p>
-          </div>
-          <div class="usage-chart">
-            <div class="usage-yaxis"><span>$30</span><span>$20</span><span>$10</span><span>$0</span></div>
-            <div class="usage-plot">
-              <div class="usage-bars">
-                <span v-for="(bar, index) in bars" :key="index" :style="{ height: `${bar}px` }">
-                  <i class="gemini" /><i class="pi" /><i class="claude" /><i class="codex" />
-                </span>
-              </div>
-              <div class="usage-xaxis"><span>4/1</span><span>4/7</span><span>4/14</span><span>4/21</span><span>4/30</span></div>
-            </div>
-          </div>
-        </article>
-        <article class="settings-card">
-          <h2>{{ t('settingsUi.byRoom') }}</h2>
-          <div v-for="room in roomCosts" :key="room.name" class="room-row">
-            <span>{{ room.name }}</span>
-            <i><b :style="{ width: room.width }" /></i>
-            <strong>{{ room.cost }}</strong>
-          </div>
-        </article>
-      </div>
-      <article class="settings-card">
-        <h2>{{ t('settingsUi.byAgent') }}</h2>
-        <table class="settings-mini-table usage-agents">
-          <thead><tr><th>Agent</th><th>Token</th><th>{{ t('settingsUi.fee') }}</th><th>{{ t('settingsUi.share') }}</th></tr></thead>
-          <tbody>
-            <tr v-for="agent in usageAgents" :key="agent.name">
-              <td><img :src="agent.logo" alt="" /><span>{{ agent.name }}</span></td>
-              <td>{{ agent.tokens }}</td>
-              <td>{{ agent.cost }}</td>
-              <td class="share"><span class="share-track"><i :class="agent.tone" :style="{ width: agent.share }" /></span><span>{{ agent.share }}</span></td>
-            </tr>
-          </tbody>
-        </table>
-      </article>
-      <article class="settings-card">
-        <h2>{{ t('settingsUi.budget') }}</h2>
-        <div class="budget-row">
-          <label>{{ t('settingsUi.monthlyBudget') }}<input value="$60" readonly /></label>
-          <label>{{ t('settingsUi.at80') }}<select><option>{{ t('settingsUi.remindMe') }}</option></select></label>
-          <label>{{ t('settingsUi.afterBudget') }}
-            <span class="usage-choice"><button type="button">{{ t('settingsUi.warnOnly') }}</button><button class="pause" type="button">{{ t('settingsUi.pauseAll') }}</button></span>
-          </label>
-          <label>{{ t('settingsUi.roomDaily') }}<input value="$10" readonly /></label>
-          <label>{{ t('settingsUi.chainCap') }}<input value="200K" readonly /><small>{{ t('settingsUi.chainHint') }}</small></label>
-        </div>
-      </article>
-    </template>
+    <UsageSettingsPanel v-else-if="section === 'usage'" />
 
     <template v-else-if="section === 'preferences'">
       <div class="settings-split">
@@ -287,6 +219,7 @@ import { computed, reactive, ref, unref } from 'vue'
 import { publicAsset } from '../catalog.js'
 import { locale as currentLocale, setLocale, t } from '../i18n.js'
 import SkillsPage from './skills/SkillsPage.vue'
+import UsageSettingsPanel from './UsageSettingsPanel.vue'
 
 const props = defineProps({
   section: { type: String, required: true },
@@ -324,7 +257,6 @@ const allowNetwork = ref(false)
 const zoom = ref(100)
 const launchAtLogin = ref(false)
 const minimized = ref(false)
-const range = ref('month')
 const preset = ref('quick')
 const contextModes = [
   { id: 'full', title: 'settingsUi.contextMode.full', meta: '~8K tokens', hint: 'settingsUi.contextHint.full' },
@@ -333,7 +265,6 @@ const contextModes = [
 ]
 const failureModes = ['retry', 'captain', 'notify']
 const permissionModes = ['read', 'ask', 'auto']
-const ranges = ['today', 'week', 'month']
 const presets = ['quick', 'careful', 'explore', 'practical']
 const permissionAgents = reactive([
   { id: 'codex', name: 'Codex', mode: 'ask', logo: publicAsset('agent-logos/codex.svg') },
@@ -357,18 +288,6 @@ const shortcuts = [
   { id: 'newChat', keys: '⌘ N' },
   { id: 'mention', keys: '⌘ K' },
   { id: 'send', keys: '⏎' },
-]
-const bars = [62, 70, 48, 58, 84, 76, 54, 66, 92, 80, 72, 98, 108, 86, 94, 116, 124, 110, 132, 120, 138, 112, 100, 126, 118, 96, 108, 88, 78, 104]
-const roomCosts = [
-  { name: 'snake', width: '86%', cost: '$18.20' },
-  { name: 'test-room', width: '72%', cost: '$15.40' },
-  { name: 'room3', width: '44%', cost: '$9.20' },
-]
-const usageAgents = [
-  { name: 'Claude Code', logo: publicAsset('agent-logos/claude.png'), tokens: '3.9M', cost: '$21.30', share: '50%', tone: 'claude' },
-  { name: 'Codex', logo: publicAsset('agent-logos/codex.svg'), tokens: '2.8M', cost: '$12.10', share: '28%', tone: 'codex' },
-  { name: 'Pi', logo: publicAsset('agent-logos/pi.svg'), tokens: '1.4M', cost: '$6.20', share: '14%', tone: 'pi' },
-  { name: 'Gemini', logo: publicAsset('agent-logos/gemini.svg'), tokens: '0.5M', cost: '$3.20', share: '8%', tone: 'gemini' },
 ]
 const collaborators = ['Codex', 'Claude Code', 'Pi Agent', 'Gemini CLI']
 const picked = reactive(new Set(['Codex', 'Claude Code']))
