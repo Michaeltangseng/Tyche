@@ -1,6 +1,6 @@
 # 10 Skill Management
 
-Status: proposed design, 2026-11-23.
+Status: superseded, 2026-11-23. The current model is [13 Skill catalog](13-skill-catalog.md): no trust, no distribution, no risk scan, native Skills are display-only.
 
 This document designs the Skill management mechanism for the settings page, the shared library, native distribution, the Git market client, and Room skill delivery. It follows the external review model: **SkillSource → Release → Skill → Projection**, and the visual target of the Skills page mockup. Where the mockup and the external review conflict with Tyche's read-only and trust-boundary rules, this document records the deviation and the reason.
 
