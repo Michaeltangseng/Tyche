@@ -455,13 +455,15 @@ test('local preload exposes only the narrow Agent installer methods', async () =
   assert.equal(Object.isFrozen(api.agentInstaller), true)
   assert.deepEqual(
     Object.keys(api.agentInstaller).sort(),
-    ['cancel', 'catalog', 'onChanged', 'setSidebarVisibility', 'skills', 'start', 'state'],
+    ['cancel', 'catalog', 'onChanged', 'setSidebarVisibility', 'skills', 'start', 'state', 'test'],
   )
   await api.agentInstaller.skills('codex')
   await api.agentInstaller.setSidebarVisibility('hermes', true)
+  await api.agentInstaller.test('codex')
   assert.deepEqual(invocations, [
     { channel: 'local-agent-installer:skills', args: ['codex'] },
     { channel: 'local-agent-installer:set-sidebar-visibility', args: ['hermes', true] },
+    { channel: 'local-agent-installer:test', args: ['codex'] },
   ])
 })
 

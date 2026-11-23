@@ -590,6 +590,21 @@ function registerDesktopIpc(options) {
     if (!store) throw new Error('LOCAL_SKILL_TRUST_STORE_UNAVAILABLE')
     return store.revoke(args[0])
   })
+  registerTrustedHandle('local-agent-installer:test', async (kind) => {
+    const selected = String(kind || '')
+    if (!LOCAL_AGENT_IDENTIFIER.test(selected)) throw new Error('LOCAL_AGENT_IDENTIFIER_INVALID')
+    await refreshLocalAgentState()
+    const agent = (getWorkspace()?.snapshot().agents || []).find(item => item.kind === selected)
+    if (!agent) throw new Error('LOCAL_AGENT_NOT_FOUND')
+    return {
+      kind: selected,
+      available: agent.available === true,
+      version: agent.resolvedVersion || agent.version || '',
+      credentialState: agent.credentialState || 'unknown',
+      availabilitySource: agent.availabilitySource || 'unverified',
+      reason: agent.incompatibilityReason || '',
+    }
+  })
   registerTrustedHandle('local-agent-installer:state', () => installer.state())
   registerTrustedHandle('local-agent-installer:start', kind => installer.start(String(kind || '')))
   registerTrustedHandle('local-agent-installer:cancel', taskId => installer.cancel(String(taskId || '')))

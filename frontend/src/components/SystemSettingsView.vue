@@ -101,10 +101,20 @@
                   >
                     {{ installConfirmKind === agent.kind ? t('installer.confirmAction') : t('installer.install') }}
                   </button>
+                  <button
+                    v-else-if="agent.installed"
+                    class="settings-row-button"
+                    type="button"
+                    :disabled="testingKind === agent.kind"
+                    @click="testAgent(agent)"
+                  >
+                    {{ testingKind === agent.kind ? t('systemSettings.testing') : t('systemSettings.quickTest') }}
+                  </button>
                 </span>
               </div>
               <p v-if="installConfirmKind === agent.kind" class="install-inline">{{ t('installer.confirmHint') }}</p>
               <p v-else-if="installerState.kind === agent.kind && installerState.phase !== 'idle'" class="install-inline">{{ installerPhaseLabel }}</p>
+              <p v-else-if="testResults[agent.kind]" class="install-inline" :class="{ 'test-ok': testResults[agent.kind].available, 'test-warn': !testResults[agent.kind].available }">{{ testResultText(testResults[agent.kind]) }}</p>
             </article>
           </div>
         </section>
@@ -138,6 +148,7 @@ import {
   TerminalOutline,
 } from '@vicons/ionicons5'
 import SettingsPages from './SettingsPages.vue'
+import { desktopApi } from '../desktop.js'
 import CloudAgentBridgePanel from './CloudAgentBridgePanel.vue'
 import ConnectorPackagesPanel from './ConnectorPackagesPanel.vue'
 import McpServersPanel from './McpServersPanel.vue'
@@ -199,14 +210,29 @@ const groups = [
 
 const agentTab = ref('local')
 const connectorOpen = ref(false)
+const testingKind = ref('')
+const testResults = ref({})
 const searchShortcut = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘F' : 'Ctrl F'
 
-const localAgents = computed(() => (agentCatalogGroups.value || [])
+function agentRank(agent) {
+  if (agent?.ready) return 0
+  if (agent?.installed) return 1
+  return 2
+}
+
+function sortAgents(agents) {
+  return [...agents].sort((left, right) => (
+    agentRank(left) - agentRank(right)
+    || String(left.label || left.kind).localeCompare(String(right.label || right.kind))
+  ))
+}
+
+const localAgents = computed(() => sortAgents((agentCatalogGroups.value || [])
   .filter(group => group.id !== 'cloud')
-  .flatMap(group => group.agents || []))
-const cloudAgents = computed(() => (agentCatalogGroups.value || [])
+  .flatMap(group => group.agents || [])))
+const cloudAgents = computed(() => sortAgents((agentCatalogGroups.value || [])
   .filter(group => group.id === 'cloud')
-  .flatMap(group => group.agents || []))
+  .flatMap(group => group.agents || [])))
 const installedAgentKinds = computed(() => localAgents.value
   .filter(agent => agent.installed && !agent.custom)
   .map(agent => agent.kind))
@@ -221,6 +247,32 @@ function authOf(agent) {
   if (agent.credentialState === 'ready') return t('systemSettings.authReady')
   if (agent.credentialState === 'missing') return t('systemSettings.authMissing')
   return '—'
+}
+
+async function testAgent(agent) {
+  if (testingKind.value) return
+  const api = desktopApi()?.agentInstaller
+  if (!api?.test) return
+  testingKind.value = agent.kind
+  const cleared = { ...testResults.value }
+  delete cleared[agent.kind]
+  testResults.value = cleared
+  try {
+    const result = await api.test(agent.kind)
+    testResults.value = { ...testResults.value, [agent.kind]: result }
+    await refreshAgents()
+  } catch {
+    testResults.value = { ...testResults.value, [agent.kind]: { available: false, error: true } }
+  } finally {
+    testingKind.value = ''
+  }
+}
+
+function testResultText(result) {
+  if (result?.error) return t('systemSettings.testError')
+  if (result?.available) return t('systemSettings.testPassed')
+  if (result?.credentialState === 'missing') return t('systemSettings.testNeedsLogin')
+  return t('systemSettings.testFailed')
 }
 </script>
 
@@ -254,4 +306,6 @@ function authOf(agent) {
   border-radius: 8px;
   font-size: 13px;
 }
+.install-inline.test-ok { color: #3ecf8e; }
+.install-inline.test-warn { color: #f5a524; }
 </style>

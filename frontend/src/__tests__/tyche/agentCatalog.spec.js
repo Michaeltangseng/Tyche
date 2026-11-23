@@ -30,9 +30,9 @@ describe('Agent compatibility state', () => {
   it('shows an invocable local CLI as available without a warning', () => {
     setLocale('en')
     expect(catalogFor({ kind: 'zcode', installed: true, available: true,
-      credentialState: 'unknown', availabilitySource: 'local-cli' }).label).toBe('CLI detected')
+      credentialState: 'unknown', availabilitySource: 'local-cli' }).label).toBe('Ready (unverified)')
     expect(catalogFor({ kind: 'zcode', installed: true, available: true,
-      credentialState: 'ready', availabilitySource: 'native-credential' }).label).toBe('CLI detected')
+      credentialState: 'ready', availabilitySource: 'native-credential' }).label).toBe('Ready (unverified)')
     expect(catalogFor({ kind: 'zcode', installed: true, available: true,
       credentialState: 'ready', availabilitySource: 'verified-run', recentlyVerified: true }).label).toBe('Ready')
   })

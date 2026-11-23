@@ -217,6 +217,7 @@ if (isLocalDocument) Object.assign(desktopApi, {
     catalog: () => ipcRenderer.invoke('local-agent-installer:catalog'),
     skills: kind => ipcRenderer.invoke('local-agent-installer:skills', kind),
     state: () => ipcRenderer.invoke('local-agent-installer:state'),
+    test: kind => ipcRenderer.invoke('local-agent-installer:test', kind),
     start: kind => ipcRenderer.invoke('local-agent-installer:start', kind),
     cancel: taskId => ipcRenderer.invoke('local-agent-installer:cancel', taskId),
     setSidebarVisibility: (kind, visible) => ipcRenderer.invoke(
