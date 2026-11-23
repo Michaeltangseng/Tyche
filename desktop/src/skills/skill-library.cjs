@@ -950,7 +950,8 @@ class SkillLibrary {
       const risk = scanSkill(staging, this.limits)
       risk.scannedHash = meta.contentHash
       const denied = store.policy.denySkillNetwork && risk.labels.includes('network')
-      const approved = trust === true && !denied
+      if (trust === true && denied) throw skillError('SKILL_NETWORK_DENIED')
+      const approved = trust === true
       const origin = this.marketOrigin(info, commit, rel)
       writeProvenance(staging, {
         schemaVersion: 1,
@@ -1032,7 +1033,8 @@ class SkillLibrary {
       const risk = scanSkill(staging, this.limits)
       risk.scannedHash = meta.contentHash
       const denied = store.policy.denySkillNetwork && risk.labels.includes('network')
-      const approved = trust === true && !denied
+      if (trust === true && denied) throw skillError('SKILL_NETWORK_DENIED')
+      const approved = trust === true
       const origin = this.marketOrigin(info, commit, rel)
       writeProvenance(staging, {
         schemaVersion: 1,
