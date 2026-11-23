@@ -9,18 +9,30 @@
     :style="{ '--project-room-drawer-width': `${roomFilesWidth}px` }"
     :data-theme="theme"
     :data-platform="desktopPlatform"
-    :aria-busy="agentDiscoveryPending ? 'true' : undefined"
+    :aria-busy="startupPending ? 'true' : undefined"
   >
-    <section v-if="booting" class="boot-state" aria-live="polite">
-      <img class="boot-logo" :src="productAppIcon" alt="Tyche" />
-      <p>{{ t('app.loading') }}</p>
-      <WavePhysicsLoader :theme="theme" />
-    </section>
-
-    <section v-else-if="bridgeMissing" class="bridge-state">
+    <section v-if="bridgeMissing" class="bridge-state">
       <img class="bridge-logo" :src="productAppIcon" alt="Tyche" />
       <h1>{{ t('app.desktopRequired') }}</h1>
       <p>{{ t('app.desktopRequiredDetail') }}</p>
+    </section>
+
+    <section
+      v-else-if="startupPending"
+      class="agent-discovery-overlay"
+      role="status"
+      aria-live="polite"
+      :aria-label="t('agentDiscovery.title')"
+    >
+      <PixelBlast :theme="theme" />
+      <div class="agent-discovery-content">
+        <img class="agent-discovery-mark" :src="productMark" alt="" />
+        <div class="agent-discovery-copy">
+          <p class="agent-discovery-kicker">{{ t('agentDiscovery.kicker') }}</p>
+          <h1>{{ t('agentDiscovery.title') }}</h1>
+        </div>
+        <WavePhysicsLoader :theme="theme" />
+      </div>
     </section>
 
     <template v-else>
@@ -28,25 +40,6 @@
         :t="t" :theme="theme" :active-view="activeView" :blocked="contentInteractionBlocked"
         :open-system-settings="openSystemSettings" :toggle-locale="toggleLocale" :toggle-theme="toggleTheme"
         :shortcut-definitions="shortcutDefinitions" />
-      <transition name="agent-discovery" appear>
-        <section
-          v-if="agentDiscoveryPending"
-          class="agent-discovery-overlay"
-          role="status"
-          aria-live="polite"
-          :aria-label="t('agentDiscovery.title')"
-        >
-          <PixelBlast :theme="theme" />
-          <div class="agent-discovery-content">
-            <img class="agent-discovery-mark" :src="productMark" alt="" />
-            <div class="agent-discovery-copy">
-              <p class="agent-discovery-kicker">{{ t('agentDiscovery.kicker') }}</p>
-              <h1>{{ t('agentDiscovery.title') }}</h1>
-            </div>
-            <WavePhysicsLoader :theme="theme" />
-          </div>
-        </section>
-      </transition>
 
       <WorkspaceSidebar :controller="workspaceSidebarController" />
 
@@ -297,7 +290,7 @@ const sidebarCollapsed = ref(false)
 const sidebarAgentsCollapsed = ref(false)
 const sidebarGroupsCollapsed = ref(false)
 const refreshing = ref(false)
-const agentDiscoveryPending = ref(false)
+const agentDiscoveryPending = ref(true)
 const sendingGroupIds = ref(new Set())
 const saving = ref(false)
 const humanGateDecisionPendingIds = ref([])
@@ -1025,6 +1018,8 @@ useAppWindowInteractions({
   tracePanelOpen,
   trapOverlayFocus,
 })
+
+const startupPending = computed(() => booting.value || agentDiscoveryPending.value)
 
 const { booting, bridgeMissing } = useDesktopWorkspaceLifecycle({
   afterInitialLoad: () => {

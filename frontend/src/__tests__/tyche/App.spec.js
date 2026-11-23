@@ -63,8 +63,8 @@ describe('Tyche workbench', () => {
     expect(wrapper.get('.agent-discovery-overlay').find('.wave-physics-loader').exists()).toBe(true)
     expect(wrapper.get('.agent-discovery-overlay').findAll('.wave-physics-loader')).toHaveLength(1)
     expect(wrapper.find('.agent-discovery-progress').exists()).toBe(false)
-    expect(wrapper.get('.workspace-pane').attributes()).toHaveProperty('inert')
-    expect(wrapper.get('.sidebar').attributes()).toHaveProperty('inert')
+    expect(wrapper.find('.workspace-pane').exists()).toBe(false)
+    expect(wrapper.find('.sidebar').exists()).toBe(false)
 
     pendingRefresh.resolve(structuredClone({
       ...fixture.state,
@@ -73,8 +73,8 @@ describe('Tyche workbench', () => {
     await flushPromises()
 
     expect(wrapper.find('.agent-discovery-overlay').exists()).toBe(false)
-    expect(wrapper.get('.workspace-pane').attributes()).not.toHaveProperty('inert')
-    expect(wrapper.get('.sidebar').attributes()).not.toHaveProperty('inert')
+    expect(wrapper.find('.workspace-pane').exists()).toBe(true)
+    expect(wrapper.find('.sidebar').exists()).toBe(true)
     expect(wrapper.find('.sidebar-discovery').exists()).toBe(false)
     expect(wrapper.get('.home-workspace-state').text()).not.toBe('Detecting local Agents')
     wrapper.unmount()
@@ -88,7 +88,7 @@ describe('Tyche workbench', () => {
     fixture.bridge.localWorkspace.refreshAgents.mockReturnValueOnce(pendingRefresh.promise)
     window.tycheDesktop = fixture.bridge
     const wrapper = mount(App, { attachTo: document.body })
-    expect(wrapper.get('.boot-state').find('.wave-physics-loader').exists()).toBe(true)
+    expect(wrapper.get('.agent-discovery-overlay').find('.wave-physics-loader').exists()).toBe(true)
     pendingSnapshot.resolve(structuredClone(fixture.state))
     await flushPromises()
     expect(wrapper.get('.agent-discovery-overlay').find('.wave-physics-loader').exists()).toBe(true)
