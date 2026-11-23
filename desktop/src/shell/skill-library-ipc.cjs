@@ -7,6 +7,7 @@
  * library itself.
  */
 const { AGENT_KINDS } = require('../skills/skill-adapters.cjs')
+const { SOURCE_ID, TOKEN } = require('../skills/skill-market.cjs')
 const { PROJECTION_ID, SKILL_ID, validSkillName } = require('../skills/skill-library-util.cjs')
 
 const CHANNELS = Object.freeze({
@@ -26,6 +27,14 @@ const CHANNELS = Object.freeze({
   unproject: 'skill-library:unproject',
   resolveProjection: 'skill-library:resolve-projection',
   reveal: 'skill-library:reveal',
+  marketSources: 'skill-library:market-sources',
+  marketAddSource: 'skill-library:market-add-source',
+  marketRemoveSource: 'skill-library:market-remove-source',
+  marketPreview: 'skill-library:market-preview',
+  marketInstall: 'skill-library:market-install',
+  marketCheckUpdates: 'skill-library:market-check-updates',
+  marketPreviewUpdate: 'skill-library:market-preview-update',
+  marketApplyUpdate: 'skill-library:market-apply-update',
 })
 
 const MAX_BODY = 100_000
@@ -224,6 +233,55 @@ function registerSkillLibraryIpc({ registerTrustedHandle, getLibrary, shell } = 
     if (typeof shell?.openPath !== 'function') throw ipcError('SKILL_LIBRARY_UNAVAILABLE')
     const error = await shell.openPath(target)
     return { opened: !error }
+  })
+
+  registerTrustedHandle(CHANNELS.marketSources, () => library().market.listSources())
+
+  registerTrustedHandle(CHANNELS.marketAddSource, (input) => {
+    const parsed = assertInput(input, ['url', 'ref', 'subpath'])
+    const url = text(parsed.url, 2000)
+    const ref = parsed.ref === undefined ? '' : text(parsed.ref, 200)
+    const subpath = parsed.subpath === undefined ? '' : text(parsed.subpath, 300)
+    return library().market.addSource({ url, ref, subpath })
+  })
+
+  registerTrustedHandle(CHANNELS.marketRemoveSource, (input) => {
+    const parsed = assertInput(input, ['sourceId'])
+    const sourceId = text(parsed.sourceId, 80)
+    if (!SOURCE_ID.test(sourceId)) throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
+    return library().market.removeSource(sourceId)
+  })
+
+  registerTrustedHandle(CHANNELS.marketPreview, async (input) => {
+    const parsed = assertInput(input, ['sourceId'])
+    const sourceId = text(parsed.sourceId, 80)
+    if (!SOURCE_ID.test(sourceId)) throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
+    return library().market.previewSource(sourceId)
+  })
+
+  registerTrustedHandle(CHANNELS.marketInstall, (input) => {
+    const parsed = assertInput(input, ['token', 'trust'])
+    const token = text(parsed.token, 80)
+    if (!TOKEN.test(token)) throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
+    return library().market.installEntry({ token, trust: optBoolean(parsed.trust) === true })
+  })
+
+  registerTrustedHandle(CHANNELS.marketCheckUpdates, () => library().market.checkUpdates())
+
+  registerTrustedHandle(CHANNELS.marketPreviewUpdate, async (input) => {
+    const parsed = assertInput(input, ['skillId'])
+    return library().market.previewUpdate({ skillId: skillId(parsed.skillId) })
+  })
+
+  registerTrustedHandle(CHANNELS.marketApplyUpdate, (input) => {
+    const parsed = assertInput(input, ['skillId', 'token', 'trust'])
+    const token = text(parsed.token, 80)
+    if (!TOKEN.test(token)) throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
+    return library().market.applyUpdate({
+      skillId: skillId(parsed.skillId),
+      token,
+      trust: optBoolean(parsed.trust) === true,
+    })
   })
 }
 

@@ -6,7 +6,7 @@
         <p>{{ t('settingsUi.skillsLead') }}</p>
       </div>
       <div class="settings-actions">
-        <button class="secondary-button" type="button" disabled :title="t('settingsUi.marketLater')">{{ t('settingsUi.browseMarket') }}</button>
+        <button class="secondary-button" type="button" :disabled="busy || !api" :title="t('settingsUi.marketBrowseHint')" @click="openMarket()">{{ t('settingsUi.browseMarket') }}</button>
         <button class="secondary-button" type="button" :disabled="busy || !api" @click="importOpen = true">{{ t('settingsUi.importAgents') }}</button>
         <button class="primary-button" type="button" :disabled="busy || !api" @click="openCreate">+ {{ t('settingsUi.newSkill') }}</button>
       </div>
@@ -57,6 +57,7 @@
                   <span class="skills-name-line">
                     <strong>{{ skill.name }}</strong>
                     <span v-if="skill.conflict" class="skills-conflict-badge" :title="t('settingsUi.conflictHint')">{{ t('settingsUi.trustState.conflict') }}</span>
+                    <span v-if="skill.updateAvailable" class="skills-update-badge">{{ t('settingsUi.marketUpdateBadge') }}</span>
                   </span>
                   <small>
                     <span class="skills-source" :class="skill.source">{{ sourceText(skill) }}</span>
@@ -88,8 +89,8 @@
                     <button
                       class="skills-row-action"
                       type="button"
-                      :disabled="busy || skill.sourceKind !== 'shared'"
-                      :title="skill.sourceKind === 'shared' ? t('settingsUi.updateSkillHint') : t('settingsUi.marketUpdateLater')"
+                      :disabled="busy"
+                      :title="skill.sourceKind === 'shared' ? t('settingsUi.updateSkillHint') : t('settingsUi.marketUpdateHint')"
                       @click.stop="openEdit(skill)"
                     >{{ t('settingsUi.updateSkill') }}</button>
                     <button class="skills-row-action danger" type="button" :disabled="busy" @click.stop="openDelete(skill)">{{ t('settingsUi.deleteSkill') }}</button>
@@ -142,6 +143,14 @@
       @close="deleteOpen = false"
       @done="afterDelete"
     />
+    <SkillMarketDialog
+      v-if="marketOpen && api"
+      :api="api"
+      :policy="inventory.policy"
+      :initial-skill="marketUpdateSkill"
+      @close="marketOpen = false; marketUpdateSkill = null"
+      @done="afterMarket"
+    />
   </div>
 </template>
 
@@ -162,6 +171,7 @@ import SkillDeleteDialog from './SkillDeleteDialog.vue'
 import SkillDetailPanel from './SkillDetailPanel.vue'
 import SkillEditorDialog from './SkillEditorDialog.vue'
 import SkillImportDialog from './SkillImportDialog.vue'
+import SkillMarketDialog from './SkillMarketDialog.vue'
 
 const props = defineProps({
   api: { type: Object, default: null },
@@ -190,6 +200,8 @@ const editorOpen = ref(false)
 const editingSkill = ref(null)
 const deleteOpen = ref(false)
 const deleteTarget = ref(null)
+const marketOpen = ref(false)
+const marketUpdateSkill = ref(null)
 
 const skills = computed(() => inventory.value.skills || [])
 const agents = computed(() => inventory.value.agents || [])
@@ -421,8 +433,18 @@ function openCreate() {
   editorOpen.value = true
 }
 
+function openMarket(skill = null) {
+  marketUpdateSkill.value = skill
+  marketOpen.value = true
+}
+
 async function openEdit(skill) {
-  if (busy.value || skill.sourceKind !== 'shared') return
+  if (busy.value) return
+  if (skill.sourceKind === 'market') {
+    openMarket(skill)
+    return
+  }
+  if (skill.sourceKind !== 'shared') return
   error.value = ''
   try {
     const value = skill.id === detail.value?.id ? detail.value : await props.api.detail({ id: skill.id })
@@ -461,6 +483,13 @@ function afterDelete(result) {
   if (result?.removed) load()
 }
 
+function afterMarket(detail) {
+  marketOpen.value = false
+  marketUpdateSkill.value = null
+  if (detail?.id) selectedId.value = detail.id
+  load()
+}
+
 let unsubscribe = null
 onMounted(() => {
   load()
@@ -492,6 +521,7 @@ onBeforeUnmount(() => {
 .skills-name-line { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
 .skills-name-line strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .skills-conflict-badge { flex: none; padding: 1px 6px; border-radius: 99px; background: color-mix(in srgb, #f5a524 16%, transparent); color: #f5a524; font-size: 10px; font-weight: 650; }
+.skills-update-badge { flex: none; padding: 1px 6px; border-radius: 99px; background: color-mix(in srgb, #3ecf8e 16%, transparent); color: #3ecf8e; font-size: 10px; font-weight: 650; }
 .skills-source { color: var(--muted); }
 .skills-source.shared { color: var(--accent-text); }
 .skills-source.market { color: #b07cff; }

@@ -92,7 +92,9 @@ test('local preload exposes the local-only Tyche API', async () => {
   ].sort())
   assert.equal(Object.isFrozen(api.skillLibrary), true)
   assert.deepEqual(Object.keys(api.skillLibrary).sort(), [
-    'create', 'detail', 'importFromAgent', 'list', 'onChanged', 'policy', 'project', 'remove',
+    'create', 'detail', 'importFromAgent', 'list', 'marketAddSource', 'marketApplyUpdate',
+    'marketCheckUpdates', 'marketInstall', 'marketPreview', 'marketPreviewUpdate',
+    'marketRemoveSource', 'marketSources', 'onChanged', 'policy', 'project', 'remove',
     'resolveProjection', 'reveal', 'revokeTrust', 'setEligible', 'summary', 'trust',
     'unproject', 'update', 'updatePolicy',
   ].sort())

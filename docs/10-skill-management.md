@@ -6,7 +6,7 @@ This document designs the Skill management mechanism for the settings page, the 
 
 It supersedes the Skill parts of `system-settings/多Agent平台设置界面重构与Skills页设计图-assets-20261122/Tyche_设置界面重构_实施交接文档.md` §6.2.
 
-**Implementation status (2026-11-23):** Slices A and B are implemented: the v2 library and migration, content-hash trust, import, authoring, projection copies with markers, drift/outdated/conflict handling, the settings matrix and detail panel, row edit/delete actions, the import/editor dialogs, native/prompt Room delivery, real session skill bindings, and the permissions trust-policy card. Market sources, plugin/repo-shaped Skills, project scope, takeover of unmarked folders, and the Agent detail/Room drawer Skill views remain for later slices. The old `skill-inventory.cjs` is no longer wired at runtime; its v1 store is migrated on first launch.
+**Implementation status (2026-11-23):** Slices A and B are implemented: the v2 library and migration, content-hash trust, import, authoring, projection copies with markers, drift/outdated/conflict handling, the settings matrix and detail panel, row edit/delete actions, the import/editor dialogs, native/prompt Room delivery, real session skill bindings, and the permissions trust-policy card. A Git market client is also in place: add a source, preview its `SKILL.md` folders, install with review/risk, check updates with `ls-remote`, and apply an update through a new approval. Public catalog search, plugin/repo-shaped Skills, project scope, takeover of unmarked folders, and the Agent detail/Room drawer Skill views remain for later slices. The old `skill-inventory.cjs` is no longer wired at runtime; its v1 store is migrated on first launch.
 
 ## 1. Goals and scope
 
@@ -221,7 +221,7 @@ Project roots (`.claude/skills`, `.codex/skills`, `.gemini/skills`, `.agents/ski
 
 v1 supports `git` sources only:
 
-- `url` must be HTTPS, without embedded credentials.
+- `url` must be HTTPS, without embedded credentials. A local `file://` repository is accepted for a source the user explicitly chooses; plain `http://` and SSH URLs are rejected.
 - `ref` defaults to the remote HEAD; a branch, tag, or full commit is accepted.
 - `subpath` selects a directory. If it is empty, Tyche scans the repository for `SKILL.md` folders with a bounded search and lets the user pick one.
 - The resolved commit SHA is pinned in the `Release`. A branch name alone is never enough to install.
@@ -358,7 +358,7 @@ The scan is advisory. It is not a sandbox proof. The review page says so.
 - Chat replies remain read-only. Skill installation, distribution, and trust are explicit user actions in settings.
 - The renderer receives IDs, labels, home-relative display paths, hashes, and risk labels. It never receives `sourceDirectory`, `targetRef`, a native session reference, a PID, or credentials.
 - **打开源文件** is an IPC action performed by main, which resolves the path itself and reveals it through the OS. The renderer cannot pass a path or start a process.
-- Market fetch is HTTPS-only, has timeouts and size limits, rejects archive path traversal and symlinks, and never runs install scripts. Private repositories and keychain credentials are later.
+- Market fetch uses HTTPS, or a local `file://` repository the user chose, with timeouts and size limits. Cloning rejects path traversal and symlinks in the copied Skill and never runs install scripts. Private repositories and keychain credentials are later.
 - `denySkillNetwork` is a review policy: it blocks approving or installing Skills with network risk labels. It is not a runtime network sandbox; the UI must say that.
 
 ## 9. Room integration

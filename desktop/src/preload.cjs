@@ -164,6 +164,14 @@ if (isLocalDocument) Object.assign(desktopApi, {
     unproject: input => ipcRenderer.invoke('skill-library:unproject', input),
     resolveProjection: input => ipcRenderer.invoke('skill-library:resolve-projection', input),
     reveal: input => ipcRenderer.invoke('skill-library:reveal', input),
+    marketSources: () => ipcRenderer.invoke('skill-library:market-sources'),
+    marketAddSource: input => ipcRenderer.invoke('skill-library:market-add-source', input),
+    marketRemoveSource: input => ipcRenderer.invoke('skill-library:market-remove-source', input),
+    marketPreview: input => ipcRenderer.invoke('skill-library:market-preview', input),
+    marketInstall: input => ipcRenderer.invoke('skill-library:market-install', input),
+    marketCheckUpdates: () => ipcRenderer.invoke('skill-library:market-check-updates'),
+    marketPreviewUpdate: input => ipcRenderer.invoke('skill-library:market-preview-update', input),
+    marketApplyUpdate: input => ipcRenderer.invoke('skill-library:market-apply-update', input),
     onChanged: callback => {
       const listener = (_event, payload) => callback(payload)
       ipcRenderer.on('skill-library:changed', listener)

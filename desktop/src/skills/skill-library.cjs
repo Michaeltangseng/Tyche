@@ -4,6 +4,7 @@ const path = require('node:path')
 const { LocalSkillCatalog } = require('./local-skill-catalog.cjs')
 const { SkillLibraryStore } = require('./skill-library-store.cjs')
 const { AGENT_KINDS, adapterFor, agentCapabilities, agentLabel } = require('./skill-adapters.cjs')
+const { SkillMarket } = require('./skill-market.cjs')
 const { scanSkill } = require('./skill-risk.cjs')
 const {
   backupProjection,
@@ -21,6 +22,8 @@ const {
   fail,
   frontmatterFields,
   hashSkillDirectory,
+  isInsideOrEqual,
+  isPlainObject,
   nativeSkillId,
   normalizeSkillMarkdown,
   readManagedMarker,
@@ -78,6 +81,7 @@ class SkillLibrary {
     libraryRoot,
     backupRoot,
     trashRoot,
+    marketRoot,
     home,
     catalog = null,
     configDirectoryForKind = () => '',
@@ -92,6 +96,7 @@ class SkillLibrary {
     this.libraryRoot = path.normalize(libraryRoot)
     this.backupRoot = path.normalize(backupRoot || path.join(path.dirname(this.libraryRoot), 'skill-backups'))
     this.trashRoot = path.normalize(trashRoot || path.join(path.dirname(this.libraryRoot), 'skill-trash'))
+    this.marketRoot = path.normalize(marketRoot || path.join(path.dirname(this.libraryRoot), 'skill-market'))
     this.home = path.normalize(String(home || ''))
     this.catalog = catalog || new LocalSkillCatalog({ home: this.home || undefined })
     this.configDirectoryForKind = configDirectoryForKind
@@ -104,10 +109,16 @@ class SkillLibrary {
     this.scanCacheAt = 0
     this.ensureDirectories()
     this.store.load()
+    this.market = new SkillMarket({
+      library: this,
+      stagingRoot: path.join(this.marketRoot, 'staging'),
+      limits: this.limits,
+      now: this.now,
+    })
   }
 
   ensureDirectories() {
-    for (const directory of [this.libraryRoot, this.backupRoot, this.trashRoot]) {
+    for (const directory of [this.libraryRoot, this.backupRoot, this.trashRoot, this.marketRoot]) {
       fs.mkdirSync(directory, { recursive: true, mode: 0o700 })
     }
   }
@@ -247,6 +258,7 @@ class SkillLibrary {
         origin: stored.origin || provenance.origin || { type: 'library' },
         version: meta.version || provenance.version || stored.version || null,
         risk: stored.risk || null,
+        updateAvailable: stored.updateAvailable === true,
         updatedAt: skillUpdatedAt(directory),
       })
     }
@@ -361,6 +373,7 @@ class SkillLibrary {
       version: record.version || null,
       updatedAt: record.updatedAt || null,
       risk: record.risk || null,
+      updateAvailable: record.sourceKind === 'market' && record.updateAvailable === true,
       fileCount: record.fileCount || 0,
       totalBytes: record.totalBytes || 0,
       projections: record.projections.map(projection => ({
@@ -855,6 +868,228 @@ class SkillLibrary {
     this.saveStore(store)
     this.notify()
     return { imported, skipped, failed }
+  }
+
+  marketSourceInfo(source) {
+    if (!isPlainObject(source)) throw skillError('SKILL_MARKET_SOURCE_INVALID')
+    const id = String(source.id || '').slice(0, 200)
+    const url = String(source.url || '')
+    const ref = String(source.ref || '').slice(0, 200)
+    const subpath = String(source.subpath || '').slice(0, 300)
+    if (!id || !url || url.length > 2000) throw skillError('SKILL_MARKET_SOURCE_INVALID')
+    return { id, url, ref, subpath }
+  }
+
+  marketRelativePath(value) {
+    const relative = String(value || '').replace(/\\/g, '/')
+    if (relative.length > 500 || relative.startsWith('/')
+        || relative.split('/').some(part => part === '..')) {
+      throw skillError('SKILL_MARKET_ENTRY_INVALID')
+    }
+    return relative
+  }
+
+  assertMarketStaging(directory) {
+    if (typeof directory !== 'string' || !path.isAbsolute(directory)) {
+      throw skillError('SKILL_MARKET_ENTRY_INVALID')
+    }
+    let real
+    let root
+    try {
+      real = fs.realpathSync(directory)
+      root = fs.realpathSync(this.market.stagingRoot)
+    } catch {
+      throw skillError('SKILL_MARKET_ENTRY_INVALID')
+    }
+    if (!isInsideOrEqual(root, real)) throw skillError('SKILL_MARKET_ENTRY_INVALID')
+  }
+
+  marketOrigin(info, commit, relativePath) {
+    return {
+      type: 'market',
+      sourceId: info.id,
+      url: info.url,
+      ref: info.ref,
+      subpath: info.subpath,
+      commit: String(commit).toLowerCase(),
+      relativePath,
+    }
+  }
+
+  installMarketEntry({ source, commit, stagingDirectory, relativePath, name, trust = false } = {}) {
+    const info = this.marketSourceInfo(source)
+    this.assertMarketStaging(stagingDirectory)
+    if (!validSkillName(name)) throw skillError('SKILL_NAME_INVALID')
+    if (!/^[a-f0-9]{40}$/i.test(String(commit || ''))) throw skillError('SKILL_MARKET_ENTRY_INVALID')
+    const rel = this.marketRelativePath(relativePath)
+    const store = this.loadStore()
+    const sourceMeta = safeReadSkillDirectory(stagingDirectory, {
+      expectedName: name,
+      limits: this.limits,
+    })
+    if (!sourceMeta.contentHash) throw skillError('SKILL_MARKET_ENTRY_INVALID')
+    const id = sharedSkillId(name)
+    const existing = store.skills[id]
+    if (existing?.sourceKind === 'market' && existing.contentHash === sourceMeta.contentHash) {
+      return this.detail(id)
+    }
+    if (existing || fs.existsSync(this.libraryPath(name))) throw skillError('SKILL_NAME_CONFLICT')
+
+    const staging = path.join(this.libraryRoot, `.tyche-market-${process.pid}-${Date.now()}`)
+    removeDirectory(staging)
+    try {
+      copySkillDirectory(stagingDirectory, staging, this.limits)
+      const skillFile = path.join(staging, 'SKILL.md')
+      const original = fs.readFileSync(skillFile, 'utf8')
+      fs.writeFileSync(skillFile, normalizeSkillMarkdown(original, {
+        name,
+        description: sourceMeta.description || name,
+      }), { mode: 0o600 })
+      const meta = safeReadSkillDirectory(staging, { expectedName: name, limits: this.limits })
+      if (!meta.contentHash) throw skillError('SKILL_MARKET_ENTRY_INVALID')
+      const risk = scanSkill(staging, this.limits)
+      risk.scannedHash = meta.contentHash
+      const denied = store.policy.denySkillNetwork && risk.labels.includes('network')
+      const approved = trust === true && !denied
+      const origin = this.marketOrigin(info, commit, rel)
+      writeProvenance(staging, {
+        schemaVersion: 1,
+        skillId: id,
+        sourceKind: 'market',
+        origin,
+        release: {
+          sourceId: info.id,
+          url: info.url,
+          ref: info.ref,
+          commit: origin.commit,
+          relativePath: rel,
+          fetchedAt: nowIso(this.now),
+        },
+        version: meta.version || null,
+        contentHash: meta.contentHash,
+        installedAt: nowIso(this.now),
+      })
+      fs.renameSync(staging, this.libraryPath(name))
+      store.skills[id] = {
+        name,
+        sourceKind: 'market',
+        origin,
+        version: meta.version || null,
+        contentHash: meta.contentHash,
+        approvedHash: approved ? meta.contentHash : null,
+        updateAvailable: false,
+        nativeEligible: [],
+        createdAt: nowIso(this.now),
+        updatedAt: nowIso(this.now),
+      }
+      if (approved) {
+        store.approvedHashes[meta.contentHash] = {
+          approvedAt: nowIso(this.now),
+          preview: meta.preview,
+          fileManifest: meta.fileManifest,
+          risk,
+          scannedHash: meta.contentHash,
+        }
+      }
+      this.saveStore(store)
+      this.notify()
+      return this.detail(id)
+    } catch (error) {
+      removeDirectory(staging)
+      throw error
+    }
+  }
+
+  replaceMarketEntry({ skillId, source, commit, stagingDirectory, relativePath, trust = false } = {}) {
+    const record = this.recordById(skillId)
+    if (record.kind !== 'shared' || record.sourceKind !== 'market') {
+      throw skillError('SKILL_MARKET_UPDATE_INVALID')
+    }
+    const info = this.marketSourceInfo(source)
+    this.assertMarketStaging(stagingDirectory)
+    if (!/^[a-f0-9]{40}$/i.test(String(commit || ''))) throw skillError('SKILL_MARKET_ENTRY_INVALID')
+    const rel = this.marketRelativePath(relativePath)
+    const name = record.name
+    const store = this.loadStore()
+    const sourceMeta = safeReadSkillDirectory(stagingDirectory, {
+      expectedName: name,
+      limits: this.limits,
+    })
+    if (!sourceMeta.contentHash) throw skillError('SKILL_MARKET_ENTRY_INVALID')
+
+    const staging = path.join(this.libraryRoot, `.tyche-market-${process.pid}-${Date.now()}`)
+    removeDirectory(staging)
+    try {
+      copySkillDirectory(stagingDirectory, staging, this.limits)
+      const skillFile = path.join(staging, 'SKILL.md')
+      const original = fs.readFileSync(skillFile, 'utf8')
+      fs.writeFileSync(skillFile, normalizeSkillMarkdown(original, {
+        name,
+        description: sourceMeta.description || record.description || name,
+      }), { mode: 0o600 })
+      const meta = safeReadSkillDirectory(staging, { expectedName: name, limits: this.limits })
+      if (!meta.contentHash) throw skillError('SKILL_MARKET_ENTRY_INVALID')
+      const risk = scanSkill(staging, this.limits)
+      risk.scannedHash = meta.contentHash
+      const denied = store.policy.denySkillNetwork && risk.labels.includes('network')
+      const approved = trust === true && !denied
+      const origin = this.marketOrigin(info, commit, rel)
+      writeProvenance(staging, {
+        schemaVersion: 1,
+        skillId,
+        sourceKind: 'market',
+        origin,
+        release: {
+          sourceId: info.id,
+          url: info.url,
+          ref: info.ref,
+          commit: origin.commit,
+          relativePath: rel,
+          fetchedAt: nowIso(this.now),
+        },
+        version: meta.version || null,
+        contentHash: meta.contentHash,
+        installedAt: nowIso(this.now),
+      })
+      backupProjection(record.sourceDirectory, this.backupRoot, name, this.now)
+      removeDirectory(record.sourceDirectory)
+      fs.renameSync(staging, this.libraryPath(name))
+      store.skills[skillId] = {
+        ...(store.skills[skillId] || {}),
+        name,
+        sourceKind: 'market',
+        origin,
+        version: meta.version || record.version || null,
+        contentHash: meta.contentHash,
+        approvedHash: approved
+          ? meta.contentHash
+          : (store.skills[skillId]?.approvedHash || record.approvedHash || null),
+        updateAvailable: false,
+        nativeEligible: store.skills[skillId]?.nativeEligible || [],
+        createdAt: store.skills[skillId]?.createdAt || nowIso(this.now),
+        updatedAt: nowIso(this.now),
+      }
+      if (approved) {
+        store.approvedHashes[meta.contentHash] = {
+          approvedAt: nowIso(this.now),
+          preview: meta.preview,
+          fileManifest: meta.fileManifest,
+          risk,
+          scannedHash: meta.contentHash,
+        }
+      }
+      if (store.policy.revokeOnChange) {
+        for (const agent of Object.keys(store.defaults)) {
+          store.defaults[agent] = store.defaults[agent].filter(id => id !== skillId)
+        }
+      }
+      this.saveStore(store)
+      this.notify()
+      return this.detail(skillId)
+    } catch (error) {
+      removeDirectory(staging)
+      throw error
+    }
   }
 
   create({ name, description, body = '', targets = [] } = {}) {

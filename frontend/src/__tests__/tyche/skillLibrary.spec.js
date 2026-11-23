@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import SkillMarketDialog from '../../components/skills/SkillMarketDialog.vue'
 import SkillsPage from '../../components/skills/SkillsPage.vue'
 import SkillTrustPolicy from '../../components/skills/SkillTrustPolicy.vue'
 import { setLocale } from '../../i18n.js'
@@ -151,6 +152,58 @@ describe('skill library presentation', () => {
     await flushPromises()
     expect(wrapper.get('table').text()).not.toContain('pptx')
     expect(wrapper.get('table').text()).toContain('review')
+    wrapper.unmount()
+  })
+
+  it('previews and installs a Git market entry without an automatic trust', async () => {
+    const sourceId = `src-${'a'.repeat(32)}`
+    const token = `market-${'b'.repeat(32)}`
+    const api = {
+      marketSources: vi.fn().mockResolvedValue([{
+        id: sourceId,
+        url: 'https://example.com/repo',
+        ref: 'main',
+        subpath: '',
+        installedCount: 0,
+        lastCheckedAt: null,
+      }]),
+      marketPreview: vi.fn().mockResolvedValue({
+        source: { id: sourceId, url: 'https://example.com/repo', ref: 'main', commit: 'c'.repeat(40) },
+        commit: 'c'.repeat(40),
+        entries: [{
+          token,
+          name: 'alpha',
+          description: 'Alpha Skill',
+          preview: '# Alpha\n\nInstructions.',
+          version: null,
+          contentHash: 'd'.repeat(64),
+          risk: { level: 'none', labels: [] },
+          fileCount: 1,
+          totalBytes: 20,
+          relativePath: 'skills/alpha',
+          validName: true,
+        }],
+      }),
+      marketInstall: vi.fn().mockResolvedValue({ id: 'shared/library/alpha' }),
+      marketCheckUpdates: vi.fn().mockResolvedValue({ updates: [] }),
+      marketPreviewUpdate: vi.fn(),
+      marketApplyUpdate: vi.fn(),
+      marketAddSource: vi.fn(),
+      marketRemoveSource: vi.fn(),
+    }
+    const wrapper = mount(SkillMarketDialog, {
+      props: { api, policy: { untrustedByDefault: true } },
+      global: { stubs: { teleport: true } },
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('https://example.com/repo')
+
+    await wrapper.get('.market-source').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Alpha Skill')
+    await wrapper.findAll('button').find(button => button.text().includes('Install into the shared library')).trigger('click')
+    await flushPromises()
+    expect(api.marketInstall).toHaveBeenCalledWith({ token, trust: false })
     wrapper.unmount()
   })
 
