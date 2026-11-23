@@ -1942,8 +1942,6 @@ export default {
     'settingsUi.usageLead': 'Aggregated from real room usage; costs are estimated from public list prices.',
     'settingsUi.usageEstimated': 'Costs are estimates: provider-reported cost is used when present, otherwise public list prices.',
     'settingsUi.usageNoData': 'No usage in this range yet.',
-    'settingsUi.usageHoverHint': 'Hover a bar for the day breakdown; click to pin.',
-    'settingsUi.usagePinHint': 'Click to pin this day',
     'settingsUi.usageClear': 'Clear',
     'settingsUi.usageUnavailable': 'Usage data is unavailable.',
     'settingsUi.budgetLineDynamic': 'Budget {budget} · {percent}% used this month',

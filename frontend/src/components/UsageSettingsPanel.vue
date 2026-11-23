@@ -49,7 +49,7 @@
           <p v-if="!hasChartData" class="settings-note">{{ t('settingsUi.usageNoData') }}</p>
           <div v-else class="usage-chart">
             <div class="usage-yaxis"><span>{{ money(maxDaily) }}</span><span>{{ money(maxDaily / 2) }}</span><span>$0</span></div>
-            <div class="usage-plot">
+            <div ref="plotRef" class="usage-plot">
               <div class="usage-bars" @mouseleave="hoveredDate = ''">
                 <span
                   v-for="point in report.series"
@@ -60,8 +60,9 @@
                   tabindex="0"
                   :aria-label="`${point.date} · ${money(visibleTotal(point))}`"
                   :style="{ height: barHeight(point) }"
-                  @mouseenter="hoveredDate = point.date"
-                  @focus="hoveredDate = point.date"
+                  @mouseenter="showTooltip(point, $event)"
+                  @mousemove="showTooltip(point, $event)"
+                  @focus="focusTooltip(point)"
                   @blur="hoveredDate = ''"
                   @click="togglePinned(point)"
                   @keydown.enter.prevent="togglePinned(point)"
@@ -76,39 +77,65 @@
                 </span>
               </div>
               <div class="usage-xaxis"><span v-for="label in xLabels" :key="label">{{ label }}</span></div>
-              <div class="usage-inspect" :class="{ pinned: Boolean(pinnedDate) }">
-                <template v-if="activePoint">
+              <div v-if="activePoint" class="usage-tooltip" :class="{ pinned: Boolean(pinnedDate) }" :style="{ left: tooltip.left, top: tooltip.top }">
+                <div class="usage-tooltip-head">
                   <strong>{{ activePoint.date }}</strong>
-                  <span class="usage-inspect-total">{{ money(visibleTotal(activePoint)) }}</span>
-                  <span v-for="entry in activeBreakdown" :key="entry.provider" class="usage-inspect-part">
-                    <i class="swatch" :style="{ background: colorOf(entry.provider) }" />{{ agentLabel(entry.provider) }} {{ money(entry.cost) }}
-                  </span>
-                  <button v-if="pinnedDate" type="button" class="link-button" @click="clearInspect">{{ t('settingsUi.usageClear') }}</button>
-                  <small v-else>{{ t('settingsUi.usagePinHint') }}</small>
-                </template>
-                <small v-else>{{ t('settingsUi.usageHoverHint') }}</small>
+                  <span>{{ money(visibleTotal(activePoint)) }}</span>
+                  <button v-if="pinnedDate" type="button" class="link-button" @click.stop="clearInspect">×</button>
+                </div>
+                <div v-for="entry in activeBreakdown" :key="entry.provider" class="usage-tooltip-part">
+                  <i class="swatch" :style="{ background: colorOf(entry.provider) }" />
+                  <span>{{ agentLabel(entry.provider) }}</span>
+                  <b>{{ money(entry.cost) }}</b>
+                </div>
               </div>
             </div>
           </div>
         </article>
         <article class="settings-card">
-          <h2>{{ t('settingsUi.byRoom') }}</h2>
-          <p v-if="!report.rooms.length" class="settings-note">{{ t('settingsUi.usageNoData') }}</p>
-          <div v-for="room in report.rooms" :key="room.id" class="room-row">
-            <span :title="room.name">{{ room.name }}</span>
+          <div class="usage-filter-head">
+            <h2>{{ t('settingsUi.byRoom') }}<small v-if="selectedProvider"> · {{ agentLabel(selectedProvider) }}</small></h2>
+            <button v-if="selectedProvider" type="button" class="link-button" @click="selectedProvider = ''">{{ t('settingsUi.usageClear') }}</button>
+          </div>
+          <p v-if="!visibleRooms.length" class="settings-note">{{ t('settingsUi.usageNoData') }}</p>
+          <div
+            v-for="room in visibleRooms"
+            :key="room.id"
+            class="room-row"
+            :class="{ active: selectedRoomId === room.id }"
+            role="button"
+            tabindex="0"
+            :title="selectedRoomId === room.id ? t('settingsUi.usageClear') : room.name"
+            @click="selectedRoomId = selectedRoomId === room.id ? '' : room.id"
+            @keydown.enter.prevent="selectedRoomId = selectedRoomId === room.id ? '' : room.id"
+            @keydown.space.prevent="selectedRoomId = selectedRoomId === room.id ? '' : room.id"
+          >
+            <span>{{ room.name }}</span>
             <i><b :style="{ width: roomWidth(room) }" /></i>
-            <strong>{{ money(room.costUsd) }}</strong>
+            <strong>{{ money(roomCost(room)) }}</strong>
           </div>
         </article>
       </div>
 
       <article class="settings-card">
-        <h2>{{ t('settingsUi.byAgent') }}</h2>
-        <p v-if="!report.agents.length" class="settings-note">{{ t('settingsUi.usageNoData') }}</p>
+        <div class="usage-filter-head">
+          <h2>{{ t('settingsUi.byAgent') }}<small v-if="selectedRoom"> · {{ selectedRoom.name }}</small></h2>
+          <button v-if="selectedRoomId" type="button" class="link-button" @click="selectedRoomId = ''">{{ t('settingsUi.usageClear') }}</button>
+        </div>
+        <p v-if="!agentRows.length" class="settings-note">{{ t('settingsUi.usageNoData') }}</p>
         <table v-else class="settings-mini-table usage-agents">
           <thead><tr><th>Agent</th><th>Token</th><th>{{ t('settingsUi.fee') }}</th><th>{{ t('settingsUi.share') }}</th></tr></thead>
           <tbody>
-            <tr v-for="agent in report.agents" :key="agent.provider">
+            <tr
+              v-for="agent in agentRows"
+              :key="agent.provider"
+              :class="{ active: selectedProvider === agent.provider }"
+              role="button"
+              tabindex="0"
+              @click="selectedProvider = selectedProvider === agent.provider ? '' : agent.provider"
+              @keydown.enter.prevent="selectedProvider = selectedProvider === agent.provider ? '' : agent.provider"
+              @keydown.space.prevent="selectedProvider = selectedProvider === agent.provider ? '' : agent.provider"
+            >
               <td><img :src="agentLogo(agent.provider)" :alt="agentLabel(agent.provider)" /><span>{{ agentLabel(agent.provider) }}</span></td>
               <td>{{ tokens(agent.tokens) }}</td>
               <td>{{ money(agent.costUsd) }}</td>
@@ -183,6 +210,10 @@ const settings = reactive({
 const hoveredDate = ref('')
 const pinnedDate = ref('')
 const hiddenProviders = ref([])
+const selectedRoomId = ref('')
+const selectedProvider = ref('')
+const plotRef = ref(null)
+const tooltip = reactive({ left: '0px', top: '0px' })
 const legend = computed(() => report.value?.agents || [])
 const maxDaily = computed(() => Math.max(0, ...(report.value?.series || []).map(point => visibleTotal(point))))
 const activeDate = computed(() => pinnedDate.value || hoveredDate.value)
@@ -191,9 +222,31 @@ const activeBreakdown = computed(() => {
   const point = activePoint.value
   if (!point) return []
   return Object.entries(point.providers || {})
-    .filter(([provider, cost]) => cost > 0 && !hiddenProviders.value.includes(provider))
+    .filter(([provider, cost]) => cost > 0 && !isHidden(provider))
     .map(([provider, cost]) => ({ provider, cost }))
     .sort((left, right) => right.cost - left.cost)
+})
+const selectedRoom = computed(() => (report.value?.rooms || []).find(room => room.id === selectedRoomId.value) || null)
+const visibleRooms = computed(() => {
+  const rooms = report.value?.rooms || []
+  if (!selectedProvider.value) return rooms
+  return rooms.filter(room => (room.providers?.[selectedProvider.value]?.costUsd || 0) > 0)
+})
+const agentRows = computed(() => {
+  const agents = report.value?.agents || []
+  const total = selectedRoom.value?.costUsd || report.value?.totals.costUsd || 0
+  return agents
+    .map(agent => {
+      if (selectedRoomId.value) {
+        const scoped = agent.rooms?.[selectedRoomId.value] || { tokens: 0, costUsd: 0 }
+        return { ...agent, tokens: scoped.tokens, costUsd: scoped.costUsd }
+      }
+      return { ...agent, tokens: agent.tokens, costUsd: agent.costUsd }
+    })
+    .filter(agent => !selectedRoomId.value || agent.costUsd > 0)
+    .map(agent => ({ ...agent, share: total > 0 ? agent.costUsd / total : 0 }))
+    .filter(agent => !selectedProvider.value || agent.provider === selectedProvider.value)
+    .sort((left, right) => right.costUsd - left.costUsd)
 })
 const hasChartData = computed(() => maxDaily.value > 0)
 const budgetLine = computed(() => t('settingsUi.budgetLineDynamic', {
@@ -228,10 +281,42 @@ function colorOf(provider) {
   return FALLBACK_COLORS[hash % FALLBACK_COLORS.length]
 }
 
+function isHidden(provider) {
+  if (selectedProvider.value && provider !== selectedProvider.value) return true
+  return hiddenProviders.value.includes(provider)
+}
+
 function visibleTotal(point) {
   return Object.entries(point?.providers || {})
-    .filter(([provider]) => !hiddenProviders.value.includes(provider))
+    .filter(([provider]) => !isHidden(provider))
     .reduce((sum, [, cost]) => sum + cost, 0)
+}
+
+function roomCost(room) {
+  if (!selectedProvider.value) return room.costUsd
+  return room.providers?.[selectedProvider.value]?.costUsd || 0
+}
+
+function roomWidth(room) {
+  const max = Math.max(0, ...visibleRooms.value.map(item => roomCost(item)))
+  if (!max) return '0%'
+  return `${Math.max(2, (roomCost(room) / max) * 100)}%`
+}
+
+function showTooltip(point, event) {
+  hoveredDate.value = point.date
+  const rect = plotRef.value?.getBoundingClientRect()
+  if (!rect || !event) return
+  tooltip.left = `${event.clientX - rect.left}px`
+  tooltip.top = `${event.clientY - rect.top}px`
+}
+
+function focusTooltip(point) {
+  hoveredDate.value = point.date
+  const series = report.value?.series || []
+  const index = series.findIndex(item => item.date === point.date)
+  tooltip.left = series.length ? `${((index + 0.5) / series.length) * 100}%` : '50%'
+  tooltip.top = '8px'
 }
 
 function barHeight(point) {
@@ -243,7 +328,7 @@ function segments(point) {
   const total = visibleTotal(point)
   if (!total) return []
   return Object.entries(point.providers || {})
-    .filter(([provider, cost]) => cost > 0 && !hiddenProviders.value.includes(provider))
+    .filter(([provider, cost]) => cost > 0 && !isHidden(provider))
     .map(([provider, cost]) => ({ provider, height: (cost / total) * 100 }))
 }
 
@@ -261,12 +346,6 @@ function togglePinned(point) {
 function clearInspect() {
   pinnedDate.value = ''
   hoveredDate.value = ''
-}
-
-function roomWidth(room) {
-  const max = Math.max(0, ...(report.value?.rooms || []).map(item => item.costUsd))
-  if (!max) return '0%'
-  return `${Math.max(2, (room.costUsd / max) * 100)}%`
 }
 
 function applySettings(value) {
@@ -332,7 +411,7 @@ onMounted(() => load())
 .swatch { width: 8px; height: 8px; border-radius: 2px; }
 .usage-chart { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 8px; margin-top: 8px; }
 .usage-yaxis { display: flex; flex-direction: column; justify-content: space-between; height: 148px; color: var(--faint); font-size: 11px; }
-.usage-plot { min-width: 0; }
+.usage-plot { position: relative; min-width: 0; }
 .usage-bars { display: flex; align-items: flex-end; gap: 3px; height: 148px; padding: 0 2px; border-bottom: 1px solid var(--border); }
 .usage-bars > span { display: flex; flex: 1; flex-direction: column-reverse; min-width: 0; justify-content: flex-start; }
 .usage-bar { cursor: pointer; outline: none; }
@@ -340,18 +419,27 @@ onMounted(() => load())
 .usage-bar.active { background: color-mix(in srgb, var(--text) 7%, transparent); border-radius: 3px 3px 0 0; }
 .usage-bars i { display: block; width: 100%; }
 .usage-xaxis { display: flex; justify-content: space-between; margin-top: 6px; color: var(--faint); font-size: 11px; }
-.usage-inspect { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 28px; margin-top: 8px; padding: 6px 8px; border: 1px solid transparent; border-radius: 8px; color: var(--muted); font-size: 11px; }
-.usage-inspect.pinned { border-color: color-mix(in srgb, #2dd4bf 35%, var(--border)); background: color-mix(in srgb, #2dd4bf 7%, transparent); }
-.usage-inspect strong { color: var(--text-soft); font-size: 12px; }
-.usage-inspect-total { color: var(--text); font-weight: 650; }
-.usage-inspect-part { display: inline-flex; align-items: center; gap: 4px; }
-.usage-inspect .link-button { margin-left: auto; }
+.usage-tooltip { position: absolute; z-index: 5; min-width: 150px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: color-mix(in srgb, var(--bg) 92%, #000); box-shadow: 0 8px 24px rgb(0 0 0 / 0.35); transform: translate(-50%, -108%); pointer-events: none; }
+.usage-tooltip.pinned { border-color: color-mix(in srgb, #2dd4bf 40%, var(--border)); pointer-events: auto; }
+.usage-tooltip-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.usage-tooltip-head strong { color: var(--text-soft); font-size: 11px; }
+.usage-tooltip-head span { color: var(--text); font-weight: 650; }
+.usage-tooltip-head .link-button { margin-left: auto; }
+.usage-tooltip-part { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.usage-tooltip-part b { margin-left: auto; color: var(--text-soft); font-weight: 600; }
 .link-button { border: 0; background: transparent; color: var(--accent-text); font: inherit; font-size: 11px; cursor: pointer; padding: 0; }
-.room-row { display: grid; grid-template-columns: 88px minmax(0, 1fr) 64px; align-items: center; gap: 10px; min-height: 36px; }
+.usage-filter-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.usage-filter-head h2 small { color: var(--muted); font-size: 12px; font-weight: 500; }
+.room-row { display: grid; grid-template-columns: 88px minmax(0, 1fr) 64px; align-items: center; gap: 10px; min-height: 36px; padding: 0 6px; margin: 0 -6px; border-radius: 7px; cursor: pointer; }
+.room-row:hover, .room-row:focus-visible { background: color-mix(in srgb, var(--text) 4%, transparent); outline: none; }
+.room-row.active { background: color-mix(in srgb, #2dd4bf 10%, transparent); }
 .room-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .room-row i { display: block; height: 6px; overflow: hidden; border-radius: 99px; background: color-mix(in srgb, var(--text) 8%, transparent); }
 .room-row b { display: block; height: 100%; border-radius: inherit; background: #2ec8c0; }
 .room-row strong { font-size: 12px; font-weight: 600; text-align: right; }
+.usage-agents tbody tr { cursor: pointer; }
+.usage-agents tbody tr:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
+.usage-agents tbody tr.active { background: color-mix(in srgb, #2dd4bf 10%, transparent); }
 .usage-agents td:first-child { display: flex; align-items: center; gap: 8px; }
 .usage-agents img { width: 18px; height: 18px; }
 .share { display: flex; align-items: center; gap: 8px; min-width: 140px; }

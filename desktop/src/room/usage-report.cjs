@@ -178,14 +178,24 @@ function createUsageReport({ roomDb, privateRoot, now = () => new Date() }) {
       }
 
       const roomKey = String(row.room_id || '')
-      const room = byRoom.get(roomKey) || { id: roomKey, name: row.room_name || roomKey, tokens: 0, costUsd: 0 }
+      const room = byRoom.get(roomKey) || {
+        id: roomKey, name: row.room_name || roomKey, tokens: 0, costUsd: 0, providers: {},
+      }
       room.tokens += tokens
       room.costUsd += cost
+      const roomProvider = room.providers[provider] || { tokens: 0, costUsd: 0 }
+      roomProvider.tokens += tokens
+      roomProvider.costUsd += cost
+      room.providers[provider] = roomProvider
       byRoom.set(roomKey, room)
 
-      const agent = byProvider.get(provider) || { provider, tokens: 0, costUsd: 0 }
+      const agent = byProvider.get(provider) || { provider, tokens: 0, costUsd: 0, rooms: {} }
       agent.tokens += tokens
       agent.costUsd += cost
+      const agentRoom = agent.rooms[roomKey] || { tokens: 0, costUsd: 0 }
+      agentRoom.tokens += tokens
+      agentRoom.costUsd += cost
+      agent.rooms[roomKey] = agentRoom
       byProvider.set(provider, agent)
     }
 

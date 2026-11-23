@@ -10,8 +10,20 @@ const report = {
     { date: '2026-11-21', total: 0.5, providers: { claude: 0.3, codex: 0.2 } },
     { date: '2026-11-22', total: 1, providers: { claude: 1 } },
   ],
-  rooms: [{ id: 'r1', name: 'snake', tokens: 1_500_000, costUsd: 1.5 }],
-  agents: [{ provider: 'claude', tokens: 1_200_000, costUsd: 1.2, share: 0.8 }],
+  rooms: [{
+    id: 'r1',
+    name: 'snake',
+    tokens: 1_500_000,
+    costUsd: 1.5,
+    providers: { claude: { tokens: 1_200_000, costUsd: 1.2 } },
+  }],
+  agents: [{
+    provider: 'claude',
+    tokens: 1_200_000,
+    costUsd: 1.2,
+    share: 0.8,
+    rooms: { r1: { tokens: 1_200_000, costUsd: 1.2 } },
+  }],
   budget: {
     monthlyBudgetUsd: 60,
     warnAtPercent: 80,
@@ -49,18 +61,32 @@ describe('usage settings panel', () => {
 
     const bars = wrapper.findAll('.usage-bar')
     await bars[1].trigger('mouseenter')
-    expect(wrapper.get('.usage-inspect').text()).toContain('2026-11-22')
-    expect(wrapper.get('.usage-inspect').text()).toContain('Claude $1.00')
+    expect(wrapper.get('.usage-tooltip').text()).toContain('2026-11-22')
+    expect(wrapper.get('.usage-tooltip').text()).toContain('Claude')
+    expect(wrapper.get('.usage-tooltip').text()).toContain('$1.00')
     await bars[1].trigger('click')
-    expect(wrapper.get('.usage-inspect').classes()).toContain('pinned')
+    expect(wrapper.get('.usage-tooltip').classes()).toContain('pinned')
     await bars[1].trigger('click')
-    expect(wrapper.get('.usage-inspect').classes()).not.toContain('pinned')
+    expect(wrapper.get('.usage-tooltip').classes()).not.toContain('pinned')
 
     const claude = wrapper.findAll('.legend-item').find(button => button.text().includes('Claude'))
     await claude.trigger('click')
     expect(claude.attributes('aria-pressed')).toBe('false')
     await bars[1].trigger('mouseenter')
-    expect(wrapper.get('.usage-inspect').text()).not.toContain('Claude $1.00')
+    expect(wrapper.get('.usage-tooltip').text()).not.toContain('Claude')
+
+    const room = wrapper.get('.room-row')
+    await room.trigger('click')
+    expect(room.classes()).toContain('active')
+    expect(wrapper.text()).toContain('By Agent · snake')
+
+    const agentRow = wrapper.get('.usage-agents tbody tr')
+    await agentRow.trigger('click')
+    expect(agentRow.classes()).toContain('active')
+    expect(wrapper.text()).toContain('By room · Claude')
+
+    await wrapper.get('.usage-filter-head .link-button').trigger('click')
+    expect(wrapper.text()).not.toContain('By room · Claude')
 
     const week = wrapper.findAll('button').find(button => button.text() === 'This week')
     await week.trigger('click')
