@@ -273,18 +273,43 @@
 
         <p v-if="marketError" class="settings-banner" role="alert">{{ marketError }}</p>
 
-        <section v-if="!marketSources.length" class="market-recommended">
-          <h3>{{ t('settingsUi.marketRecTitle') }}</h3>
-          <div class="market-recommended-grid">
-            <article v-for="item in RECOMMENDED_SOURCES" :key="item.url" class="market-recommended-card">
-              <div>
-                <strong>{{ item.name }}</strong>
-                <small>{{ t(item.leadKey) }}</small>
-              </div>
-              <button class="skill-promote" type="button" :disabled="marketBusy" @click="addRecommended(item.url)">{{ t('settingsUi.marketAdd') }}</button>
+        <section class="market-catalog">
+          <div class="market-section-head">
+            <h3>{{ t('settingsUi.marketCatalogTitle') }}</h3>
+            <span>{{ t('settingsUi.marketTotal', { count: catalog.length }) }}</span>
+          </div>
+          <div class="skills-chips">
+            <button type="button" :class="{ active: catalogCategory === 'all' }" @click="catalogCategory = 'all'">{{ t('settingsUi.nativeAll') }}</button>
+            <button
+              v-for="key in SKILL_CATEGORY_KEYS"
+              :key="key"
+              type="button"
+              :class="{ active: catalogCategory === key }"
+              @click="catalogCategory = key"
+            >{{ categoryLabel(key) }}</button>
+          </div>
+          <p v-if="catalogLoading" class="settings-note">{{ t('common.loading') }}</p>
+          <p v-else-if="!catalogVisible.length" class="settings-note">{{ t('settingsUi.marketNoEntries') }}</p>
+          <div v-else class="skills-grid">
+            <article v-for="entry in catalogVisible" :key="entry.id" class="skill-card market-card">
+              <header>
+                <span class="skill-avatar" :class="avatarTone(entry.name)">{{ entry.name.slice(0, 1).toUpperCase() }}</span>
+                <div><strong>{{ entry.name }}</strong><small>{{ entry.source }}</small></div>
+                <span v-if="entry.installed" class="skill-installed">{{ t('settingsUi.marketInstalled') }}</span>
+              </header>
+              <p>{{ entry.description || t('settingsUi.noDescription') }}</p>
+              <footer>
+                <span class="skill-category" :class="skillCategoryKey(entry)">{{ categoryLabel(skillCategoryKey(entry)) }}</span>
+                <button v-if="entry.installed" class="skills-row-action danger" type="button" :disabled="marketBusy" @click="removeCatalog(entry)">{{ t('settingsUi.marketRemove') }}</button>
+                <button v-else class="skill-promote" type="button" :disabled="marketBusy" @click="installCatalog(entry)">{{ t('settingsUi.marketAdd') }}</button>
+              </footer>
             </article>
           </div>
         </section>
+
+        <div class="market-section-head">
+          <h3>{{ t('settingsUi.marketMySources') }}</h3>
+        </div>
 
         <div v-if="marketSources.length" class="skills-subtabs market-sources" role="tablist">
           <button
@@ -358,10 +383,6 @@ const props = defineProps({
 })
 
 const PAGE_SIZE = 8
-const RECOMMENDED_SOURCES = Object.freeze([
-  { name: 'anthropics/skills', url: 'https://github.com/anthropics/skills', leadKey: 'settingsUi.marketRecAnthropic' },
-  { name: 'openai/skills', url: 'https://github.com/openai/skills', leadKey: 'settingsUi.marketRecOpenai' },
-])
 
 const inventory = ref({ agents: [], agentLabels: {}, skills: [], defaults: {}, counts: {}, storeError: null })
 const view = ref('platform')
@@ -381,6 +402,9 @@ const viewMode = ref('list')
 const nativePage = ref(1)
 const selectedNative = ref([])
 
+const catalog = ref([])
+const catalogCategory = ref('all')
+const catalogLoading = ref(false)
 const marketSources = ref([])
 const marketSourceId = ref('')
 const marketEntries = ref([])
@@ -426,6 +450,9 @@ const nativePaged = computed(() => nativeFiltered.value.slice((nativePage.value 
 const allPageSelected = computed(() => nativePaged.value.length > 0 && nativePaged.value.every(skill => selectedNative.value.includes(skill.id)))
 const marketVisible = computed(() => marketEntries.value.filter(entry => (
   marketCategory.value === 'all' || skillCategoryKey(entry) === marketCategory.value
+)))
+const catalogVisible = computed(() => catalog.value.filter(entry => (
+  catalogCategory.value === 'all' || skillCategoryKey(entry) === catalogCategory.value
 )))
 
 function filterByQuery(rows) {
@@ -524,11 +551,44 @@ async function load() {
 
 function switchToMarket() {
   view.value = 'market'
+  if (!catalog.value.length) loadCatalog()
   if (!marketSources.value.length) {
     loadMarketSources()
   } else if (marketSourceId.value && !marketEntries.value.length) {
     loadMarketEntries(marketSourceId.value)
   }
+}
+
+async function loadCatalog() {
+  if (typeof props.api?.marketCatalog !== 'function') return
+  catalogLoading.value = true
+  try {
+    catalog.value = await props.api.marketCatalog()
+  } catch (caught) {
+    marketError.value = errorText(caught)
+  } finally {
+    catalogLoading.value = false
+  }
+}
+
+async function installCatalog(entry) {
+  if (marketBusy.value) return
+  marketBusy.value = true
+  marketError.value = ''
+  try {
+    await props.api.marketInstallCatalog({ id: entry.id })
+    await Promise.all([loadCatalog(), load()])
+  } catch (caught) {
+    marketError.value = errorText(caught)
+  } finally {
+    marketBusy.value = false
+  }
+}
+
+function removeCatalog(entry) {
+  if (!entry.installedId) return
+  deleteTarget.value = { id: entry.installedId, name: entry.name }
+  deleteOpen.value = true
 }
 
 async function loadMarketSourceList() {
@@ -598,14 +658,6 @@ async function addMarketSource() {
   } finally {
     marketBusy.value = false
   }
-}
-
-async function addRecommended(url) {
-  if (marketBusy.value) return
-  sourceForm.url = url
-  sourceForm.ref = ''
-  sourceForm.subpath = ''
-  await addMarketSource()
 }
 
 async function removeMarketSource() {
@@ -742,7 +794,10 @@ async function afterDelete(result) {
   deleteTarget.value = null
   if (!result?.removed) return
   await load()
-  if (view.value === 'market' && marketSourceId.value) await loadMarketEntries(marketSourceId.value)
+  if (view.value === 'market') {
+    await loadCatalog()
+    if (marketSourceId.value && marketEntries.value.length) await loadMarketEntries(marketSourceId.value)
+  }
 }
 
 let unsubscribe = null
@@ -888,6 +943,10 @@ onBeforeUnmount(() => {
 .market-advanced { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .market-advanced input { height: 30px; padding: 0 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text); font: inherit; font-size: 11px; }
 .link-button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; padding: 0; }
+.market-catalog { display: grid; gap: 8px; }
+.market-section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 2px; }
+.market-section-head h3 { margin: 0; font-size: 14px; }
+.market-section-head span { color: var(--muted); font-size: 11px; }
 .market-sources { margin-top: 4px; }
 .market-recommended { display: grid; gap: 8px; }
 .market-recommended h3 { margin: 0; font-size: 14px; }

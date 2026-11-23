@@ -1815,6 +1815,8 @@ export default {
     'settingsUi.marketHeroUrl': '粘贴 Git 仓库地址',
     'settingsUi.marketHeroAdd': '添加来源',
     'settingsUi.marketRecTitle': '推荐来源',
+    'settingsUi.marketCatalogTitle': '精选目录',
+    'settingsUi.marketMySources': '我的来源',
     'settingsUi.marketRecAnthropic': 'Anthropic 官方 Skill 示例',
     'settingsUi.marketRecOpenai': 'Codex 精选 Skill',
     'settingsUi.marketNoSources': '还没有添加来源',

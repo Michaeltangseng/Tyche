@@ -57,6 +57,8 @@ function mockApi() {
     promote: vi.fn().mockResolvedValue(detail),
     remove: vi.fn().mockResolvedValue({ removed: true }),
     reveal: vi.fn().mockResolvedValue({ opened: true }),
+    marketCatalog: vi.fn().mockResolvedValue([]),
+    marketInstallCatalog: vi.fn().mockResolvedValue(detail),
     marketSources: vi.fn().mockResolvedValue([]),
     marketAddSource: vi.fn(),
     marketRemoveSource: vi.fn(),
@@ -137,23 +139,27 @@ describe('skill library presentation', () => {
     wrapper.unmount()
   })
 
-  it('offers the real GitHub sources when the market is empty', async () => {
+  it('shows the bundled catalog and installs an entry', async () => {
     const api = mockApi()
-    api.marketAddSource.mockResolvedValue({ id: `src-${'a'.repeat(32)}` })
+    api.marketCatalog.mockResolvedValue([{
+      id: 'anthropics/pdf',
+      name: 'pdf',
+      description: 'Work with PDF files',
+      source: 'anthropics/skills',
+      installed: false,
+      installedId: null,
+    }])
     const wrapper = mount(SkillsPage, { props: { api } })
     await flushPromises()
     await openMarket(wrapper)
-    expect(wrapper.text()).toContain('anthropics/skills')
-    expect(wrapper.text()).toContain('openai/skills')
+    expect(wrapper.text()).toContain('Curated catalog')
+    expect(wrapper.text()).toContain('pdf')
+    expect(wrapper.text()).toContain('Work with PDF files')
 
-    const add = wrapper.findAll('.market-recommended-card .skill-promote')[0]
+    const add = wrapper.findAll('.market-catalog .skill-promote').find(button => button.text() === 'Add')
     await add.trigger('click')
     await flushPromises()
-    expect(api.marketAddSource).toHaveBeenCalledWith({
-      url: 'https://github.com/anthropics/skills',
-      ref: '',
-      subpath: '',
-    })
+    expect(api.marketInstallCatalog).toHaveBeenCalledWith({ id: 'anthropics/pdf' })
     wrapper.unmount()
   })
 

@@ -1815,6 +1815,8 @@ export default {
     'settingsUi.marketHeroUrl': 'Paste a Git repository URL',
     'settingsUi.marketHeroAdd': 'Add source',
     'settingsUi.marketRecTitle': 'Recommended sources',
+    'settingsUi.marketCatalogTitle': 'Curated catalog',
+    'settingsUi.marketMySources': 'My sources',
     'settingsUi.marketRecAnthropic': 'Anthropic official Skill examples',
     'settingsUi.marketRecOpenai': 'Curated Codex Skills',
     'settingsUi.marketNoSources': 'No sources yet',
