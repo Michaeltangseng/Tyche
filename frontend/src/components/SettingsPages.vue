@@ -123,11 +123,7 @@
         <div class="mock-line"><strong>{{ t('settingsUi.denyList') }}</strong><span class="settings-pills"><span class="settings-pill deny">rm -rf</span><span class="settings-pill deny">sudo</span><span class="settings-pill deny">git push --force</span><button class="chip" type="button">+ {{ t('settingsUi.addChip') }}</button></span><small>{{ t('settingsUi.denyHint') }}</small></div>
         <div class="mock-line"><strong>{{ t('settingsUi.network') }}</strong><button class="settings-switch" :class="{ on: allowNetwork }" type="button" @click="allowNetwork = !allowNetwork"><i /></button><small>{{ t('settingsUi.networkOff') }}</small></div>
       </article>
-      <article class="settings-card">
-        <div class="settings-card-head"><div><h2>{{ t('settingsUi.skillTrust') }}</h2><p>{{ t('settingsUi.trustLead') }}</p></div><button class="agent-config-link" type="button">{{ t('settingsUi.revoke') }}</button></div>
-        <div class="mock-line"><strong>frontend-design · Claude Code · {{ t('settingsUi.trustState.trusted') }} · {{ t('settingsUi.trustRow') }}</strong></div>
-        <p class="settings-note">{{ t('settingsUi.noOtherTrust') }}</p>
-      </article>
+      <SkillTrustPolicy :api="skillApi" />
       <article class="settings-card">
         <div class="settings-card-head"><div><h2>{{ t('settingsUi.secrets') }}</h2><p>{{ t('settingsUi.secretsLead') }}</p></div><button class="primary-button" type="button">+ {{ t('settingsUi.addSecret') }}</button></div>
         <div class="mock-line"><strong>OPENAI_API_KEY</strong><span class="agent-mono">•••••••3f9a</span><small>{{ t('settingsUi.keychainShort') }}</small></div>
@@ -333,6 +329,7 @@ import { computed, reactive, ref, unref } from 'vue'
 import { publicAsset } from '../catalog.js'
 import { locale as currentLocale, setLocale, t } from '../i18n.js'
 import SkillsPage from './skills/SkillsPage.vue'
+import SkillTrustPolicy from './skills/SkillTrustPolicy.vue'
 
 const props = defineProps({
   section: { type: String, required: true },

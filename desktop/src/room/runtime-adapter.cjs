@@ -550,6 +550,16 @@ function createOarRuntimeAdapter({
       })
       const workspace = run.workspaceRef || room?.workspace
       if (!workspace) throw adapterError('ROOM_WORKSPACE_REQUIRED', `task ${task.id} has no workspace`)
+      let skillBindings = []
+      if (skillSource && Array.isArray(role.skills) && role.skills.length) {
+        try {
+          skillBindings = (skillSource.materialize(role.provider, role.skills).skills || []).map(skill => ({
+            id: skill.id,
+            contentHash: skill.contentHash,
+            delivery: skill.delivery,
+          }))
+        } catch { skillBindings = [] }
+      }
       const roomSession = sessions.ensureSession({
         scopeType: 'task',
         scopeId: task.id,
@@ -558,7 +568,7 @@ function createOarRuntimeAdapter({
         promptRevision: rolePromptRevision(run.roleId),
         permissionMode: role.nativePermission || 'read-only',
         workspaceRef: workspace,
-        skillBindings: [],
+        skillBindings,
         model: role.model ?? null,
         thinkingLevel: null,
         laneKind,

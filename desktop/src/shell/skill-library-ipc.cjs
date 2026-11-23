@@ -13,6 +13,8 @@ const CHANNELS = Object.freeze({
   summary: 'skill-library:summary',
   list: 'skill-library:list',
   detail: 'skill-library:detail',
+  policy: 'skill-library:policy',
+  updatePolicy: 'skill-library:policy-update',
   trust: 'skill-library:trust',
   revokeTrust: 'skill-library:revoke-trust',
   setEligible: 'skill-library:set-eligible',
@@ -114,6 +116,20 @@ function registerSkillLibraryIpc({ registerTrustedHandle, getLibrary, shell } = 
   registerTrustedHandle(CHANNELS.detail, (input) => {
     const parsed = assertInput(input, ['id'])
     return library().detail(skillId(parsed.id))
+  })
+
+  registerTrustedHandle(CHANNELS.policy, () => library().policy())
+
+  registerTrustedHandle(CHANNELS.updatePolicy, (input) => {
+    const fields = ['untrustedByDefault', 'revokeOnChange', 'denySkillNetwork']
+    const parsed = assertInput(input, fields)
+    if (!fields.some(key => parsed[key] !== undefined)) throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
+    for (const key of fields) {
+      if (parsed[key] !== undefined && typeof parsed[key] !== 'boolean') {
+        throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
+      }
+    }
+    return library().updatePolicy(parsed)
   })
 
   registerTrustedHandle(CHANNELS.trust, (input) => {

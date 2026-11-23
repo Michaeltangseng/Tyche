@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import SkillsPage from '../../components/skills/SkillsPage.vue'
+import SkillTrustPolicy from '../../components/skills/SkillTrustPolicy.vue'
 import { setLocale } from '../../i18n.js'
 import {
   formatBytes,
@@ -150,6 +151,24 @@ describe('skill library presentation', () => {
     await flushPromises()
     expect(wrapper.get('table').text()).not.toContain('pptx')
     expect(wrapper.get('table').text()).toContain('review')
+    wrapper.unmount()
+  })
+
+  it('loads and updates the Skill trust policy', async () => {
+    const api = {
+      summary: vi.fn().mockResolvedValue({
+        policy: { untrustedByDefault: true, revokeOnChange: true, denySkillNetwork: false },
+        counts: { reauth: 2 },
+      }),
+      updatePolicy: vi.fn().mockResolvedValue({}),
+    }
+    const wrapper = mount(SkillTrustPolicy, { props: { api } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('2 Skills need approval')
+    const switches = wrapper.findAll('.settings-switch')
+    await switches[2].trigger('click')
+    await flushPromises()
+    expect(api.updatePolicy).toHaveBeenCalledWith({ denySkillNetwork: true })
     wrapper.unmount()
   })
 

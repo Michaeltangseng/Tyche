@@ -84,13 +84,14 @@ const props = defineProps({
   api: { type: Object, required: true },
   skills: { type: Array, default: () => [] },
   agentLabels: { type: Object, default: () => ({}) },
+  policy: { type: Object, default: () => ({}) },
 })
 const emit = defineEmits(['close', 'done'])
 
 const query = ref('')
 const selected = ref([])
 const activeId = ref('')
-const trustSelected = ref(true)
+const trustSelected = ref(props.policy?.untrustedByDefault === false)
 const onConflict = ref('rename')
 const busy = ref(false)
 const error = ref('')

@@ -248,6 +248,35 @@ test('a v1 inventory migrates eligibility, trust, and defaults', (t) => {
   assert.deepEqual(findSkill(library, 'claude/global/pptx').available, ['claude'])
 })
 
+test('trust policy blocks network approvals and clears defaults on content change', (t) => {
+  const { catalog, home, library } = setup(t)
+  const native = writeNativeSkill(home, '.claude', 'net-skill', 'Network helper', 'Run the helper.')
+  fs.mkdirSync(path.join(native, 'scripts'))
+  fs.writeFileSync(path.join(native, 'scripts', 'run.sh'), 'curl https://example.com\n', { mode: 0o755 })
+  catalog.invalidate('claude')
+  library.invalidate()
+
+  assert.equal(library.policy().denySkillNetwork, false)
+  library.updatePolicy({ denySkillNetwork: true })
+  const imported = library.importFromAgent({ ids: ['claude/global/net-skill'], trust: true })
+  assert.equal(imported.imported[0].approved, false)
+  assert.equal(findSkill(library, 'shared/library/net-skill').trust, 'untrusted')
+  assert.throws(
+    () => library.trust('shared/library/net-skill'),
+    /SKILL_NETWORK_DENIED/,
+  )
+
+  library.updatePolicy({ denySkillNetwork: false })
+  library.trust('shared/library/net-skill')
+  assert.equal(findSkill(library, 'shared/library/net-skill').trust, 'trusted')
+  library.rememberDefault('codex', ['shared/library/net-skill'])
+  assert.deepEqual(library.loadStore().defaults.codex, ['shared/library/net-skill'])
+
+  library.update({ id: 'shared/library/net-skill', description: 'Network helper updated' })
+  assert.deepEqual(library.loadStore().defaults.codex, [])
+  assert.equal(findSkill(library, 'shared/library/net-skill').trust, 'changed')
+})
+
 test('duplicate imports rename by default and can replace explicitly', (t) => {
   const { home, library } = setup(t)
   const first = library.importFromAgent({ ids: ['claude/global/pptx'], trust: true })

@@ -41,6 +41,16 @@ function stringArray(value) {
   return Array.isArray(value) ? value.filter(item => typeof item === 'string') : []
 }
 
+function defaultsMap(value) {
+  if (!isPlainObject(value)) return {}
+  const result = {}
+  for (const [agent, ids] of Object.entries(value)) {
+    if (typeof agent !== 'string' || !Array.isArray(ids)) continue
+    result[agent] = stringArray(ids)
+  }
+  return result
+}
+
 function normalizeStore(value) {
   if (!isPlainObject(value) || value.schemaVersion !== SCHEMA_VERSION) {
     throw skillError('SKILL_LIBRARY_STORE_INVALID')
@@ -58,8 +68,7 @@ function normalizeStore(value) {
     skills: plainMap(value.skills),
     approvedHashes: plainMap(value.approvedHashes),
     projections: plainMap(value.projections),
-    defaults: Object.fromEntries(Object.entries(plainMap(value.defaults))
-      .map(([agent, ids]) => [agent, stringArray(ids)])),
+    defaults: defaultsMap(value.defaults),
   }
 }
 

@@ -121,6 +121,7 @@
       :api="api"
       :skills="skills"
       :agent-labels="agentLabelsAll"
+      :policy="inventory.policy"
       @close="importOpen = false"
       @done="afterImport"
     />
@@ -251,6 +252,7 @@ const ERROR_KEYS = {
   SKILL_UNSAFE: 'skillUnsafe',
   SKILL_UNSUPPORTED_AGENT: 'skillUnsupportedAgent',
   SKILL_SELECTION_INVALID: 'skillSelectionInvalid',
+  SKILL_NETWORK_DENIED: 'networkDenied',
 }
 
 function errorText(caught) {

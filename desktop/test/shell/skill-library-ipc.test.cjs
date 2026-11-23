@@ -47,6 +47,23 @@ test('skill library IPC validates ids and resolves reveal paths in the main proc
   assert.equal(typeof handlers.get('skill-library:summary'), 'function')
   const summary = handlers.get('skill-library:summary')()
   assert.equal(summary.counts.native, 1)
+  assert.equal(handlers.get('skill-library:policy')().untrustedByDefault, true)
+  assert.equal(
+    handlers.get('skill-library:policy-update')({ denySkillNetwork: true }).denySkillNetwork,
+    true,
+  )
+  assert.throws(
+    () => handlers.get('skill-library:policy-update')({ denySkillNetwork: 'yes' }),
+    /SKILL_LIBRARY_INPUT_INVALID/,
+  )
+  assert.throws(
+    () => handlers.get('skill-library:policy-update')({}),
+    /SKILL_LIBRARY_INPUT_INVALID/,
+  )
+  assert.throws(
+    () => handlers.get('skill-library:policy-update')({ denySkillNetwork: true, path: '/tmp' }),
+    /SKILL_LIBRARY_INPUT_INVALID/,
+  )
 
   const listed = handlers.get('skill-library:list')()
   assert.equal(listed.skills[0].id, 'claude/global/pptx')

@@ -487,11 +487,37 @@ class SkillLibrary {
     return this.detailDto(record, store)
   }
 
+  policy() {
+    return this.loadStore().policy
+  }
+
+  updatePolicy(input = {}) {
+    const keys = ['untrustedByDefault', 'revokeOnChange', 'denySkillNetwork']
+    if (!input || typeof input !== 'object' || Array.isArray(input)
+        || !keys.some(key => input[key] !== undefined)) {
+      throw skillError('SKILL_POLICY_INVALID')
+    }
+    const store = this.loadStore()
+    const next = { ...store.policy }
+    for (const key of keys) {
+      if (input[key] === undefined) continue
+      if (typeof input[key] !== 'boolean') throw skillError('SKILL_POLICY_INVALID')
+      next[key] = input[key]
+    }
+    store.policy = next
+    this.saveStore(store)
+    this.notify()
+    return next
+  }
+
   trust(id) {
     const record = this.recordById(id)
     if (!record.contentHash) throw skillError(record.tooLarge ? 'SKILL_TOO_LARGE' : 'SKILL_UNREADABLE')
     const store = this.loadStore()
     const risk = this.riskFor(record)
+    if (store.policy.denySkillNetwork && risk.labels.includes('network')) {
+      throw skillError('SKILL_NETWORK_DENIED')
+    }
     const approvedAt = nowIso(this.now)
     store.approvedHashes[record.contentHash] = {
       approvedAt,
@@ -724,9 +750,10 @@ class SkillLibrary {
         limits: this.limits,
       })
       if (!copied.contentHash) throw skillError('SKILL_IMPORT_INVALID')
-      const approved = trust === true || record.trust === 'trusted'
       const risk = scanSkill(staging, this.limits)
       risk.scannedHash = copied.contentHash
+      const denied = store.policy.denySkillNetwork && risk.labels.includes('network')
+      const approved = !denied && (trust === true || record.trust === 'trusted')
       const targetDirectory = this.libraryPath(resolved.name)
       if (resolved.replace && fs.existsSync(targetDirectory)) {
         backupProjection(targetDirectory, this.backupRoot, resolved.name, this.now)
@@ -862,23 +889,26 @@ class SkillLibrary {
       })
       fs.renameSync(staging, this.libraryPath(name))
       const store = this.loadStore()
+      const allowApproval = !(store.policy.denySkillNetwork && risk.labels.includes('network'))
       store.skills[id] = {
         name,
         sourceKind: 'shared',
         origin: { type: 'created' },
         version: meta.version || null,
         contentHash: hashed.contentHash,
-        approvedHash: hashed.contentHash,
+        approvedHash: allowApproval ? hashed.contentHash : null,
         nativeEligible: [],
         createdAt: nowIso(this.now),
         updatedAt: nowIso(this.now),
       }
-      store.approvedHashes[hashed.contentHash] = {
-        approvedAt: nowIso(this.now),
-        preview: meta.preview,
-        fileManifest: meta.fileManifest,
-        risk,
-        scannedHash: hashed.contentHash,
+      if (allowApproval) {
+        store.approvedHashes[hashed.contentHash] = {
+          approvedAt: nowIso(this.now),
+          preview: meta.preview,
+          fileManifest: meta.fileManifest,
+          risk,
+          scannedHash: hashed.contentHash,
+        }
       }
       this.saveStore(store)
       this.notify()
@@ -927,6 +957,11 @@ class SkillLibrary {
       contentHash: meta.contentHash,
       version: meta.version || record.version || null,
       updatedAt: nowIso(this.now),
+    }
+    if (store.policy.revokeOnChange) {
+      for (const agent of Object.keys(store.defaults)) {
+        store.defaults[agent] = store.defaults[agent].filter(skillId => skillId !== id)
+      }
     }
     const provenance = readProvenance(record.sourceDirectory)
     if (provenance) {

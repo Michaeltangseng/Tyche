@@ -150,6 +150,17 @@ function createEngine({
           const room = repository.getRoom(chat.roomId)
           const revisionRow = database.prepare('SELECT MAX(revision) AS revision FROM role_prompt_revisions WHERE role_id = ?').get(role.id)
           const promptRevision = revisionRow?.revision ?? 1
+          let equippedSkills = []
+          if (skillSource && Array.isArray(role.skills) && role.skills.length) {
+            try {
+              equippedSkills = skillSource.materialize(role.provider, role.skills).skills || []
+            } catch { equippedSkills = [] }
+          }
+          const skillBindings = equippedSkills.map(skill => ({
+            id: skill.id,
+            contentHash: skill.contentHash,
+            delivery: skill.delivery,
+          }))
           const session = sessions.ensureSession({
             scopeType: 'chat',
             scopeId: reply.chatId,
@@ -158,7 +169,7 @@ function createEngine({
             promptRevision,
             permissionMode: role.nativePermission || 'read-only',
             workspaceRef: room.workspace,
-            skillBindings: [],
+            skillBindings,
             model: role.model,
             thinkingLevel: null,
             created: () => {},
@@ -182,12 +193,6 @@ function createEngine({
               } catch { /* fall back to the providers enabled on the room */ }
             }
             speakable = rosterProviders(room.providers, launchIds)
-          }
-          let equippedSkills = []
-          if (skillSource && Array.isArray(role.skills) && role.skills.length) {
-            try {
-              equippedSkills = skillSource.materialize(role.provider, role.skills).skills || []
-            } catch { equippedSkills = [] }
           }
           let skillInventory
           if (role.isCaptain === true && skillSource) {

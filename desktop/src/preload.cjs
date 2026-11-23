@@ -151,6 +151,8 @@ if (isLocalDocument) Object.assign(desktopApi, {
     summary: () => ipcRenderer.invoke('skill-library:summary'),
     list: input => ipcRenderer.invoke('skill-library:list', input),
     detail: input => ipcRenderer.invoke('skill-library:detail', input),
+    policy: () => ipcRenderer.invoke('skill-library:policy'),
+    updatePolicy: input => ipcRenderer.invoke('skill-library:policy-update', input),
     trust: input => ipcRenderer.invoke('skill-library:trust', input),
     revokeTrust: input => ipcRenderer.invoke('skill-library:revoke-trust', input),
     setEligible: input => ipcRenderer.invoke('skill-library:set-eligible', input),

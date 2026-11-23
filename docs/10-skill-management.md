@@ -6,7 +6,7 @@ This document designs the Skill management mechanism for the settings page, the 
 
 It supersedes the Skill parts of `system-settings/多Agent平台设置界面重构与Skills页设计图-assets-20261122/Tyche_设置界面重构_实施交接文档.md` §6.2.
 
-**Implementation status (2026-11-23):** Slices A and B are implemented: the v2 library and migration, content-hash trust, import, authoring, projection copies with markers, drift/outdated/conflict handling, the settings matrix and detail panel, the import/editor dialogs, and native/prompt Room delivery. Market sources, plugin/repo-shaped Skills, project scope, takeover of unmarked folders, and session-binding rotation remain for later slices. The old `skill-inventory.cjs` is no longer wired at runtime; its v1 store is migrated on first launch.
+**Implementation status (2026-11-23):** Slices A and B are implemented: the v2 library and migration, content-hash trust, import, authoring, projection copies with markers, drift/outdated/conflict handling, the settings matrix and detail panel, row edit/delete actions, the import/editor dialogs, native/prompt Room delivery, real session skill bindings, and the permissions trust-policy card. Market sources, plugin/repo-shaped Skills, project scope, takeover of unmarked folders, and the Agent detail/Room drawer Skill views remain for later slices. The old `skill-inventory.cjs` is no longer wired at runtime; its v1 store is migrated on first launch.
 
 ## 1. Goals and scope
 
