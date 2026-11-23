@@ -136,7 +136,7 @@ ce6f6ec feat(skills): add the shared Skill library and trust-bound distribution
 
 ### 2.6 Room 集成
 
-- 角色仍然从可信、可用的 Skill 中选择，最多 8 个。
+- 角色仍然从可信、可用的 Skill 中选择；数量不设平台上限。
 - 有有效原生投影（`deployed`）时，简报只提示“已安装原生版本”，不再注入完整正文。
 - 没有有效投影时，沿用原来的 prompt 注入。
 - 简报里 `delivery` 为 `native` 的条目只输出一行说明；`prompt` 条目输出正文。
@@ -375,7 +375,7 @@ scannedHash
 
 ### 6.6 Room
 
-1. 角色保存 `skills_json`（≤8 个 ID）。
+1. 角色保存 `skills_json`（不设数量上限）。
 2. `SkillLibrary.materialize(provider, ids)` 返回技能；若该 Agent 有 `deployed` 投影，`delivery='native'`，否则 `delivery='prompt'`。
 3. `engine` / `runtime-adapter` 把 `{id, contentHash, delivery}` 传给 `ensureSession`。
 4. `briefing` 对 native 条目只写一行“已原生安装，按需使用”；prompt 条目写正文。

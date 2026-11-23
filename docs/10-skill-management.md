@@ -69,7 +69,7 @@ Source ──► Release ──► Skill (library content)
 | `TrustRecord` | Approval of one content hash | `contentHash`, `approvedAt`, `preview`, `fileManifest`, `riskAtApproval` |
 | `Projection` | A placement of a Skill into an Agent | `id`, `skillId`, `agent`, `scope`, `mode` (`copy` / `symlink` / `nativeOrigin`), `targetRef` (internal), `sourceRef` for symlinks, `displayPath`, `contentHash`, `deployedAt` |
 | `Policy` | Defaults and safety switches | `untrustedByDefault`, `revokeOnChange`, `denySkillNetwork` |
-| `Role binding` | A Room role's equipped Skills | `role.skills: [skillId]`, max 8 |
+| `Role binding` | A Room role's equipped Skills | `role.skills: [skillId]`, no platform cap |
 
 ### 3.2 IDs and names
 
@@ -365,7 +365,7 @@ The scan is advisory. It is not a sandbox proof. The review page says so.
 
 ### 9.1 Role selection
 
-- `role.skills` keeps the current max of 8 IDs.
+- `role.skills` has no platform-enforced cap. How many Skills a role carries is a role-configuration decision; the renderer may guide the user, but storage and validation do not truncate or reject by count.
 - A native Skill is selectable only for its origin Agent and only when trusted and eligible.
 - A shared or market Skill is selectable for any Agent that reads the format when it is trusted. Projection is not required for role use; prompt delivery works without writing files.
 - The Captain's briefing inventory uses the same trusted set, capped at 24 per provider, and `create_role` / `add_members` validate the chosen IDs through `SkillLibrary.assertSelectable`.
@@ -402,7 +402,7 @@ prompt body ≈ ceil(bodyChars / 4)
 native projection adds no prompt body
 ```
 
-Label it as an estimate. The hard limits remain 8 role Skills and 24 Captain inventory entries.
+Label it as an estimate. Role skill count has no platform cap; the Captain inventory briefing is capped at 24 entries per provider.
 
 ## 10. UI design
 
