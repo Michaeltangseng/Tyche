@@ -1205,11 +1205,17 @@ async function commitTitleEdit(event) {
 const roleSkillChoices = computed(() => selectableSkills(skillInventoryState.value.skills, roleDraft.value?.provider))
 
 async function loadSkillInventory() {
-  if (typeof props.api?.skillInventory !== 'function') return
+  if (typeof props.api?.skillInventory !== 'function') return false
   try {
     const listed = await props.api.skillInventory()
-    if (listed && Array.isArray(listed.skills)) skillInventoryState.value = listed
-  } catch { /* the role dialog still saves without a fresh inventory */ }
+    if (!listed || !Array.isArray(listed.skills)) return false
+    skillInventoryState.value = listed
+    return true
+  } catch {
+    // Keep the previous selection intact when the inventory cannot be read;
+    // filtering it against an empty list would silently clear the role.
+    return false
+  }
 }
 
 function applyRoleSkills(provider, ids) {
@@ -1236,8 +1242,8 @@ function openNewRole() {
   showPortraitPage(roleDraft.value.portrait)
   roleSettingsOpen.value = true
   nextTick(() => roleSettingsRef.value?.focus?.())
-  loadSkillInventory().then(() => {
-    if (!roleDraft.value?.id) {
+  loadSkillInventory().then((loaded) => {
+    if (loaded && !roleDraft.value?.id) {
       applyRoleSkills(roleDraft.value?.provider, skillInventoryState.value.defaults?.[roleDraft.value?.provider] || [])
     }
   })
@@ -1264,8 +1270,8 @@ function openRoleSettings(roleId) {
   roleSettingsOpen.value = true
   nextTick(() => roleSettingsRef.value?.focus?.())
   const equipped = roleDraft.value.skills
-  loadSkillInventory().then(() => {
-    if (roleDraft.value?.id === role.id) applyRoleSkills(roleDraft.value.provider, equipped)
+  loadSkillInventory().then((loaded) => {
+    if (loaded && roleDraft.value?.id === role.id) applyRoleSkills(roleDraft.value.provider, equipped)
   })
 }
 
