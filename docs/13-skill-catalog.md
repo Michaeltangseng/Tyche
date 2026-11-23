@@ -6,7 +6,7 @@
 
 ## 1. 产品决定
 
-1. **Agent 原生 Skill 只读展示。** 平台不导入、不修改、不分发原生目录里的 Skill。
+1. **Agent 原生 Skill 只读展示。** 原生目录不改动；只提供单条或批量的"提升为平台"，把内容复制一份到平台库。
 2. **平台只管理自己的 Skill。** 平台 Skill 来自市场下载或手动新建，存在 Tyche 的共享库里。
 3. **不设信任。** 没有信任状态、审批、撤销或策略开关。Skill 进入平台库即可用。
 4. **不做分发。** 不再向 Agent 目录写文件，也没有 Agent 列开关。平台库就是一份目录清单。
@@ -49,7 +49,7 @@ Native Agent dirs ──► read-only display
 
 | 文件 | 责任 |
 | --- | --- |
-| `desktop/src/skills/skill-library.cjs` | 平台库扫描、创建/编辑/删除、市场安装/更新、角色选择校验、简报物化 |
+| `desktop/src/skills/skill-library.cjs` | 平台库扫描、创建/编辑/删除、原生提升、市场安装/更新、角色选择校验、简报物化 |
 | `desktop/src/skills/skill-library-store.cjs` | v3 JSON 状态、原子写、v1/v2 迁移 |
 | `desktop/src/skills/skill-market.cjs` | Git 来源、浅克隆、预览、安装、更新 |
 | `desktop/src/skills/skill-adapters.cjs` | Agent 标签和原生目录发现辅助 |
@@ -82,6 +82,7 @@ list({ filter?, query? })
 detail({ id })
 create({ name, description, body })
 update({ id, description?, body? })
+promote({ id })                 # copy one native Skill into the platform library
 remove({ id, confirmName })
 reveal({ id })
 marketSources()
@@ -108,13 +109,16 @@ rememberSkillDefault({ agent, skillIds })
 
 **Settings › Skills**
 
-- 顶部三个 tab：**平台 Skill / Agent 原生 Skill / Skill 市场**。
-- **平台 Skill**：搜索 + 列表（名称与描述、来源、更新时间、操作）。共享 Skill 可编辑/删除；市场 Skill 可删除。
-- **Agent 原生 Skill**：顶部按 Agent 横向排列 tab，下面是该 Agent 的原生 Skill 列表；只读，无操作。
-- **Skill 市场**：顶部按来源（Git 来源）排列 tab，可添加/移除来源；下面是该来源的 Skill 列表，操作列提供"添加 / 移除 / 更新"：
+- 顶部四张统计卡：平台 Skill 数、原生 Skill 数（含按 Agent 的分布）、已接入 Agent、市场来源（原生 tab 下显示本周新增）。
+- 三个 tab：**平台 Skill / Agent 原生 Skill / Skill 市场**。
+- **平台 Skill**：空状态提供"新建 / 从原生提升 / 从市场安装"三个入口；有内容时显示搜索和列表（名称与描述、分类、来源、更新时间、操作）。共享 Skill 可编辑/删除；市场 Skill 可删除。
+- **Agent 原生 Skill**：顶部按 Agent 排列 tab（末尾"全部"）；工具栏支持搜索、分类筛选、排序、列表/网格切换和批量选择；列表含"提升为平台"和打开源目录。
+- **Skill 市场**：顶部 Git 来源 hero（URL + 可选 ref/subpath + 添加来源）；已有来源以 tab 排列，可移除；条目以卡片展示，按分类筛选，操作提供"添加 / 移除 / 更新"：
   - 未安装 → 添加（仓库型默认整仓安装）；
   - 已安装且内容一致 → 移除；
   - 已安装但上游有新提交 → 更新 / 移除。
+- **提升为平台** 是单条/批量操作：复制原生 Skill 到平台库，原生目录不变。没有"从原生导入"总入口。
+- 分类由名称和描述的关键词自动推断（数据 / 效率 / 设计 / 研究 / 创意 / 开发 / 其他），不是持久化字段。
 - 不显示右侧详情面板，也不显示信任、风险、正文预览、文件清单。
 
 **角色配置**
