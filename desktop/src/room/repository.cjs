@@ -49,6 +49,7 @@ function roleView(row) {
     model: row.model,
     capabilities: parseJson(row.capabilities_json, []),
     nativePermission: row.native_permission,
+    skills: parseJson(row.skills_json, []),
     isCaptain: row.is_captain === 1,
     status: row.status,
     createdAt: row.created_at,
@@ -69,6 +70,16 @@ function participantView(row) {
     provider: row.provider,
     isCaptain: row.is_captain === 1,
   }
+}
+
+const SKILL_ID = /^[a-z0-9][a-z0-9._-]{0,63}(?:\/[a-z0-9][a-z0-9._-]{0,80}){2}$/
+
+function skillIds(value) {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value) || value.length > 8 || value.some(id => typeof id !== 'string' || !SKILL_ID.test(id))) {
+    throw new TypeError('ROOM_ROLE_SKILLS_INVALID')
+  }
+  return [...new Set(value)]
 }
 
 function createRoomRepository(roomDb) {
@@ -126,6 +137,7 @@ function createRoomRepository(roomDb) {
     createRole({
       chatId, displayName, provider, prompt, isCaptain = false, nativePermission = 'read-only',
       capabilities = [], model = null, responsibilities = '', portrait = '', createdBy = 'user',
+      skills = [],
     }) {
       if (typeof displayName !== 'string' || displayName.length === 0) throw new TypeError('ROOM_ROLE_NAME_REQUIRED')
       if (typeof provider !== 'string' || provider.length === 0) throw new TypeError('ROOM_ROLE_PROVIDER_REQUIRED')
@@ -137,12 +149,13 @@ function createRoomRepository(roomDb) {
         : 'user'
       const id = crypto.randomUUID()
       const at = timestamp()
+      const selectedSkills = skillIds(skills)
       roomDb.withTransaction(() => {
         database.prepare(`
           INSERT INTO chat_roles
-            (id, chat_id, display_name, responsibilities, provider, model, capabilities_json, native_permission, portrait, is_captain, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(id, chatId, displayName, duty, provider, model, JSON.stringify(capabilities), nativePermission, typeof portrait === 'string' ? portrait.slice(0, 40) : '', isCaptain ? 1 : 0, at, at)
+            (id, chat_id, display_name, responsibilities, provider, model, capabilities_json, native_permission, portrait, skills_json, is_captain, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(id, chatId, displayName, duty, provider, model, JSON.stringify(capabilities), nativePermission, typeof portrait === 'string' ? portrait.slice(0, 40) : '', JSON.stringify(selectedSkills), isCaptain ? 1 : 0, at, at)
         database.prepare(`
           INSERT INTO role_prompt_revisions (id, role_id, revision, prompt, created_by, created_at)
           VALUES (?, ?, 1, ?, ?, ?)

@@ -54,6 +54,7 @@ function createRoomService({
   onTaskSettled: onTaskSettledEvent = null,
   runtimeWrapperPath = null,
   runtimeStateDir = null,
+  skillInventory = null,
 } = {}) {
   if (!roomDb || !repository) throw new TypeError('ROOM_SERVICE_DEPENDENCIES_REQUIRED')
   const { database } = roomDb
@@ -107,6 +108,7 @@ function createRoomService({
       if (typeof runtimeAdapter?.launchProviderIds !== 'function') return null
       return runtimeAdapter.launchProviderIds()
     },
+    skillSource: skillInventory,
   })
   const queue = createTaskQueue({
     roomDb,
@@ -163,6 +165,9 @@ function createRoomService({
       const known = runtimeAdapter.hasLauncher(provider)
       return known === null ? true : known
     },
+    selectSkills: skillInventory
+      ? (provider, ids) => skillInventory.assertSelectable(provider, ids)
+      : null,
   })
 
   function onTaskSettled(info) {

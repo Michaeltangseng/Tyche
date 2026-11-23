@@ -39,7 +39,7 @@ const PREVIOUS_CAPTAIN_PROMPT = [
   'Do not create tasks yourself; the assigned role owns its task.',
   'Keep replies short and quote task numbers when useful.',
 ].join(' ')
-const DEFAULT_CAPTAIN_PROMPT = [
+const CAPTAIN_PROMPT_BEFORE_SKILLS = [
   'You are the Captain of this chat.',
   'When the current members cannot cover the request, call create_roles with a name, provider, responsibilities, and prompt for each new member.',
   'Do not call assign_in_group in the same turn as create_roles. The next user message is the instruction to start or change the team.',
@@ -48,6 +48,10 @@ const DEFAULT_CAPTAIN_PROMPT = [
   'Do not create tasks yourself; the assigned role owns its task.',
   'When the user states a request, call rename_chat once with one short sentence that names this chat. Skip it when rename_chat says the title is locked or already fits.',
   'Keep replies short and quote task numbers when useful.',
+].join(' ')
+const DEFAULT_CAPTAIN_PROMPT = [
+  CAPTAIN_PROMPT_BEFORE_SKILLS,
+  'When you add a member, choose skills only from the Skills available to equip section and pass those skill ids. Do not invent skill names.',
 ].join(' ')
 const DEFAULT_WORKER_PROMPT = [
   'You execute tasks assigned to you in this chat.',
@@ -66,6 +70,7 @@ const LEGACY_CAPTAIN_PROMPT = [
 
 function isCaptainPrompt(value) {
   return value === DEFAULT_CAPTAIN_PROMPT
+    || value === CAPTAIN_PROMPT_BEFORE_SKILLS
     || value === PREVIOUS_CAPTAIN_PROMPT
     || value === LEGACY_CAPTAIN_PROMPT
 }
@@ -184,6 +189,7 @@ function createRoomHost({
   now = () => Date.now(),
   onChanged = () => {},
   onRuntimeEvent = () => {},
+  skillInventory = null,
 } = {}) {
   if (typeof privateRoot !== 'string' || !path.isAbsolute(privateRoot)) {
     throw new TypeError('ROOM_HOST_PRIVATE_ROOT_REQUIRED')
@@ -204,10 +210,12 @@ function createRoomHost({
       if (!view) return
       try { onRuntimeEvent(view) } catch { /* event observers are best-effort */ }
     },
+    skillInventory,
     adapterFactory: adapterFactory || (deps => createOarRuntimeAdapter({
       ...deps,
       env,
       now,
+      skillSource: skillInventory,
     })),
     runtimeWrapperPath,
     runtimeStateDir,
@@ -335,6 +343,7 @@ function createRoomHost({
           nativePermission: role.native_permission,
           capabilities: JSON.parse(role.capabilities_json || '[]'),
           model: role.model,
+          skills: JSON.parse(role.skills_json || '[]'),
         })
         repository.addParticipant({ chatId, roleId })
       }
@@ -429,6 +438,7 @@ function createRoomHost({
         prompt === DEFAULT_WORKER_PROMPT
         || prompt === LEGACY_CAPTAIN_PROMPT
         || prompt === PREVIOUS_CAPTAIN_PROMPT
+        || prompt === CAPTAIN_PROMPT_BEFORE_SKILLS
       )) {
         insertPromptRevision(role.id, DEFAULT_CAPTAIN_PROMPT)
       } else if (role.is_captain !== 1 && isCaptainPrompt(prompt)) {
@@ -452,6 +462,20 @@ function createRoomHost({
     room.providers = next
   }
 
+  function selectedSkills(provider, skills) {
+    if (skills === undefined) return []
+    if (!Array.isArray(skills)) throw hostError('ROOM_ROLE_SKILLS_INVALID')
+    if (!skillInventory) {
+      if (skills.length === 0) return []
+      throw hostError('ROOM_ROLE_SKILL_NOT_AVAILABLE')
+    }
+    try {
+      return skillInventory.assertSelectable(provider, skills)
+    } catch {
+      throw hostError('ROOM_ROLE_SKILL_NOT_AVAILABLE')
+    }
+  }
+
   function createRole(input = {}) {
     const room = requireRoom(input.roomId)
     const chat = requireChat(input.chatId, room.id)
@@ -468,6 +492,7 @@ function createRoomHost({
     const prompt = typeof input.prompt === 'string' && input.prompt.length > 0
       ? input.prompt.slice(0, 100_000)
       : (input.isCaptain === true ? DEFAULT_CAPTAIN_PROMPT : DEFAULT_WORKER_PROMPT)
+    const skills = selectedSkills(input.provider, input.skills)
     return roomDb.withTransaction(() => {
       rememberProvider(room, input.provider)
       const roleId = repository.createRole({
@@ -485,6 +510,7 @@ function createRoomHost({
         model: input.model === undefined || input.model === null
           ? null
           : cleanText(input.model, 120, 'model'),
+        skills,
       })
       repository.addParticipant({ chatId: chat.id, roleId })
       return { roomId: room.id, chatId: chat.id, roleId }
@@ -510,6 +536,9 @@ function createRoomHost({
       if (nextCaptain && currentPrompt === DEFAULT_WORKER_PROMPT) promptToWrite = DEFAULT_CAPTAIN_PROMPT
       else if (!nextCaptain && isCaptainPrompt(currentPrompt)) promptToWrite = DEFAULT_WORKER_PROMPT
     }
+    const nextSkills = input.skills === undefined
+      ? undefined
+      : selectedSkills(input.provider !== undefined ? input.provider : role.provider, input.skills)
     return roomDb.withTransaction(() => {
       if (input.provider !== undefined) rememberProvider(room, input.provider)
       const assignments = []
@@ -549,6 +578,10 @@ function createRoomHost({
       if (input.portrait !== undefined) {
         assignments.push('portrait = ?')
         values.push(PORTRAIT_IDS.has(input.portrait) ? input.portrait : '')
+      }
+      if (nextSkills !== undefined) {
+        assignments.push('skills_json = ?')
+        values.push(JSON.stringify(nextSkills))
       }
       if (assignments.length > 0) {
         assignments.push('updated_at = ?')
@@ -903,6 +936,41 @@ function createRoomHost({
     try { roomDb.close() } catch { /* shutdown is best effort */ }
   }
 
+  function requireSkillInventory() {
+    if (!skillInventory) throw hostError('SKILL_INVENTORY_UNAVAILABLE')
+    return skillInventory
+  }
+
+  function skillInventoryList() {
+    return requireSkillInventory().list()
+  }
+
+  function trustSkill(input = {}) {
+    return requireSkillInventory().trust(cleanText(input.id, 240, 'id'))
+  }
+
+  function revokeSkill(input = {}) {
+    return requireSkillInventory().revoke(cleanText(input.id, 240, 'id'))
+  }
+
+  function setSkillEligible(input = {}) {
+    if (typeof input.enabled !== 'boolean') throw hostError('TEAM_ROOM_INPUT_INVALID')
+    return requireSkillInventory().setEligible(cleanText(input.id, 240, 'id'), cleanText(input.agent, 40, 'agent'), input.enabled)
+  }
+
+  function enableSkillForAgents(input = {}) {
+    return requireSkillInventory().enableForAgents(cleanText(input.id, 240, 'id'))
+  }
+
+  function rememberSkillDefault(input = {}) {
+    const agent = cleanText(input.agent, 40, 'agent')
+    if (!Array.isArray(input.skillIds)) throw hostError('TEAM_ROOM_INPUT_INVALID')
+    return {
+      agent,
+      skillIds: requireSkillInventory().rememberDefault(agent, input.skillIds),
+    }
+  }
+
   return {
     roomDb,
     repository,
@@ -926,6 +994,12 @@ function createRoomHost({
     submitMessage,
     acceptTask,
     stopReply,
+    skillInventoryList,
+    trustSkill,
+    revokeSkill,
+    setSkillEligible,
+    enableSkillForAgents,
+    rememberSkillDefault,
     filesList,
     filesRead,
     importWorkspaceFiles,

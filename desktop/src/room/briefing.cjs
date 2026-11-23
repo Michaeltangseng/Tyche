@@ -34,9 +34,39 @@ function rosterLines(members, launchProviders) {
   return lines
 }
 
+function equippedSkillLines(skills) {
+  if (!Array.isArray(skills) || skills.length === 0) return []
+  const lines = ['Equipped skills. Follow these recorded instructions and do not reload a live copy:']
+  for (const skill of skills) {
+    if (!skill || typeof skill.name !== 'string' || !skill.name) continue
+    lines.push(`## ${skill.name}`)
+    if (typeof skill.description === 'string' && skill.description) lines.push(skill.description)
+    if (typeof skill.body === 'string' && skill.body) lines.push(skill.body)
+  }
+  return lines.length > 1 ? lines : []
+}
+
+function inventoryLines(inventory) {
+  if (!inventory || !Array.isArray(inventory.providers) || inventory.providers.length === 0) return []
+  const lines = ['Skills available to equip:']
+  for (const entry of inventory.providers) {
+    const skills = Array.isArray(entry?.skills) ? entry.skills : []
+    if (skills.length === 0) {
+      lines.push(`- ${entry.provider}: none`)
+      continue
+    }
+    for (const skill of skills) {
+      const description = typeof skill.description === 'string' && skill.description ? ` — ${skill.description}` : ''
+      lines.push(`- ${entry.provider}: ${skill.name} [${skill.id}]${description}`)
+    }
+    if (entry.more > 0) lines.push(`- ${entry.provider}: ${entry.more} more`)
+  }
+  return lines
+}
+
 function briefing({
   chatTitle, me, lastSeq, rows, trigger, nameOf, filesOf = () => [], viewerIsCaptain = false,
-  members, launchProviders,
+  members, launchProviders, equippedSkills, skillInventory,
 }) {
   let seen = lastSeq
   let blocked = false
@@ -91,7 +121,13 @@ function briefing({
     omittedLine = `(omitted ${dropped.length} earlier messages)`
   }
 
-  const lines = [`[chat: ${chatTitle}]`, ...rosterLines(members, launchProviders), 'Since you last looked:']
+  const lines = [
+    `[chat: ${chatTitle}]`,
+    ...rosterLines(members, launchProviders),
+    ...equippedSkillLines(equippedSkills),
+    ...(viewerIsCaptain ? inventoryLines(skillInventory) : []),
+    'Since you last looked:',
+  ]
   if (omittedLine) lines.push(omittedLine)
   for (const item of older) lines.push(item.line)
   lines.push('---')
@@ -105,4 +141,4 @@ function briefing({
   }
 }
 
-module.exports = { MAX_EARLIER, MAX_TEXT, briefing, rosterProviders }
+module.exports = { MAX_EARLIER, MAX_TEXT, briefing, equippedSkillLines, rosterProviders }

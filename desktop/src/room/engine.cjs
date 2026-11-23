@@ -47,6 +47,7 @@ function mentionNames(content) {
 function createEngine({
   roomDb, repository, timeline, sessions, outbox, runtime, now = () => Date.now(), onEvent = () => {},
   launchProviders = null,
+  skillSource = null,
 }) {
   const { database } = roomDb
   const activeReplies = new Map()
@@ -182,6 +183,16 @@ function createEngine({
             }
             speakable = rosterProviders(room.providers, launchIds)
           }
+          let equippedSkills = []
+          if (skillSource && Array.isArray(role.skills) && role.skills.length) {
+            try {
+              equippedSkills = skillSource.materialize(role.provider, role.skills).skills || []
+            } catch { equippedSkills = [] }
+          }
+          let skillInventory
+          if (role.isCaptain === true && skillSource) {
+            try { skillInventory = skillSource.captainInventory(speakable || room.providers || []) } catch { skillInventory = null }
+          }
           const briefingResult = briefing({
             chatTitle: chat.title,
             me: role.id,
@@ -198,6 +209,8 @@ function createEngine({
               }))
               : undefined,
             launchProviders: speakable,
+            equippedSkills,
+            skillInventory,
           })
           const prompt = briefingResult.text
           const watermark = briefingResult.seen

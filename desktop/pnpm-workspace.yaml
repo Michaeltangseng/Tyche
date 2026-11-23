@@ -1,0 +1,6 @@
+allowBuilds:
+  '@google/genai': set this to true or false
+  electron-winstaller: set this to true or false
+  protobufjs: set this to true or false
+minimumReleaseAgeExclude:
+  - '@botiverse/oar@0.113.0'

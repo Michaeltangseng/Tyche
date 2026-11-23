@@ -70,6 +70,7 @@
             section="mcp"
             :set-theme-preference="setThemePreference"
             :theme-preference="themePreference"
+            :skill-api="skillApi"
           />
           <div v-else-if="agentTab === 'local' || agentTab === 'cloud'" class="agent-table">
             <div class="agent-table-head">
@@ -167,6 +168,7 @@
           :section="systemSettingsSection"
           :set-theme-preference="setThemePreference"
           :theme-preference="themePreference"
+          :skill-api="skillApi"
         />
       </div>
     </div>
@@ -196,6 +198,7 @@ import SettingsPages from './SettingsPages.vue'
 
 const props = defineProps({
   controller: { type: Object, required: true },
+  skillApi: { type: Object, default: null },
 })
 
 const {

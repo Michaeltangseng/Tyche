@@ -96,6 +96,7 @@ const {
 } = require('./knowledge/local-knowledge-base.cjs')
 const { LocalKnowledgeConnectors } = require('./knowledge/local-knowledge-connectors.cjs')
 const { createRoomHost } = require('./room/room-host.cjs')
+const { SkillInventory } = require('./skills/skill-inventory.cjs')
 const { registerTeamRoomIpc } = require('./shell/team-room-ipc.cjs')
 const { nativeOpenClawOptions } = require('./agents/cli/openclaw-runtime.cjs')
 const { migrateLegacyProductData } = require('./product-data-migration.cjs')
@@ -1239,6 +1240,10 @@ if (!hasSingleInstanceLock) {
         teamRoomHost = createRoomHost({
           privateRoot,
           env: roomEnv,
+          skillInventory: new SkillInventory({
+            storagePath: path.join(privateRoot, 'skill-inventory.json'),
+            home: roomEnv.HOME || undefined,
+          }),
           onChanged: () => {
             if (mainWindow && !mainWindow.isDestroyed()
                 && isTrustedLocalWebContents(mainWindow.webContents)) {

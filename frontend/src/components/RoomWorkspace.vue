@@ -559,6 +559,23 @@
                 {{ t('room.nativePermissionHighRisk') }}
               </p>
             </section>
+            <section class="room-role-v2-section room-role-v2-skills">
+              <h3>{{ t('room.roleSkills') }}</h3>
+              <p class="room-agent-quiet">{{ t('room.roleSkillsHint') }}</p>
+              <p v-if="!roleSkillChoices.length" class="room-agent-quiet">{{ t('room.roleSkillsEmpty') }}</p>
+              <label v-for="skill in roleSkillChoices" :key="skill.id" class="room-skill-option">
+                <input
+                  type="checkbox"
+                  :checked="roleDraft.skills.includes(skill.id)"
+                  :disabled="!roleDraft.skills.includes(skill.id) && roleDraft.skills.length >= maxRoleSkills"
+                  @change="toggleRoleSkill(skill.id)"
+                />
+                <span>{{ skill.name }}</span>
+              </label>
+              <p v-if="droppedSkillIds.length" class="room-agent-quiet">{{ t('room.skillUnavailable', { ids: droppedSkillIds.join(', ') }) }}</p>
+              <p class="room-agent-quiet">{{ t('room.skillTokens', { count: skillTokenEstimate(roleDraft.skills.length) }) }} · {{ t('room.skillLimit') }}</p>
+              <button class="secondary-button" type="button" :disabled="busy || !roleDraft.provider" @click="rememberRoleSkills">{{ t('room.rememberSkillDefault') }}</button>
+            </section>
             <section class="room-role-preview" :aria-label="t('room.rolePreview')">
               <h3>{{ t('room.rolePreview') }}</h3>
               <div class="room-role-preview-card">
@@ -613,6 +630,7 @@ import {
 import { agentLogo } from '../catalog.js'
 import { portraitGlow, portraitId, rolePortrait, rolePortraits } from '../role-portraits.js'
 import { t } from '../i18n.js'
+import { keptSkillIds, MAX_ROLE_SKILLS, selectableSkills, skillTokenEstimate } from '../skillInventory.js'
 import { useRoomWorkspace } from '../composables/useRoomWorkspace.js'
 import { agentUsageRows, formatUsageLine } from '../room-usage.js'
 import MarkdownMessage from './MarkdownMessage.vue'
@@ -683,6 +701,9 @@ const FALLBACK_PERMISSION_MODES = {
 
 const creating = ref(false)
 const roleSettingsOpen = ref(false)
+const skillInventoryState = ref({ agents: [], skills: [], defaults: {} })
+const droppedSkillIds = ref([])
+const maxRoleSkills = MAX_ROLE_SKILLS
 const roleSettingsRef = ref(null)
 const roleDraft = ref(null)
 const roleSettingsWasCaptain = ref(false)
@@ -1183,6 +1204,22 @@ async function commitTitleEdit(event) {
   await renameChat(next)
 }
 
+const roleSkillChoices = computed(() => selectableSkills(skillInventoryState.value.skills, roleDraft.value?.provider))
+
+async function loadSkillInventory() {
+  if (typeof props.api?.skillInventory !== 'function') return
+  try {
+    const listed = await props.api.skillInventory()
+    if (listed && Array.isArray(listed.skills)) skillInventoryState.value = listed
+  } catch { /* the role dialog still saves without a fresh inventory */ }
+}
+
+function applyRoleSkills(provider, ids) {
+  const kept = keptSkillIds(ids, skillInventoryState.value.skills, provider)
+  droppedSkillIds.value = (Array.isArray(ids) ? ids : []).filter(id => !kept.includes(id))
+  if (roleDraft.value) roleDraft.value.skills = kept
+}
+
 function openNewRole() {
   roleDeleteArmed.value = false
   roleSettingsWasCaptain.value = false
@@ -1195,10 +1232,17 @@ function openNewRole() {
     responsibilities: '',
     isCaptain: !roles.value.some(role => role.is_captain),
     nativePermission: defaultPermission(roleProviders.value[0] || ''),
+    skills: [],
   }
+  droppedSkillIds.value = []
   showPortraitPage(roleDraft.value.portrait)
   roleSettingsOpen.value = true
   nextTick(() => roleSettingsRef.value?.focus?.())
+  loadSkillInventory().then(() => {
+    if (!roleDraft.value?.id) {
+      applyRoleSkills(roleDraft.value?.provider, skillInventoryState.value.defaults?.[roleDraft.value?.provider] || [])
+    }
+  })
 }
 
 function openRoleSettings(roleId) {
@@ -1215,16 +1259,43 @@ function openRoleSettings(roleId) {
     responsibilities: role.responsibilities || '',
     isCaptain: role.is_captain === true,
     nativePermission: role.native_permission || defaultPermission(role.provider || ''),
+    skills: Array.isArray(role.skills) ? [...role.skills] : [],
   }
+  droppedSkillIds.value = []
   showPortraitPage(roleDraft.value.portrait)
   roleSettingsOpen.value = true
   nextTick(() => roleSettingsRef.value?.focus?.())
+  const equipped = roleDraft.value.skills
+  loadSkillInventory().then(() => {
+    if (roleDraft.value?.id === role.id) applyRoleSkills(roleDraft.value.provider, equipped)
+  })
 }
 
 function changeRoleProvider(provider) {
   if (!roleDraft.value || roleDraft.value.provider === provider) return
   roleDraft.value.provider = provider
   roleDraft.value.nativePermission = defaultPermission(provider)
+  applyRoleSkills(provider, roleDraft.value.skills)
+}
+
+function toggleRoleSkill(id) {
+  if (!roleDraft.value) return
+  const current = roleDraft.value.skills
+  if (current.includes(id)) {
+    roleDraft.value.skills = current.filter(item => item !== id)
+    return
+  }
+  if (current.length >= maxRoleSkills) return
+  roleDraft.value.skills = [...current, id]
+}
+
+async function rememberRoleSkills() {
+  if (!roleDraft.value?.provider || typeof props.api?.rememberSkillDefault !== 'function') return
+  await props.api.rememberSkillDefault({
+    agent: roleDraft.value.provider,
+    skillIds: roleDraft.value.skills,
+  })
+  await loadSkillInventory()
 }
 
 function closeRoleSettings() {
@@ -1243,6 +1314,7 @@ async function saveRole() {
     responsibilities: roleDraft.value.responsibilities,
     nativePermission: roleDraft.value.nativePermission,
     portrait: roleDraft.value.portrait,
+    skills: roleDraft.value.skills,
   }
   if (roleDraft.value.id) {
     // Save normal fields first, then swap the chat-level Captain atomically.

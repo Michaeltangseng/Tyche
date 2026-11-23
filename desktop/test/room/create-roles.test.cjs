@@ -191,6 +191,52 @@ test('rename_chat stores one sentence and then respects a user lock', async t =>
   assert.equal(repo.getChat(chatId).title, 'Plan the snake page')
 })
 
+test('create_roles stores only skills the inventory accepts and writes nothing when one is rejected', async t => {
+  const { roomDb, repo, chatId, captain, timeline, dispatcher } = setup(t)
+  const queued = []
+  const captainAssignment = createCaptainAssignment({
+    roomDb,
+    repository: repo,
+    timeline,
+    queueReply: input => {
+      queued.push(input)
+      return { id: `reply-${queued.length}` }
+    },
+    requestTick: () => {},
+  })
+  registerCaptainTools({
+    dispatcher,
+    repository: repo,
+    captainAssignment,
+    timeline,
+    roomDb,
+    selectSkills: (provider, ids) => {
+      if (provider !== 'claude' || ids.some(id => id !== 'claude/global/frontend-design')) {
+        throw new Error('SKILL_INVENTORY_SELECTION_INVALID')
+      }
+      return ids
+    },
+  })
+  dispatcher.bindRun('run-skills', { chatId, roleId: captain, allowedTools: ['create_roles'] })
+  await assert.rejects(
+    () => dispatcher.invoke({
+      runId: 'run-skills',
+      callId: 'bad-skill',
+      name: 'create_roles',
+      args: { roles: [{ displayName: '实现', provider: 'codex', prompt: '改代码', skills: ['claude/global/frontend-design'] }] },
+    }),
+    /ROOM_ROLE_SKILL_NOT_AVAILABLE/,
+  )
+  assert.equal(repo.listParticipants(chatId).length, 1)
+  const created = await dispatcher.invoke({
+    runId: 'run-skills',
+    callId: 'good-skill',
+    name: 'create_roles',
+    args: { roles: [{ displayName: '设计', provider: 'claude', prompt: '做界面', skills: ['claude/global/frontend-design'] }] },
+  })
+  assert.deepEqual(repo.getRole(created.roleIds[0]).skills, ['claude/global/frontend-design'])
+})
+
 test('create_roles rejects a caller that is not the captain', async t => {
   const { repo, chatId, dispatcher } = setup(t)
   const worker = repo.createRole({ chatId, displayName: 'Worker', provider: 'codex', prompt: 'work' })

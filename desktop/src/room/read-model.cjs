@@ -78,6 +78,7 @@ function roleView(row, prompt) {
     capabilities: parseJson(row.capabilities_json, []),
     native_permission: row.native_permission,
     portrait: row.portrait || '',
+    skills: parseJson(row.skills_json, []).filter(id => typeof id === 'string'),
     is_captain: row.is_captain === 1,
     status: row.status,
     prompt: prompt?.prompt ?? '',

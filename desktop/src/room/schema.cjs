@@ -1,4 +1,4 @@
-const ROOM_SCHEMA_VERSION = 3
+const ROOM_SCHEMA_VERSION = 4
 
 const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS rooms (
@@ -34,6 +34,7 @@ const SCHEMA_SQL = `
     capabilities_json TEXT NOT NULL DEFAULT '[]',
     native_permission TEXT NOT NULL DEFAULT 'read-only',
     portrait TEXT NOT NULL DEFAULT '',
+    skills_json TEXT NOT NULL DEFAULT '[]',
     is_captain INTEGER NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'active',
     created_at TEXT NOT NULL,
@@ -371,7 +372,16 @@ function ensureRoomSchema(database) {
     }
   }
   ensurePortraitColumn(database)
+  ensureRoleSkillsColumn(database)
   ensureChatTitleLock(database)
+}
+
+function ensureRoleSkillsColumn(database) {
+  const table = database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'chat_roles'").get()
+  if (!table) return
+  const columns = database.prepare('PRAGMA table_info(chat_roles)').all()
+  if (columns.some(column => column.name === 'skills_json')) return
+  database.exec("ALTER TABLE chat_roles ADD COLUMN skills_json TEXT NOT NULL DEFAULT '[]'")
 }
 
 function ensureChatTitleLock(database) {

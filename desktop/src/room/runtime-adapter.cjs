@@ -17,6 +17,7 @@
  * the proxy; every session therefore gets NO_PROXY/no_proxy for loopback.
  */
 const crypto = require('node:crypto')
+const { equippedSkillLines } = require('./briefing.cjs')
 const { createMcpHttpServer } = require('./tools/mcp-server.cjs')
 
 const LOOPBACK_NO_PROXY = '127.0.0.1,localhost,::1'
@@ -82,6 +83,7 @@ function createOarRuntimeAdapter({
   runtimeWrapperPath = null,
   runtimeStateDir = null,
   now = () => Date.now(),
+  skillSource = null,
   turnTimeoutMs = 10 * 60 * 1000,
   debug = (...args) => {
     if (process.env.ROOM_OAR_DEBUG) console.error('[room-oar]', ...args)
@@ -349,9 +351,9 @@ function createOarRuntimeAdapter({
     return { launch, completion }
   }
 
-  function taskPrompt(task, laneKind = 'executor') {
-    if (laneKind !== 'executor') {
-      return [
+  function taskPrompt(task, laneKind = 'executor', role = null) {
+    const lines = laneKind !== 'executor'
+      ? [
         "You are participating in a task's mention lane in the Tyche room.",
         `Task id: ${task.id}`,
         `Task #${task.number}: ${task.title ?? ''}`,
@@ -360,21 +362,27 @@ function createOarRuntimeAdapter({
         '',
         'Read the task and its comments, then use comment_task or mention if you need to say something.',
         'Do not call finish_task: only the executor lane may finish or settle this task.',
-      ].join('\n')
+      ]
+      : [
+        'You are the assigned agent for a task in the Tyche room.',
+        `Task id: ${task.id}`,
+        `Task #${task.number}: ${task.title ?? ''}`,
+        `Description: ${task.description ?? ''}`,
+        `Acceptance: ${task.acceptance ?? ''}`,
+        '',
+        'Use the room tools available to you. When the task is complete, call the finish_task tool with:',
+        `  taskId: "${task.id}"`,
+        '  status: "ready"',
+        '  summary: a short summary of what you did',
+        'If you need context, use read_chat. Do not stop before calling finish_task.',
+      ]
+    if (skillSource && Array.isArray(role?.skills) && role.skills.length) {
+      try {
+        const equipped = skillSource.materialize(role.provider, role.skills).skills || []
+        lines.push('', ...equippedSkillLines(equipped))
+      } catch { /* a skill scan must not block the task */ }
     }
-    return [
-      'You are the assigned agent for a task in the Tyche room.',
-      `Task id: ${task.id}`,
-      `Task #${task.number}: ${task.title ?? ''}`,
-      `Description: ${task.description ?? ''}`,
-      `Acceptance: ${task.acceptance ?? ''}`,
-      '',
-      'Use the room tools available to you. When the task is complete, call the finish_task tool with:',
-      `  taskId: "${task.id}"`,
-      '  status: "ready"',
-      '  summary: a short summary of what you did',
-      'If you need context, use read_chat. Do not stop before calling finish_task.',
-    ].join('\n')
+    return lines.join('\n')
   }
 
   async function finalizeTaskRun({ run, task, result, laneKind = 'executor' }) {
@@ -576,7 +584,7 @@ function createOarRuntimeAdapter({
             event,
           })
         : null
-      const turn = startTurn({ session, prompt: taskPrompt(task, laneKind), signal: tracked.signal, onEvent: taskEvent })
+      const turn = startTurn({ session, prompt: taskPrompt(task, laneKind, role), signal: tracked.signal, onEvent: taskEvent })
       turn.launch.then(({ nativeSessionRef }) => {
         if (nativeSessionRef) {
           try {

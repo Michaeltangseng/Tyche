@@ -130,6 +130,12 @@ if (isLocalDocument) Object.assign(desktopApi, {
     importFiles: input => ipcRenderer.invoke('team-room:files-import', input),
     setWriteAuthorized: input => ipcRenderer.invoke('team-room:write-authorized', input),
     runtimeEvents: input => ipcRenderer.invoke('team-room:runtime-events', input),
+    skillInventory: () => ipcRenderer.invoke('team-room:skill-inventory'),
+    trustSkill: input => ipcRenderer.invoke('team-room:skill-trust', input),
+    revokeSkill: input => ipcRenderer.invoke('team-room:skill-revoke', input),
+    setSkillEligible: input => ipcRenderer.invoke('team-room:skill-eligible', input),
+    enableSkillForAgents: input => ipcRenderer.invoke('team-room:skill-enable-agents', input),
+    rememberSkillDefault: input => ipcRenderer.invoke('team-room:skill-remember-default', input),
     onChanged: callback => {
       const listener = (_event, payload) => callback(payload)
       ipcRenderer.on('team-room:changed', listener)

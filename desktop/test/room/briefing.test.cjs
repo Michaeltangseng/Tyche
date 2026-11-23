@@ -47,3 +47,36 @@ test('hides captain-only rows from non-captains and keeps them for the captain',
   assert.equal(hidden.text.includes('review'), false)
   assert.equal(shown.text.includes('review'), true)
 })
+
+test('captain briefing lists equippable skills and a member briefing includes only equipped text', () => {
+  const trigger = row(1, { authorType: 'user', authorId: 'user', content: '做个网站' })
+  const captain = briefing({
+    chatTitle: 'C',
+    me: 'captain',
+    lastSeq: 0,
+    trigger,
+    nameOf: message => message.authorId,
+    viewerIsCaptain: true,
+    launchProviders: ['claude', 'codex'],
+    skillInventory: {
+      providers: [
+        { provider: 'claude', skills: [{ id: 'claude/global/frontend-design', name: 'frontend-design', description: 'Layout' }], more: 0 },
+        { provider: 'codex', skills: [], more: 0 },
+      ],
+    },
+    rows: [trigger],
+  })
+  assert.match(captain.text, /Skills available to equip:\n- claude: frontend-design \[claude\/global\/frontend-design\] — Layout\n- codex: none/)
+  const worker = briefing({
+    chatTitle: 'C',
+    me: 'worker',
+    lastSeq: 0,
+    trigger,
+    nameOf: message => message.authorId,
+    equippedSkills: [{ name: 'frontend-design', description: 'Layout', body: 'Use a clear hierarchy.' }],
+    skillInventory: { providers: [{ provider: 'claude', skills: [{ id: 'claude/global/frontend-design', name: 'frontend-design', description: 'Layout' }] }] },
+    rows: [trigger],
+  })
+  assert.match(worker.text, /Equipped skills[\s\S]*Use a clear hierarchy\./)
+  assert.equal(worker.text.includes('Skills available to equip'), false)
+})

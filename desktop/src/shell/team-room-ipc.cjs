@@ -27,6 +27,12 @@ const CHANNELS = Object.freeze({
   importFiles: 'team-room:files-import',
   writeAuthorized: 'team-room:write-authorized',
   runtimeEvents: 'team-room:runtime-events',
+  skillInventory: 'team-room:skill-inventory',
+  trustSkill: 'team-room:skill-trust',
+  revokeSkill: 'team-room:skill-revoke',
+  setSkillEligible: 'team-room:skill-eligible',
+  enableSkillForAgents: 'team-room:skill-enable-agents',
+  rememberSkillDefault: 'team-room:skill-remember-default',
 })
 
 function ipcError(code) {
@@ -44,6 +50,15 @@ function assertInput(input, fields = []) {
 
 function text(value, max = 120) {
   if (typeof value !== 'string' || value.length === 0 || value.length > max || value.includes('\u0000')) {
+    throw ipcError('TEAM_ROOM_INPUT_INVALID')
+  }
+  return value
+}
+
+function skillIdList(value) {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value) || value.length > 8
+      || value.some(item => typeof item !== 'string' || item.length > 240 || !/^[a-z0-9][a-z0-9._/-]{0,238}$/.test(item))) {
     throw ipcError('TEAM_ROOM_INPUT_INVALID')
   }
   return value
@@ -128,7 +143,7 @@ function registerTeamRoomIpc({ registerTrustedHandle, getHost, dialog, getMainWi
   registerTrustedHandle(CHANNELS.createRole, input => {
     const parsed = assertInput(input, [
       'roomId', 'chatId', 'displayName', 'provider', 'prompt', 'isCaptain',
-      'nativePermission', 'capabilities', 'model', 'responsibilities', 'portrait',
+      'nativePermission', 'capabilities', 'model', 'responsibilities', 'portrait', 'skills',
     ])
     text(parsed.roomId)
     text(parsed.chatId)
@@ -153,13 +168,14 @@ function registerTeamRoomIpc({ registerTrustedHandle, getHost, dialog, getMainWi
       throw ipcError('TEAM_ROOM_INPUT_INVALID')
     }
     if (parsed.portrait !== undefined) text(parsed.portrait, 40)
+    skillIdList(parsed.skills)
     return host().createRole(parsed)
   })
 
   registerTrustedHandle(CHANNELS.updateRole, input => {
     const parsed = assertInput(input, [
       'roomId', 'roleId', 'displayName', 'provider', 'prompt', 'isCaptain',
-      'nativePermission', 'capabilities', 'model', 'responsibilities', 'portrait',
+      'nativePermission', 'capabilities', 'model', 'responsibilities', 'portrait', 'skills',
     ])
     text(parsed.roomId)
     text(parsed.roleId)
@@ -184,6 +200,7 @@ function registerTeamRoomIpc({ registerTrustedHandle, getHost, dialog, getMainWi
       throw ipcError('TEAM_ROOM_INPUT_INVALID')
     }
     if (parsed.portrait !== undefined) text(parsed.portrait, 40)
+    skillIdList(parsed.skills)
     return host().updateRole(parsed)
   })
 
@@ -275,6 +292,42 @@ function registerTeamRoomIpc({ registerTrustedHandle, getHost, dialog, getMainWi
     text(parsed.roomId)
     if (typeof parsed.authorized !== 'boolean') throw ipcError('TEAM_ROOM_INPUT_INVALID')
     return host().setWriteAuthorized(parsed)
+  })
+
+  registerTrustedHandle(CHANNELS.skillInventory, () => host().skillInventoryList())
+
+  registerTrustedHandle(CHANNELS.trustSkill, input => {
+    const parsed = assertInput(input, ['id'])
+    text(parsed.id, 240)
+    return host().trustSkill(parsed)
+  })
+
+  registerTrustedHandle(CHANNELS.revokeSkill, input => {
+    const parsed = assertInput(input, ['id'])
+    text(parsed.id, 240)
+    return host().revokeSkill(parsed)
+  })
+
+  registerTrustedHandle(CHANNELS.setSkillEligible, input => {
+    const parsed = assertInput(input, ['id', 'agent', 'enabled'])
+    text(parsed.id, 240)
+    text(parsed.agent, 40)
+    if (typeof parsed.enabled !== 'boolean') throw ipcError('TEAM_ROOM_INPUT_INVALID')
+    return host().setSkillEligible(parsed)
+  })
+
+  registerTrustedHandle(CHANNELS.enableSkillForAgents, input => {
+    const parsed = assertInput(input, ['id'])
+    text(parsed.id, 240)
+    return host().enableSkillForAgents(parsed)
+  })
+
+  registerTrustedHandle(CHANNELS.rememberSkillDefault, input => {
+    const parsed = assertInput(input, ['agent', 'skillIds'])
+    text(parsed.agent, 40)
+    skillIdList(parsed.skillIds)
+    if (!Array.isArray(parsed.skillIds)) throw ipcError('TEAM_ROOM_INPUT_INVALID')
+    return host().rememberSkillDefault(parsed)
   })
 
   registerTrustedHandle(CHANNELS.runtimeEvents, input => {

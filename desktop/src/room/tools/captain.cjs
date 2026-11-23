@@ -108,8 +108,20 @@ function createCaptainAssignment({ roomDb, repository, timeline, review, queueRe
   }
 }
 
+function chosenSkills(selectSkills, provider, skills) {
+  const requested = Array.isArray(skills) ? skills : []
+  if (requested.length === 0) return []
+  if (typeof selectSkills !== 'function') throw new Error('ROOM_ROLE_SKILL_NOT_AVAILABLE')
+  try {
+    return selectSkills(provider, requested)
+  } catch {
+    throw new Error('ROOM_ROLE_SKILL_NOT_AVAILABLE')
+  }
+}
+
 function registerCaptainTools({
   dispatcher, repository, captainAssignment, timeline, roomDb, canLaunch = () => true,
+  selectSkills = null,
 }) {
   if (!roomDb) throw new TypeError('ROOM_CAPTAIN_TOOLS_DATABASE_REQUIRED')
   const { database } = roomDb
@@ -123,6 +135,7 @@ function registerCaptainTools({
   }
 
   function createRoles({ chatId, captainRoleId, roles }) {
+    const choose = (provider, skills) => chosenSkills(selectSkills, provider, skills)
     const captain = repository.getRole(captainRoleId)
     if (!captain || !captain.isCaptain || captain.chatId !== chatId) throw new Error('ROOM_CAPTAIN_REQUIRED')
     if (!Array.isArray(roles) || roles.length === 0) throw new Error('ROOM_ROSTER_INVALID')
@@ -139,6 +152,7 @@ function registerCaptainTools({
         prompt: cleanPrompt(role.prompt),
         responsibilities: cleanResponsibilities(role.responsibilities),
         nativePermission: maxNativePermission(provider),
+        skills: choose(provider, role.skills),
       }
     })
     return roomDb.withTransaction(() => {
@@ -158,6 +172,7 @@ function registerCaptainTools({
           prompt: spec.prompt,
           responsibilities: spec.responsibilities,
           nativePermission: spec.nativePermission,
+          skills: spec.skills,
           isCaptain: false,
           createdBy: captain.id,
         })
@@ -203,7 +218,7 @@ function registerCaptainTools({
       roles: args.roles,
     })
   }, {
-    description: 'Add members to this chat by writing each member name, provider, responsibilities, and prompt. The platform stores the maximum permission for that provider. New members are not woken. Do not call assign_in_group in this same turn.',
+    description: 'Add members to this chat by writing each member name, provider, responsibilities, prompt, and skill ids chosen from the briefing inventory. The platform stores the maximum permission for that provider. New members are not woken. Do not call assign_in_group in this same turn.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -216,6 +231,7 @@ function registerCaptainTools({
               provider: { type: 'string' },
               responsibilities: { type: 'string' },
               prompt: { type: 'string' },
+              skills: { type: 'array', items: { type: 'string' } },
             },
             required: ['displayName', 'provider', 'prompt'],
           },

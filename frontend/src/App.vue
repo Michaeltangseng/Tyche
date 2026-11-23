@@ -58,6 +58,7 @@
         <SystemSettingsView
           v-if="activeView === 'settings'"
           :controller="systemSettingsController"
+          :skill-api="api.teamRoom"
         />
 
         <HomeDashboard
