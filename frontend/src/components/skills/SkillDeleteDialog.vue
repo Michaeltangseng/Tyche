@@ -14,7 +14,6 @@
 
         <div class="skill-delete-target">
           <strong>{{ skill?.name }}</strong>
-          <small>{{ t(`settingsUi.trustState.${skill?.trust || 'untrusted'}`) }}</small>
         </div>
 
         <label class="skill-delete-confirm">

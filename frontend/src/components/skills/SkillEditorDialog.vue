@@ -30,15 +30,6 @@
           <small>{{ t('settingsUi.newSkillBodyHint') }}</small>
         </label>
 
-        <div v-if="!editing" class="skill-editor-targets">
-          <span>{{ t('settingsUi.newSkillTargets') }}</span>
-          <p v-if="!targetAgents.length" class="settings-note">{{ t('settingsUi.noAgents') }}</p>
-          <label v-for="agent in targetAgents" :key="agent" class="skill-editor-target">
-            <input v-model="targets" type="checkbox" :value="agent" />
-            {{ agentLabel(agent) }}
-          </label>
-        </div>
-
         <footer class="skill-dialog-foot">
           <button class="secondary-button" type="button" @click="close">{{ t('common.cancel') }}</button>
           <button class="primary-button" type="submit" :disabled="busy || !canSubmit">{{ t(editing ? 'settingsUi.saveSkill' : 'settingsUi.createSkill') }}</button>
@@ -55,16 +46,12 @@ import { t, translateError } from '../../i18n.js'
 const props = defineProps({
   api: { type: Object, required: true },
   skill: { type: Object, default: null },
-  agents: { type: Array, default: () => [] },
-  agentLabels: { type: Object, default: () => ({}) },
-  agentCapabilities: { type: Object, default: () => ({}) },
 })
 const emit = defineEmits(['close', 'done'])
 
 const name = ref('')
 const description = ref('')
 const body = ref('')
-const targets = ref([])
 const nameTouched = ref(false)
 const busy = ref(false)
 const error = ref('')
@@ -73,21 +60,15 @@ const editing = computed(() => Boolean(props.skill?.id))
 const validName = computed(() => editing.value
   || /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(name.value))
 const canSubmit = computed(() => validName.value && description.value.trim().length > 0)
-const targetAgents = computed(() => props.agents.filter(agent => props.agentCapabilities[agent]?.projectable !== false))
 const bodyPlaceholder = computed(() => `# ${name.value || 'my-skill'}\n\n${t('settingsUi.newSkillBodyPlaceholder')}`)
 
 watch(() => props.skill, (value) => {
   name.value = value?.name || ''
   description.value = value?.description || ''
   body.value = value?.editorBody || ''
-  targets.value = []
   nameTouched.value = false
   error.value = ''
 }, { immediate: true })
-
-function agentLabel(agent) {
-  return props.agentLabels[agent] || agent
-}
 
 async function submit() {
   if (busy.value || !canSubmit.value) return
@@ -104,7 +85,6 @@ async function submit() {
           name: name.value,
           description: description.value,
           body: body.value,
-          targets: targets.value,
         })
     emit('done', result)
   } catch (caught) {
@@ -148,9 +128,6 @@ onBeforeUnmount(() => {
 .skill-editor small { color: var(--muted); font-size: 11px; }
 .skill-editor small.skill-invalid { color: #f5a524; }
 .skill-editor-body { display: grid; gap: 5px; }
-.skill-editor-targets { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
-.skill-editor-targets > span { width: 100%; color: var(--text-soft); font-size: 12px; font-weight: 600; }
-.skill-editor-target { display: inline-flex; align-items: center; gap: 6px; color: var(--text-soft); font-size: 12px; }
 .skill-dialog-foot { display: flex; justify-content: flex-end; gap: 8px; }
 @media (max-width: 640px) {
   .skill-editor-grid { grid-template-columns: 1fr; }

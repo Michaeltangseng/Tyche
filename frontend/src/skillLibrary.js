@@ -1,16 +1,12 @@
-export const SKILL_FILTER_IDS = Object.freeze([
-  'all', 'shared', 'native', 'market', 'reauth', 'conflict',
-])
+export const SKILL_FILTER_IDS = Object.freeze(['all', 'shared', 'market', 'native'])
 
 export function skillFilterCounts(skills) {
   const rows = Array.isArray(skills) ? skills : []
   return {
     all: rows.length,
     shared: rows.filter(skill => skill?.source === 'shared').length,
-    native: rows.filter(skill => skill?.source === 'native').length,
     market: rows.filter(skill => skill?.source === 'market').length,
-    reauth: rows.filter(skill => skill?.trust === 'changed').length,
-    conflict: rows.filter(skill => Boolean(skill?.conflict)).length,
+    native: rows.filter(skill => skill?.source === 'native').length,
   }
 }
 
@@ -19,34 +15,11 @@ export function visibleSkills(skills, { filter = 'all', query = '' } = {}) {
   return (Array.isArray(skills) ? skills : []).filter((skill) => {
     if (!skill) return false
     if (filter === 'shared' && skill.source !== 'shared') return false
-    if (filter === 'native' && skill.source !== 'native') return false
     if (filter === 'market' && skill.source !== 'market') return false
-    if (filter === 'reauth' && skill.trust !== 'changed') return false
-    if (filter === 'conflict' && !skill.conflict) return false
+    if (filter === 'native' && skill.source !== 'native') return false
     if (!needle) return true
     return `${skill.name || ''} ${skill.description || ''}`.toLowerCase().includes(needle)
   })
-}
-
-export function projectionFor(skill, agent) {
-  return (Array.isArray(skill?.projections) ? skill.projections : [])
-    .find(projection => projection.agent === agent) || null
-}
-
-export function projectionOn(skill, agent) {
-  const projection = projectionFor(skill, agent)
-  return Boolean(projection && projection.status !== 'missing')
-}
-
-export function projectionWarn(skill, agent) {
-  const projection = projectionFor(skill, agent)
-  return Boolean(projection && ['outdated', 'drifted', 'conflict', 'unavailable'].includes(projection.status))
-}
-
-export function trustTone(trust) {
-  if (trust === 'trusted') return 'ready'
-  if (trust === 'changed' || trust === 'unavailable') return 'warn'
-  return ''
 }
 
 export function sourceLabelKey(source) {

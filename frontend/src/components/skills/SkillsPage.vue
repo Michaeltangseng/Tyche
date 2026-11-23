@@ -7,7 +7,6 @@
       </div>
       <div class="settings-actions">
         <button class="secondary-button" type="button" :disabled="busy || !api" :title="t('settingsUi.marketBrowseHint')" @click="openMarket()">{{ t('settingsUi.browseMarket') }}</button>
-        <button class="secondary-button" type="button" :disabled="busy || !api" @click="importOpen = true">{{ t('settingsUi.importAgents') }}</button>
         <button class="primary-button" type="button" :disabled="busy || !api" @click="openCreate">+ {{ t('settingsUi.newSkill') }}</button>
       </div>
     </header>
@@ -19,18 +18,6 @@
     <p v-if="inventory.storeError" class="settings-note">{{ t('settingsUi.storeError') }}</p>
     <p v-if="!api" class="settings-note">{{ t('settingsUi.skillsUnavailable') }}</p>
 
-    <div v-if="api && pendingItems.length" class="skills-pending" role="status">
-      <span class="skills-pending-title">{{ t('settingsUi.pendingTitle') }}</span>
-      <button
-        v-for="item in pendingItems"
-        :key="item.id"
-        type="button"
-        class="skills-pending-item"
-        :class="item.tone"
-        @click="filter = item.filter"
-      >{{ t(item.labelKey, { count: item.count }) }}</button>
-    </div>
-
     <div v-if="api" class="settings-split">
       <div class="settings-card skills-matrix-card">
         <div class="settings-actions mock-filters">
@@ -39,7 +26,7 @@
             v-for="item in filters"
             :key="item.id"
             class="chip"
-            :class="{ active: filter === item.id, warn: item.id === 'reauth' && item.count > 0 }"
+            :class="{ active: filter === item.id }"
             type="button"
             @click="filter = item.id"
           >{{ t(item.labelKey, { count: item.count }) }}</button>
@@ -52,10 +39,9 @@
             <thead>
               <tr>
                 <th>Skill</th>
-                <th v-for="agent in matrixAgents" :key="agent" class="skills-agent-head">{{ agentLabel(agent) }}</th>
-                <th>{{ t('settingsUi.trust') }}</th>
+                <th>{{ t('settingsUi.source') }}</th>
                 <th>{{ t('settingsUi.updated') }}</th>
-                <th>{{ t('settingsUi.actions') }}</th>
+                <th class="skills-actions-head">{{ t('settingsUi.actions') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -68,50 +54,18 @@
                 <td class="skills-name-cell">
                   <span class="skills-name-line">
                     <strong>{{ skill.name }}</strong>
-                    <span v-if="skill.conflict" class="skills-conflict-badge" :title="t('settingsUi.conflictHint')">{{ t('settingsUi.trustState.conflict') }}</span>
                     <span v-if="skill.updateAvailable" class="skills-update-badge">{{ t('settingsUi.marketUpdateBadge') }}</span>
                     <span v-if="skill.repoSkill" class="skills-repo-badge">{{ t('settingsUi.repoSkillBadge') }}</span>
                   </span>
-                  <small class="skills-meta">
-                    <span class="skills-source" :class="skill.source">{{ sourceText(skill) }}</span>
-                    <template v-if="skill.version"> · v{{ skill.version }}</template>
-                  </small>
-                  <p v-if="skill.description" class="skills-desc">{{ skill.description }}</p>
+                  <small class="skills-meta">{{ skill.description || t('settingsUi.noDescription') }}</small>
                 </td>
-                <td v-for="agent in matrixAgents" :key="agent" class="skills-cell">
-                  <button
-                    v-if="skill.source === 'native' && agent === skill.originKind"
-                    class="skills-native-toggle"
-                    :class="{ on: cellOn(skill, agent) }"
-                    type="button"
-                    :disabled="cellDisabled(skill, agent) || busy"
-                    :title="cellTitle(skill, agent)"
-                    :aria-label="`${skill.name} · ${agentLabel(agent)}`"
-                    @click.stop="toggleCell(skill, agent)"
-                  >
-                    <span class="skills-native-dot" />{{ cellOn(skill, agent) ? t('settingsUi.nativeEnabled') : t('settingsUi.nativeDisabled') }}
-                  </button>
-                  <button
-                    v-else-if="cellVisible(skill, agent)"
-                    class="skills-cell-state"
-                    :class="cellTone(skill, agent)"
-                    type="button"
-                    :disabled="cellDisabled(skill, agent) || busy"
-                    :title="cellTitle(skill, agent)"
-                    :aria-label="`${skill.name} · ${agentLabel(agent)} · ${cellLabel(skill, agent)}`"
-                    @click.stop="toggleCell(skill, agent)"
-                  >{{ cellGlyph(skill, agent) }}</button>
-                  <span v-else class="skills-unsupported" :title="cellTitle(skill, agent)">—</span>
+                <td class="skills-source-cell">
+                  <span class="skills-source" :class="skill.source">{{ sourceText(skill) }}</span>
+                  <small v-if="skill.version">v{{ skill.version }}</small>
                 </td>
-                <td class="skills-trust-cell">
-                  <i class="settings-dot" :class="trustTone(skill.trust)" />{{ t(`settingsUi.trustState.${skill.trust}`) }}
-                </td>
-                <td class="skills-updated-cell" :title="t('settingsUi.updatedHint')"><small>{{ relative(skill.updatedAt) }}</small></td>
+                <td class="skills-updated-cell"><small>{{ relative(skill.updatedAt) }}</small></td>
                 <td class="skills-actions-cell">
-                  <template v-if="skill.source === 'native'">
-                    <span class="skills-unsupported" :title="t('settingsUi.nativeReadonly')">—</span>
-                  </template>
-                  <template v-else>
+                  <template v-if="skill.source !== 'native'">
                     <button
                       class="skills-row-action"
                       type="button"
@@ -121,6 +75,7 @@
                     >{{ t('settingsUi.updateSkill') }}</button>
                     <button class="skills-row-action danger" type="button" :disabled="busy" @click.stop="openDelete(skill)">{{ t('settingsUi.deleteSkill') }}</button>
                   </template>
+                  <span v-else class="skills-unsupported" :title="t('settingsUi.nativeReadonly')">—</span>
                 </td>
               </tr>
             </tbody>
@@ -131,34 +86,16 @@
       <SkillDetailPanel
         :skill="detail"
         :agent-labels="agentLabelsAll"
-        :installed-agents="installedAgents"
         :busy="busy"
-        @trust="trustCurrent"
-        @revoke="revokeCurrent"
-        @project="projectAgent"
-        @unproject="unprojectAgent"
-        @resolve="resolveProjection"
         @reveal="revealCurrent"
         @remove="removeCurrent"
       />
     </div>
 
-    <SkillImportDialog
-      v-if="importOpen && api"
-      :api="api"
-      :skills="skills"
-      :agent-labels="agentLabelsAll"
-      :policy="inventory.policy"
-      @close="importOpen = false"
-      @done="afterImport"
-    />
     <SkillEditorDialog
       v-if="editorOpen && api"
       :api="api"
       :skill="editingSkill"
-      :agents="editableAgents"
-      :agent-labels="agentLabelsAll"
-      :agent-capabilities="inventory.agentCapabilities"
       @close="editorOpen = false"
       @done="afterEditor"
     />
@@ -172,7 +109,6 @@
     <SkillMarketDialog
       v-if="marketOpen && api"
       :api="api"
-      :policy="inventory.policy"
       :initial-skill="marketUpdateSkill"
       @close="marketOpen = false; marketUpdateSkill = null"
       @done="afterMarket"
@@ -184,36 +120,21 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { locale, t, translateError } from '../../i18n.js'
 import {
-  projectionFor,
-  projectionOn,
-  projectionWarn,
   relativeTime,
   skillFilterCounts,
   sourceLabelKey,
-  trustTone,
   visibleSkills,
 } from '../../skillLibrary.js'
 import SkillDeleteDialog from './SkillDeleteDialog.vue'
 import SkillDetailPanel from './SkillDetailPanel.vue'
 import SkillEditorDialog from './SkillEditorDialog.vue'
-import SkillImportDialog from './SkillImportDialog.vue'
 import SkillMarketDialog from './SkillMarketDialog.vue'
 
 const props = defineProps({
   api: { type: Object, default: null },
-  installedAgents: { type: Array, default: () => [] },
 })
 
-const inventory = ref({
-  agents: [],
-  agentLabels: {},
-  agentCapabilities: {},
-  skills: [],
-  defaults: {},
-  policy: {},
-  counts: {},
-  storeError: null,
-})
+const inventory = ref({ agents: [], agentLabels: {}, skills: [], defaults: {}, counts: {}, storeError: null })
 const filter = ref('all')
 const query = ref('')
 const selectedId = ref('')
@@ -221,7 +142,6 @@ const detail = ref(null)
 const loading = ref(false)
 const busy = ref(false)
 const error = ref('')
-const importOpen = ref(false)
 const editorOpen = ref(false)
 const editingSkill = ref(null)
 const deleteOpen = ref(false)
@@ -230,70 +150,20 @@ const marketOpen = ref(false)
 const marketUpdateSkill = ref(null)
 
 const skills = computed(() => inventory.value.skills || [])
-const agents = computed(() => inventory.value.agents || [])
-const agentLabelsAll = computed(() => {
-  const capabilities = inventory.value.agentCapabilities || {}
-  return {
-    ...Object.fromEntries(Object.entries(capabilities).map(([agent, value]) => [agent, value?.label || agent])),
-    ...(inventory.value.agentLabels || {}),
-  }
-})
-const editableAgents = computed(() => {
-  const base = props.installedAgents.length ? props.installedAgents : agents.value
-  return base.filter(agent => inventory.value.agentCapabilities?.[agent]?.projectable === true)
-})
-const matrixAgents = computed(() => {
-  const present = new Set([...agents.value, ...props.installedAgents])
-  const withContent = new Set()
-  for (const skill of skills.value) {
-    if (!skill) continue
-    if (skill.source === 'native' && skill.originKind) withContent.add(skill.originKind)
-    for (const projection of skill.projections || []) withContent.add(projection.agent)
-    if ((skill.source === 'shared' || skill.source === 'market') && skill.trust === 'trusted') {
-      for (const agent of skill.available || []) withContent.add(agent)
-    }
-  }
-  return Object.keys(inventory.value.agentCapabilities || {})
-    .filter(agent => present.has(agent) && withContent.has(agent))
-})
+const agentLabelsAll = computed(() => inventory.value.agentLabels || {})
 const counts = computed(() => skillFilterCounts(skills.value))
-const pendingItems = computed(() => {
-  const items = []
-  if (counts.value.conflict) {
-    items.push({ id: 'conflict', filter: 'conflict', labelKey: 'settingsUi.pendingConflict', count: counts.value.conflict, tone: 'danger' })
-  }
-  if (counts.value.reauth) {
-    items.push({ id: 'reauth', filter: 'reauth', labelKey: 'settingsUi.pendingReauth', count: counts.value.reauth, tone: 'warn' })
-  }
-  const updates = skills.value.filter(skill => skill.updateAvailable).length
-  if (updates) {
-    items.push({ id: 'updates', filter: 'market', labelKey: 'settingsUi.pendingUpdate', count: updates, tone: 'ok' })
-  }
-  return items
-})
-const filters = computed(() => {
-  const items = [
-    { id: 'all', labelKey: 'settingsUi.filterCount.all', count: counts.value.all },
-    { id: 'shared', labelKey: 'settingsUi.filterCount.shared', count: counts.value.shared },
-    { id: 'native', labelKey: 'settingsUi.filterCount.native', count: counts.value.native },
-    { id: 'market', labelKey: 'settingsUi.filterCount.market', count: counts.value.market },
-    { id: 'reauth', labelKey: 'settingsUi.filterCount.reauth', count: counts.value.reauth },
-  ]
-  if (counts.value.conflict) {
-    items.push({ id: 'conflict', labelKey: 'settingsUi.filterCount.conflict', count: counts.value.conflict })
-  }
-  return items
-})
+const filters = computed(() => [
+  { id: 'all', labelKey: 'settingsUi.filterCount.all', count: counts.value.all },
+  { id: 'shared', labelKey: 'settingsUi.filterCount.shared', count: counts.value.shared },
+  { id: 'market', labelKey: 'settingsUi.filterCount.market', count: counts.value.market },
+  { id: 'native', labelKey: 'settingsUi.filterCount.native', count: counts.value.native },
+])
 const visible = computed(() => visibleSkills(skills.value, { filter: filter.value, query: query.value }))
 const currentRow = computed(() => skills.value.find(skill => skill.id === selectedId.value) || null)
 
-function agentLabel(agent) {
-  return agentLabelsAll.value[agent] || agent
-}
-
 function sourceText(skill) {
   if (skill.source === 'native') {
-    return t('settingsUi.sourceNativeOf', { agent: agentLabel(skill.originKind) })
+    return t('settingsUi.sourceNativeOf', { agent: agentLabelsAll.value[skill.originKind] || skill.originKind })
   }
   return t(sourceLabelKey(skill.source))
 }
@@ -304,11 +174,6 @@ function relative(iso) {
 
 const ERROR_KEYS = {
   SKILL_LIBRARY_UNAVAILABLE: 'skillsUnavailable',
-  SKILL_TRUST_REQUIRED: 'trustFirst',
-  SKILL_PROJECTION_CONFLICT: 'projectionConflict',
-  SKILL_PROJECTION_DRIFTED: 'projectionDrifted',
-  SKILL_PROJECTION_OUTDATED: 'projectionOutdated',
-  SKILL_PROJECTION_MISSING: 'projectionMissing',
   SKILL_NAME_CONFLICT: 'nameConflict',
   SKILL_CONFIRM_MISMATCH: 'confirmMismatch',
   SKILL_MARKET_READONLY: 'marketReadonly',
@@ -317,7 +182,6 @@ const ERROR_KEYS = {
   SKILL_UNSAFE: 'skillUnsafe',
   SKILL_UNSUPPORTED_AGENT: 'skillUnsupportedAgent',
   SKILL_SELECTION_INVALID: 'skillSelectionInvalid',
-  SKILL_NETWORK_DENIED: 'networkDenied',
 }
 
 function errorText(caught) {
@@ -325,79 +189,6 @@ function errorText(caught) {
   const key = ERROR_KEYS[code]
   if (key) return t(`settingsUi.${key}`)
   return translateError(caught) || t('settingsUi.errorGeneric')
-}
-
-function cellVisible(skill, agent) {
-  if (skill.source === 'native') return agent === skill.originKind
-  if (inventory.value.agentCapabilities?.[agent]?.projectable === false) return false
-  if (projectionFor(skill, agent)) return true
-  if (skill.trust !== 'trusted') return true
-  return (skill.available || []).includes(agent)
-}
-
-function cellDisabled(skill, agent) {
-  if (skill.source === 'native') return agent !== skill.originKind || skill.trust !== 'trusted'
-  return skill.trust !== 'trusted' || inventory.value.agentCapabilities?.[agent]?.projectable === false
-}
-
-function cellOn(skill, agent) {
-  if (skill.source === 'native') return (skill.eligible || []).includes(agent)
-  return projectionOn(skill, agent)
-}
-
-function cellWarn(skill, agent) {
-  return skill.source !== 'native' && projectionWarn(skill, agent)
-}
-
-const CELL_GLYPHS = {
-  deployed: '✓',
-  outdated: '↑',
-  drifted: '✎',
-  missing: '–',
-  conflict: '!',
-  unavailable: '∅',
-}
-
-function cellState(skill, agent) {
-  const projection = projectionFor(skill, agent)
-  if (projection) return projection.status || 'deployed'
-  return skill.trust === 'trusted' ? 'available' : 'untrusted'
-}
-
-function cellGlyph(skill, agent) {
-  const state = cellState(skill, agent)
-  if (state === 'available' || state === 'untrusted') return '○'
-  return CELL_GLYPHS[state] || '○'
-}
-
-function cellTone(skill, agent) {
-  const state = cellState(skill, agent)
-  if (state === 'deployed') return 'ready'
-  if (state === 'conflict' || state === 'unavailable') return 'danger'
-  if (state === 'available') return 'available'
-  return 'warn'
-}
-
-function cellLabel(skill, agent) {
-  const state = cellState(skill, agent)
-  if (state === 'available') return t('settingsUi.cellAvailable')
-  if (state === 'untrusted') return t('settingsUi.trustFirst')
-  return t(`settingsUi.projectionState.${state}`)
-}
-
-function cellTitle(skill, agent) {
-  if (skill.source === 'native') {
-    if (agent !== skill.originKind) return t('settingsUi.nativeOtherAgent')
-    if (skill.trust !== 'trusted') return t('settingsUi.trustFirst')
-    return t('settingsUi.nativeToggleHint')
-  }
-  if (inventory.value.agentCapabilities?.[agent]?.projectable === false) return t('settingsUi.notProjectable')
-  if (skill.trust !== 'trusted') return t('settingsUi.trustFirst')
-  const projection = projectionFor(skill, agent)
-  if (projection?.status) {
-    return `${t(`settingsUi.projectionState.${projection.status}`)}${projection.displayPath ? ` · ${projection.displayPath}` : ''}`
-  }
-  return t('settingsUi.cellAvailable')
 }
 
 async function load() {
@@ -412,10 +203,8 @@ async function load() {
     inventory.value = {
       agents: [],
       agentLabels: {},
-      agentCapabilities: {},
       skills: [],
       defaults: {},
-      policy: {},
       counts: {},
       storeError: null,
       ...(next || {}),
@@ -461,30 +250,6 @@ async function run(action) {
   }
 }
 
-function trustCurrent() {
-  if (!currentRow.value) return
-  return run(() => props.api.trust({ id: currentRow.value.id }))
-}
-
-function revokeCurrent() {
-  if (!currentRow.value) return
-  return run(() => props.api.revokeTrust({ id: currentRow.value.id }))
-}
-
-function projectAgent(agent) {
-  if (!currentRow.value) return
-  return run(() => props.api.project({ id: currentRow.value.id, agent }))
-}
-
-function unprojectAgent(agent) {
-  if (!currentRow.value) return
-  return run(() => props.api.unproject({ id: currentRow.value.id, agent }))
-}
-
-function resolveProjection({ projectionId, action }) {
-  return run(() => props.api.resolveProjection({ projectionId, action }))
-}
-
 function revealCurrent() {
   if (!currentRow.value) return
   return run(() => props.api.reveal({ id: currentRow.value.id }))
@@ -497,33 +262,6 @@ function removeCurrent(confirmName) {
     selectedId.value = ''
     detail.value = null
   })
-}
-
-function toggleCell(skill, agent) {
-  if (busy.value || cellDisabled(skill, agent)) return
-  if (skill.source === 'native') {
-    const enabled = !(skill.eligible || []).includes(agent)
-    return run(() => props.api.setEligible({ id: skill.id, agent, enabled }))
-  }
-  if (cellOn(skill, agent)) {
-    if (cellWarn(skill, agent)) {
-      error.value = t('settingsUi.projectionNeedsAttention')
-      select(skill.id)
-      return
-    }
-    return run(() => props.api.unproject({ id: skill.id, agent }))
-  }
-  return run(() => props.api.project({ id: skill.id, agent }))
-}
-
-function afterImport(result) {
-  importOpen.value = false
-  const first = result?.imported?.[0]?.id || ''
-  if (first) selectedId.value = first
-  if (Array.isArray(result?.failed) && result.failed.length) {
-    error.value = t('settingsUi.importFailed', { count: result.failed.length })
-  }
-  load()
 }
 
 function openCreate() {
@@ -569,9 +307,6 @@ function afterEditor(result) {
   editorOpen.value = false
   editingSkill.value = null
   if (result?.id) selectedId.value = result.id
-  if (Array.isArray(result?.targetErrors) && result.targetErrors.length) {
-    error.value = t('settingsUi.projectFailed', { count: result.targetErrors.length })
-  }
   load()
 }
 
@@ -581,10 +316,10 @@ function afterDelete(result) {
   if (result?.removed) load()
 }
 
-function afterMarket(detail) {
+function afterMarket(detailValue) {
   marketOpen.value = false
   marketUpdateSkill.value = null
-  if (detail?.id) selectedId.value = detail.id
+  if (detailValue?.id) selectedId.value = detailValue.id
   load()
 }
 
@@ -606,51 +341,31 @@ onBeforeUnmount(() => {
 .mock-filters input { height: 32px; min-width: 160px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; }
 .chip { height: 28px; padding: 0 10px; border: 1px solid var(--border); border-radius: 99px; background: transparent; color: var(--text-soft); font: inherit; font-size: 12px; cursor: pointer; }
 .chip.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
-.chip.warn { border-color: #f5a524; color: #f5a524; }
 .skills-matrix-card { min-width: 0; }
-.skills-pending { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
-.skills-pending-title { font-size: 12px; font-weight: 650; color: var(--text-soft); }
-.skills-pending-item { border: 1px solid var(--border); background: transparent; color: var(--text-soft); font: inherit; font-size: 12px; border-radius: 99px; padding: 3px 10px; cursor: pointer; }
-.skills-pending-item.danger { border-color: #f2555a; color: #f2555a; }
-.skills-pending-item.warn { border-color: #f5a524; color: #f5a524; }
-.skills-pending-item.ok { border-color: #3ecf8e; color: #3ecf8e; }
-.skills-meta { color: var(--muted); font-size: 11px; }
-.skills-desc { margin: 2px 0 0; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.skills-native-toggle { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 99px; background: transparent; color: var(--muted); font: inherit; font-size: 11px; padding: 2px 8px; cursor: pointer; }
-.skills-native-toggle.on { border-color: #3ecf8e; color: #3ecf8e; }
-.skills-native-toggle:disabled { cursor: default; opacity: .55; }
-.skills-native-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.skills-cell-state { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 13px; line-height: 1; cursor: pointer; }
-.skills-cell-state.ready { border-color: color-mix(in srgb, #3ecf8e 45%, transparent); color: #3ecf8e; }
-.skills-cell-state.warn { border-color: color-mix(in srgb, #f5a524 45%, transparent); color: #f5a524; }
-.skills-cell-state.danger { border-color: color-mix(in srgb, #f2555a 45%, transparent); color: #f2555a; }
-.skills-cell-state.available { color: var(--text-soft); }
-.skills-cell-state:disabled { cursor: default; opacity: .55; }
 .skills-table-wrap { overflow-x: auto; }
-.skills-table { min-width: 680px; }
-.skills-agent-head, .skills-cell { width: 64px; text-align: center; }
-.skills-actions-cell { white-space: nowrap; text-align: right; opacity: 0; transition: opacity .12s ease; }
+.skills-table { min-width: 560px; }
+.skills-actions-head, .skills-actions-cell { width: 132px; white-space: nowrap; text-align: right; }
+.skills-actions-cell { opacity: 0; transition: opacity .12s ease; }
 tbody tr:hover .skills-actions-cell, tbody tr.picked .skills-actions-cell, tbody tr:focus-within .skills-actions-cell { opacity: 1; }
 .skills-row-action { border: 0; background: transparent; color: var(--accent-text); font: inherit; font-size: 11px; cursor: pointer; padding: 0 4px; }
 .skills-row-action:disabled { color: var(--faint); cursor: default; }
 .skills-row-action.danger { color: #f2555a; }
-.skills-name-cell { max-width: 320px; }
+.skills-name-cell { max-width: 420px; }
 .skills-name-line { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
 .skills-name-line strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.skills-conflict-badge { flex: none; padding: 1px 6px; border-radius: 99px; background: color-mix(in srgb, #f5a524 16%, transparent); color: #f5a524; font-size: 10px; font-weight: 650; }
 .skills-update-badge { flex: none; padding: 1px 6px; border-radius: 99px; background: color-mix(in srgb, #3ecf8e 16%, transparent); color: #3ecf8e; font-size: 10px; font-weight: 650; }
 .skills-repo-badge { flex: none; padding: 1px 6px; border-radius: 99px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-text); font-size: 10px; font-weight: 650; }
+.skills-meta { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skills-source-cell { white-space: nowrap; }
+.skills-source-cell small { margin-left: 6px; color: var(--muted); font-size: 10px; }
 .skills-source { color: var(--muted); }
 .skills-source.shared { color: var(--accent-text); }
 .skills-source.market { color: #b07cff; }
-.skills-trust-cell { white-space: nowrap; }
 .skills-updated-cell { white-space: nowrap; color: var(--muted); }
 .skills-unsupported { color: var(--faint); }
-.settings-switch.warn.on { background: #f5a524; }
 .skill-banner-close { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; margin-left: auto; }
 .settings-banner { align-items: center; }
 @media (max-width: 980px) {
   .skills-table { min-width: 0; }
-  .skills-agent-head, .skills-cell { width: auto; }
 }
 </style>

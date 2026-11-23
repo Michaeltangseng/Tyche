@@ -81,29 +81,8 @@
               <div class="market-meta">
                 <span>{{ shortHash(update.current.contentHash) }} → {{ shortHash(update.entry.contentHash) }}</span>
                 <span class="market-url">{{ update.source.url }}@{{ shortHash(update.source.commit) }}</span>
+                <span v-if="update.current.version || update.entry.version">v{{ update.current.version || '—' }} → v{{ update.entry.version || '—' }}</span>
               </div>
-              <div v-if="update.entry.risk?.labels?.length" class="market-risk">
-                <strong>{{ t('settingsUi.risk') }}</strong>
-                <span class="settings-pills">
-                  <span v-for="label in update.entry.risk.labels" :key="label" class="settings-pill" :class="{ deny: update.entry.risk.level === 'high' }">{{ riskLabel(label) }}</span>
-                </span>
-                <small>{{ t('settingsUi.riskAdvisory') }}</small>
-              </div>
-              <div class="market-compare">
-                <div>
-                  <strong>{{ t('settingsUi.marketCurrent') }}</strong>
-                  <pre class="market-preview">{{ update.current.preview || t('settingsUi.noPreview') }}</pre>
-                </div>
-                <div>
-                  <strong>{{ t('settingsUi.marketLatest') }}</strong>
-                  <pre class="market-preview">{{ update.entry.preview || t('settingsUi.noPreview') }}</pre>
-                </div>
-              </div>
-              <label v-if="!update.upToDate && !update.current.repoSkill" class="market-trust">
-                <input v-model="trustUpdate" type="checkbox" />
-                {{ t('settingsUi.marketTrustUpdate') }}
-              </label>
-              <small v-if="!update.upToDate && update.current.repoSkill" class="market-repo-note">{{ t('settingsUi.repoInstallTrust') }}</small>
               <div class="market-actions">
                 <button class="secondary-button" type="button" @click="backToBrowse">{{ t('settingsUi.marketBack') }}</button>
                 <button v-if="!update.upToDate" class="primary-button" type="button" :disabled="busy" @click="applyUpdate">
@@ -142,27 +121,13 @@
                   <p>{{ selectedEntry.description || t('settingsUi.noDescription') }}</p>
                   <div class="market-meta">
                     <span>{{ shortHash(selectedEntry.contentHash) }}</span>
-                    <span>{{ t('settingsUi.fileCount', { count: selectedEntry.fileCount }) }}</span>
                     <span class="market-url">{{ selectedEntry.relativePath || '/' }}</span>
                   </div>
-                  <div v-if="selectedEntry.risk?.labels?.length" class="market-risk">
-                    <strong>{{ t('settingsUi.risk') }}</strong>
-                    <span class="settings-pills">
-                      <span v-for="label in selectedEntry.risk.labels" :key="label" class="settings-pill" :class="{ deny: selectedEntry.risk.level === 'high' }">{{ riskLabel(label) }}</span>
-                    </span>
-                    <small>{{ t('settingsUi.riskAdvisory') }}</small>
-                  </div>
-                  <pre class="market-preview">{{ selectedEntry.preview || t('settingsUi.noPreview') }}</pre>
                   <label v-if="selectedEntry.repoMode" class="market-trust">
                     <input v-model="installRepo" type="checkbox" />
                     {{ t('settingsUi.repoInstall') }}
                   </label>
                   <small v-if="selectedEntry.repoMode && installRepo" class="market-repo-note">{{ t('settingsUi.repoInstallHint') }}</small>
-                  <label v-if="!selectedEntry.repoMode || !installRepo" class="market-trust">
-                    <input v-model="trustInstall" type="checkbox" />
-                    {{ t('settingsUi.marketTrustInstall') }}
-                  </label>
-                  <small v-if="selectedEntry.repoMode && installRepo" class="market-repo-note">{{ t('settingsUi.repoInstallTrust') }}</small>
                   <button class="primary-button" type="button" :disabled="busy || !selectedEntry.validName" @click="install">
                     {{ busy ? t('common.loading') : t('settingsUi.marketInstall') }}
                   </button>
@@ -183,7 +148,6 @@ import { relativeTime } from '../../skillLibrary.js'
 
 const props = defineProps({
   api: { type: Object, required: true },
-  policy: { type: Object, default: () => ({}) },
   initialSkill: { type: Object, default: null },
 })
 const emit = defineEmits(['close', 'done'])
@@ -203,8 +167,6 @@ const updates = ref([])
 const error = ref('')
 const view = ref('browse')
 const update = ref(null)
-const trustInstall = ref(props.policy?.untrustedByDefault === false)
-const trustUpdate = ref(false)
 const installRepo = ref(true)
 
 const selectedEntry = computed(() => (
@@ -233,7 +195,6 @@ const MARKET_ERROR_KEYS = {
   SKILL_MARKET_ENTRY_NOT_FOUND: 'marketEntryNotFound',
   SKILL_MARKET_ENTRY_INVALID: 'marketEntryInvalid',
   SKILL_NAME_CONFLICT: 'nameConflict',
-  SKILL_NETWORK_DENIED: 'networkDenied',
 }
 
 function errorText(caught) {
@@ -241,24 +202,6 @@ function errorText(caught) {
   const key = MARKET_ERROR_KEYS[code]
   if (key) return t(`settingsUi.${key}`)
   return translateError(caught) || t('settingsUi.errorGeneric')
-}
-
-const RISK_LABELS = {
-  'dynamic-command': 'riskDynamicCommand',
-  'shell-tools': 'riskShellTools',
-  hooks: 'riskHooks',
-  scripts: 'riskScripts',
-  network: 'riskNetwork',
-  'file-write': 'riskFileWrite',
-  'external-paths': 'riskExternalPaths',
-  'large-assets': 'riskLargeAssets',
-  'nonstandard-fields': 'riskNonstandardFields',
-  unreadable: 'riskUnreadable',
-}
-
-function riskLabel(label) {
-  const key = RISK_LABELS[label]
-  return key ? t(`settingsUi.${key}`) : label
 }
 
 async function loadSources() {
@@ -372,7 +315,6 @@ async function install() {
   try {
     const detail = await props.api.marketInstall({
       token: selectedEntry.value.token,
-      trust: trustInstall.value,
       repo: selectedEntry.value.repoMode === true && installRepo.value,
     })
     emit('done', detail)
@@ -390,7 +332,6 @@ async function openUpdate(skill) {
   loading.value = true
   try {
     update.value = await props.api.marketPreviewUpdate({ skillId: skill.id })
-    trustUpdate.value = false
   } catch (caught) {
     error.value = errorText(caught)
     view.value = 'browse'
@@ -413,7 +354,6 @@ async function applyUpdate() {
     const detail = await props.api.marketApplyUpdate({
       skillId: update.value.skillId,
       token: update.value.entry.token,
-      trust: trustUpdate.value,
     })
     emit('done', detail)
   } catch (caught) {

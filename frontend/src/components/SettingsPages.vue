@@ -54,7 +54,7 @@
       </article>
     </template>
 
-    <SkillsPage v-else-if="section === 'skills'" :api="skillApi" :installed-agents="installedAgentKinds" />
+    <SkillsPage v-else-if="section === 'skills'" :api="skillApi" />
 
     <template v-else-if="section === 'orchestration'">
       <article class="settings-card">
@@ -123,7 +123,6 @@
         <div class="mock-line"><strong>{{ t('settingsUi.denyList') }}</strong><span class="settings-pills"><span class="settings-pill deny">rm -rf</span><span class="settings-pill deny">sudo</span><span class="settings-pill deny">git push --force</span><button class="chip" type="button">+ {{ t('settingsUi.addChip') }}</button></span><small>{{ t('settingsUi.denyHint') }}</small></div>
         <div class="mock-line"><strong>{{ t('settingsUi.network') }}</strong><button class="settings-switch" :class="{ on: allowNetwork }" type="button" @click="allowNetwork = !allowNetwork"><i /></button><small>{{ t('settingsUi.networkOff') }}</small></div>
       </article>
-      <SkillTrustPolicy :api="skillApi" />
       <article class="settings-card">
         <div class="settings-card-head"><div><h2>{{ t('settingsUi.secrets') }}</h2><p>{{ t('settingsUi.secretsLead') }}</p></div><button class="primary-button" type="button">+ {{ t('settingsUi.addSecret') }}</button></div>
         <div class="mock-line"><strong>OPENAI_API_KEY</strong><span class="agent-mono">•••••••3f9a</span><small>{{ t('settingsUi.keychainShort') }}</small></div>
@@ -329,7 +328,6 @@ import { computed, reactive, ref, unref } from 'vue'
 import { publicAsset } from '../catalog.js'
 import { locale as currentLocale, setLocale, t } from '../i18n.js'
 import SkillsPage from './skills/SkillsPage.vue'
-import SkillTrustPolicy from './skills/SkillTrustPolicy.vue'
 
 const props = defineProps({
   section: { type: String, required: true },

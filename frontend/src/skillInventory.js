@@ -1,23 +1,6 @@
 export function selectableSkills(skills, agent) {
-  return (Array.isArray(skills) ? skills : []).filter(skill => (
-    skill?.trust === 'trusted' && (
-      Array.isArray(skill.available)
-        ? skill.available.includes(agent)
-        : Array.isArray(skill.eligible) && skill.eligible.includes(agent)
-    )
-  ))
-}
-
-export function skillUnavailableReason(skill, agent) {
-  if (!skill) return ''
-  if (skill.source === 'native' && skill.originKind !== agent) return 'otherAgent'
-  if (skill.trust === 'changed') return 'reauth'
-  if (skill.trust !== 'trusted') return 'trust'
-  const available = Array.isArray(skill.available)
-    ? skill.available
-    : (Array.isArray(skill.eligible) ? skill.eligible : [])
-  if (!available.includes(agent)) return 'enable'
-  return ''
+  void agent
+  return (Array.isArray(skills) ? skills : []).filter(skill => skill?.source !== 'native')
 }
 
 export function keptSkillIds(ids, skills, agent) {

@@ -2,13 +2,9 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import SkillMarketDialog from '../../components/skills/SkillMarketDialog.vue'
 import SkillsPage from '../../components/skills/SkillsPage.vue'
-import SkillTrustPolicy from '../../components/skills/SkillTrustPolicy.vue'
 import { setLocale } from '../../i18n.js'
 import {
   formatBytes,
-  projectionFor,
-  projectionOn,
-  projectionWarn,
   relativeTime,
   skillFilterCounts,
   visibleSkills,
@@ -21,17 +17,8 @@ const shared = {
   source: 'shared',
   sourceKind: 'shared',
   originKind: 'shared',
-  trust: 'trusted',
-  eligible: ['claude'],
-  available: ['claude'],
-  preview: '# pptx\n\nUse the deck workflow.',
   version: '1.2.0',
   updatedAt: new Date().toISOString(),
-  risk: null,
-  fileCount: 1,
-  totalBytes: 20,
-  projections: [],
-  conflict: null,
 }
 const native = {
   id: 'claude/global/review',
@@ -40,40 +27,22 @@ const native = {
   source: 'native',
   sourceKind: 'native',
   originKind: 'claude',
-  trust: 'trusted',
-  eligible: ['claude'],
-  available: ['claude'],
-  preview: '',
   version: null,
   updatedAt: null,
-  risk: null,
-  fileCount: 1,
-  totalBytes: 10,
-  projections: [],
-  conflict: null,
 }
 const detail = {
   ...shared,
-  files: [{ path: 'SKILL.md', size: 20, hash: 'a'.repeat(64) }],
-  risk: { level: 'low', labels: ['scripts'], findings: [] },
   origin: { type: 'created' },
   canEdit: true,
   canRemove: true,
-  canProject: true,
-  projectableAgents: ['claude', 'codex'],
 }
 
 function listPayload() {
   return {
     agents: ['claude'],
     agentLabels: { claude: 'Claude' },
-    agentCapabilities: {
-      claude: { label: 'Claude', projectable: true },
-      codex: { label: 'Codex', projectable: true },
-    },
     skills: [{ ...shared }, { ...native }],
     defaults: {},
-    policy: {},
     counts: {},
     storeError: null,
   }
@@ -84,17 +53,18 @@ function mockApi() {
     list: vi.fn().mockResolvedValue(listPayload()),
     detail: vi.fn().mockResolvedValue(detail),
     onChanged: vi.fn(() => () => {}),
-    project: vi.fn().mockResolvedValue(detail),
-    unproject: vi.fn().mockResolvedValue(detail),
-    trust: vi.fn().mockResolvedValue(detail),
-    revokeTrust: vi.fn().mockResolvedValue({}),
-    setEligible: vi.fn().mockResolvedValue({}),
-    importFromAgent: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    remove: vi.fn(),
-    resolveProjection: vi.fn(),
-    reveal: vi.fn(),
+    create: vi.fn().mockResolvedValue(detail),
+    update: vi.fn().mockResolvedValue(detail),
+    remove: vi.fn().mockResolvedValue({ removed: true }),
+    reveal: vi.fn().mockResolvedValue({ opened: true }),
+    marketSources: vi.fn().mockResolvedValue([]),
+    marketAddSource: vi.fn(),
+    marketRemoveSource: vi.fn(),
+    marketPreview: vi.fn(),
+    marketInstall: vi.fn(),
+    marketCheckUpdates: vi.fn().mockResolvedValue({ updates: [] }),
+    marketPreviewUpdate: vi.fn(),
+    marketApplyUpdate: vi.fn(),
   }
 }
 
@@ -104,32 +74,27 @@ describe('skill library presentation', () => {
     setLocale('en')
   })
 
-  it('counts sources and filters trust/conflict states', () => {
+  it('counts sources and filters native Skills', () => {
     const rows = [
       shared,
       native,
-      { ...native, id: 'claude/global/broken', name: 'broken', trust: 'changed' },
-      { ...shared, id: 'shared/library/dup', name: 'dup', description: 'Duplicate', source: 'market', sourceKind: 'market', conflict: { name: 'dup' } },
+      { ...native, id: 'claude/global/broken', name: 'broken' },
+      { ...shared, id: 'shared/library/dup', name: 'dup', description: 'Duplicate', source: 'market', sourceKind: 'market' },
     ]
-    expect(skillFilterCounts(rows)).toEqual({ all: 4, shared: 1, native: 2, market: 1, reauth: 1, conflict: 1 })
+    expect(skillFilterCounts(rows)).toEqual({ all: 4, shared: 1, market: 1, native: 2 })
     expect(visibleSkills(rows, { filter: 'native' }).map(skill => skill.name)).toEqual(['review', 'broken'])
-    expect(visibleSkills(rows, { filter: 'reauth' }).map(skill => skill.name)).toEqual(['broken'])
+    expect(visibleSkills(rows, { filter: 'market' }).map(skill => skill.name)).toEqual(['dup'])
     expect(visibleSkills(rows, { query: 'deck' })).toEqual([])
     expect(visibleSkills(rows, { query: 'presentation' })).toEqual([shared])
   })
 
-  it('reads projection state and formats small values', () => {
-    const skill = { ...shared, projections: [{ agent: 'codex', status: 'outdated' }] }
-    expect(projectionFor(skill, 'codex').status).toBe('outdated')
-    expect(projectionOn(skill, 'codex')).toBe(true)
-    expect(projectionWarn(skill, 'codex')).toBe(true)
-    expect(projectionOn(skill, 'claude')).toBe(false)
+  it('formats small values', () => {
     expect(formatBytes(2048)).toBe('2.0 KB')
     const now = Date.now()
     expect(relativeTime(new Date(now - 60_000).toISOString(), 'en', now)).toContain('minute')
   })
 
-  it('renders the matrix and distributes a trusted shared Skill', async () => {
+  it('renders the platform catalog and keeps native rows read-only', async () => {
     const api = mockApi()
     const wrapper = mount(SkillsPage, { props: { api } })
     await flushPromises()
@@ -138,45 +103,19 @@ describe('skill library presentation', () => {
     expect(wrapper.text()).toContain('review')
     expect(wrapper.text()).toContain('Shared library')
     expect(wrapper.text()).toContain('Claude native')
-    expect(wrapper.text()).toContain('Review changes')
-    expect(wrapper.text()).toContain('Trusted')
-    expect(wrapper.get('.settings-side').text()).toContain('Distributed to')
+    expect(wrapper.text()).toContain('Create presentations')
+    expect(wrapper.get('.settings-side').text()).toContain('pptx')
+
     const rows = wrapper.findAll('tbody tr')
     expect(rows[0].text()).toContain('Update')
     expect(rows[0].text()).toContain('Delete')
-    expect(rows[1].text()).toContain('Enabled')
-
-    await wrapper.get('tbody tr:first-child .skills-cell-state').trigger('click')
-    await flushPromises()
-    expect(api.project).toHaveBeenCalledWith({ id: 'shared/library/pptx', agent: 'claude' })
-
-    await wrapper.findAll('.chip').find(button => button.text().includes('Agent native')).trigger('click')
-    await flushPromises()
-    expect(wrapper.get('table').text()).not.toContain('pptx')
-    expect(wrapper.get('table').text()).toContain('review')
+    expect(rows[1].text()).not.toContain('Delete')
+    expect(rows[1].find('.skills-native-toggle').exists()).toBe(false)
+    expect(rows[1].find('.skills-cell-state').exists()).toBe(false)
     wrapper.unmount()
   })
 
-  it('shows a needs-attention bar and hides empty agent columns', async () => {
-    const api = mockApi()
-    api.list.mockResolvedValue({
-      ...listPayload(),
-      skills: [
-        { ...shared, trust: 'changed', conflict: { name: 'pptx' }, updateAvailable: true },
-        { ...native, id: 'hermes/global/review', originKind: 'hermes', trust: 'untrusted', eligible: [] },
-      ],
-    })
-    const wrapper = mount(SkillsPage, { props: { api } })
-    await flushPromises()
-    expect(wrapper.text()).toContain('Needs attention')
-    expect(wrapper.text()).toContain('1 conflicts')
-    expect(wrapper.text()).toContain('1 need re-approval')
-    expect(wrapper.text()).toContain('1 upstream updates')
-    expect(wrapper.find('.skills-agent-head').exists()).toBe(false)
-    wrapper.unmount()
-  })
-
-  it('previews and installs a Git market entry without an automatic trust', async () => {
+  it('previews and installs a Git market entry without a trust step', async () => {
     const sourceId = `src-${'a'.repeat(32)}`
     const token = `market-${'b'.repeat(32)}`
     const api = {
@@ -195,12 +134,8 @@ describe('skill library presentation', () => {
           token,
           name: 'alpha',
           description: 'Alpha Skill',
-          preview: '# Alpha\n\nInstructions.',
           version: null,
           contentHash: 'd'.repeat(64),
-          risk: { level: 'none', labels: [] },
-          fileCount: 1,
-          totalBytes: 20,
           relativePath: 'skills/alpha',
           validName: true,
         }],
@@ -213,7 +148,7 @@ describe('skill library presentation', () => {
       marketRemoveSource: vi.fn(),
     }
     const wrapper = mount(SkillMarketDialog, {
-      props: { api, policy: { untrustedByDefault: true } },
+      props: { api },
       global: { stubs: { teleport: true } },
     })
     await flushPromises()
@@ -222,9 +157,10 @@ describe('skill library presentation', () => {
     await wrapper.get('.market-source').trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('Alpha Skill')
+    expect(wrapper.text()).not.toContain('Trust after install')
     await wrapper.findAll('button').find(button => button.text().includes('Install into the shared library')).trigger('click')
     await flushPromises()
-    expect(api.marketInstall).toHaveBeenCalledWith({ token, trust: false, repo: false })
+    expect(api.marketInstall).toHaveBeenCalledWith({ token, repo: false })
     wrapper.unmount()
   })
 
@@ -247,12 +183,8 @@ describe('skill library presentation', () => {
           token,
           name: 'alpha',
           description: 'Alpha Skill',
-          preview: '# Alpha\n\nInstructions.',
           version: null,
           contentHash: 'd'.repeat(64),
-          risk: { level: 'none', labels: [] },
-          fileCount: 2,
-          totalBytes: 40,
           relativePath: 'skills/alpha',
           validName: true,
           repoMode: true,
@@ -266,54 +198,16 @@ describe('skill library presentation', () => {
       marketRemoveSource: vi.fn(),
     }
     const wrapper = mount(SkillMarketDialog, {
-      props: { api, policy: { untrustedByDefault: true } },
+      props: { api },
       global: { stubs: { teleport: true } },
     })
     await flushPromises()
     await wrapper.get('.market-source').trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('Install the whole repo')
-    expect(wrapper.text()).not.toContain('Trust after install')
     await wrapper.findAll('button').find(button => button.text().includes('Install into the shared library')).trigger('click')
     await flushPromises()
-    expect(api.marketInstall).toHaveBeenCalledWith({ token, trust: false, repo: true })
-    wrapper.unmount()
-  })
-
-  it('loads and updates the Skill trust policy', async () => {
-    const api = {
-      summary: vi.fn().mockResolvedValue({
-        policy: { untrustedByDefault: true, revokeOnChange: true, denySkillNetwork: false },
-        counts: { reauth: 2 },
-      }),
-      updatePolicy: vi.fn().mockResolvedValue({}),
-    }
-    const wrapper = mount(SkillTrustPolicy, { props: { api } })
-    await flushPromises()
-    expect(wrapper.text()).toContain('2 Skills need approval')
-    const switches = wrapper.findAll('.settings-switch')
-    await switches[2].trigger('click')
-    await flushPromises()
-    expect(api.updatePolicy).toHaveBeenCalledWith({ denySkillNetwork: true })
-    wrapper.unmount()
-  })
-
-  it('toggles native eligibility rather than writing a projection', async () => {
-    const api = mockApi()
-    const wrapper = mount(SkillsPage, { props: { api } })
-    await flushPromises()
-    await wrapper.findAll('.chip').find(button => button.text().includes('Agent native')).trigger('click')
-    await flushPromises()
-
-    const row = wrapper.findAll('tbody tr').find(item => item.text().includes('review'))
-    await row.get('.skills-native-toggle').trigger('click')
-    await flushPromises()
-    expect(api.setEligible).toHaveBeenCalledWith({
-      id: 'claude/global/review',
-      agent: 'claude',
-      enabled: false,
-    })
-    expect(api.project).not.toHaveBeenCalled()
+    expect(api.marketInstall).toHaveBeenCalledWith({ token, repo: true })
     wrapper.unmount()
   })
 })

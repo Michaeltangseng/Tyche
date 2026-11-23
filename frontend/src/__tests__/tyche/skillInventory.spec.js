@@ -1,35 +1,29 @@
 import { describe, expect, it } from 'vitest'
-import { keptSkillIds, selectableSkills, skillTokenEstimate, skillUnavailableReason } from '../../skillInventory.js'
+import { keptSkillIds, selectableSkills, skillTokenEstimate } from '../../skillInventory.js'
 
 const skills = [
-  { id: 'claude/global/frontend-design', trust: 'trusted', eligible: ['claude'] },
-  { id: 'claude/global/review', trust: 'changed', eligible: ['claude'] },
-  { id: 'codex/global/tests', trust: 'trusted', eligible: ['codex'] },
+  { id: 'shared/library/frontend-design', source: 'shared' },
+  { id: 'shared/library/review', source: 'market' },
+  { id: 'claude/global/review', source: 'native', originKind: 'claude' },
 ]
 
 describe('skill inventory selection', () => {
-  it('keeps only trusted skills that the current agent can select', () => {
-    expect(selectableSkills(skills, 'claude').map(skill => skill.id)).toEqual(['claude/global/frontend-design'])
+  it('selects every platform Skill and never a native one', () => {
+    expect(selectableSkills(skills, 'claude').map(skill => skill.id)).toEqual([
+      'shared/library/frontend-design',
+      'shared/library/review',
+    ])
     expect(keptSkillIds(
-      ['claude/global/review', 'claude/global/frontend-design', 'codex/global/tests'],
+      ['claude/global/review', 'shared/library/frontend-design', 'claude/global/review'],
       skills,
       'claude',
-    )).toEqual(['claude/global/frontend-design'])
-  })
-
-  it('explains why a Skill is unavailable to a role', () => {
-    expect(skillUnavailableReason({ source: 'shared', trust: 'untrusted' }, 'claude')).toBe('trust')
-    expect(skillUnavailableReason({ source: 'shared', trust: 'changed' }, 'claude')).toBe('reauth')
-    expect(skillUnavailableReason({ source: 'shared', trust: 'trusted', available: [] }, 'claude')).toBe('enable')
-    expect(skillUnavailableReason({ source: 'native', originKind: 'hermes', trust: 'trusted', available: ['hermes'] }, 'claude')).toBe('otherAgent')
-    expect(skillUnavailableReason({ source: 'shared', trust: 'trusted', available: ['claude'] }, 'claude')).toBe('')
+    )).toEqual(['shared/library/frontend-design'])
   })
 
   it('does not cap the number of equipped skills', () => {
     const many = Array.from({ length: 9 }, (_, index) => ({
-      id: `claude/global/skill-${index}`,
-      trust: 'trusted',
-      eligible: ['claude'],
+      id: `shared/library/skill-${index}`,
+      source: 'shared',
     }))
     expect(keptSkillIds(many.map(skill => skill.id), many, 'claude')).toHaveLength(9)
   })
