@@ -48,10 +48,15 @@ test('forwards display-safe commands to the host', () => {
   handlers.get(CHANNELS.filesRead)({ roomId: 'room-1', relPath: 'docs/a.md', offset: 0, length: 1024 })
   handlers.get(CHANNELS.writeAuthorized)({ roomId: 'room-1', authorized: true })
   handlers.get(CHANNELS.runtimeEvents)({ roomId: 'room-1', chatId: 'chat-1', runId: 'run-1', limit: 10 })
+  handlers.get(CHANNELS.usageReport)({ range: 'week' })
+  handlers.get(CHANNELS.usageReport)(undefined)
+  handlers.get(CHANNELS.usageSettings)()
+  handlers.get(CHANNELS.updateUsageSettings)({ monthlyBudgetUsd: 10 })
 
   assert.deepEqual(calls.map(call => call[0]), [
     'bootstrap', 'snapshot', 'chatMessages', 'submitMessage',
     'filesList', 'filesRead', 'setWriteAuthorized', 'runtimeEvents',
+    'usageReport', 'usageReport', 'usageSettings', 'updateUsageSettings',
   ])
 })
 

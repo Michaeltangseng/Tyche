@@ -296,7 +296,7 @@ function registerTeamRoomIpc({ registerTrustedHandle, getHost, dialog, getMainWi
   registerTrustedHandle(CHANNELS.skillInventory, () => host().skillInventoryList())
 
   registerTrustedHandle(CHANNELS.usageReport, input => {
-    const parsed = optionalInput(input, ['range'])
+    const parsed = input === undefined || input === null ? {} : assertInput(input, ['range'])
     if (parsed.range !== undefined) text(parsed.range, 16)
     return host().usageReport(parsed)
   })
