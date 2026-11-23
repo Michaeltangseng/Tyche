@@ -241,6 +241,9 @@ if (isLocalDocument) Object.assign(desktopApi, {
     create: input => ipcRenderer.invoke('local-custom-agent:create', input),
     delete: kind => ipcRenderer.invoke('local-custom-agent:delete', kind),
   }),
+  nativeMcp: Object.freeze({
+    list: () => ipcRenderer.invoke('native-mcp:list'),
+  }),
   localAgentConnector: Object.freeze({
     list: () => ipcRenderer.invoke('local-agent-connector:list'),
     packages: () => ipcRenderer.invoke('local-agent-connector:packages'),

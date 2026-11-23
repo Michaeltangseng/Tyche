@@ -59,6 +59,8 @@ test('local preload exposes the local-only Tyche API', async () => {
   assert.equal(api.localOnly, true)
   assert.equal(api.platform, process.platform)
   assert.equal(Object.isFrozen(api.localAgentConnector), true)
+  assert.equal(Object.isFrozen(api.nativeMcp), true)
+  assert.deepEqual(Object.keys(api.nativeMcp), ['list'])
   assert.equal(Object.isFrozen(api.localSkillTrust), true)
   assert.equal(Object.isFrozen(api.cloudAgent), true)
   assert.equal(Object.isFrozen(api.cloudAgentBridge), true)

@@ -8,6 +8,7 @@ const { ATTACHMENT_FILE_EXTENSIONS } = require('../attachments/attachment-record
 const { registerDeliveryIpc } = require('./delivery-ipc.cjs')
 const { loadedWorkPreferences, parseWorkPreferences } = require('../workspace/work-preferences.cjs')
 const { NATIVE_CONFIG_DIRECTORIES, validateNativeConfigDirectory } = require('../agents/native-config-directory.cjs')
+const { listNativeMcpServers } = require('../agents/mcp-inventory.cjs')
 const { nativeSecretEnvKeys } = require('../agents/cli/native-secret-environment.cjs')
 const { switchNativeSessionProfile } = require('../workspace/native-session-profiles.cjs')
 
@@ -624,6 +625,10 @@ function registerDesktopIpc(options) {
     customAgentStore.remove(selectedKind)
     await refreshLocalAgentState()
     return { deleted: true, kind: selectedKind }
+  })
+  registerTrustedHandle('native-mcp:list', (...args) => {
+    if (args.length) throw new Error('AGENT_MCP_REQUEST_INVALID')
+    return listNativeMcpServers()
   })
   registerTrustedHandle('local-agent-connector:list', async (...args) => {
     if (args.length) throw new Error('AGENT_CONNECTOR_REQUEST_INVALID')
