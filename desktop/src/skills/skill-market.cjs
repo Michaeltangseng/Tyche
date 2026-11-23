@@ -10,6 +10,7 @@ const {
   isInsideOrEqual,
   removeDirectory,
   safeReadSkillDirectory,
+  sharedSkillId,
   skillError,
   validSkillName,
 } = require('./skill-library-util.cjs')
@@ -337,7 +338,12 @@ class SkillMarket {
         repoMode: path.resolve(directory) !== path.resolve(target),
       }
       this.staged.set(token, staged)
-      entries.push(entryDto(staged, meta))
+      const entry = entryDto(staged, meta)
+      const installed = store.skills[sharedSkillId(meta.name)]
+      entry.installed = Boolean(installed)
+      entry.installedId = installed ? sharedSkillId(meta.name) : null
+      entry.upToDate = Boolean(installed && installed.contentHash === meta.contentHash)
+      entries.push(entry)
     }
     if (!entries.length) {
       removeDirectory(target)

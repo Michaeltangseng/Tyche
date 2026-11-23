@@ -91,6 +91,11 @@ test('a Git source previews, installs, checks, and updates a market Skill', asyn
   assert.equal(provenance.origin.relativePath, 'skills/alpha')
 
   assert.deepEqual(library.assertSelectable('codex', ['shared/library/alpha']), ['shared/library/alpha'])
+  const installedPreview = await library.market.previewSource(source.id)
+  const installedAlpha = installedPreview.entries.find(entry => entry.name === 'alpha')
+  assert.equal(installedAlpha.installed, true)
+  assert.equal(installedAlpha.installedId, 'shared/library/alpha')
+  assert.equal(installedAlpha.upToDate, true)
 
   writeSkill(repo, 'skills', 'alpha', 'Alpha Skill', 'Alpha instructions updated.')
   git(['add', '.'], repo)
@@ -99,6 +104,11 @@ test('a Git source previews, installs, checks, and updates a market Skill', asyn
   assert.equal(updates.updates.length, 1)
   assert.equal(updates.updates[0].skillId, 'shared/library/alpha')
   assert.equal(library.list().skills.find(skill => skill.id === 'shared/library/alpha').updateAvailable, true)
+
+  const changedPreview = await library.market.previewSource(source.id)
+  const changedAlpha = changedPreview.entries.find(entry => entry.name === 'alpha')
+  assert.equal(changedAlpha.installed, true)
+  assert.equal(changedAlpha.upToDate, false)
 
   const next = await library.market.previewUpdate({ skillId: 'shared/library/alpha' })
   assert.equal(next.upToDate, false)
