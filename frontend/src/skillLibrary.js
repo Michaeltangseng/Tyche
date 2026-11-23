@@ -1,5 +1,33 @@
 export const SKILL_FILTER_IDS = Object.freeze(['all', 'shared', 'market', 'native'])
 
+export const SKILL_CATEGORY_KEYS = Object.freeze([
+  'data', 'efficiency', 'design', 'research', 'creative', 'development', 'other',
+])
+
+const CATEGORY_RULES = [
+  ['research', /(research|paper|arxiv|search|crawl|scrape|研究|搜索|抓取)/i],
+  ['design', /(design|figma|ui\b|ux\b|diagram|svg|image|video|motion|视觉|设计|图形)/i],
+  ['creative', /(ascii|art\b|creative|story|write|blog|创意|写作)/i],
+  ['data', /(data|sql|database|csv|excel|analytic|chart|数据|分析|表格)/i],
+  ['efficiency', /(notes?|reminders?|calendar|email|slack|notify|memo|效率|提醒|笔记|通知)/i],
+  ['development', /(code|cli\b|git\b|test|review|api|develop|开发|代码|审查)/i],
+]
+
+export function skillCategoryKey(skill) {
+  const text = `${skill?.name || ''} ${skill?.description || ''}`
+  for (const [key, rule] of CATEGORY_RULES) {
+    if (rule.test(text)) return key
+  }
+  return 'other'
+}
+
+export function avatarTone(name) {
+  const tones = ['cyan', 'blue', 'violet', 'pink', 'orange', 'green', 'amber']
+  let hash = 0
+  for (const char of String(name || '')) hash = (hash * 31 + char.charCodeAt(0)) % 997
+  return tones[hash % tones.length]
+}
+
 export function skillFilterCounts(skills) {
   const rows = Array.isArray(skills) ? skills : []
   return {

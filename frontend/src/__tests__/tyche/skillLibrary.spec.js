@@ -54,6 +54,7 @@ function mockApi() {
     onChanged: vi.fn(() => () => {}),
     create: vi.fn().mockResolvedValue(detail),
     update: vi.fn().mockResolvedValue(detail),
+    promote: vi.fn().mockResolvedValue(detail),
     remove: vi.fn().mockResolvedValue({ removed: true }),
     reveal: vi.fn().mockResolvedValue({ opened: true }),
     marketSources: vi.fn().mockResolvedValue([]),
@@ -119,6 +120,23 @@ describe('skill library presentation', () => {
     wrapper.unmount()
   })
 
+  it('shows the platform empty state and promotes a native Skill', async () => {
+    const api = mockApi()
+    api.list.mockResolvedValue({ ...listPayload(), skills: [{ ...native }] })
+    const wrapper = mount(SkillsPage, { props: { api } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('No platform Skills yet')
+
+    const nativeTab = wrapper.findAll('.skills-tabs button').find(button => button.text().includes('Agent native Skills'))
+    await nativeTab.trigger('click')
+    await flushPromises()
+    const promote = wrapper.findAll('.skill-promote').find(button => button.text().includes('Promote'))
+    await promote.trigger('click')
+    await flushPromises()
+    expect(api.promote).toHaveBeenCalledWith({ id: 'claude/global/review' })
+    wrapper.unmount()
+  })
+
   function marketApi(entry) {
     const sourceId = `src-${'a'.repeat(32)}`
     const token = `market-${'b'.repeat(32)}`
@@ -161,7 +179,7 @@ describe('skill library presentation', () => {
     await openMarket(wrapper)
     expect(wrapper.text()).toContain('Alpha Skill')
 
-    const add = wrapper.findAll('.skills-row-action').find(button => button.text() === 'Add')
+    const add = wrapper.findAll('.skill-promote').find(button => button.text() === 'Add')
     await add.trigger('click')
     await flushPromises()
     expect(api.marketInstall).toHaveBeenCalledWith({ token, repo: false })
@@ -175,7 +193,7 @@ describe('skill library presentation', () => {
     await openMarket(wrapper)
     expect(wrapper.text()).toContain('Repo')
 
-    const add = wrapper.findAll('.skills-row-action').find(button => button.text() === 'Add')
+    const add = wrapper.findAll('.skill-promote').find(button => button.text() === 'Add')
     await add.trigger('click')
     await flushPromises()
     expect(api.marketInstall).toHaveBeenCalledWith({ token, repo: true })
