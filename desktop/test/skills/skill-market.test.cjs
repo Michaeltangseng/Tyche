@@ -195,3 +195,31 @@ test('market sources reject unsafe URLs and keep installed sources in use', asyn
     /SKILL_MARKET_SOURCE_IN_USE/,
   )
 })
+
+test('the bundled catalog lists real entries and marks installed Skills', (t) => {
+  const { library } = setup(t)
+  const catalog = library.market.catalog()
+  assert.equal(catalog.length > 50, true)
+  const pdf = catalog.find(entry => entry.id === 'anthropics/pdf')
+  assert.ok(pdf)
+  assert.equal(pdf.installed, false)
+  assert.equal(pdf.url, 'https://github.com/anthropics/skills')
+
+  const store = library.loadStore()
+  store.skills['shared/library/pdf'] = {
+    name: 'pdf',
+    sourceKind: 'market',
+    origin: {
+      type: 'market',
+      url: 'https://github.com/anthropics/skills',
+      relativePath: 'skills/pdf',
+    },
+    contentHash: 'a'.repeat(64),
+  }
+  library.saveStore(store)
+  library.invalidate()
+
+  const installed = library.market.catalog().find(entry => entry.id === 'anthropics/pdf')
+  assert.equal(installed.installed, true)
+  assert.equal(installed.installedId, 'shared/library/pdf')
+})

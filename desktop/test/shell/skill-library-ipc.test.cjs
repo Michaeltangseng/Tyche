@@ -95,6 +95,15 @@ test('skill library IPC exposes only the catalog surface and validates input', a
     /SKILL_CONFIRM_MISMATCH/,
   )
 
+  const catalog = handlers.get('skill-library:market-catalog')()
+  assert.equal(catalog.length > 50, true)
+  assert.equal(catalog[0].id.includes('/'), true)
+  assert.equal(typeof catalog[0].installed, 'boolean')
+  await assert.rejects(
+    () => handlers.get('skill-library:market-install-catalog')({ id: '../escape' }),
+    /SKILL_LIBRARY_INPUT_INVALID/,
+  )
+
   const promoted = handlers.get('skill-library:promote')({ id: 'claude/global/pptx' })
   assert.equal(promoted.id, 'shared/library/pptx')
   assert.equal(promoted.source, 'shared')

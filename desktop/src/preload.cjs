@@ -152,6 +152,8 @@ if (isLocalDocument) Object.assign(desktopApi, {
     promote: input => ipcRenderer.invoke('skill-library:promote', input),
     remove: input => ipcRenderer.invoke('skill-library:remove', input),
     reveal: input => ipcRenderer.invoke('skill-library:reveal', input),
+    marketCatalog: () => ipcRenderer.invoke('skill-library:market-catalog'),
+    marketInstallCatalog: input => ipcRenderer.invoke('skill-library:market-install-catalog', input),
     marketSources: () => ipcRenderer.invoke('skill-library:market-sources'),
     marketAddSource: input => ipcRenderer.invoke('skill-library:market-add-source', input),
     marketRemoveSource: input => ipcRenderer.invoke('skill-library:market-remove-source', input),

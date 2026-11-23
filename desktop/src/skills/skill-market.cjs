@@ -15,6 +15,8 @@ const {
   validSkillName,
 } = require('./skill-library-util.cjs')
 
+const { catalogEntries } = require('./market-catalog.cjs')
+
 const execFileAsync = promisify(execFile)
 const MAX_ENTRIES = 50
 const MAX_WALK_DIRS = 500
@@ -135,6 +137,9 @@ function discoverSkillDirectories(root, subpath) {
 
   const found = []
   let visited = 0
+  // Official catalogues keep Skills under hidden collection folders, for
+  // example openai/skills uses skills/.curated and skills/.system.
+  const HIDDEN_SKILL_DIRS = new Set(['.curated', '.system', '.experimental', '.skills'])
   function walk(directory, depth) {
     if (found.length >= MAX_ENTRIES || visited >= MAX_WALK_DIRS || depth > MAX_WALK_DEPTH) return
     visited += 1
@@ -150,7 +155,8 @@ function discoverSkillDirectories(root, subpath) {
     }
     entries.sort((left, right) => left.name.localeCompare(right.name))
     for (const entry of entries) {
-      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
+      if (entry.name === 'node_modules') continue
+      if (entry.name.startsWith('.') && !HIDDEN_SKILL_DIRS.has(entry.name)) continue
       if (entry.isSymbolicLink() || !entry.isDirectory()) continue
       walk(path.join(directory, entry.name), depth + 1)
     }
@@ -175,6 +181,51 @@ class SkillMarket {
     this.staged = new Map()
     fs.mkdirSync(this.stagingRoot, { recursive: true, mode: 0o700 })
     this.cleanupStaging()
+  }
+
+  catalog() {
+    const store = this.library.loadStore()
+    return catalogEntries().map((entry) => {
+      const installed = Object.entries(store.skills).find(([, skill]) => (
+        skill?.sourceKind === 'market'
+        && skill?.origin?.url === entry.url
+        && skill?.origin?.relativePath === entry.subpath
+      ))
+      return {
+        id: entry.id,
+        name: entry.name,
+        description: entry.description,
+        source: entry.source,
+        url: entry.url,
+        ref: entry.ref,
+        subpath: entry.subpath,
+        installed: Boolean(installed),
+        installedId: installed ? installed[0] : null,
+      }
+    })
+  }
+
+  async installCatalogEntry({ id } = {}) {
+    const entry = catalogEntries().find(item => item.id === id)
+    if (!entry) fail('SKILL_MARKET_ENTRY_NOT_FOUND')
+    const source = this.addSource({ url: entry.url, ref: entry.ref, subpath: '' })
+    const target = path.join(this.stagingRoot, `catalog-${sha(entry.id).slice(0, 12)}-${Date.now()}`)
+    removeDirectory(target)
+    try {
+      const commit = await this.clone(entry.url, entry.ref, target)
+      const directory = path.join(target, ...entry.subpath.split('/'))
+      if (!fs.existsSync(path.join(directory, 'SKILL.md'))) fail('SKILL_MARKET_ENTRY_INVALID')
+      return this.library.installMarketEntry({
+        source,
+        commit,
+        stagingDirectory: directory,
+        repoRoot: target,
+        relativePath: entry.subpath,
+        name: entry.name,
+      })
+    } finally {
+      removeDirectory(target)
+    }
   }
 
   cleanupStaging() {

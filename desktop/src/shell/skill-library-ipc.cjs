@@ -18,6 +18,8 @@ const CHANNELS = Object.freeze({
   promote: 'skill-library:promote',
   remove: 'skill-library:remove',
   reveal: 'skill-library:reveal',
+  marketCatalog: 'skill-library:market-catalog',
+  marketInstallCatalog: 'skill-library:market-install-catalog',
   marketSources: 'skill-library:market-sources',
   marketAddSource: 'skill-library:market-add-source',
   marketRemoveSource: 'skill-library:market-remove-source',
@@ -146,6 +148,17 @@ function registerSkillLibraryIpc({ registerTrustedHandle, getLibrary, shell } = 
     if (typeof shell?.openPath !== 'function') throw ipcError('SKILL_LIBRARY_UNAVAILABLE')
     const error = await shell.openPath(target)
     return { opened: !error }
+  })
+
+  registerTrustedHandle(CHANNELS.marketCatalog, () => library().market.catalog())
+
+  registerTrustedHandle(CHANNELS.marketInstallCatalog, async (input) => {
+    const parsed = assertInput(input, ['id'])
+    const id = text(parsed.id, 160)
+    if (!/^[a-z0-9][a-z0-9-]{0,40}\/[a-z0-9][a-z0-9-]{0,80}$/.test(id)) {
+      throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
+    }
+    return library().market.installCatalogEntry({ id })
   })
 
   registerTrustedHandle(CHANNELS.marketSources, () => library().market.listSources())

@@ -92,8 +92,8 @@ test('local preload exposes the local-only Tyche API', async () => {
   ].sort())
   assert.equal(Object.isFrozen(api.skillLibrary), true)
   assert.deepEqual(Object.keys(api.skillLibrary).sort(), [
-    'create', 'detail', 'list', 'marketAddSource', 'marketApplyUpdate',
-    'marketCheckUpdates', 'marketInstall', 'marketPreview', 'marketPreviewUpdate',
+    'create', 'detail', 'list', 'marketAddSource', 'marketApplyUpdate', 'marketCatalog',
+    'marketCheckUpdates', 'marketInstall', 'marketInstallCatalog', 'marketPreview', 'marketPreviewUpdate',
     'marketRemoveSource', 'marketSources', 'onChanged', 'promote', 'remove', 'reveal', 'summary', 'update',
   ].sort())
   await api.teamRoom.snapshot({ roomId: 'room-1' })
