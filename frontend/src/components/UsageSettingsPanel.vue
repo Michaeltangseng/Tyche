@@ -3,7 +3,7 @@
     <header class="usage-head">
       <div>
         <h1>{{ t('systemSettings.usage') }}</h1>
-        <p>{{ t('settingsUi.usageLead') }}</p>
+        <!-- <p>{{ t('settingsUi.usageLead') }}</p> -->
       </div>
       <div class="usage-head-actions">
         <button v-if="hasFilters" type="button" class="secondary-button" @click="clearFilters">{{ t('settingsUi.usageClear') }}</button>
