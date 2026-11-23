@@ -47,6 +47,21 @@ describe('usage settings panel', () => {
     expect(wrapper.text()).toContain('Costs are estimates')
     expect(api.usageReport).toHaveBeenCalledWith({ range: 'month' })
 
+    const bars = wrapper.findAll('.usage-bar')
+    await bars[1].trigger('mouseenter')
+    expect(wrapper.get('.usage-inspect').text()).toContain('2026-11-22')
+    expect(wrapper.get('.usage-inspect').text()).toContain('Claude $1.00')
+    await bars[1].trigger('click')
+    expect(wrapper.get('.usage-inspect').classes()).toContain('pinned')
+    await bars[1].trigger('click')
+    expect(wrapper.get('.usage-inspect').classes()).not.toContain('pinned')
+
+    const claude = wrapper.findAll('.legend-item').find(button => button.text().includes('Claude'))
+    await claude.trigger('click')
+    expect(claude.attributes('aria-pressed')).toBe('false')
+    await bars[1].trigger('mouseenter')
+    expect(wrapper.get('.usage-inspect').text()).not.toContain('Claude $1.00')
+
     const week = wrapper.findAll('button').find(button => button.text() === 'This week')
     await week.trigger('click')
     await flushPromises()

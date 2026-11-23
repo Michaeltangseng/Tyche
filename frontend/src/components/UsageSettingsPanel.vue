@@ -33,17 +33,41 @@
           <div class="usage-card-head">
             <h2>{{ t('settingsUi.dailyTrend') }}</h2>
             <p class="legend">
-              <template v-for="agent in legend" :key="agent.provider">
+              <button
+                v-for="agent in legend"
+                :key="agent.provider"
+                type="button"
+                class="legend-item"
+                :class="{ off: hiddenProviders.includes(agent.provider) }"
+                :aria-pressed="!hiddenProviders.includes(agent.provider)"
+                @click="toggleProvider(agent.provider)"
+              >
                 <i class="swatch" :style="{ background: colorOf(agent.provider) }" />{{ agentLabel(agent.provider) }}
-              </template>
+              </button>
             </p>
           </div>
           <p v-if="!hasChartData" class="settings-note">{{ t('settingsUi.usageNoData') }}</p>
           <div v-else class="usage-chart">
             <div class="usage-yaxis"><span>{{ money(maxDaily) }}</span><span>{{ money(maxDaily / 2) }}</span><span>$0</span></div>
             <div class="usage-plot">
-              <div class="usage-bars">
-                <span v-for="point in report.series" :key="point.date" :title="`${point.date} · ${money(point.total)}`" :style="{ height: barHeight(point) }">
+              <div class="usage-bars" @mouseleave="hoveredDate = ''">
+                <span
+                  v-for="point in report.series"
+                  :key="point.date"
+                  class="usage-bar"
+                  :class="{ active: activePoint?.date === point.date }"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="`${point.date} · ${money(visibleTotal(point))}`"
+                  :style="{ height: barHeight(point) }"
+                  @mouseenter="hoveredDate = point.date"
+                  @focus="hoveredDate = point.date"
+                  @blur="hoveredDate = ''"
+                  @click="togglePinned(point)"
+                  @keydown.enter.prevent="togglePinned(point)"
+                  @keydown.space.prevent="togglePinned(point)"
+                  @keydown.esc="clearInspect"
+                >
                   <i
                     v-for="segment in segments(point)"
                     :key="segment.provider"
@@ -52,6 +76,18 @@
                 </span>
               </div>
               <div class="usage-xaxis"><span v-for="label in xLabels" :key="label">{{ label }}</span></div>
+              <div class="usage-inspect" :class="{ pinned: Boolean(pinnedDate) }">
+                <template v-if="activePoint">
+                  <strong>{{ activePoint.date }}</strong>
+                  <span class="usage-inspect-total">{{ money(visibleTotal(activePoint)) }}</span>
+                  <span v-for="entry in activeBreakdown" :key="entry.provider" class="usage-inspect-part">
+                    <i class="swatch" :style="{ background: colorOf(entry.provider) }" />{{ agentLabel(entry.provider) }} {{ money(entry.cost) }}
+                  </span>
+                  <button v-if="pinnedDate" type="button" class="link-button" @click="clearInspect">{{ t('settingsUi.usageClear') }}</button>
+                  <small v-else>{{ t('settingsUi.usagePinHint') }}</small>
+                </template>
+                <small v-else>{{ t('settingsUi.usageHoverHint') }}</small>
+              </div>
             </div>
           </div>
         </article>
@@ -144,8 +180,21 @@ const settings = reactive({
   maxTokensPerTurn: 200000,
 })
 
-const legend = computed(() => (report.value?.agents || []).slice(0, 4))
-const maxDaily = computed(() => Math.max(0, ...(report.value?.series || []).map(point => point.total)))
+const hoveredDate = ref('')
+const pinnedDate = ref('')
+const hiddenProviders = ref([])
+const legend = computed(() => report.value?.agents || [])
+const maxDaily = computed(() => Math.max(0, ...(report.value?.series || []).map(point => visibleTotal(point))))
+const activeDate = computed(() => pinnedDate.value || hoveredDate.value)
+const activePoint = computed(() => (report.value?.series || []).find(point => point.date === activeDate.value) || null)
+const activeBreakdown = computed(() => {
+  const point = activePoint.value
+  if (!point) return []
+  return Object.entries(point.providers || {})
+    .filter(([provider, cost]) => cost > 0 && !hiddenProviders.value.includes(provider))
+    .map(([provider, cost]) => ({ provider, cost }))
+    .sort((left, right) => right.cost - left.cost)
+})
 const hasChartData = computed(() => maxDaily.value > 0)
 const budgetLine = computed(() => t('settingsUi.budgetLineDynamic', {
   budget: money(report.value?.budget?.monthlyBudgetUsd || 0),
@@ -179,17 +228,39 @@ function colorOf(provider) {
   return FALLBACK_COLORS[hash % FALLBACK_COLORS.length]
 }
 
+function visibleTotal(point) {
+  return Object.entries(point?.providers || {})
+    .filter(([provider]) => !hiddenProviders.value.includes(provider))
+    .reduce((sum, [, cost]) => sum + cost, 0)
+}
+
 function barHeight(point) {
   if (!maxDaily.value) return '0%'
-  return `${Math.max(0, (point.total / maxDaily.value) * 100)}%`
+  return `${Math.max(0, (visibleTotal(point) / maxDaily.value) * 100)}%`
 }
 
 function segments(point) {
-  const total = point.total || 0
+  const total = visibleTotal(point)
   if (!total) return []
   return Object.entries(point.providers || {})
-    .filter(([, cost]) => cost > 0)
+    .filter(([provider, cost]) => cost > 0 && !hiddenProviders.value.includes(provider))
     .map(([provider, cost]) => ({ provider, height: (cost / total) * 100 }))
+}
+
+function toggleProvider(provider) {
+  hiddenProviders.value = hiddenProviders.value.includes(provider)
+    ? hiddenProviders.value.filter(item => item !== provider)
+    : [...hiddenProviders.value, provider]
+}
+
+function togglePinned(point) {
+  pinnedDate.value = pinnedDate.value === point.date ? '' : point.date
+  hoveredDate.value = point.date
+}
+
+function clearInspect() {
+  pinnedDate.value = ''
+  hoveredDate.value = ''
 }
 
 function roomWidth(room) {
@@ -213,6 +284,8 @@ async function load(nextRange = range.value) {
   }
   loading.value = true
   error.value = ''
+  pinnedDate.value = ''
+  hoveredDate.value = ''
   try {
     const next = await api.usageReport({ range: nextRange })
     report.value = next
@@ -253,14 +326,27 @@ onMounted(() => load())
 .fee-meter i { display: block; height: 100%; background: linear-gradient(90deg, #2bbbad 0%, #f5a524 100%); }
 .usage-split { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(220px, 0.72fr); gap: 14px; }
 .legend { display: flex; flex-wrap: wrap; align-items: center; margin: 0; }
-.swatch { width: 8px; height: 8px; margin: 0 6px 0 12px; border-radius: 2px; }
+.legend-item { display: inline-flex; align-items: center; gap: 5px; padding: 2px 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; }
+.legend-item:hover { border-color: var(--border); }
+.legend-item.off { opacity: .4; text-decoration: line-through; }
+.swatch { width: 8px; height: 8px; border-radius: 2px; }
 .usage-chart { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 8px; margin-top: 8px; }
 .usage-yaxis { display: flex; flex-direction: column; justify-content: space-between; height: 148px; color: var(--faint); font-size: 11px; }
 .usage-plot { min-width: 0; }
 .usage-bars { display: flex; align-items: flex-end; gap: 3px; height: 148px; padding: 0 2px; border-bottom: 1px solid var(--border); }
 .usage-bars > span { display: flex; flex: 1; flex-direction: column-reverse; min-width: 0; justify-content: flex-start; }
+.usage-bar { cursor: pointer; outline: none; }
+.usage-bar:hover, .usage-bar:focus-visible { filter: brightness(1.18); }
+.usage-bar.active { background: color-mix(in srgb, var(--text) 7%, transparent); border-radius: 3px 3px 0 0; }
 .usage-bars i { display: block; width: 100%; }
 .usage-xaxis { display: flex; justify-content: space-between; margin-top: 6px; color: var(--faint); font-size: 11px; }
+.usage-inspect { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 28px; margin-top: 8px; padding: 6px 8px; border: 1px solid transparent; border-radius: 8px; color: var(--muted); font-size: 11px; }
+.usage-inspect.pinned { border-color: color-mix(in srgb, #2dd4bf 35%, var(--border)); background: color-mix(in srgb, #2dd4bf 7%, transparent); }
+.usage-inspect strong { color: var(--text-soft); font-size: 12px; }
+.usage-inspect-total { color: var(--text); font-weight: 650; }
+.usage-inspect-part { display: inline-flex; align-items: center; gap: 4px; }
+.usage-inspect .link-button { margin-left: auto; }
+.link-button { border: 0; background: transparent; color: var(--accent-text); font: inherit; font-size: 11px; cursor: pointer; padding: 0; }
 .room-row { display: grid; grid-template-columns: 88px minmax(0, 1fr) 64px; align-items: center; gap: 10px; min-height: 36px; }
 .room-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .room-row i { display: block; height: 6px; overflow: hidden; border-radius: 99px; background: color-mix(in srgb, var(--text) 8%, transparent); }

@@ -27,7 +27,7 @@
 | 总 Token | input + output + cached |
 | 接力次数 | 范围内带 usage 的 Agent 回复数 |
 | 被中止的循环 | 这些回复里 status 为 `stopped` / `failed` 的数量 |
-| 每日趋势 | 按本地日期聚合，按 Provider 堆叠 |
+| 每日趋势 | 按本地日期聚合，按 Provider 堆叠；悬停查看当天明细，点击固定，图例可切换 Provider |
 | 按 Room | 每个 Room 的 token 和费用 |
 | 按 Agent | 按 Provider 聚合的 token、费用和占比 |
 
