@@ -153,7 +153,9 @@ function createEngine({
           let equippedSkills = []
           if (skillSource && Array.isArray(role.skills) && role.skills.length) {
             try {
-              equippedSkills = skillSource.materialize(role.provider, role.skills).skills || []
+              equippedSkills = skillSource.materialize(role.provider, role.skills, {
+                workspace: room.workspace,
+              }).skills || []
             } catch { equippedSkills = [] }
           }
           const skillBindings = equippedSkills.map(skill => ({

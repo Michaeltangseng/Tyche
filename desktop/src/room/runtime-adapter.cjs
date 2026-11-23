@@ -378,7 +378,9 @@ function createOarRuntimeAdapter({
       ]
     if (skillSource && Array.isArray(role?.skills) && role.skills.length) {
       try {
-        const equipped = skillSource.materialize(role.provider, role.skills).skills || []
+        const equipped = skillSource.materialize(role.provider, role.skills, {
+          workspace: task.workspaceRef || '',
+        }).skills || []
         lines.push('', ...equippedSkillLines(equipped))
       } catch { /* a skill scan must not block the task */ }
     }
@@ -553,7 +555,9 @@ function createOarRuntimeAdapter({
       let skillBindings = []
       if (skillSource && Array.isArray(role.skills) && role.skills.length) {
         try {
-          skillBindings = (skillSource.materialize(role.provider, role.skills).skills || []).map(skill => ({
+          skillBindings = (skillSource.materialize(role.provider, role.skills, {
+            workspace,
+          }).skills || []).map(skill => ({
             id: skill.id,
             contentHash: skill.contentHash,
             delivery: skill.delivery,

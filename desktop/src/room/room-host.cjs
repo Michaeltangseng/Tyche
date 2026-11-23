@@ -14,6 +14,7 @@ const { openRoomDatabase } = require('./db.cjs')
 const { createRoomRepository } = require('./repository.cjs')
 const { createRoomReadModel } = require('./read-model.cjs')
 const { createUsageReport } = require('./usage-report.cjs')
+const { createProjectSkillSync } = require('./project-skills.cjs')
 const { createRoomService } = require('./room-service.cjs')
 const { createOarRuntimeAdapter } = require('./runtime-adapter.cjs')
 const { sanitizeRuntimeEvent, sanitizeStoredEvent } = require('./runtime-event-view.cjs')
@@ -201,6 +202,7 @@ function createRoomHost({
   const repository = createRoomRepository(roomDb)
   const readModel = createRoomReadModel({ roomDb })
   const usageReport = createUsageReport({ roomDb, privateRoot })
+  const projectSkills = createProjectSkillSync({ stateRoot: directory })
   const service = createRoomService({
     roomDb,
     repository,
@@ -495,7 +497,7 @@ function createRoomHost({
       ? input.prompt.slice(0, 100_000)
       : (input.isCaptain === true ? DEFAULT_CAPTAIN_PROMPT : DEFAULT_WORKER_PROMPT)
     const skills = selectedSkills(input.provider, input.skills)
-    return roomDb.withTransaction(() => {
+    const result = roomDb.withTransaction(() => {
       rememberProvider(room, input.provider)
       const roleId = repository.createRole({
         chatId: chat.id,
@@ -517,6 +519,8 @@ function createRoomHost({
       repository.addParticipant({ chatId: chat.id, roleId })
       return { roomId: room.id, chatId: chat.id, roleId }
     })
+    syncRoomProjectSkills(room)
+    return result
   }
 
   function updateRole(input = {}) {
@@ -541,7 +545,7 @@ function createRoomHost({
     const nextSkills = input.skills === undefined
       ? undefined
       : selectedSkills(input.provider !== undefined ? input.provider : role.provider, input.skills)
-    return roomDb.withTransaction(() => {
+    const result = roomDb.withTransaction(() => {
       if (input.provider !== undefined) rememberProvider(room, input.provider)
       const assignments = []
       const values = []
@@ -606,6 +610,8 @@ function createRoomHost({
       }
       return { roomId: room.id, chatId: chat.id, roleId: role.id }
     })
+    syncRoomProjectSkills(room)
+    return result
   }
 
   /**
@@ -656,6 +662,7 @@ function createRoomHost({
     `).get(role.id, role.id, role.id, role.id).n
     if (inUse > 0) throw hostError('ROOM_ROLE_IN_USE')
     roomDb.database.prepare('DELETE FROM chat_roles WHERE id = ?').run(role.id)
+    syncRoomProjectSkills(room)
     return { deleted: true, roomId: room.id, roleId: role.id }
   }
 
@@ -881,6 +888,43 @@ function createRoomHost({
     `).run(new Date(now()).toISOString())
   }
 
+  function syncRoomProjectSkills(room) {
+    if (!room || typeof skillInventory?.projectSources !== 'function') return null
+    const workspace = room.workspace
+    if (!workspace) return null
+    if (!room.writeAuthorizedRoot || room.writeAuthorizedRoot !== workspace) {
+      try { projectSkills.clear({ workspace }) } catch { /* best effort */ }
+      return null
+    }
+    try {
+      const roles = roomDb.database.prepare(`
+        SELECT r.provider, r.skills_json
+        FROM chat_roles r
+        JOIN chats c ON c.id = r.chat_id
+        JOIN rooms ON rooms.id = c.room_id
+        WHERE rooms.workspace = ? AND r.status = 'active'
+      `).all(workspace)
+      const ids = new Set()
+      const providers = new Set()
+      for (const role of roles) {
+        if (typeof role.provider === 'string' && role.provider) providers.add(role.provider)
+        try {
+          for (const id of JSON.parse(role.skills_json || '[]')) {
+            if (typeof id === 'string') ids.add(id)
+          }
+        } catch { /* ignore a malformed role row */ }
+      }
+      if (!providers.size) return null
+      return projectSkills.sync({
+        workspace,
+        providers: [...providers],
+        skills: skillInventory.projectSources([...ids]),
+      })
+    } catch {
+      return null
+    }
+  }
+
   function renameChat(input = {}) {
     const room = requireRoom(input.roomId)
     const chat = requireChat(input.chatId, room.id)
@@ -898,6 +942,7 @@ function createRoomHost({
     roomDb.database.prepare(
       'UPDATE rooms SET write_authorized_root = ?, updated_at = ? WHERE id = ?',
     ).run(authorizedRoot, new Date(now()).toISOString(), room.id)
+    syncRoomProjectSkills({ ...room, writeAuthorizedRoot: authorizedRoot })
     return { roomId: room.id, authorized: Boolean(authorizedRoot) }
   }
 
@@ -924,6 +969,13 @@ function createRoomHost({
         service.requestTick()
         service.requestLiveness()
         try { authorizeOpenRooms() } catch { /* write access repair is best-effort */ }
+        try {
+          for (const row of roomDb.database.prepare(
+            'SELECT id FROM rooms WHERE write_authorized_root IS NOT NULL',
+          ).all()) {
+            syncRoomProjectSkills(repository.getRoom(row.id))
+          }
+        } catch { /* project Skill links are best-effort */ }
       })()
     }
     await started

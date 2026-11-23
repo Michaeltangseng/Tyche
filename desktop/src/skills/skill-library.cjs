@@ -6,6 +6,7 @@ const { LocalSkillCatalog } = require('./local-skill-catalog.cjs')
 const { SkillLibraryStore } = require('./skill-library-store.cjs')
 const { AGENT_KINDS, agentLabel } = require('./skill-adapters.cjs')
 const { SkillMarket } = require('./skill-market.cjs')
+const { PROVIDER_ROOTS } = require('../room/project-skills.cjs')
 const {
   DEFAULT_LIMITS,
   REPO_LIMITS,
@@ -56,6 +57,19 @@ function skillUpdatedAt(directory) {
   } catch {
     return null
   }
+}
+
+function projectSkillLinked(workspace, agent, record) {
+  if (!workspace || !record?.sourceDirectory) return false
+  const roots = PROVIDER_ROOTS[agent] || ['.agents/skills']
+  for (const relativeRoot of roots) {
+    const link = path.join(workspace, ...relativeRoot.split('/'), record.name)
+    try {
+      if (!fs.lstatSync(link).isSymbolicLink()) continue
+      if (fs.realpathSync(link) === fs.realpathSync(record.sourceDirectory)) return true
+    } catch { /* try the next root */ }
+  }
+  return false
 }
 
 function backupDirectory(target, backupRoot, name, now) {
@@ -367,6 +381,19 @@ class SkillLibrary {
     return this.detailDto(this.recordById(id))
   }
 
+  projectSources(ids) {
+    const wanted = new Set(Array.isArray(ids) ? ids : [])
+    return this.scan()
+      .filter(record => record.kind !== 'native' && wanted.has(record.id))
+      .map(record => ({
+        id: record.id,
+        name: record.name,
+        sourceDirectory: record.sourceDirectory,
+        contentHash: record.contentHash,
+        repoSkill: record.repoSkill === true,
+      }))
+  }
+
   assertSelectable(agent, ids) {
     if (!AGENT_KINDS.includes(agent)) throw skillError('SKILL_AGENT_INVALID')
     if (!Array.isArray(ids)) throw skillError('SKILL_SELECTION_INVALID')
@@ -385,7 +412,7 @@ class SkillLibrary {
     return selected
   }
 
-  materialize(agent, ids) {
+  materialize(agent, ids, { workspace = '' } = {}) {
     if (!AGENT_KINDS.includes(agent)) throw skillError('SKILL_AGENT_INVALID')
     const records = new Map(this.scan()
       .filter(record => record.kind !== 'native')
@@ -398,13 +425,14 @@ class SkillLibrary {
         dropped.push({ id: String(id || ''), reason: 'unavailable' })
         continue
       }
+      const native = projectSkillLinked(workspace, agent, record)
       skills.push({
         id: record.id,
         name: record.name,
         description: record.description,
-        body: record.body,
+        body: native ? '' : record.body,
         contentHash: record.contentHash,
-        delivery: 'prompt',
+        delivery: native ? 'native' : 'prompt',
       })
     }
     return { skills, dropped }

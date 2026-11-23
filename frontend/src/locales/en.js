@@ -227,7 +227,7 @@ export default {
     "room.chatSkills": "Chat default skills",
     "room.skillsHint": "These bindings are inherited by roles unless they choose another setting.",
     "room.roleSkills": "Skills",
-    "room.roleSkillsHint": "Choose Skills from the platform library or market; they apply to this role in chat.",
+    "room.roleSkillsHint": "Choose Skills from the platform library or market. When the room allows writes, they are linked into the workspace Agent skill folder so scripts and subdirectories load natively.",
     "room.roleSkillsEmpty": "The platform has no Skills yet. Create one or install from the market in Settings.",
     "room.rememberSkillDefault": "Remember for new roles of this Agent",
     "room.skillTokens": "About {count} tokens",

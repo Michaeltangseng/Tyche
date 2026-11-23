@@ -183,3 +183,18 @@ test('promoting a native Skill copies it into the platform library', (t) => {
   assert.equal(again.id, 'shared/library/pptx')
   assert.equal(library.list().skills.filter(skill => skill.name === 'pptx').length, 2)
 })
+
+test('materialize uses native delivery when the Skill is linked into the workspace', (t) => {
+  const { library, home } = setup(t)
+  const created = library.create({ name: 'deck', description: 'Build decks', body: 'Body.' })
+  const workspace = path.join(home, 'workspace')
+  const source = library.projectSources([created.id])[0]
+  fs.mkdirSync(path.join(workspace, '.claude', 'skills'), { recursive: true })
+  fs.symlinkSync(source.sourceDirectory, path.join(workspace, '.claude', 'skills', 'deck'), 'dir')
+  const equipped = library.materialize('claude', [created.id], { workspace }).skills[0]
+  assert.equal(equipped.delivery, 'native')
+  assert.equal(equipped.body, '')
+  const prompt = library.materialize('claude', [created.id]).skills[0]
+  assert.equal(prompt.delivery, 'prompt')
+  assert.match(prompt.body, /Body\./)
+})

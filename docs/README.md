@@ -20,6 +20,7 @@ The notes describe how Tyche collaborates now. Earlier option comparisons and mi
 - [12 Skill review response: information model and native isolation](12-skill-review-response.md)
 - [13 Skill catalog: current implementation](13-skill-catalog.md)
 - [14 Usage and cost](14-usage-and-cost.md)
+- [15 Project Skills](15-project-skills.md)
 
 ## While reading
 

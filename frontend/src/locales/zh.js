@@ -227,7 +227,7 @@ export default {
     "room.chatSkills": "聊天默认技能",
     "room.skillsHint": "角色默认继承这里的绑定，也可以单独覆盖或明确不使用技能。",
     "room.roleSkills": "技能",
-    "room.roleSkillsHint": "从平台共享库或市场的 Skill 中选择；聊天时随角色生效。",
+    "room.roleSkillsHint": "从平台共享库或市场的 Skill 中选择；房间允许写入时会链接到工作区的 Agent skill 目录，脚本和子目录可原生加载。",
     "room.roleSkillsEmpty": "平台还没有 Skill。先在设置里新建或从市场下载。",
     "room.rememberSkillDefault": "记住为该 Agent 新角色的默认",
     "room.skillTokens": "约 {count} tokens",
