@@ -466,6 +466,66 @@ class SkillLibrary {
     throw skillError('SKILL_NAME_CONFLICT')
   }
 
+  promote(id) {
+    const record = this.recordById(id)
+    if (record.kind !== 'native') throw skillError('SKILL_AGENT_INVALID')
+    const store = this.loadStore()
+    const resolved = this.uniqueLibraryName(record.name || record.slug, store, 'rename', record.contentHash)
+    const skillId = sharedSkillId(resolved.name)
+    if (resolved.reuse) return this.detail(skillId)
+    const staging = path.join(
+      this.libraryRoot,
+      `.tyche-promote-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    )
+    removeDirectory(staging)
+    try {
+      copySkillDirectory(record.sourceDirectory, staging, this.limits)
+      const skillFile = path.join(staging, 'SKILL.md')
+      const original = fs.readFileSync(skillFile, 'utf8')
+      fs.writeFileSync(skillFile, normalizeSkillMarkdown(original, {
+        name: resolved.name,
+        description: record.description || resolved.name,
+      }), { mode: 0o600 })
+      const copied = safeReadSkillDirectory(staging, {
+        expectedName: resolved.name,
+        limits: this.limits,
+      })
+      if (!copied.contentHash) throw skillError('SKILL_IMPORT_INVALID')
+      const origin = {
+        type: 'import',
+        fromAgent: record.originKind,
+        namespace: record.namespace,
+        slug: record.slug,
+      }
+      writeProvenance(staging, {
+        schemaVersion: 1,
+        skillId,
+        sourceKind: 'shared',
+        origin,
+        release: null,
+        version: copied.version || null,
+        contentHash: copied.contentHash,
+        installedAt: nowIso(this.now),
+      })
+      fs.renameSync(staging, this.libraryPath(resolved.name))
+      store.skills[skillId] = {
+        name: resolved.name,
+        sourceKind: 'shared',
+        origin,
+        version: copied.version || null,
+        contentHash: copied.contentHash,
+        createdAt: nowIso(this.now),
+        updatedAt: nowIso(this.now),
+      }
+      this.saveStore(store)
+      this.notify()
+      return this.detail(skillId)
+    } catch (error) {
+      removeDirectory(staging)
+      throw error
+    }
+  }
+
   marketSourceInfo(source) {
     if (!isPlainObject(source)) throw skillError('SKILL_MARKET_SOURCE_INVALID')
     const id = String(source.id || '').slice(0, 200)

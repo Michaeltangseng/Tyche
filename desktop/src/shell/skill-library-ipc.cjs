@@ -15,6 +15,7 @@ const CHANNELS = Object.freeze({
   detail: 'skill-library:detail',
   create: 'skill-library:create',
   update: 'skill-library:update',
+  promote: 'skill-library:promote',
   remove: 'skill-library:remove',
   reveal: 'skill-library:reveal',
   marketSources: 'skill-library:market-sources',
@@ -124,6 +125,11 @@ function registerSkillLibraryIpc({ registerTrustedHandle, getLibrary, shell } = 
       description: parsed.description,
       body: optionalBody(parsed.body),
     })
+  })
+
+  registerTrustedHandle(CHANNELS.promote, (input) => {
+    const parsed = assertInput(input, ['id'])
+    return library().promote(skillId(parsed.id))
   })
 
   registerTrustedHandle(CHANNELS.remove, (input) => {

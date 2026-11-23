@@ -149,6 +149,7 @@ if (isLocalDocument) Object.assign(desktopApi, {
     detail: input => ipcRenderer.invoke('skill-library:detail', input),
     create: input => ipcRenderer.invoke('skill-library:create', input),
     update: input => ipcRenderer.invoke('skill-library:update', input),
+    promote: input => ipcRenderer.invoke('skill-library:promote', input),
     remove: input => ipcRenderer.invoke('skill-library:remove', input),
     reveal: input => ipcRenderer.invoke('skill-library:reveal', input),
     marketSources: () => ipcRenderer.invoke('skill-library:market-sources'),

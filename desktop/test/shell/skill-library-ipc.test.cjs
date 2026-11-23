@@ -95,6 +95,10 @@ test('skill library IPC exposes only the catalog surface and validates input', a
     /SKILL_CONFIRM_MISMATCH/,
   )
 
+  const promoted = handlers.get('skill-library:promote')({ id: 'claude/global/pptx' })
+  assert.equal(promoted.id, 'shared/library/pptx')
+  assert.equal(promoted.source, 'shared')
+
   const revealed = await handlers.get('skill-library:reveal')({ id: 'claude/global/pptx' })
   assert.deepEqual(revealed, { opened: true })
   assert.deepEqual(opened, [fs.realpathSync(native)])

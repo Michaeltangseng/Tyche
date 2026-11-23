@@ -94,7 +94,7 @@ test('local preload exposes the local-only Tyche API', async () => {
   assert.deepEqual(Object.keys(api.skillLibrary).sort(), [
     'create', 'detail', 'list', 'marketAddSource', 'marketApplyUpdate',
     'marketCheckUpdates', 'marketInstall', 'marketPreview', 'marketPreviewUpdate',
-    'marketRemoveSource', 'marketSources', 'onChanged', 'remove', 'reveal', 'summary', 'update',
+    'marketRemoveSource', 'marketSources', 'onChanged', 'promote', 'remove', 'reveal', 'summary', 'update',
   ].sort())
   await api.teamRoom.snapshot({ roomId: 'room-1' })
   assert.deepEqual(invocations, [{
@@ -219,6 +219,7 @@ test('skill-library preload forwards only library requests and exposes cancellab
   await api.skillLibrary.detail({ id })
   await api.skillLibrary.create({ name: 'review-kit', description: 'Review', body: '# Review' })
   await api.skillLibrary.update({ id, description: 'Review' })
+  await api.skillLibrary.promote({ id })
   await api.skillLibrary.remove({ id, confirmName: 'pptx' })
   await api.skillLibrary.reveal({ id })
   assert.deepEqual(invocations.map(item => item.channel), [
@@ -227,6 +228,7 @@ test('skill-library preload forwards only library requests and exposes cancellab
     'skill-library:detail',
     'skill-library:create',
     'skill-library:update',
+    'skill-library:promote',
     'skill-library:remove',
     'skill-library:reveal',
   ])

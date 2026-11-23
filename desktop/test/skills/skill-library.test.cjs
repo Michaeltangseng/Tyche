@@ -171,3 +171,15 @@ test('a v2 store drops trust, policy and projections on load', (t) => {
   assert.equal(persisted.schemaVersion, 3)
   assert.equal(persisted.policy, undefined)
 })
+
+test('promoting a native Skill copies it into the platform library', (t) => {
+  const { library, home } = setup(t)
+  const promoted = library.promote('claude/global/pptx')
+  assert.equal(promoted.id, 'shared/library/pptx')
+  assert.equal(promoted.source, 'shared')
+  assert.equal(fs.existsSync(path.join(home, 'library', 'pptx', 'SKILL.md')), true)
+  assert.equal(fs.existsSync(path.join(home, '.claude', 'skills', 'pptx', 'SKILL.md')), true)
+  const again = library.promote('claude/global/pptx')
+  assert.equal(again.id, 'shared/library/pptx')
+  assert.equal(library.list().skills.filter(skill => skill.name === 'pptx').length, 2)
+})
