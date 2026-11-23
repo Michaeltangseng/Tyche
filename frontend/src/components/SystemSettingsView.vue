@@ -85,9 +85,9 @@
                   <img :src="agent.logo" :alt="agent.label" />
                   <strong>{{ agent.label }}</strong>
                 </span>
-                <span class="agent-state" :class="agentState(agent).tone">
+                <span class="agent-state" :class="displayedState(agent).tone">
                   <i class="status-dot" aria-hidden="true" />
-                  {{ agentState(agent).label }}
+                  {{ displayedState(agent).label }}
                 </span>
                 <span class="agent-mono">{{ versionOf(agent) }}</span>
                 <span class="agent-mono">{{ authOf(agent) }}</span>
@@ -244,9 +244,19 @@ function versionOf(agent) {
 
 function authOf(agent) {
   if (!agent?.installed) return '—'
-  if (agent.credentialState === 'ready') return t('systemSettings.authReady')
-  if (agent.credentialState === 'missing') return t('systemSettings.authMissing')
-  return '—'
+  const tested = testResults.value[agent.kind]?.credentialState
+  const state = tested || agent.credentialState
+  if (state === 'ready') return t('systemSettings.authReady')
+  if (state === 'missing') return t('systemSettings.authMissing')
+  return t('systemSettings.authUnknown')
+}
+
+function displayedState(agent) {
+  const test = testResults.value[agent.kind]
+  if (!test) return agentState(agent)
+  if (test.available) return { label: t('agent.ready'), tone: 'ready' }
+  if (test.credentialState === 'missing') return { label: t('agent.needsLogin'), tone: 'warning' }
+  return { label: t('agent.unavailable'), tone: 'warning' }
 }
 
 async function testAgent(agent) {
