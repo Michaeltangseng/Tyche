@@ -9,6 +9,8 @@ const { createTimeline } = require('../../src/room/timeline.cjs')
 const { createSessionStore } = require('../../src/room/session-store.cjs')
 const { createOutbox } = require('../../src/room/effects.cjs')
 const { createEngine } = require('../../src/room/engine.cjs')
+const { LocalSkillCatalog } = require('../../src/skills/local-skill-catalog.cjs')
+const { SkillLibrary } = require('../../src/skills/skill-library.cjs')
 const { createFakeRuntime } = require('./helpers/fake-runtime.cjs')
 
 function setup(t, { deferCompletion = true } = {}) {
@@ -344,5 +346,75 @@ test('startQueuedReplies keeps a participant session serial', async t => {
 
   runtime.finish({ status: 'done', text: 'ok' }, second.replies[0].id)
   await new Promise(resolve => setImmediate(resolve))
+  roomDb.close()
+})
+
+test('a role saved with a platform Skill injects it and binds the hash', async t => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-engine-skills-'))
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }))
+  const library = new SkillLibrary({
+    storagePath: path.join(home, 'store', 'skill-library.json'),
+    legacyPath: path.join(home, 'store', 'skill-inventory.json'),
+    libraryRoot: path.join(home, 'library'),
+    backupRoot: path.join(home, 'backups'),
+    trashRoot: path.join(home, 'trash'),
+    home,
+    catalog: new LocalSkillCatalog({ home }),
+  })
+  const skill = library.create({
+    name: 'deck',
+    description: 'Build decks',
+    body: 'Use the deck workflow.',
+  })
+
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-skill-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const roomDb = openRoomDatabase({ directory })
+  const repo = createRoomRepository(roomDb)
+  const roomId = repo.createRoom({ name: 'R', workspace: directory, providers: ['claude'] })
+  const chatId = repo.createChat({ roomId, title: 'C' })
+  const captain = repo.createRole({
+    chatId,
+    displayName: 'Captain',
+    provider: 'claude',
+    prompt: 'route',
+    isCaptain: true,
+    skills: [skill.id],
+  })
+  repo.addParticipant({ chatId, roleId: captain })
+  assert.deepEqual(repo.getRole(captain).skills, [skill.id])
+
+  const timeline = createTimeline({ roomDb, repository: repo })
+  const sessions = createSessionStore({ roomDb, repository: repo })
+  const outbox = createOutbox({ roomDb, repository: repo })
+  const runtime = createFakeRuntime({ deferCompletion: true })
+  const engine = createEngine({
+    roomDb,
+    repository: repo,
+    timeline,
+    sessions,
+    outbox,
+    runtime,
+    launchProviders: () => ['claude'],
+    skillSource: library,
+  })
+  const { replies } = engine.submitUserMessage({ chatId, content: '做个首页' })
+  const pending = engine.startReply(replies[0].id)
+  await pending.launched
+  assert.match(runtime.starts[0].prompt, /Use the deck workflow\./)
+  assert.match(runtime.starts[0].prompt, /## deck/)
+
+  const row = roomDb.database.prepare(
+    "SELECT skill_bindings_json FROM sessions WHERE role_id = ? AND state = 'active'",
+  ).get(captain)
+  const bindings = JSON.parse(row.skill_bindings_json)
+  assert.deepEqual(bindings, [{
+    id: skill.id,
+    contentHash: skill.contentHash,
+    delivery: 'prompt',
+  }])
+
+  runtime.finish({ status: 'done', text: 'ok' }, replies[0].id)
+  await pending.done
   roomDb.close()
 })
