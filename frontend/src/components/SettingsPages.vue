@@ -1,6 +1,6 @@
 <template>
   <section class="settings-page mock" :aria-label="t(titleKey)">
-    <header v-if="section !== 'mcp'" class="settings-page-title">
+    <header v-if="section !== 'mcp' && section !== 'skills'" class="settings-page-title">
       <div>
         <h1>
           {{ t(titleKey) }}
@@ -8,12 +8,7 @@
         </h1>
         <p>{{ t(hintKey) }}</p>
       </div>
-      <div v-if="section === 'skills'" class="settings-actions">
-        <button class="secondary-button" type="button" disabled :title="t('settingsUi.marketLater')">{{ t('settingsUi.browseMarket') }}</button>
-        <button class="secondary-button" type="button" disabled :title="t('settingsUi.marketLater')">{{ t('settingsUi.importAgents') }}</button>
-        <button class="primary-button" type="button" disabled :title="t('settingsUi.marketLater')">+ {{ t('settingsUi.newSkill') }}</button>
-      </div>
-      <div v-else-if="section === 'usage'" class="settings-seg">
+      <div v-if="section === 'usage'" class="settings-seg">
         <button v-for="item in ranges" :key="item" type="button" :class="{ active: range === item }" @click="range = item">{{ t(`settingsUi.range.${item}`) }}</button>
       </div>
     </header>
@@ -59,53 +54,7 @@
       </article>
     </template>
 
-    <template v-else-if="section === 'skills'">
-      <p v-if="skillInventoryError" class="settings-note">{{ t('settingsUi.skillsUnavailable') }}</p>
-      <div class="settings-split">
-        <div class="settings-card">
-          <div class="settings-actions mock-filters">
-            <input v-model="skillQuery" :placeholder="t('settingsUi.searchSkill')" :aria-label="t('settingsUi.searchSkill')" />
-            <button v-for="item in skillFilters" :key="item.id" class="chip" :class="{ active: skillFilter === item.id, warn: item.id === 'reauth' }" type="button" @click="skillFilter = item.id">{{ t(item.label, { count: item.count }) }}</button>
-          </div>
-          <p v-if="!visibleSkills.length" class="settings-note">{{ t('settingsUi.skillsEmpty') }}</p>
-          <table v-else class="settings-mini-table">
-            <thead>
-              <tr>
-                <th>Skill</th>
-                <th v-for="agent in skillAgents" :key="agent">{{ agentLabel(agent) }}</th>
-                <th>{{ t('settingsUi.trust') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="skill in visibleSkills" :key="skill.id" :class="{ picked: selectedSkillId === skill.id }" @click="selectedSkillId = skill.id">
-                <td><strong>{{ skill.name }}</strong><br><small>{{ t('settingsUi.nativeSkill') }}</small></td>
-                <td v-for="agent in skillAgents" :key="agent">
-                  <button
-                    v-if="agent === skill.originKind"
-                    class="settings-switch"
-                    :class="{ on: skill.trust === 'trusted' && skill.eligible.includes(agent) }"
-                    type="button"
-                    :disabled="skill.trust === 'unavailable' || skillBusy"
-                    :title="agentLabel(agent)"
-                    @click.stop="toggleSkill(skill, agent)"
-                  ><i /></button>
-                  <span v-else>—</span>
-                </td>
-                <td><i class="settings-dot" :class="trustTone(skill.trust)" />{{ t(`settingsUi.trustState.${skill.trust}`) }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <aside v-if="currentSkill" class="settings-side">
-          <h3>{{ currentSkill.name }}</h3>
-          <p>{{ t('settingsUi.nativeSkill') }} · {{ agentLabel(currentSkill.originKind) }}</p>
-          <p>{{ currentSkill.description }}</p>
-          <div class="settings-actions stack">
-            <button class="secondary-button danger" type="button" :disabled="skillBusy || currentSkill.trust === 'untrusted'" @click="revokeCurrentSkill">{{ t('settingsUi.revokeTrust') }}</button>
-          </div>
-        </aside>
-      </div>
-    </template>
+    <SkillsPage v-else-if="section === 'skills'" :api="skillApi" :installed-agents="installedAgentKinds" />
 
     <template v-else-if="section === 'orchestration'">
       <article class="settings-card">
@@ -380,15 +329,17 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, unref, watch } from 'vue'
+import { computed, reactive, ref, unref } from 'vue'
 import { publicAsset } from '../catalog.js'
 import { locale as currentLocale, setLocale, t } from '../i18n.js'
+import SkillsPage from './skills/SkillsPage.vue'
 
 const props = defineProps({
   section: { type: String, required: true },
   setThemePreference: { type: Function, required: true },
   themePreference: { type: [String, Object], required: true },
   skillApi: { type: Object, default: null },
+  installedAgentKinds: { type: Array, default: () => [] },
 })
 
 const titles = {
@@ -421,25 +372,6 @@ const launchAtLogin = ref(false)
 const minimized = ref(false)
 const range = ref('month')
 const preset = ref('quick')
-const skillFilter = ref('all')
-const skillQuery = ref('')
-const selectedSkillId = ref('')
-const skillBusy = ref(false)
-const skillInventoryError = ref(false)
-const skillInventory = ref({ agents: [], skills: [], defaults: {} })
-const agentLabels = {
-  claude: 'Claude',
-  codex: 'Codex',
-  pi: 'Pi',
-  gemini: 'Gemini',
-  hermes: 'Hermes',
-  kimi: 'Kimi',
-  deepseek: 'DeepSeek',
-  qwen: 'Qwen',
-  opencode: 'OpenCode',
-  openclaw: 'OpenClaw',
-  workbuddy: 'WorkBuddy',
-}
 const contextModes = [
   { id: 'full', title: 'settingsUi.contextMode.full', meta: '~8K tokens', hint: 'settingsUi.contextHint.full' },
   { id: 'summary', title: 'settingsUi.contextMode.summary', meta: '~1K tokens', hint: 'settingsUi.contextHint.summary' },
@@ -456,74 +388,6 @@ const permissionAgents = reactive([
   { id: 'gemini', name: 'Gemini CLI', mode: 'read', logo: publicAsset('agent-logos/gemini.svg') },
 ])
 const autoCount = computed(() => permissionAgents.filter(agent => agent.mode === 'auto').length)
-const skillAgents = computed(() => skillInventory.value.agents || [])
-const skillFilters = computed(() => {
-  const rows = skillInventory.value.skills || []
-  return [
-    { id: 'all', label: 'settingsUi.filterCount.all', count: rows.length },
-    { id: 'shared', label: 'settingsUi.filterCount.shared', count: 0 },
-    { id: 'native', label: 'settingsUi.filterCount.native', count: rows.length },
-    { id: 'market', label: 'settingsUi.filterCount.market', count: 0 },
-    { id: 'reauth', label: 'settingsUi.filterCount.reauth', count: rows.filter(skill => skill.trust === 'changed').length },
-  ]
-})
-const visibleSkills = computed(() => {
-  const query = skillQuery.value.trim().toLowerCase()
-  return (skillInventory.value.skills || []).filter((skill) => {
-    if (skillFilter.value === 'shared' || skillFilter.value === 'market') return false
-    if (skillFilter.value === 'reauth' && skill.trust !== 'changed') return false
-    if (!query) return true
-    return `${skill.name} ${skill.description || ''}`.toLowerCase().includes(query)
-  })
-})
-const currentSkill = computed(() => visibleSkills.value.find(skill => skill.id === selectedSkillId.value) || visibleSkills.value[0] || null)
-function agentLabel(agent) {
-  return agentLabels[agent] || agent
-}
-function trustTone(trust) {
-  if (trust === 'trusted') return 'ready'
-  if (trust === 'changed' || trust === 'unavailable') return 'warn'
-  return ''
-}
-async function loadSkillInventory() {
-  if (typeof props.skillApi?.skillInventory !== 'function') {
-    skillInventoryError.value = true
-    return
-  }
-  skillInventoryError.value = false
-  try {
-    const listed = await props.skillApi.skillInventory()
-    skillInventory.value = listed && Array.isArray(listed.skills) ? listed : { agents: [], skills: [], defaults: {} }
-    if (!skillInventory.value.skills.some(skill => skill.id === selectedSkillId.value)) {
-      selectedSkillId.value = skillInventory.value.skills[0]?.id || ''
-    }
-  } catch {
-    skillInventoryError.value = true
-  }
-}
-async function runSkillAction(action) {
-  if (skillBusy.value) return
-  skillBusy.value = true
-  try {
-    await action()
-    await loadSkillInventory()
-  } catch {
-    skillInventoryError.value = true
-  } finally {
-    skillBusy.value = false
-  }
-}
-function toggleSkill(skill, agent) {
-  if (skill.trust === 'unavailable' || agent !== skill.originKind) return
-  const enabled = !(skill.trust === 'trusted' && skill.eligible.includes(agent))
-  return runSkillAction(() => props.skillApi.setSkillEligible({ id: skill.id, agent, enabled }))
-}
-function revokeCurrentSkill() {
-  if (!currentSkill.value) return
-  return runSkillAction(() => props.skillApi.revokeSkill({ id: currentSkill.value.id }))
-}
-onMounted(() => { if (props.section === 'skills') loadSkillInventory() })
-watch(() => props.section, (section) => { if (section === 'skills') loadSkillInventory() })
 const notices = [
   { id: 'done', lead: 'settingsUi.notice.doneLead' },
   { id: 'approval', lead: 'settingsUi.notice.approvalLead' },

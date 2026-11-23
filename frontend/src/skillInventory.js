@@ -2,7 +2,11 @@ export const MAX_ROLE_SKILLS = 8
 
 export function selectableSkills(skills, agent) {
   return (Array.isArray(skills) ? skills : []).filter(skill => (
-    skill?.trust === 'trusted' && Array.isArray(skill.eligible) && skill.eligible.includes(agent)
+    skill?.trust === 'trusted' && (
+      Array.isArray(skill.available)
+        ? skill.available.includes(agent)
+        : Array.isArray(skill.eligible) && skill.eligible.includes(agent)
+    )
   ))
 }
 

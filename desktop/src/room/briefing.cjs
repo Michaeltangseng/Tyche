@@ -36,9 +36,16 @@ function rosterLines(members, launchProviders) {
 
 function equippedSkillLines(skills) {
   if (!Array.isArray(skills) || skills.length === 0) return []
-  const lines = ['Equipped skills. Follow these recorded instructions and do not reload a live copy:']
+  const promptSkills = skills.filter(skill => skill && skill.delivery !== 'native')
+  const lines = [promptSkills.length
+    ? 'Equipped skills. Follow these recorded instructions and do not reload a live copy:'
+    : 'Equipped skills:']
   for (const skill of skills) {
     if (!skill || typeof skill.name !== 'string' || !skill.name) continue
+    if (skill.delivery === 'native') {
+      lines.push(`- ${skill.name} (installed natively; use it when relevant)`)
+      continue
+    }
     lines.push(`## ${skill.name}`)
     if (typeof skill.description === 'string' && skill.description) lines.push(skill.description)
     if (typeof skill.body === 'string' && skill.body) lines.push(skill.body)

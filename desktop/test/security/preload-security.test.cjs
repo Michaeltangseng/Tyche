@@ -85,9 +85,16 @@ test('local preload exposes the local-only Tyche API', async () => {
   assert.equal(Object.isFrozen(api.teamRoom), true)
   assert.deepEqual(Object.keys(api.teamRoom).sort(), [
     'acceptTask', 'answerAttention', 'bootstrap', 'chatMessages', 'createChat', 'createRole',
-    'deleteChat', 'deleteRole', 'deleteRoom', 'filesList', 'filesRead', 'importFiles', 'listRooms',
-    'onChanged', 'onRuntimeEvents', 'renameChat', 'runtimeEvents', 'setCaptain', 'setWriteAuthorized',
-    'snapshot', 'stopReply', 'submitMessage', 'updateRole',
+    'deleteChat', 'deleteRole', 'deleteRoom', 'enableSkillForAgents', 'filesList', 'filesRead',
+    'importFiles', 'listRooms', 'onChanged', 'onRuntimeEvents', 'rememberSkillDefault', 'renameChat',
+    'revokeSkill', 'runtimeEvents', 'setCaptain', 'setSkillEligible', 'setWriteAuthorized',
+    'skillInventory', 'snapshot', 'stopReply', 'submitMessage', 'trustSkill', 'updateRole',
+  ].sort())
+  assert.equal(Object.isFrozen(api.skillLibrary), true)
+  assert.deepEqual(Object.keys(api.skillLibrary).sort(), [
+    'create', 'detail', 'importFromAgent', 'list', 'onChanged', 'project', 'remove',
+    'resolveProjection', 'reveal', 'revokeTrust', 'setEligible', 'summary', 'trust',
+    'unproject', 'update',
   ].sort())
   await api.teamRoom.snapshot({ roomId: 'room-1' })
   assert.deepEqual(invocations, [{
@@ -202,6 +209,48 @@ test('team-room preload forwards only validated domain requests', async () => {
     'team-room:stop-reply', 'team-room:files-list', 'team-room:files-read', 'team-room:files-import',
     'team-room:write-authorized', 'team-room:runtime-events',
   ])
+})
+
+test('skill-library preload forwards only library requests and exposes cancellable changes', async () => {
+  const { api, invocations, listeners } = loadPreload('file:')
+  const id = 'shared/library/pptx'
+  await api.skillLibrary.summary()
+  await api.skillLibrary.list()
+  await api.skillLibrary.detail({ id })
+  await api.skillLibrary.trust({ id })
+  await api.skillLibrary.revokeTrust({ id })
+  await api.skillLibrary.setEligible({ id, agent: 'claude', enabled: true })
+  await api.skillLibrary.importFromAgent({ ids: [id], trust: true, onConflict: 'rename' })
+  await api.skillLibrary.create({ name: 'review-kit', description: 'Review', body: '# Review', targets: ['codex'] })
+  await api.skillLibrary.update({ id, description: 'Review' })
+  await api.skillLibrary.remove({ id, confirmName: 'pptx' })
+  await api.skillLibrary.project({ id, agent: 'codex' })
+  await api.skillLibrary.unproject({ id, agent: 'codex' })
+  await api.skillLibrary.resolveProjection({ projectionId: `proj-${'a'.repeat(32)}`, action: 'restore' })
+  await api.skillLibrary.reveal({ id })
+  assert.deepEqual(invocations.map(item => item.channel), [
+    'skill-library:summary',
+    'skill-library:list',
+    'skill-library:detail',
+    'skill-library:trust',
+    'skill-library:revoke-trust',
+    'skill-library:set-eligible',
+    'skill-library:import',
+    'skill-library:create',
+    'skill-library:update',
+    'skill-library:remove',
+    'skill-library:project',
+    'skill-library:unproject',
+    'skill-library:resolve-projection',
+    'skill-library:reveal',
+  ])
+
+  const received = []
+  const unsubscribe = api.skillLibrary.onChanged(payload => received.push(payload))
+  listeners.get('skill-library:changed')({}, { revision: 2 })
+  assert.deepEqual(received, [{ revision: 2 }])
+  unsubscribe()
+  assert.equal(listeners.has('skill-library:changed'), false)
 })
 
 test('team-room preload exposes cancellable change and runtime-event subscriptions', () => {

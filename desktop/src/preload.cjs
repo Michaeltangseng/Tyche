@@ -147,6 +147,27 @@ if (isLocalDocument) Object.assign(desktopApi, {
       return () => ipcRenderer.removeListener('team-room:runtime-events', listener)
     },
   }),
+  skillLibrary: Object.freeze({
+    summary: () => ipcRenderer.invoke('skill-library:summary'),
+    list: input => ipcRenderer.invoke('skill-library:list', input),
+    detail: input => ipcRenderer.invoke('skill-library:detail', input),
+    trust: input => ipcRenderer.invoke('skill-library:trust', input),
+    revokeTrust: input => ipcRenderer.invoke('skill-library:revoke-trust', input),
+    setEligible: input => ipcRenderer.invoke('skill-library:set-eligible', input),
+    importFromAgent: input => ipcRenderer.invoke('skill-library:import', input),
+    create: input => ipcRenderer.invoke('skill-library:create', input),
+    update: input => ipcRenderer.invoke('skill-library:update', input),
+    remove: input => ipcRenderer.invoke('skill-library:remove', input),
+    project: input => ipcRenderer.invoke('skill-library:project', input),
+    unproject: input => ipcRenderer.invoke('skill-library:unproject', input),
+    resolveProjection: input => ipcRenderer.invoke('skill-library:resolve-projection', input),
+    reveal: input => ipcRenderer.invoke('skill-library:reveal', input),
+    onChanged: callback => {
+      const listener = (_event, payload) => callback(payload)
+      ipcRenderer.on('skill-library:changed', listener)
+      return () => ipcRenderer.removeListener('skill-library:changed', listener)
+    },
+  }),
   trace: Object.freeze({
     page: input => ipcRenderer.invoke('trace:page', input),
     blob: input => ipcRenderer.invoke('trace:blob', input),

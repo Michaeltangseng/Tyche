@@ -71,6 +71,7 @@
             :set-theme-preference="setThemePreference"
             :theme-preference="themePreference"
             :skill-api="skillApi"
+            :installed-agent-kinds="installedAgentKinds"
           />
           <div v-else-if="agentTab === 'local' || agentTab === 'cloud'" class="agent-table">
             <div class="agent-table-head">
@@ -169,6 +170,7 @@
           :set-theme-preference="setThemePreference"
           :theme-preference="themePreference"
           :skill-api="skillApi"
+          :installed-agent-kinds="installedAgentKinds"
         />
       </div>
     </div>
@@ -260,6 +262,9 @@ const localAgents = computed(() => (agentCatalogGroups.value || [])
 const cloudAgents = computed(() => (agentCatalogGroups.value || [])
   .filter(group => group.id === 'cloud')
   .flatMap(group => group.agents || []))
+const installedAgentKinds = computed(() => localAgents.value
+  .filter(agent => agent.installed && !agent.custom)
+  .map(agent => agent.kind))
 const visibleAgents = computed(() => agentTab.value === 'cloud' ? cloudAgents.value : localAgents.value)
 
 function versionOf(agent) {

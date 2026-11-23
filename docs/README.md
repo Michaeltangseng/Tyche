@@ -15,6 +15,7 @@ The notes describe how Tyche collaborates now. Earlier option comparisons and mi
 - [07 Architecture decisions](07-decisions.md)
 - [08 Open questions](08-open-questions.md)
 - [09 UI direction and information architecture](09-ui-direction.md)
+- [10 Skill management design (proposed)](10-skill-management.md)
 
 ## While reading
 

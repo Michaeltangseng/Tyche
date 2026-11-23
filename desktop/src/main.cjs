@@ -96,7 +96,8 @@ const {
 } = require('./knowledge/local-knowledge-base.cjs')
 const { LocalKnowledgeConnectors } = require('./knowledge/local-knowledge-connectors.cjs')
 const { createRoomHost } = require('./room/room-host.cjs')
-const { SkillInventory } = require('./skills/skill-inventory.cjs')
+const { SkillLibrary } = require('./skills/skill-library.cjs')
+const { registerSkillLibraryIpc } = require('./shell/skill-library-ipc.cjs')
 const { registerTeamRoomIpc } = require('./shell/team-room-ipc.cjs')
 const { nativeOpenClawOptions } = require('./agents/cli/openclaw-runtime.cjs')
 const { migrateLegacyProductData } = require('./product-data-migration.cjs')
@@ -174,6 +175,7 @@ let knowledgeBaseStatusPromise = null
 const knowledgeBaseSourcesCache = new Map()
 let attachmentStore = null
 let skillCatalog = null
+let skillLibrary = null
 let skillTrustStore = null
 let skillSnapshotSelections = null
 let shutdownStarted = false
@@ -1093,6 +1095,11 @@ function registerIpc() {
     dialog,
     getMainWindow: () => mainWindow,
   })
+  registerSkillLibraryIpc({
+    registerTrustedHandle,
+    getLibrary: () => skillLibrary,
+    shell,
+  })
 }
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
@@ -1146,29 +1153,31 @@ if (!hasSingleInstanceLock) {
       attachmentStore = null
     }
     attachments.registerProtocol(protocol)
+    const skillConfigDirectoryForKind = (kind) => {
+      const key = NATIVE_CONFIG_DIRECTORIES[kind]?.key
+      if (!key) return ''
+      let directory = nativeConfigEnvironment(kind, workspace?.state.agentPreferences, nativeSkillDirectories)[key] || ''
+      if (directory === '~' || directory.startsWith('~/') || (process.platform === 'win32' && directory.startsWith('~\\'))) {
+        directory = path.join(app.getPath('home'), directory.slice(2))
+      }
+      if (directory && !path.isAbsolute(directory)) throw new Error('LOCAL_NATIVE_CONFIG_INVALID')
+      return directory
+    }
+    const skillSharedDirectoryForKind = (kind) => {
+      if (kind === 'opencode') return nativeSkillDirectories.XDG_CONFIG_HOME || ''
+      if (kind !== 'deepseek') return ''
+      let directory = nativeSkillDirectories.DSH_AGENTS_HOME || ''
+      if (!directory.trim()) return ''
+      if (directory === '~' || directory.startsWith('~/') || directory.startsWith('~\\')) {
+        directory = path.join(app.getPath('home'), directory.slice(2))
+      }
+      if (!path.isAbsolute(directory)) throw new Error('LOCAL_NATIVE_CONFIG_INVALID')
+      return directory
+    }
     skillCatalog = new LocalSkillCatalog({
       home: app.getPath('home'),
-      configDirectoryForKind: kind => {
-        const key = NATIVE_CONFIG_DIRECTORIES[kind]?.key
-        if (!key) return ''
-        let directory = nativeConfigEnvironment(kind, workspace?.state.agentPreferences, nativeSkillDirectories)[key] || ''
-        if (directory === '~' || directory.startsWith('~/') || (process.platform === 'win32' && directory.startsWith('~\\'))) {
-          directory = path.join(app.getPath('home'), directory.slice(2))
-        }
-        if (directory && !path.isAbsolute(directory)) throw new Error('LOCAL_NATIVE_CONFIG_INVALID')
-        return directory
-      },
-      sharedDirectoryForKind: kind => {
-        if (kind === 'opencode') return nativeSkillDirectories.XDG_CONFIG_HOME || ''
-        if (kind !== 'deepseek') return ''
-        let directory = nativeSkillDirectories.DSH_AGENTS_HOME || ''
-        if (!directory.trim()) return ''
-        if (directory === '~' || directory.startsWith('~/') || directory.startsWith('~\\')) {
-          directory = path.join(app.getPath('home'), directory.slice(2))
-        }
-        if (!path.isAbsolute(directory)) throw new Error('LOCAL_NATIVE_CONFIG_INVALID')
-        return directory
-      },
+      configDirectoryForKind: skillConfigDirectoryForKind,
+      sharedDirectoryForKind: skillSharedDirectoryForKind,
     })
     installer = new AgentInstaller({
       environment: nativeShellEnvironment,
@@ -1237,13 +1246,33 @@ if (!hasSingleInstanceLock) {
         const shell = await nativeShellEnvironment()
         const roomEnv = { ...process.env, ...shell.env }
         for (const key of shell.unsetKeys || []) delete roomEnv[key]
+        try {
+          skillLibrary = new SkillLibrary({
+            storagePath: path.join(privateRoot, 'skill-library.json'),
+            legacyPath: path.join(privateRoot, 'skill-inventory.json'),
+            libraryRoot: path.join(privateRoot, 'skill-library'),
+            backupRoot: path.join(privateRoot, 'skill-backups'),
+            trashRoot: path.join(privateRoot, 'skill-trash'),
+            home: app.getPath('home'),
+            catalog: skillCatalog,
+            configDirectoryForKind: skillConfigDirectoryForKind,
+            now: () => new Date(),
+            onChanged: () => {
+              if (mainWindow && !mainWindow.isDestroyed()
+                  && isTrustedLocalWebContents(mainWindow.webContents)) {
+                mainWindow.webContents.send('skill-library:changed', {})
+              }
+            },
+          })
+        } catch (error) {
+          console.warn('[tyche] skill library startup failed',
+            error?.code || error?.message || error)
+          skillLibrary = null
+        }
         teamRoomHost = createRoomHost({
           privateRoot,
           env: roomEnv,
-          skillInventory: new SkillInventory({
-            storagePath: path.join(privateRoot, 'skill-inventory.json'),
-            home: roomEnv.HOME || undefined,
-          }),
+          skillInventory: skillLibrary,
           onChanged: () => {
             if (mainWindow && !mainWindow.isDestroyed()
                 && isTrustedLocalWebContents(mainWindow.webContents)) {

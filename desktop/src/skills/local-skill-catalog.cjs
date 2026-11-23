@@ -192,6 +192,11 @@ function globalRoots(kind, home, configDirectory = '', sharedDirectory = '') {
   return roots
 }
 
+function primarySkillRoot(kind, home, configDirectory = '', sharedDirectory = '') {
+  const roots = globalRoots(kind, home, configDirectory, sharedDirectory)
+  return roots[0]?.directory || ''
+}
+
 function safePluginRoot(installLocation, ...parts) {
   const base = path.resolve(installLocation)
   const candidate = path.resolve(base, ...parts)
@@ -408,6 +413,23 @@ class LocalSkillCatalog {
     return copyResult(this.load(kind))
   }
 
+  listResolved(kind) {
+    const targetKind = String(kind || '').trim().toLowerCase()
+    if (!SUPPORTED_KINDS.has(targetKind)) {
+      return { supported: false, total: 0, limit: DISPLAY_LIMIT, skills: [] }
+    }
+    const loaded = this.load(targetKind)
+    return {
+      supported: loaded.supported,
+      total: loaded.total,
+      limit: loaded.limit,
+      skills: loaded.skills.map(skill => ({
+        ...publicSkill(skill),
+        sourceDirectory: skill.sourceDirectory,
+      })),
+    }
+  }
+
   invalidate(kind) {
     const targetKind = String(kind || '').trim().toLowerCase()
     if (targetKind) this.cache.delete(targetKind)
@@ -464,9 +486,12 @@ function listLocalAgentSkills(kind, options = {}) {
 }
 
 module.exports = {
+  AGENT_SKILL_ROOTS,
   DISPLAY_LIMIT,
   LocalSkillCatalog,
   MAX_DIRECTORIES,
   MAX_SKILLS,
+  SUPPORTED_KINDS,
   listLocalAgentSkills,
+  primarySkillRoot,
 }
