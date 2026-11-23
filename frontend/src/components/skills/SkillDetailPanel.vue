@@ -8,6 +8,7 @@
           <template v-if="skill.version"> · v{{ skill.version }}</template>
         </p>
         <p v-if="skill.origin?.type === 'market'" class="skill-market-origin">{{ skill.origin.url }}@{{ String(skill.origin.commit || '').slice(0, 8) }}</p>
+        <p v-if="skill.repoSkill" class="skill-repo-note">{{ t('settingsUi.repoSkill') }}</p>
       </div>
       <i class="settings-dot" :class="trustTone(skill.trust)" />
     </header>
@@ -55,6 +56,7 @@
           <strong>{{ humanAgent(projection.agent) }}</strong>
           <span class="skill-projection-state" :class="projectionTone(projection.status)">{{ t(`settingsUi.projectionState.${projection.status}`) }}</span>
           <small v-if="projection.mode === 'nativeOrigin'" class="skill-native-note">{{ t('settingsUi.nativeOrigin') }}</small>
+          <small v-if="projection.mode === 'symlink'" class="skill-native-note">{{ t('settingsUi.symlinkProjection') }}</small>
           <small v-if="projection.displayPath" class="skill-path">{{ projection.displayPath }}</small>
         </div>
         <div class="settings-actions skill-projection-actions">
@@ -204,6 +206,7 @@ function riskLabel(label) {
 .skill-detail-head h3 { margin: 0; font-size: 16px; }
 .skill-detail-head p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
 .skill-market-origin { overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px !important; }
+.skill-repo-note { color: var(--accent-text) !important; font-size: 11px !important; }
 .skill-detail-desc { margin: 0; color: var(--text-soft); font-size: 13px; line-height: 1.55; }
 .skill-detail-trust { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; border-radius: 9px; background: color-mix(in srgb, var(--text) 6%, transparent); }
 .skill-detail-trust small { color: var(--muted); font-size: 11px; }

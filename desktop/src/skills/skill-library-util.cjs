@@ -18,6 +18,11 @@ const DEFAULT_LIMITS = Object.freeze({
   maxFiles: MAX_FILES,
   maxTotalBytes: MAX_TOTAL_BYTES,
 })
+const REPO_LIMITS = Object.freeze({
+  maxFileBytes: 128 * 1024 * 1024,
+  maxFiles: 5000,
+  maxTotalBytes: 512 * 1024 * 1024,
+})
 
 function skillError(code, cause) {
   const error = new Error(code)
@@ -287,6 +292,18 @@ function copySkillDirectory(source, target, limits = DEFAULT_LIMITS) {
   return { fileCount: files.length, totalBytes }
 }
 
+function copyRepoDirectory(source, target, limits = REPO_LIMITS) {
+  const { files, totalBytes } = walkSkillFiles(source, { limits })
+  fs.mkdirSync(target, { recursive: true, mode: 0o700 })
+  for (const file of files) {
+    const destination = path.join(target, ...file.relativePath.split('/'))
+    fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 })
+    fs.copyFileSync(file.filename, destination)
+    try { fs.chmodSync(destination, file.mode & 0o777) } catch { /* best effort */ }
+  }
+  return { fileCount: files.length, totalBytes }
+}
+
 function readJsonFile(filename) {
   try {
     const stat = fs.statSync(filename)
@@ -393,9 +410,11 @@ module.exports = {
   MAX_TOTAL_BYTES,
   PREVIEW_LIMIT,
   PROJECTION_ID,
+  REPO_LIMITS,
   SKILL_ID,
   SKILL_NAME,
   cleanLine,
+  copyRepoDirectory,
   copySkillDirectory,
   displayPath,
   fail,

@@ -117,6 +117,67 @@ test('a Git source previews, installs, checks, and updates a market Skill', asyn
   assert.equal(current.upToDate, true)
 })
 
+test('repo mode installs the whole toolchain and projects it as a symlink', async (t) => {
+  const repo = makeRepo(t)
+  fs.mkdirSync(path.join(repo, 'cli'), { recursive: true })
+  fs.writeFileSync(path.join(repo, 'cli', 'run.sh'), '#!/bin/sh\necho hi\n', { mode: 0o755 })
+  git(['add', '.'], repo)
+  git(['commit', '-q', '-m', 'add toolchain'], repo)
+
+  const { home, library } = setup(t)
+  const source = library.market.addSource({
+    url: pathToFileURL(repo).href,
+    ref: '',
+    subpath: '',
+  })
+  const preview = await library.market.previewSource(source.id)
+  const alpha = preview.entries.find(entry => entry.name === 'alpha')
+  assert.equal(alpha.repoMode, true)
+
+  const installed = library.market.installEntry({ token: alpha.token, trust: false, repo: true })
+  assert.equal(installed.repoSkill, true)
+  assert.equal(installed.trust, 'trusted')
+  const topLink = path.join(home, 'library', 'alpha')
+  assert.equal(fs.lstatSync(topLink).isSymbolicLink(), true)
+  const real = fs.realpathSync(topLink)
+  assert.equal(fs.existsSync(path.join(real, '..', '..', 'cli', 'run.sh')), true)
+
+  library.project('shared/library/alpha', 'codex')
+  const agentLink = path.join(home, '.codex', 'skills', 'alpha')
+  assert.equal(fs.lstatSync(agentLink).isSymbolicLink(), true)
+  assert.equal(fs.realpathSync(agentLink), real)
+  assert.equal(fs.existsSync(path.join(fs.realpathSync(agentLink), '..', '..', 'cli', 'run.sh')), true)
+  let projection = library.detail('shared/library/alpha').projections.find(item => item.agent === 'codex')
+  assert.equal(projection.mode, 'symlink')
+  assert.equal(projection.status, 'deployed')
+
+  fs.writeFileSync(path.join(repo, 'cli', 'run.sh'), '#!/bin/sh\necho updated\n')
+  writeSkill(repo, 'skills', 'alpha', 'Alpha Skill', 'Alpha updated toolchain.')
+  git(['add', '.'], repo)
+  git(['commit', '-q', '-m', 'update alpha toolchain'], repo)
+
+  const updates = await library.market.checkUpdates()
+  assert.equal(updates.updates.length, 1)
+  const next = await library.market.previewUpdate({ skillId: 'shared/library/alpha' })
+  assert.equal(next.upToDate, false)
+  assert.equal(next.entry.repoMode, true)
+  const changed = library.market.applyUpdate({
+    skillId: 'shared/library/alpha',
+    token: next.entry.token,
+    trust: false,
+  })
+  assert.equal(changed.repoSkill, true)
+  assert.equal(changed.trust, 'trusted')
+  projection = changed.projections.find(item => item.agent === 'codex')
+  assert.equal(projection.status, 'deployed')
+  assert.match(fs.readFileSync(path.join(home, 'library', 'alpha', 'SKILL.md'), 'utf8'), /updated toolchain/)
+  assert.match(fs.readFileSync(path.join(real, '..', '..', 'cli', 'run.sh'), 'utf8'), /updated/)
+
+  library.remove({ id: 'shared/library/alpha', confirmName: 'alpha' })
+  assert.equal(fs.existsSync(agentLink), false)
+  assert.equal(fs.existsSync(topLink), false)
+})
+
 test('market sources reject unsafe URLs and keep installed sources in use', async (t) => {
   const repo = makeRepo(t)
   const { library } = setup(t)

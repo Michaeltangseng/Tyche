@@ -6,7 +6,7 @@ This document designs the Skill management mechanism for the settings page, the 
 
 It supersedes the Skill parts of `system-settings/多Agent平台设置界面重构与Skills页设计图-assets-20261122/Tyche_设置界面重构_实施交接文档.md` §6.2.
 
-**Implementation status (2026-11-23):** Slices A and B are implemented: the v2 library and migration, content-hash trust, import, authoring, projection copies with markers, drift/outdated/conflict handling, the settings matrix and detail panel, row edit/delete actions, the import/editor dialogs, native/prompt Room delivery, real session skill bindings, and the permissions trust-policy card. A Git market client is also in place: add a source, preview its `SKILL.md` folders, install with review/risk, check updates with `ls-remote`, and apply an update through a new approval. Public catalog search, plugin/repo-shaped Skills, project scope, takeover of unmarked folders, and the Agent detail/Room drawer Skill views remain for later slices. The old `skill-inventory.cjs` is no longer wired at runtime; its v1 store is migrated on first launch.
+**Implementation status (2026-11-23):** Slices A and B are implemented: the v2 library and migration, content-hash trust, import, authoring, projection copies with markers, drift/outdated/conflict handling, the settings matrix and detail panel, row edit/delete actions, the import/editor dialogs, native/prompt Room delivery, real session skill bindings, and the permissions trust-policy card. A Git market client is also in place: add a source, preview its `SKILL.md` folders, install with review/risk, check updates with `ls-remote`, and apply an update through a new approval. Repo-shaped Skills are supported: the whole repo is stored under `skill-library/.repos/`, the library entry and agent projections are symlinks to the skill subpath, and `../cli` / `scripts/` references work. In this phase repo installs and updates are auto-trusted and bypass the network-policy gate; folder Skills keep the review gate. Plugin bundles, project scope, native marketplace adapters, public catalog search, and takeover of unmarked folders remain for later slices. The old `skill-inventory.cjs` is no longer wired at runtime; its v1 store is migrated on first launch.
 
 ## 1. Goals and scope
 
@@ -25,7 +25,6 @@ It supersedes the Skill parts of `system-settings/多Agent平台设置界面重�
 - Hosting or searching a public content marketplace.
 - Plugin bundles (skills + MCP + hooks + commands). The model reserves a place for them; the v1 installer does not unpack them.
 - Repo-shaped Skills that ship a toolchain, dependencies, or model downloads (the `huashu-motion` class).
-- Symlink projections.
 - Project / session / per-step Skill scope. The data model keeps `scope`, but v1 implements `global` only.
 - Enterprise private sources and native marketplace import (Claude / Codex `marketplace.json`).
 
@@ -68,7 +67,7 @@ Source ──► Release ──► Skill (library content)
 | `Release` | One immutable resolved fetch | `id`, `sourceId`, `repoUrl`, `commit`, `subpath`, `contentHash`, `fileManifest`, `fetchedAt`, `skillId` |
 | `Skill` | One logical Skill stored in the library | `id`, `name`, `description`, `sourceKind` (`shared` / `market`), `origin`, `version`, `contentHash`, `approvedHash`, `risk`, `projections`, timestamps |
 | `TrustRecord` | Approval of one content hash | `contentHash`, `approvedAt`, `preview`, `fileManifest`, `riskAtApproval` |
-| `Projection` | A placement of a Skill into an Agent | `id`, `skillId`, `agent`, `scope`, `mode` (`copy` / `nativeOrigin`), `targetRef` (internal), `displayPath`, `contentHash`, `deployedAt` |
+| `Projection` | A placement of a Skill into an Agent | `id`, `skillId`, `agent`, `scope`, `mode` (`copy` / `symlink` / `nativeOrigin`), `targetRef` (internal), `sourceRef` for symlinks, `displayPath`, `contentHash`, `deployedAt` |
 | `Policy` | Defaults and safety switches | `untrustedByDefault`, `revokeOnChange`, `denySkillNetwork` |
 | `Role binding` | A Room role's equipped Skills | `role.skills: [skillId]`, max 8 |
 
@@ -259,8 +258,8 @@ The origin Agent gets a `nativeOrigin` projection record when the native directo
 
 - `SKILL.md` must be present, UTF-8, and under the header cap (64 KB).
 - Name must match the folder and the specification.
-- Files: at most 256 regular files, 1 MB per file, 8 MB total. Larger Skills are `unavailable`; repo-shaped support raises the cap later.
-- Symlinks are rejected on import. Projection never follows a symlink.
+- Files: at most 256 regular files, 1 MB per file, 8 MB total for a normal Skill. A repo-shaped install uses a separate cap (5,000 files, 128 MB per file, 512 MB total) and is excluded from the normal skill hash limit.
+- Symlinks are rejected on import. A repo copy skips symlinks and the `.git` / `node_modules` trees; the toolchain keeps its file modes.
 - Path traversal, absolute paths inside the Skill, and `..` escapes are rejected.
 - `.git`, `node_modules`, `.DS_Store`, `.tyche-managed.json`, `.tyche-provenance.json`, and `.tyche-tmp-*` are excluded from the copy and the hash.
 - The risk scan records executable bits and `scripts/` presence; it does not run them.
@@ -291,7 +290,7 @@ v1 copies `SKILL.md` and its files as-is. Target-specific frontmatter merging (t
 4. Stage the copy in a sibling temp directory, write the payload, compute `deployedHash`, write `.tyche-managed.json` last, then rename into place.
 5. Record the projection and emit `skill-library:changed`.
 
-Copy mode is the only mode in v1. The reasons: Windows symlink privileges, some Agents not following links, and drift semantics that need a marker file. Symlink can be added later as an explicit per-Agent option.
+Normal Skills use copy mode. Repo-shaped Skills use symlink mode: the whole repo is stored under `skill-library/.repos/<repoId>/`, the library entry is a symlink to the skill subpath, and each agent projection is a symlink to the same subpath. This keeps `../cli`, `scripts/`, and bundled assets resolvable. Symlink projections are supported on macOS and Linux; Windows returns `SKILL_SYMLINK_UNSUPPORTED`. Copy mode remains the default for normal Skills because it is portable and has a marker for drift.
 
 ### 7.3 Unproject
 
@@ -303,6 +302,7 @@ Copy mode is the only mode in v1. The reasons: Windows symlink privileges, some 
 
 - A debounced watcher on each managed projection and on the library root triggers a hash check.
 - On startup and on every list, status is re-derived.
+- Symlink projections are live: status is `missing`, `conflict`, or `deployed` based on the link target; drift/outdated apply only to copy projections.
 - `drifted` offers: restore from the library, adopt the edited copy into the library (new hash, re-auth), or stop managing (becomes native).
 - `outdated` (library changed, target still matches the old deployed hash) offers **Update projection**. It never overwrites a drifted target silently.
 - Content changes never auto-delete files. The `revokeOnChange` policy clears role bindings and marks projections outdated; it does not remove them.

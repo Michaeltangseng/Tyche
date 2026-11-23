@@ -260,10 +260,14 @@ function registerSkillLibraryIpc({ registerTrustedHandle, getLibrary, shell } = 
   })
 
   registerTrustedHandle(CHANNELS.marketInstall, (input) => {
-    const parsed = assertInput(input, ['token', 'trust'])
+    const parsed = assertInput(input, ['token', 'trust', 'repo'])
     const token = text(parsed.token, 80)
     if (!TOKEN.test(token)) throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
-    return library().market.installEntry({ token, trust: optBoolean(parsed.trust) === true })
+    return library().market.installEntry({
+      token,
+      trust: optBoolean(parsed.trust) === true,
+      repo: optBoolean(parsed.repo) === true,
+    })
   })
 
   registerTrustedHandle(CHANNELS.marketCheckUpdates, () => library().market.checkUpdates())

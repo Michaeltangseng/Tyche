@@ -106,6 +106,7 @@ function entryDto(staged, meta, risk) {
     totalBytes: meta.totalBytes,
     relativePath: staged.relativePath,
     validName: validSkillName(meta.name),
+    repoMode: staged.repoMode === true,
   }
 }
 
@@ -334,7 +335,16 @@ class SkillMarket {
       const risk = scanSkill(directory, this.limits)
       risk.scannedHash = meta.contentHash
       const token = `market-${sha(`${sourceId}\0${commit}\0${relativePath}`).slice(0, 32)}`
-      const staged = { token, sourceId, commit, root: target, directory, relativePath, name: meta.name }
+      const staged = {
+        token,
+        sourceId,
+        commit,
+        root: target,
+        directory,
+        relativePath,
+        name: meta.name,
+        repoMode: path.resolve(directory) !== path.resolve(target),
+      }
       this.staged.set(token, staged)
       entries.push(entryDto(staged, meta, risk))
     }
@@ -354,7 +364,7 @@ class SkillMarket {
     }
   }
 
-  installEntry({ token, trust = false } = {}) {
+  installEntry({ token, trust = false, repo = false } = {}) {
     if (!TOKEN.test(String(token || ''))) fail('SKILL_MARKET_ENTRY_INVALID')
     const staged = this.staged.get(token)
     if (!staged) fail('SKILL_MARKET_ENTRY_EXPIRED')
@@ -365,9 +375,11 @@ class SkillMarket {
       source: sourceDto(source),
       commit: staged.commit,
       stagingDirectory: staged.directory,
+      repoRoot: staged.root,
       relativePath: staged.relativePath,
       name: staged.name,
       trust: trust === true,
+      repo: repo === true && staged.repoMode === true,
     })
   }
 
@@ -460,6 +472,7 @@ class SkillMarket {
       name: record.name,
       originUrl: origin.url,
       originRef: origin.ref || '',
+      repoMode: path.resolve(directory) !== path.resolve(target),
     }
     this.staged.set(token, staged)
     const current = this.library.detail(record.id)
@@ -495,6 +508,7 @@ class SkillMarket {
       source: sourceDto(source),
       commit: staged.commit,
       stagingDirectory: staged.directory,
+      repoRoot: staged.root,
       relativePath: staged.relativePath,
       trust: trust === true,
     })

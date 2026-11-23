@@ -1,3 +1,4 @@
+const crypto = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
 
@@ -9,6 +10,7 @@ const { scanSkill } = require('./skill-risk.cjs')
 const {
   backupProjection,
   deployCopy,
+  deploySymlink,
   projectionId,
   projectionStatus,
   removeProjection,
@@ -16,7 +18,9 @@ const {
 } = require('./skill-projections.cjs')
 const {
   DEFAULT_LIMITS,
+  REPO_LIMITS,
   cleanLine,
+  copyRepoDirectory,
   copySkillDirectory,
   displayPath,
   fail,
@@ -45,9 +49,17 @@ const MAX_CAPTAIN_SKILLS = 24
 const CAPTAIN_DESCRIPTION_LIMIT = 80
 const SCAN_CACHE_MS = 1500
 const MAX_BODY_INPUT = 100000
+const REPO_ID = /^repo-[a-f0-9]{32}$/
 
 function nowIso(now) {
   return now().toISOString()
+}
+
+function repoIdFor(skillId, commit, relativePath) {
+  return `repo-${crypto.createHash('sha256')
+    .update(`${skillId}\0${commit}\0${relativePath}`)
+    .digest('hex')
+    .slice(0, 32)}`
 }
 
 function skillUpdatedAt(directory) {
@@ -118,7 +130,13 @@ class SkillLibrary {
   }
 
   ensureDirectories() {
-    for (const directory of [this.libraryRoot, this.backupRoot, this.trashRoot, this.marketRoot]) {
+    for (const directory of [
+      this.libraryRoot,
+      path.join(this.libraryRoot, '.repos'),
+      this.backupRoot,
+      this.trashRoot,
+      this.marketRoot,
+    ]) {
       fs.mkdirSync(directory, { recursive: true, mode: 0o700 })
     }
   }
@@ -231,11 +249,25 @@ class SkillLibrary {
       return []
     }
     const records = []
+    const repoBase = path.join(this.libraryRoot, '.repos')
+    let repoBaseReal = ''
+    try { repoBaseReal = fs.realpathSync(repoBase) } catch { repoBaseReal = '' }
+
     for (const entry of entries) {
-      if (!entry.isDirectory() || entry.name.startsWith('.')) continue
+      if (entry.name.startsWith('.')) continue
       const name = entry.name
       if (!validSkillName(name)) continue
-      const directory = path.join(this.libraryRoot, name)
+      const linkPath = path.join(this.libraryRoot, name)
+      let directory = linkPath
+      let linked = false
+      if (entry.isSymbolicLink()) {
+        if (!repoBaseReal) continue
+        try { directory = fs.realpathSync(linkPath) } catch { continue }
+        if (!isInsideOrEqual(repoBaseReal, directory)) continue
+        linked = true
+      } else if (!entry.isDirectory()) {
+        continue
+      }
       if (!fs.existsSync(path.join(directory, 'SKILL.md'))) continue
       const meta = this.readCached(directory, name)
       if (meta.contentHash === null && meta.errorCode === 'SKILL_UNREADABLE') continue
@@ -245,6 +277,7 @@ class SkillLibrary {
       const sourceKind = provenance.sourceKind === 'market' || stored.sourceKind === 'market'
         ? 'market'
         : 'shared'
+      const repoId = stored.repoId || provenance.origin?.repoId || null
       records.push({
         ...meta,
         id,
@@ -259,6 +292,8 @@ class SkillLibrary {
         version: meta.version || provenance.version || stored.version || null,
         risk: stored.risk || null,
         updateAvailable: stored.updateAvailable === true,
+        repoSkill: linked || stored.repoSkill === true,
+        repoId: REPO_ID.test(String(repoId || '')) ? repoId : null,
         updatedAt: skillUpdatedAt(directory),
       })
     }
@@ -363,6 +398,7 @@ class SkillLibrary {
       description: record.description,
       source: record.source,
       sourceKind: record.sourceKind,
+      repoSkill: record.repoSkill === true,
       originKind: record.originKind,
       namespace: record.namespace,
       slug: record.slug,
@@ -916,12 +952,32 @@ class SkillLibrary {
     }
   }
 
-  installMarketEntry({ source, commit, stagingDirectory, relativePath, name, trust = false } = {}) {
+  installMarketEntry({
+    source,
+    commit,
+    stagingDirectory,
+    repoRoot = '',
+    relativePath,
+    name,
+    trust = false,
+    repo = false,
+  } = {}) {
     const info = this.marketSourceInfo(source)
     this.assertMarketStaging(stagingDirectory)
     if (!validSkillName(name)) throw skillError('SKILL_NAME_INVALID')
     if (!/^[a-f0-9]{40}$/i.test(String(commit || ''))) throw skillError('SKILL_MARKET_ENTRY_INVALID')
     const rel = this.marketRelativePath(relativePath)
+    if (repo) {
+      return this.installMarketRepo({
+        info,
+        commit,
+        stagingDirectory,
+        repoRoot,
+        relativePath: rel,
+        name,
+        trust,
+      })
+    }
     const store = this.loadStore()
     const sourceMeta = safeReadSkillDirectory(stagingDirectory, {
       expectedName: name,
@@ -1001,7 +1057,133 @@ class SkillLibrary {
     }
   }
 
-  replaceMarketEntry({ skillId, source, commit, stagingDirectory, relativePath, trust = false } = {}) {
+  installMarketRepo({
+    info,
+    commit,
+    stagingDirectory,
+    repoRoot,
+    relativePath,
+    name,
+    trust = false,
+  } = {}) {
+    this.assertMarketStaging(repoRoot)
+    this.assertMarketStaging(stagingDirectory)
+    const rel = this.marketRelativePath(relativePath)
+    const parts = rel ? rel.split('/').filter(Boolean) : []
+    if (path.resolve(repoRoot, ...parts) !== path.resolve(stagingDirectory)) {
+      throw skillError('SKILL_MARKET_ENTRY_INVALID')
+    }
+    const store = this.loadStore()
+    const id = sharedSkillId(name)
+    const existing = store.skills[id]
+    const sourceMeta = safeReadSkillDirectory(stagingDirectory, {
+      expectedName: name,
+      limits: this.limits,
+    })
+    if (!sourceMeta.contentHash) throw skillError('SKILL_MARKET_ENTRY_INVALID')
+    if (existing?.sourceKind === 'market' && existing.repoSkill === true
+        && existing.contentHash === sourceMeta.contentHash) {
+      return this.detail(id)
+    }
+    let linkStat = null
+    try { linkStat = fs.lstatSync(this.libraryPath(name)) } catch { linkStat = null }
+    if (existing || linkStat) throw skillError('SKILL_NAME_CONFLICT')
+
+    const repoId = repoIdFor(id, commit, rel)
+    const repoRootLocal = path.join(this.libraryRoot, '.repos', repoId)
+    if (fs.existsSync(repoRootLocal)) throw skillError('SKILL_NAME_CONFLICT')
+    let linked = false
+    try {
+      copyRepoDirectory(repoRoot, repoRootLocal, REPO_LIMITS)
+      const copiedSkill = path.join(repoRootLocal, ...parts)
+      if (!fs.existsSync(path.join(copiedSkill, 'SKILL.md'))) {
+        throw skillError('SKILL_MARKET_ENTRY_INVALID')
+      }
+      const skillFile = path.join(copiedSkill, 'SKILL.md')
+      const original = fs.readFileSync(skillFile, 'utf8')
+      fs.writeFileSync(skillFile, normalizeSkillMarkdown(original, {
+        name,
+        description: sourceMeta.description || name,
+      }), { mode: 0o600 })
+      const meta = safeReadSkillDirectory(copiedSkill, { expectedName: name, limits: this.limits })
+      if (!meta.contentHash) throw skillError('SKILL_MARKET_ENTRY_INVALID')
+      const risk = scanSkill(copiedSkill, this.limits)
+      risk.scannedHash = meta.contentHash
+      const origin = {
+        ...this.marketOrigin(info, commit, rel),
+        repoId,
+        repoMode: true,
+      }
+      writeProvenance(copiedSkill, {
+        schemaVersion: 1,
+        skillId: id,
+        sourceKind: 'market',
+        origin,
+        release: {
+          sourceId: info.id,
+          url: info.url,
+          ref: info.ref,
+          commit: origin.commit,
+          relativePath: rel,
+          repoId,
+          fetchedAt: nowIso(this.now),
+        },
+        version: meta.version || null,
+        contentHash: meta.contentHash,
+        installedAt: nowIso(this.now),
+      })
+      const linkTarget = path.relative(this.libraryRoot, copiedSkill)
+      try {
+        fs.symlinkSync(linkTarget, this.libraryPath(name), 'dir')
+      } catch (error) {
+        if (['EPERM', 'EACCES', 'ENOSYS', 'UNKNOWN'].includes(error?.code)) {
+          throw skillError('SKILL_SYMLINK_UNSUPPORTED')
+        }
+        throw error
+      }
+      linked = true
+      store.skills[id] = {
+        name,
+        sourceKind: 'market',
+        origin,
+        repoId,
+        repoSkill: true,
+        version: meta.version || null,
+        contentHash: meta.contentHash,
+        approvedHash: meta.contentHash,
+        updateAvailable: false,
+        nativeEligible: [],
+        createdAt: nowIso(this.now),
+        updatedAt: nowIso(this.now),
+      }
+      store.approvedHashes[meta.contentHash] = {
+        approvedAt: nowIso(this.now),
+        preview: meta.preview,
+        fileManifest: meta.fileManifest,
+        risk,
+        scannedHash: meta.contentHash,
+      }
+      this.saveStore(store)
+      this.notify()
+      return this.detail(id)
+    } catch (error) {
+      if (linked) {
+        try { fs.unlinkSync(this.libraryPath(name)) } catch { /* best effort */ }
+      }
+      removeDirectory(repoRootLocal)
+      throw error
+    }
+  }
+
+  replaceMarketEntry({
+    skillId,
+    source,
+    commit,
+    stagingDirectory,
+    repoRoot = '',
+    relativePath,
+    trust = false,
+  } = {}) {
     const record = this.recordById(skillId)
     if (record.kind !== 'shared' || record.sourceKind !== 'market') {
       throw skillError('SKILL_MARKET_UPDATE_INVALID')
@@ -1010,6 +1192,16 @@ class SkillLibrary {
     this.assertMarketStaging(stagingDirectory)
     if (!/^[a-f0-9]{40}$/i.test(String(commit || ''))) throw skillError('SKILL_MARKET_ENTRY_INVALID')
     const rel = this.marketRelativePath(relativePath)
+    if (record.repoSkill) {
+      return this.replaceMarketRepo({
+        record,
+        info,
+        commit,
+        stagingDirectory,
+        repoRoot,
+        relativePath: rel,
+      })
+    }
     const name = record.name
     const store = this.loadStore()
     const sourceMeta = safeReadSkillDirectory(stagingDirectory, {
@@ -1090,6 +1282,113 @@ class SkillLibrary {
       return this.detail(skillId)
     } catch (error) {
       removeDirectory(staging)
+      throw error
+    }
+  }
+
+  replaceMarketRepo({ record, info, commit, stagingDirectory, repoRoot, relativePath } = {}) {
+    const store = this.loadStore()
+    const repoId = REPO_ID.test(String(record.repoId || '')) ? record.repoId : ''
+    if (!repoId) throw skillError('SKILL_MARKET_UPDATE_INVALID')
+    this.assertMarketStaging(repoRoot)
+    this.assertMarketStaging(stagingDirectory)
+    const rel = this.marketRelativePath(record.origin?.relativePath ?? relativePath)
+    const parts = rel ? rel.split('/').filter(Boolean) : []
+    if (path.resolve(repoRoot, ...parts) !== path.resolve(stagingDirectory)) {
+      throw skillError('SKILL_MARKET_ENTRY_INVALID')
+    }
+    const oldRepo = path.join(this.libraryRoot, '.repos', repoId)
+    if (!fs.existsSync(oldRepo)) throw skillError('SKILL_MARKET_UPDATE_INVALID')
+    const temp = path.join(this.libraryRoot, '.repos', `.tmp-${process.pid}-${Date.now()}`)
+    removeDirectory(temp)
+    try {
+      copyRepoDirectory(repoRoot, temp, REPO_LIMITS)
+      const copiedSkill = path.join(temp, ...parts)
+      if (!fs.existsSync(path.join(copiedSkill, 'SKILL.md'))) {
+        throw skillError('SKILL_MARKET_ENTRY_INVALID')
+      }
+      const skillFile = path.join(copiedSkill, 'SKILL.md')
+      const original = fs.readFileSync(skillFile, 'utf8')
+      fs.writeFileSync(skillFile, normalizeSkillMarkdown(original, {
+        name: record.name,
+        description: record.description || record.name,
+      }), { mode: 0o600 })
+      const meta = safeReadSkillDirectory(copiedSkill, {
+        expectedName: record.name,
+        limits: this.limits,
+      })
+      if (!meta.contentHash) throw skillError('SKILL_MARKET_ENTRY_INVALID')
+      const risk = scanSkill(copiedSkill, this.limits)
+      risk.scannedHash = meta.contentHash
+      const origin = {
+        ...this.marketOrigin(info, commit, rel),
+        repoId,
+        repoMode: true,
+      }
+      writeProvenance(copiedSkill, {
+        schemaVersion: 1,
+        skillId: record.id,
+        sourceKind: 'market',
+        origin,
+        release: {
+          sourceId: info.id,
+          url: info.url,
+          ref: info.ref,
+          commit: origin.commit,
+          relativePath: rel,
+          repoId,
+          fetchedAt: nowIso(this.now),
+        },
+        version: meta.version || null,
+        contentHash: meta.contentHash,
+        installedAt: nowIso(this.now),
+      })
+
+      const swap = path.join(this.libraryRoot, '.repos', `.old-${process.pid}-${Date.now()}`)
+      fs.renameSync(oldRepo, swap)
+      try {
+        fs.renameSync(temp, oldRepo)
+      } catch (error) {
+        try { fs.renameSync(swap, oldRepo) } catch { /* the backup below remains the last resort */ }
+        throw error
+      }
+      try { backupProjection(swap, this.backupRoot, record.name, this.now) } catch { /* best effort */ }
+      removeDirectory(swap)
+
+      store.skills[record.id] = {
+        ...(store.skills[record.id] || {}),
+        name: record.name,
+        sourceKind: 'market',
+        origin,
+        repoId,
+        repoSkill: true,
+        version: meta.version || record.version || null,
+        contentHash: meta.contentHash,
+        approvedHash: meta.contentHash,
+        updateAvailable: false,
+        nativeEligible: store.skills[record.id]?.nativeEligible || [],
+        createdAt: store.skills[record.id]?.createdAt || nowIso(this.now),
+        updatedAt: nowIso(this.now),
+      }
+      store.approvedHashes[meta.contentHash] = {
+        approvedAt: nowIso(this.now),
+        preview: meta.preview,
+        fileManifest: meta.fileManifest,
+        risk,
+        scannedHash: meta.contentHash,
+      }
+      const skillPath = path.join(oldRepo, ...parts)
+      for (const projection of Object.values(store.projections)) {
+        if (projection.skillId !== record.id || projection.mode !== 'symlink') continue
+        projection.contentHash = meta.contentHash
+        projection.sourceRef = skillPath
+        projection.deployedAt = nowIso(this.now)
+      }
+      this.saveStore(store)
+      this.notify()
+      return this.detail(record.id)
+    } catch (error) {
+      removeDirectory(temp)
       throw error
     }
   }
@@ -1220,15 +1519,27 @@ class SkillLibrary {
     const store = this.loadStore()
     fs.mkdirSync(this.trashRoot, { recursive: true, mode: 0o700 })
     const trash = path.join(this.trashRoot, `${Date.now()}-${record.name}`)
-    try {
-      fs.renameSync(record.sourceDirectory, trash)
-    } catch {
-      fs.cpSync(record.sourceDirectory, trash, { recursive: true, force: false, errorOnExist: false })
-      removeDirectory(record.sourceDirectory)
+    const repoId = REPO_ID.test(String(record.repoId || '')) ? record.repoId : ''
+    if (record.repoSkill && repoId) {
+      const repoRoot = path.join(this.libraryRoot, '.repos', repoId)
+      try {
+        fs.renameSync(repoRoot, trash)
+      } catch {
+        fs.cpSync(repoRoot, trash, { recursive: true, force: false, errorOnExist: false })
+        removeDirectory(repoRoot)
+      }
+      try { fs.unlinkSync(this.libraryPath(record.name)) } catch { /* the link may already be gone */ }
+    } else {
+      try {
+        fs.renameSync(record.sourceDirectory, trash)
+      } catch {
+        fs.cpSync(record.sourceDirectory, trash, { recursive: true, force: false, errorOnExist: false })
+        removeDirectory(record.sourceDirectory)
+      }
     }
     const keptProjections = []
     for (const projection of Object.values(store.projections).filter(item => item.skillId === id)) {
-      if (projection.mode === 'copy') {
+      if (projection.mode === 'copy' || projection.mode === 'symlink') {
         try {
           removeProjection(projection)
         } catch (error) {
@@ -1268,7 +1579,29 @@ class SkillLibrary {
         if (info.status === 'outdated') throw skillError('SKILL_PROJECTION_OUTDATED')
         delete store.projections[pid]
         projection = null
+      } else if (projection.mode === 'symlink') {
+        const info = projectionStatus(projection, {
+          skill: record,
+          limits: this.limits,
+          home: this.home,
+        })
+        if (info.status === 'deployed') return this.detail(id)
+        const deployed = deploySymlink({
+          skill: record,
+          adapter,
+          projection,
+          home: this.home,
+        })
+        projection.contentHash = record.contentHash
+        projection.sourceRef = record.sourceDirectory
+        projection.targetRef = deployed.targetRef
+        projection.displayPath = deployed.displayPath
+        projection.deployedAt = nowIso(this.now)
+        this.saveStore(store)
+        this.notify()
+        return this.detail(id)
       } else {
+        if (record.repoSkill) throw skillError('SKILL_PROJECTION_CONFLICT')
         const info = projectionStatus(projection, {
           skill: record,
           limits: this.limits,
@@ -1294,6 +1627,32 @@ class SkillLibrary {
       }
     }
     const target = path.join(adapter.root, record.name)
+    if (record.repoSkill) {
+      const nextProjection = {
+        id: pid,
+        skillId: id,
+        agent,
+        scope: 'global',
+        mode: 'symlink',
+        targetRef: target,
+        displayPath: displayPath(target, this.home),
+        sourceRef: record.sourceDirectory,
+        contentHash: record.contentHash,
+        deployedAt: nowIso(this.now),
+      }
+      const deployed = deploySymlink({
+        skill: record,
+        adapter,
+        projection: nextProjection,
+        home: this.home,
+      })
+      nextProjection.targetRef = deployed.targetRef
+      nextProjection.displayPath = deployed.displayPath
+      store.projections[pid] = nextProjection
+      this.saveStore(store)
+      this.notify()
+      return this.detail(id)
+    }
     if (fs.existsSync(target)) {
       const nativeSourceRef = store.skills[id]?.nativeSourceRef
       let targetHash = null
@@ -1360,6 +1719,8 @@ class SkillLibrary {
       })
       if (info.status === 'drifted') throw skillError('SKILL_PROJECTION_DRIFTED')
       removeProjection(projection)
+    } else if (projection.mode === 'symlink') {
+      removeProjection(projection)
     }
     delete store.projections[pid]
     this.saveStore(store)
@@ -1374,10 +1735,26 @@ class SkillLibrary {
     if (!projection) throw skillError('SKILL_PROJECTION_NOT_FOUND')
     const record = this.recordById(projection.skillId)
     if (action === 'restore') {
-      if (projection.mode !== 'copy') throw skillError('SKILL_PROJECTION_INVALID')
       if (record.trust !== 'trusted') throw skillError('SKILL_TRUST_REQUIRED')
       const adapter = this.adapter(projection.agent)
       if (!adapter?.canProject) throw skillError('SKILL_UNSUPPORTED_AGENT')
+      if (projection.mode === 'symlink') {
+        const deployed = deploySymlink({
+          skill: record,
+          adapter,
+          projection,
+          home: this.home,
+        })
+        projection.contentHash = record.contentHash
+        projection.sourceRef = record.sourceDirectory
+        projection.targetRef = deployed.targetRef
+        projection.displayPath = deployed.displayPath
+        projection.deployedAt = nowIso(this.now)
+        this.saveStore(store)
+        this.notify()
+        return this.detail(record.id)
+      }
+      if (projection.mode !== 'copy') throw skillError('SKILL_PROJECTION_INVALID')
       const deployed = deployCopy({
         skill: record,
         adapter,
@@ -1403,6 +1780,7 @@ class SkillLibrary {
       return this.detail(record.id)
     }
 
+    if (projection.mode === 'symlink') throw skillError('SKILL_PROJECTION_INVALID')
     const target = projection.targetRef
     if (!target || !fs.existsSync(target)) throw skillError('SKILL_PROJECTION_MISSING')
     const staging = path.join(this.libraryRoot, `.tyche-adopt-${process.pid}-${Date.now()}`)

@@ -74,6 +74,7 @@
               <button class="agent-config-link market-back" type="button" @click="backToBrowse">← {{ t('settingsUi.marketBack') }}</button>
               <div class="market-entry-head">
                 <h3>{{ update.name }}</h3>
+                <span v-if="update.current.repoSkill || update.entry.repoMode" class="market-repo-badge">{{ t('settingsUi.repoSkillBadge') }}</span>
                 <span v-if="update.upToDate" class="market-up-to-date">{{ t('settingsUi.marketUpToDate') }}</span>
               </div>
               <p v-if="!update.upToDate" class="settings-note">{{ t('settingsUi.marketUpdateLead') }}</p>
@@ -98,10 +99,11 @@
                   <pre class="market-preview">{{ update.entry.preview || t('settingsUi.noPreview') }}</pre>
                 </div>
               </div>
-              <label v-if="!update.upToDate" class="market-trust">
+              <label v-if="!update.upToDate && !update.current.repoSkill" class="market-trust">
                 <input v-model="trustUpdate" type="checkbox" />
                 {{ t('settingsUi.marketTrustUpdate') }}
               </label>
+              <small v-if="!update.upToDate && update.current.repoSkill" class="market-repo-note">{{ t('settingsUi.repoInstallTrust') }}</small>
               <div class="market-actions">
                 <button class="secondary-button" type="button" @click="backToBrowse">{{ t('settingsUi.marketBack') }}</button>
                 <button v-if="!update.upToDate" class="primary-button" type="button" :disabled="busy" @click="applyUpdate">
@@ -127,12 +129,14 @@
                     <strong>{{ entry.name }}</strong>
                     <small>{{ entry.description || t('settingsUi.noDescription') }}</small>
                     <small class="market-entry-path">{{ entry.relativePath || '/' }}</small>
+                    <span v-if="entry.repoMode" class="market-repo-badge">{{ t('settingsUi.repoSkillBadge') }}</span>
                     <span v-if="!entry.validName" class="market-invalid">{{ t('settingsUi.marketInvalidName') }}</span>
                   </button>
                 </div>
                 <div v-if="selectedEntry" class="market-entry-detail">
                   <div class="market-entry-head">
                     <h3>{{ selectedEntry.name }}</h3>
+                    <span v-if="selectedEntry.repoMode" class="market-repo-badge">{{ t('settingsUi.repoSkillBadge') }}</span>
                     <span v-if="selectedEntry.version">v{{ selectedEntry.version }}</span>
                   </div>
                   <p>{{ selectedEntry.description || t('settingsUi.noDescription') }}</p>
@@ -149,10 +153,16 @@
                     <small>{{ t('settingsUi.riskAdvisory') }}</small>
                   </div>
                   <pre class="market-preview">{{ selectedEntry.preview || t('settingsUi.noPreview') }}</pre>
-                  <label class="market-trust">
+                  <label v-if="selectedEntry.repoMode" class="market-trust">
+                    <input v-model="installRepo" type="checkbox" />
+                    {{ t('settingsUi.repoInstall') }}
+                  </label>
+                  <small v-if="selectedEntry.repoMode && installRepo" class="market-repo-note">{{ t('settingsUi.repoInstallHint') }}</small>
+                  <label v-if="!selectedEntry.repoMode || !installRepo" class="market-trust">
                     <input v-model="trustInstall" type="checkbox" />
                     {{ t('settingsUi.marketTrustInstall') }}
                   </label>
+                  <small v-if="selectedEntry.repoMode && installRepo" class="market-repo-note">{{ t('settingsUi.repoInstallTrust') }}</small>
                   <button class="primary-button" type="button" :disabled="busy || !selectedEntry.validName" @click="install">
                     {{ busy ? t('common.loading') : t('settingsUi.marketInstall') }}
                   </button>
@@ -167,7 +177,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { locale, t, translateError } from '../../i18n.js'
 import { relativeTime } from '../../skillLibrary.js'
 
@@ -195,10 +205,15 @@ const view = ref('browse')
 const update = ref(null)
 const trustInstall = ref(props.policy?.untrustedByDefault === false)
 const trustUpdate = ref(false)
+const installRepo = ref(true)
 
 const selectedEntry = computed(() => (
   entries.value.find(entry => entry.token === selectedToken.value) || entries.value[0] || null
 ))
+
+watch(selectedEntry, (entry) => {
+  installRepo.value = entry?.repoMode === true
+}, { immediate: true })
 
 function relative(iso) {
   return relativeTime(iso, locale.value)
@@ -358,6 +373,7 @@ async function install() {
     const detail = await props.api.marketInstall({
       token: selectedEntry.value.token,
       trust: trustInstall.value,
+      repo: selectedEntry.value.repoMode === true && installRepo.value,
     })
     emit('done', detail)
   } catch (caught) {
@@ -465,6 +481,8 @@ onBeforeUnmount(() => {
 .market-entry small { color: var(--muted); font-size: 11px; }
 .market-entry-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px !important; }
 .market-invalid { color: #f5a524; font-size: 10px; }
+.market-repo-badge { justify-self: start; padding: 1px 7px; border-radius: 99px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-text); font-size: 10px; font-weight: 650; }
+.market-repo-note { color: var(--muted); font-size: 11px; line-height: 1.45; }
 .market-entry-detail { display: grid; gap: 8px; align-content: start; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--surface) 55%, var(--bg)); }
 .market-entry-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .market-entry-head h3 { margin: 0; font-size: 14px; }

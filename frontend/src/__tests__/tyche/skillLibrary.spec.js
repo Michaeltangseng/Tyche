@@ -203,7 +203,59 @@ describe('skill library presentation', () => {
     expect(wrapper.text()).toContain('Alpha Skill')
     await wrapper.findAll('button').find(button => button.text().includes('Install into the shared library')).trigger('click')
     await flushPromises()
-    expect(api.marketInstall).toHaveBeenCalledWith({ token, trust: false })
+    expect(api.marketInstall).toHaveBeenCalledWith({ token, trust: false, repo: false })
+    wrapper.unmount()
+  })
+
+  it('installs a repo entry as a whole repo', async () => {
+    const sourceId = `src-${'a'.repeat(32)}`
+    const token = `market-${'b'.repeat(32)}`
+    const api = {
+      marketSources: vi.fn().mockResolvedValue([{
+        id: sourceId,
+        url: 'https://example.com/repo',
+        ref: 'main',
+        subpath: '',
+        installedCount: 0,
+        lastCheckedAt: null,
+      }]),
+      marketPreview: vi.fn().mockResolvedValue({
+        source: { id: sourceId, url: 'https://example.com/repo', ref: 'main', commit: 'c'.repeat(40) },
+        commit: 'c'.repeat(40),
+        entries: [{
+          token,
+          name: 'alpha',
+          description: 'Alpha Skill',
+          preview: '# Alpha\n\nInstructions.',
+          version: null,
+          contentHash: 'd'.repeat(64),
+          risk: { level: 'none', labels: [] },
+          fileCount: 2,
+          totalBytes: 40,
+          relativePath: 'skills/alpha',
+          validName: true,
+          repoMode: true,
+        }],
+      }),
+      marketInstall: vi.fn().mockResolvedValue({ id: 'shared/library/alpha' }),
+      marketCheckUpdates: vi.fn().mockResolvedValue({ updates: [] }),
+      marketPreviewUpdate: vi.fn(),
+      marketApplyUpdate: vi.fn(),
+      marketAddSource: vi.fn(),
+      marketRemoveSource: vi.fn(),
+    }
+    const wrapper = mount(SkillMarketDialog, {
+      props: { api, policy: { untrustedByDefault: true } },
+      global: { stubs: { teleport: true } },
+    })
+    await flushPromises()
+    await wrapper.get('.market-source').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Install the whole repo')
+    expect(wrapper.text()).not.toContain('Trust after install')
+    await wrapper.findAll('button').find(button => button.text().includes('Install into the shared library')).trigger('click')
+    await flushPromises()
+    expect(api.marketInstall).toHaveBeenCalledWith({ token, trust: false, repo: true })
     wrapper.unmount()
   })
 

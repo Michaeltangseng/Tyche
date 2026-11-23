@@ -58,6 +58,7 @@
                     <strong>{{ skill.name }}</strong>
                     <span v-if="skill.conflict" class="skills-conflict-badge" :title="t('settingsUi.conflictHint')">{{ t('settingsUi.trustState.conflict') }}</span>
                     <span v-if="skill.updateAvailable" class="skills-update-badge">{{ t('settingsUi.marketUpdateBadge') }}</span>
+                    <span v-if="skill.repoSkill" class="skills-repo-badge">{{ t('settingsUi.repoSkillBadge') }}</span>
                   </span>
                   <small>
                     <span class="skills-source" :class="skill.source">{{ sourceText(skill) }}</span>
@@ -522,6 +523,7 @@ onBeforeUnmount(() => {
 .skills-name-line strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .skills-conflict-badge { flex: none; padding: 1px 6px; border-radius: 99px; background: color-mix(in srgb, #f5a524 16%, transparent); color: #f5a524; font-size: 10px; font-weight: 650; }
 .skills-update-badge { flex: none; padding: 1px 6px; border-radius: 99px; background: color-mix(in srgb, #3ecf8e 16%, transparent); color: #3ecf8e; font-size: 10px; font-weight: 650; }
+.skills-repo-badge { flex: none; padding: 1px 6px; border-radius: 99px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-text); font-size: 10px; font-weight: 650; }
 .skills-source { color: var(--muted); }
 .skills-source.shared { color: var(--accent-text); }
 .skills-source.market { color: #b07cff; }
