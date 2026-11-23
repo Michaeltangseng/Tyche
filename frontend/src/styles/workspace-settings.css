@@ -207,10 +207,10 @@
 .agent-table-head,
 .agent-table-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1.5fr) 112px 88px minmax(110px, 1.3fr) minmax(110px, 1fr) 148px;
+  grid-template-columns: minmax(150px, 1.5fr) 112px 88px minmax(110px, 1fr) 148px;
   gap: 10px;
   align-items: center;
-  min-width: 760px;
+  min-width: 640px;
   padding: 0 14px;
 }
 

@@ -1,6 +1,6 @@
 <template>
   <section class="settings-page mock" :aria-label="t(titleKey)">
-    <header v-if="section !== 'mcp' && section !== 'skills'" class="settings-page-title">
+    <header v-if="section !== 'skills'" class="settings-page-title">
       <div>
         <h1>
           {{ t(titleKey) }}
@@ -13,48 +13,7 @@
       </div>
     </header>
 
-    <template v-if="section === 'mcp'">
-      <article class="settings-card">
-        <h2>{{ t('settingsUi.knowledgeTitle') }}</h2>
-        <div class="settings-choice-grid">
-          <div class="settings-choice"><strong>{{ t('settingsUi.feishuDocs') }}</strong><small>{{ t('settingsUi.cliMissing') }}</small><button class="secondary-button" type="button">{{ t('settingsUi.installCli') }}</button></div>
-          <div class="settings-choice"><strong>{{ t('settingsUi.dingDocs') }}</strong><small>{{ t('settingsUi.cliMissing') }}</small><button class="secondary-button" type="button">{{ t('settingsUi.installCli') }}</button></div>
-          <div class="settings-choice"><strong>Obsidian</strong><small class="ok">{{ t('settingsUi.connected') }} · ~/Notes/Vault</small><small>{{ t('settingsUi.obsidianUse') }}</small></div>
-        </div>
-      </article>
-      <article class="settings-card">
-        <div class="settings-card-head">
-          <h2>MCP Server</h2>
-          <span class="settings-actions">
-            <button class="primary-button" type="button">+ {{ t('settingsUi.addMcpServer') }}</button>
-            <button class="secondary-button" type="button">{{ t('settingsUi.fromJson') }}</button>
-          </span>
-        </div>
-        <table class="settings-mini-table">
-          <thead><tr><th>{{ t('settingsUi.name') }}</th><th>{{ t('settingsUi.transport') }}</th><th>{{ t('systemSettings.columnStatus') }}</th><th>{{ t('settingsUi.availableAgents') }}</th><th /></tr></thead>
-          <tbody>
-            <tr v-for="row in mcpRows" :key="row.name">
-              <td><strong>{{ row.name }}</strong></td>
-              <td>{{ row.transport }}</td>
-              <td><i class="settings-dot" :class="row.tone" />{{ t(row.status) }}</td>
-              <td>{{ row.agents }}</td>
-              <td class="settings-actions">
-                <button v-if="row.log" class="agent-config-link" type="button">{{ t('settingsUi.viewLog') }}</button>
-                <button class="settings-switch" :class="{ on: row.on }" type="button" @click="row.on = !row.on"><i /></button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <p class="settings-note">{{ t('settingsUi.mcpSync') }}</p>
-      </article>
-      <article class="settings-card">
-        <h2>{{ t('settingsUi.otherConnections') }}</h2>
-        <div class="mock-line"><strong>{{ t('settingsUi.githubAccount') }}</strong><span><i class="settings-dot ready" />{{ t('settingsUi.connected') }} · @tyche-dev</span></div>
-        <div class="mock-line"><strong>{{ t('settingsUi.webhook') }}</strong><span><i class="settings-dot" />{{ t('settingsUi.notConfigured') }}</span></div>
-      </article>
-    </template>
-
-    <SkillsPage v-else-if="section === 'skills'" :api="skillApi" />
+    <SkillsPage v-if="section === 'skills'" :api="skillApi" />
 
     <template v-else-if="section === 'orchestration'">
       <article class="settings-card">
@@ -399,12 +358,6 @@ const shortcuts = [
   { id: 'mention', keys: '⌘ K' },
   { id: 'send', keys: '⏎' },
 ]
-const mcpRows = reactive([
-  { name: 'filesystem', transport: 'stdio', status: 'settingsUi.running', tone: 'ready', agents: 'Codex · Pi', on: true },
-  { name: 'github', transport: 'stdio', status: 'settingsUi.running', tone: 'ready', agents: 'Claude', on: true },
-  { name: 'browser', transport: 'http', status: 'settingsUi.disabled', tone: '', agents: '—', on: false },
-  { name: 'postgres', transport: 'stdio', status: 'settingsUi.failed', tone: 'danger', agents: '—', on: true, log: true },
-])
 const bars = [62, 70, 48, 58, 84, 76, 54, 66, 92, 80, 72, 98, 108, 86, 94, 116, 124, 110, 132, 120, 138, 112, 100, 126, 118, 96, 108, 88, 78, 104]
 const roomCosts = [
   { name: 'snake', width: '86%', cost: '$18.20' },

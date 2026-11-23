@@ -43,10 +43,6 @@
                 <RefreshOutline :class="{ spinning: refreshing }" />
                 {{ t('installer.refresh') }}
               </button>
-              <button class="primary-button" type="button">
-                <AddOutline />
-                {{ t('systemSettings.addCustomAgent') }}
-              </button>
             </div>
           </header>
 
@@ -54,31 +50,16 @@
             <button type="button" role="tab" :aria-selected="agentTab === 'local'" :class="{ active: agentTab === 'local' }" @click="agentTab = 'local'">
               {{ t('systemSettings.localAgents', { count: localAgents.length }) }}
             </button>
-            <button type="button" role="tab" :aria-selected="agentTab === 'cloud'" :class="{ active: agentTab === 'cloud' }" @click="agentTab = 'cloud'">
+            <button v-if="cloudAgents.length" type="button" role="tab" :aria-selected="agentTab === 'cloud'" :class="{ active: agentTab === 'cloud' }" @click="agentTab = 'cloud'">
               {{ t('systemSettings.cloudAgentsCount', { count: cloudAgents.length }) }}
-            </button>
-            <button type="button" role="tab" :aria-selected="agentTab === 'connector'" :class="{ active: agentTab === 'connector' }" @click="agentTab = 'connector'">
-              {{ t('systemSettings.connectorTab') }}
-            </button>
-            <button type="button" role="tab" :aria-selected="agentTab === 'mcp'" :class="{ active: agentTab === 'mcp' }" @click="agentTab = 'mcp'">
-              {{ t('systemSettings.mcpTab') }}
             </button>
           </div>
 
-          <SettingsPages
-            v-if="agentTab === 'mcp'"
-            section="mcp"
-            :set-theme-preference="setThemePreference"
-            :theme-preference="themePreference"
-            :skill-api="skillApi"
-            :installed-agent-kinds="installedAgentKinds"
-          />
-          <div v-else-if="agentTab === 'local' || agentTab === 'cloud'" class="agent-table">
+          <div class="agent-table">
             <div class="agent-table-head">
               <span>Agent</span>
               <span>{{ t('systemSettings.columnStatus') }}</span>
               <span>{{ t('systemSettings.columnVersion') }}</span>
-              <span>{{ t('systemSettings.columnPath') }}</span>
               <span>{{ t('systemSettings.columnAuth') }}</span>
               <span>{{ t('systemSettings.columnActions') }}</span>
             </div>
@@ -98,7 +79,6 @@
                   {{ agentState(agent).label }}
                 </span>
                 <span class="agent-mono">{{ versionOf(agent) }}</span>
-                <span class="agent-mono">—</span>
                 <span class="agent-mono">{{ authOf(agent) }}</span>
                 <span class="settings-agent-actions">
                   <button
@@ -110,58 +90,11 @@
                   >
                     {{ installConfirmKind === agent.kind ? t('installer.confirmAction') : t('installer.install') }}
                   </button>
-                  <button
-                    v-else-if="agent.installed"
-                    class="settings-row-button"
-                    type="button"
-                    :disabled="refreshing"
-                    @click="refreshAgents"
-                  >
-                    {{ t('systemSettings.testConnection') }}
-                  </button>
-                  <button
-                    class="settings-row-chevron"
-                    type="button"
-                    :aria-expanded="expandedKind === agent.kind"
-                    :aria-label="t('systemSettings.toggleConfig', { agent: agent.label })"
-                    @click="expandedKind = expandedKind === agent.kind ? '' : agent.kind"
-                  >
-                    <ChevronDownOutline v-if="expandedKind === agent.kind" />
-                    <ChevronForwardOutline v-else />
-                  </button>
                 </span>
               </div>
               <p v-if="installConfirmKind === agent.kind" class="install-inline">{{ t('installer.confirmHint') }}</p>
               <p v-else-if="installerState.kind === agent.kind && installerState.phase !== 'idle'" class="install-inline">{{ installerPhaseLabel }}</p>
-              <div v-if="expandedKind === agent.kind" class="agent-config">
-                <label>
-                  <span>{{ t('systemSettings.defaultModel') }}</span>
-                  <input readonly tabindex="-1" />
-                </label>
-                <label>
-                  <span>{{ t('systemSettings.launchArgs') }}</span>
-                  <input readonly tabindex="-1" />
-                </label>
-                <label>
-                  <span>{{ t('systemSettings.defaultDirectory') }}</span>
-                  <input readonly tabindex="-1" />
-                </label>
-                <label>
-                  <span>{{ t('systemSettings.environment') }}</span>
-                  <input readonly tabindex="-1" />
-                </label>
-                <label class="agent-config-wide">
-                  <span>{{ t('systemSettings.systemPrompt') }}</span>
-                  <textarea readonly tabindex="-1" rows="3" />
-                </label>
-                <button class="agent-config-link" type="button">{{ t('systemSettings.editSeparately') }}</button>
-              </div>
             </article>
-          </div>
-
-          <div v-if="agentTab === 'local' && !cloudAgents.length" class="cloud-empty-card">
-            <strong>{{ t('systemSettings.cloudEmptyTitle') }}</strong>
-            <p>{{ t('systemSettings.cloudEmptyHint') }}</p>
           </div>
         </section>
         <SettingsPages
@@ -178,13 +111,10 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
-  AddOutline,
   BarChartOutline,
   ChevronBackOutline,
-  ChevronDownOutline,
-  ChevronForwardOutline,
   InformationCircleOutline,
   OptionsOutline,
   PersonOutline,
@@ -253,7 +183,6 @@ const groups = [
 ]
 
 const agentTab = ref('local')
-const expandedKind = ref('')
 const searchShortcut = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘F' : 'Ctrl F'
 
 const localAgents = computed(() => (agentCatalogGroups.value || [])
@@ -266,6 +195,10 @@ const installedAgentKinds = computed(() => localAgents.value
   .filter(agent => agent.installed && !agent.custom)
   .map(agent => agent.kind))
 const visibleAgents = computed(() => agentTab.value === 'cloud' ? cloudAgents.value : localAgents.value)
+
+watch(cloudAgents, (agents) => {
+  if (!agents.length && agentTab.value === 'cloud') agentTab.value = 'local'
+})
 
 function versionOf(agent) {
   const value = String(agent?.resolvedVersion || agent?.version || '').trim()
