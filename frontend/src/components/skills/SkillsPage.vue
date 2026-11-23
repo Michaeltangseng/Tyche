@@ -5,7 +5,6 @@
         <h1>Skills</h1>
         <p>{{ t('settingsUi.skillsLead') }}</p>
       </div>
-      <button class="primary-button" type="button" :disabled="busy || !api" @click="openCreate">+ {{ t('settingsUi.newSkill') }}</button>
     </header>
 
     <p v-if="error" class="settings-banner" role="alert">
@@ -107,6 +106,7 @@
         <div v-else>
           <div class="skills-toolbar">
             <input v-model="query" type="search" :placeholder="t('settingsUi.searchNative')" :aria-label="t('settingsUi.searchNative')" />
+            <button class="secondary-button" type="button" :disabled="busy" @click="openCreate">+ {{ t('settingsUi.newSkill') }}</button>
           </div>
           <p v-if="!platformVisible.length" class="settings-note">{{ t('settingsUi.skillsEmpty') }}</p>
           <div v-else class="skills-table-wrap">
@@ -273,6 +273,19 @@
 
         <p v-if="marketError" class="settings-banner" role="alert">{{ marketError }}</p>
 
+        <section v-if="!marketSources.length" class="market-recommended">
+          <h3>{{ t('settingsUi.marketRecTitle') }}</h3>
+          <div class="market-recommended-grid">
+            <article v-for="item in RECOMMENDED_SOURCES" :key="item.url" class="market-recommended-card">
+              <div>
+                <strong>{{ item.name }}</strong>
+                <small>{{ t(item.leadKey) }}</small>
+              </div>
+              <button class="skill-promote" type="button" :disabled="marketBusy" @click="addRecommended(item.url)">{{ t('settingsUi.marketAdd') }}</button>
+            </article>
+          </div>
+        </section>
+
         <div v-if="marketSources.length" class="skills-subtabs market-sources" role="tablist">
           <button
             v-for="source in marketSources"
@@ -345,6 +358,10 @@ const props = defineProps({
 })
 
 const PAGE_SIZE = 8
+const RECOMMENDED_SOURCES = Object.freeze([
+  { name: 'anthropics/skills', url: 'https://github.com/anthropics/skills', leadKey: 'settingsUi.marketRecAnthropic' },
+  { name: 'openai/skills', url: 'https://github.com/openai/skills', leadKey: 'settingsUi.marketRecOpenai' },
+])
 
 const inventory = ref({ agents: [], agentLabels: {}, skills: [], defaults: {}, counts: {}, storeError: null })
 const view = ref('platform')
@@ -581,6 +598,14 @@ async function addMarketSource() {
   } finally {
     marketBusy.value = false
   }
+}
+
+async function addRecommended(url) {
+  if (marketBusy.value) return
+  sourceForm.url = url
+  sourceForm.ref = ''
+  sourceForm.subpath = ''
+  await addMarketSource()
 }
 
 async function removeMarketSource() {
@@ -864,6 +889,13 @@ onBeforeUnmount(() => {
 .market-advanced input { height: 30px; padding: 0 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text); font: inherit; font-size: 11px; }
 .link-button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; padding: 0; }
 .market-sources { margin-top: 4px; }
+.market-recommended { display: grid; gap: 8px; }
+.market-recommended h3 { margin: 0; font-size: 14px; }
+.market-recommended-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.market-recommended-card { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--surface) 60%, var(--bg)); }
+.market-recommended-card > div { display: grid; gap: 2px; }
+.market-recommended-card strong { font-size: 12px; }
+.market-recommended-card small { color: var(--muted); font-size: 11px; }
 .skills-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
 .skills-chips button { height: 28px; padding: 0 12px; border: 1px solid var(--border); border-radius: 99px; background: transparent; color: var(--text-soft); font: inherit; font-size: 11px; cursor: pointer; }
 .skills-chips button.active { border-color: #2dd4bf; background: color-mix(in srgb, #2dd4bf 12%, transparent); color: #2dd4bf; }

@@ -137,6 +137,26 @@ describe('skill library presentation', () => {
     wrapper.unmount()
   })
 
+  it('offers the real GitHub sources when the market is empty', async () => {
+    const api = mockApi()
+    api.marketAddSource.mockResolvedValue({ id: `src-${'a'.repeat(32)}` })
+    const wrapper = mount(SkillsPage, { props: { api } })
+    await flushPromises()
+    await openMarket(wrapper)
+    expect(wrapper.text()).toContain('anthropics/skills')
+    expect(wrapper.text()).toContain('openai/skills')
+
+    const add = wrapper.findAll('.market-recommended-card .skill-promote')[0]
+    await add.trigger('click')
+    await flushPromises()
+    expect(api.marketAddSource).toHaveBeenCalledWith({
+      url: 'https://github.com/anthropics/skills',
+      ref: '',
+      subpath: '',
+    })
+    wrapper.unmount()
+  })
+
   function marketApi(entry) {
     const sourceId = `src-${'a'.repeat(32)}`
     const token = `market-${'b'.repeat(32)}`
