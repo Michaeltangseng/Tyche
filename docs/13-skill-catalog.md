@@ -80,6 +80,8 @@ Native Agent dirs ──► read-only display
 summary()
 list({ filter?, query? })
 detail({ id })
+marketCatalog()
+marketInstallCatalog({ id })
 create({ name, description, body })
 update({ id, description?, body? })
 promote({ id })                 # copy one native Skill into the platform library
@@ -113,7 +115,7 @@ rememberSkillDefault({ agent, skillIds })
 - 三个 tab：**平台 Skill / Agent 原生 Skill / Skill 市场**。
 - **平台 Skill**：空状态提供"新建 / 从原生提升 / 从市场安装"三个入口；有内容时显示搜索、列表和工具栏内的"新建 Skill"（顶部不再有独立的新建按钮）。共享 Skill 可编辑/删除；市场 Skill 可删除。
 - **Agent 原生 Skill**：顶部按 Agent 排列 tab（末尾"全部"）；工具栏支持搜索、分类筛选、排序、列表/网格切换和批量选择；列表含"提升为平台"和打开源目录。
-- **Skill 市场**：顶部 Git 来源 hero（URL + 可选 ref/subpath + 添加来源）；没有来源时展示两个真实推荐仓库 `anthropics/skills` 和 `openai/skills`，不显示星标或下载量；已有来源以 tab 排列，可移除；条目以卡片展示，按分类筛选，操作提供"添加 / 移除 / 更新"：
+- **Skill 市场**：顶部 Git 来源 hero（URL + 可选 ref/subpath + 添加来源）；下方默认展示随应用打包的**精选目录**（来自 `anthropics/skills` 和 `openai/skills` 的真实条目，共 60+ 个），无需先添加来源或联网即可看到列表；安装时才浅克隆对应仓库。已有来源以 tab 排列，可移除；来源条目以卡片展示，按分类筛选，操作提供"添加 / 移除 / 更新"：
   - 未安装 → 添加（仓库型默认整仓安装）；
   - 已安装且内容一致 → 移除；
   - 已安装但上游有新提交 → 更新 / 移除。
@@ -138,6 +140,8 @@ rememberSkillDefault({ agent, skillIds })
 4. **没有兼容性过滤。** 平台 Skill 对全部可启动 provider 可选；格式是否被某个 CLI 完整支持，由用户自行判断。
 5. **没有风险扫描。** 安装或新建 Skill 不再给出 shell、网络、文件写入等标签。
 6. **市场只有 Git 来源适配器。** skills.sh 需要 Vercel OIDC 代理，well-known 端点和 ClawHub 尚未接入；后续应按 `{id, source, name, description, files, hash}` 统一适配器扩展，而不是把不同来源硬编码到页面里。
+7. **精选目录是打包快照。** `desktop/src/skills/market-catalog.json` 记录两个官方仓库的条目元数据；仓库更新后需要重新生成。安装时会浅克隆整个仓库一次，所以第一次安装较慢，并且需要本机 `git`。
+8. **官方仓库的隐藏 Skill 目录。** `openai/skills` 的条目在 `skills/.curated` 和 `skills/.system` 下；扫描器只放行 `.curated`、`.system`、`.experimental`、`.skills` 这四个隐藏目录，其他隐藏目录仍然跳过。
 
 ## 8. 验证
 
