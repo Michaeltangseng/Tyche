@@ -85,18 +85,16 @@ test('local preload exposes the local-only Tyche API', async () => {
   assert.equal(Object.isFrozen(api.teamRoom), true)
   assert.deepEqual(Object.keys(api.teamRoom).sort(), [
     'acceptTask', 'answerAttention', 'bootstrap', 'chatMessages', 'createChat', 'createRole',
-    'deleteChat', 'deleteRole', 'deleteRoom', 'enableSkillForAgents', 'filesList', 'filesRead',
+    'deleteChat', 'deleteRole', 'deleteRoom', 'filesList', 'filesRead',
     'importFiles', 'listRooms', 'onChanged', 'onRuntimeEvents', 'rememberSkillDefault', 'renameChat',
-    'revokeSkill', 'runtimeEvents', 'setCaptain', 'setSkillEligible', 'setWriteAuthorized',
-    'skillInventory', 'snapshot', 'stopReply', 'submitMessage', 'trustSkill', 'updateRole',
+    'runtimeEvents', 'setCaptain', 'setWriteAuthorized',
+    'skillInventory', 'snapshot', 'stopReply', 'submitMessage', 'updateRole',
   ].sort())
   assert.equal(Object.isFrozen(api.skillLibrary), true)
   assert.deepEqual(Object.keys(api.skillLibrary).sort(), [
-    'create', 'detail', 'importFromAgent', 'list', 'marketAddSource', 'marketApplyUpdate',
+    'create', 'detail', 'list', 'marketAddSource', 'marketApplyUpdate',
     'marketCheckUpdates', 'marketInstall', 'marketPreview', 'marketPreviewUpdate',
-    'marketRemoveSource', 'marketSources', 'onChanged', 'policy', 'project', 'remove',
-    'resolveProjection', 'reveal', 'revokeTrust', 'setEligible', 'summary', 'trust',
-    'unproject', 'update', 'updatePolicy',
+    'marketRemoveSource', 'marketSources', 'onChanged', 'remove', 'reveal', 'summary', 'update',
   ].sort())
   await api.teamRoom.snapshot({ roomId: 'room-1' })
   assert.deepEqual(invocations, [{
@@ -219,31 +217,17 @@ test('skill-library preload forwards only library requests and exposes cancellab
   await api.skillLibrary.summary()
   await api.skillLibrary.list()
   await api.skillLibrary.detail({ id })
-  await api.skillLibrary.trust({ id })
-  await api.skillLibrary.revokeTrust({ id })
-  await api.skillLibrary.setEligible({ id, agent: 'claude', enabled: true })
-  await api.skillLibrary.importFromAgent({ ids: [id], trust: true, onConflict: 'rename' })
-  await api.skillLibrary.create({ name: 'review-kit', description: 'Review', body: '# Review', targets: ['codex'] })
+  await api.skillLibrary.create({ name: 'review-kit', description: 'Review', body: '# Review' })
   await api.skillLibrary.update({ id, description: 'Review' })
   await api.skillLibrary.remove({ id, confirmName: 'pptx' })
-  await api.skillLibrary.project({ id, agent: 'codex' })
-  await api.skillLibrary.unproject({ id, agent: 'codex' })
-  await api.skillLibrary.resolveProjection({ projectionId: `proj-${'a'.repeat(32)}`, action: 'restore' })
   await api.skillLibrary.reveal({ id })
   assert.deepEqual(invocations.map(item => item.channel), [
     'skill-library:summary',
     'skill-library:list',
     'skill-library:detail',
-    'skill-library:trust',
-    'skill-library:revoke-trust',
-    'skill-library:set-eligible',
-    'skill-library:import',
     'skill-library:create',
     'skill-library:update',
     'skill-library:remove',
-    'skill-library:project',
-    'skill-library:unproject',
-    'skill-library:resolve-projection',
     'skill-library:reveal',
   ])
 

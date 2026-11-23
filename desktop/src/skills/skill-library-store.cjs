@@ -8,22 +8,16 @@ const {
   writeJsonAtomic,
 } = require('./skill-library-util.cjs')
 
-const SCHEMA_VERSION = 2
-const DEFAULT_POLICY = Object.freeze({
-  untrustedByDefault: true,
-  revokeOnChange: true,
-  denySkillNetwork: false,
-})
+// v3 keeps only platform-library facts. Trust approvals, projections and
+// policy are gone: a Skill in the library is usable.
+const SCHEMA_VERSION = 3
+const LEGACY_VERSIONS = new Set([1, 2])
 
 function emptyStore() {
   return {
     schemaVersion: SCHEMA_VERSION,
-    policy: { ...DEFAULT_POLICY },
     sources: {},
-    releases: {},
     skills: {},
-    approvedHashes: {},
-    projections: {},
     defaults: {},
   }
 }
@@ -52,61 +46,25 @@ function defaultsMap(value) {
 }
 
 function normalizeStore(value) {
-  if (!isPlainObject(value) || value.schemaVersion !== SCHEMA_VERSION) {
+  if (!isPlainObject(value)) throw skillError('SKILL_LIBRARY_STORE_INVALID')
+  const version = Number(value.schemaVersion)
+  if (version !== SCHEMA_VERSION && !LEGACY_VERSIONS.has(version)) {
     throw skillError('SKILL_LIBRARY_STORE_INVALID')
   }
-  const policy = isPlainObject(value.policy) ? value.policy : {}
   return {
     schemaVersion: SCHEMA_VERSION,
-    policy: {
-      untrustedByDefault: policy.untrustedByDefault !== false,
-      revokeOnChange: policy.revokeOnChange !== false,
-      denySkillNetwork: policy.denySkillNetwork === true,
-    },
     sources: plainMap(value.sources),
-    releases: plainMap(value.releases),
     skills: plainMap(value.skills),
-    approvedHashes: plainMap(value.approvedHashes),
-    projections: plainMap(value.projections),
     defaults: defaultsMap(value.defaults),
   }
 }
 
-function isoOrNow(value, now) {
-  const date = new Date(value)
-  return Number.isFinite(date.getTime()) ? date.toISOString() : now().toISOString()
-}
-
-function migrateLegacyInventory(legacy, now) {
+function migrateLegacyInventory(legacy) {
   if (!isPlainObject(legacy) || legacy.schemaVersion !== 1) return null
   const store = emptyStore()
-  const trust = isPlainObject(legacy.trust) ? legacy.trust : {}
-  for (const [id, record] of Object.entries(trust)) {
-    if (!isPlainObject(record) || !/^[a-f0-9]{64}$/.test(String(record.contentHash || ''))) continue
-    const approvedAt = isoOrNow(record.trustedAt, now)
-    store.approvedHashes[record.contentHash] = {
-      approvedAt,
-      preview: '',
-      fileManifest: [],
-      risk: null,
-      migrated: true,
-    }
-    store.skills[id] = {
-      ...(store.skills[id] || {}),
-      approvedHash: record.contentHash,
-    }
-  }
-  const eligibility = isPlainObject(legacy.eligibility) ? legacy.eligibility : {}
-  for (const [id, agents] of Object.entries(eligibility)) {
-    if (!Array.isArray(agents)) continue
-    store.skills[id] = {
-      ...(store.skills[id] || {}),
-      nativeEligible: agents.filter(agent => typeof agent === 'string'),
-    }
-  }
   const defaults = isPlainObject(legacy.defaults) ? legacy.defaults : {}
   for (const [agent, ids] of Object.entries(defaults)) {
-    if (Array.isArray(ids)) store.defaults[agent] = ids.filter(id => typeof id === 'string')
+    if (Array.isArray(ids)) store.defaults[agent] = stringArray(ids)
   }
   return store
 }
@@ -138,7 +96,11 @@ class SkillLibraryStore {
     this.lastError = null
     if (fs.existsSync(this.storagePath)) {
       try {
-        return normalizeStore(readJsonFile(this.storagePath))
+        const raw = readJsonFile(this.storagePath)
+        const store = normalizeStore(raw)
+        // Persist the v2 -> v3 shape once so retired fields do not linger.
+        if (raw?.schemaVersion !== SCHEMA_VERSION) this.save(store)
+        return store
       } catch {
         this.backupInvalid('SKILL_LIBRARY_STORE_INVALID')
         return emptyStore()
@@ -147,7 +109,7 @@ class SkillLibraryStore {
     if (this.legacyPath && fs.existsSync(this.legacyPath)) {
       try {
         const legacy = readJsonFile(this.legacyPath)
-        const migrated = migrateLegacyInventory(legacy, this.now)
+        const migrated = migrateLegacyInventory(legacy)
         if (migrated) {
           this.save(migrated)
           this.migrated = true
@@ -167,7 +129,6 @@ class SkillLibraryStore {
 }
 
 module.exports = {
-  DEFAULT_POLICY,
   SCHEMA_VERSION,
   SkillLibraryStore,
   emptyStore,

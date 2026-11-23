@@ -945,23 +945,6 @@ function createRoomHost({
     return requireSkillInventory().list()
   }
 
-  function trustSkill(input = {}) {
-    return requireSkillInventory().trust(cleanText(input.id, 240, 'id'))
-  }
-
-  function revokeSkill(input = {}) {
-    return requireSkillInventory().revoke(cleanText(input.id, 240, 'id'))
-  }
-
-  function setSkillEligible(input = {}) {
-    if (typeof input.enabled !== 'boolean') throw hostError('TEAM_ROOM_INPUT_INVALID')
-    return requireSkillInventory().setEligible(cleanText(input.id, 240, 'id'), cleanText(input.agent, 40, 'agent'), input.enabled)
-  }
-
-  function enableSkillForAgents(input = {}) {
-    return requireSkillInventory().enableForAgents(cleanText(input.id, 240, 'id'))
-  }
-
   function rememberSkillDefault(input = {}) {
     const agent = cleanText(input.agent, 40, 'agent')
     if (!Array.isArray(input.skillIds)) throw hostError('TEAM_ROOM_INPUT_INVALID')
@@ -995,10 +978,6 @@ function createRoomHost({
     acceptTask,
     stopReply,
     skillInventoryList,
-    trustSkill,
-    revokeSkill,
-    setSkillEligible,
-    enableSkillForAgents,
     rememberSkillDefault,
     filesList,
     filesRead,

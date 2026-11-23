@@ -6,26 +6,16 @@
  * Paths stay in the main process, and `reveal` opens a path resolved by the
  * library itself.
  */
-const { AGENT_KINDS } = require('../skills/skill-adapters.cjs')
 const { SOURCE_ID, TOKEN } = require('../skills/skill-market.cjs')
-const { PROJECTION_ID, SKILL_ID, validSkillName } = require('../skills/skill-library-util.cjs')
+const { SKILL_ID, validSkillName } = require('../skills/skill-library-util.cjs')
 
 const CHANNELS = Object.freeze({
   summary: 'skill-library:summary',
   list: 'skill-library:list',
   detail: 'skill-library:detail',
-  policy: 'skill-library:policy',
-  updatePolicy: 'skill-library:policy-update',
-  trust: 'skill-library:trust',
-  revokeTrust: 'skill-library:revoke-trust',
-  setEligible: 'skill-library:set-eligible',
-  importFromAgent: 'skill-library:import',
   create: 'skill-library:create',
   update: 'skill-library:update',
   remove: 'skill-library:remove',
-  project: 'skill-library:project',
-  unproject: 'skill-library:unproject',
-  resolveProjection: 'skill-library:resolve-projection',
   reveal: 'skill-library:reveal',
   marketSources: 'skill-library:market-sources',
   marketAddSource: 'skill-library:market-add-source',
@@ -38,9 +28,6 @@ const CHANNELS = Object.freeze({
 })
 
 const MAX_BODY = 100_000
-const MAX_TARGETS = 11
-const MAX_IMPORT_IDS = 64
-const PROJECTION_ACTIONS = new Set(['restore', 'adopt', 'unmanage'])
 
 function ipcError(code) {
   return Object.assign(new Error(code), { code })
@@ -73,12 +60,6 @@ function skillId(value) {
   return id
 }
 
-function agent(value) {
-  const kind = text(value, 40)
-  if (!AGENT_KINDS.includes(kind)) throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
-  return kind
-}
-
 function optBoolean(value) {
   if (value === undefined) return undefined
   if (typeof value !== 'boolean') throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
@@ -89,16 +70,6 @@ function optionalBody(value) {
   if (value === undefined) return undefined
   if (typeof value !== 'string' || value.length > MAX_BODY) throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
   return value
-}
-
-function stringList(value, max, validate) {
-  if (!Array.isArray(value) || value.length === 0 || value.length > max) {
-    throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
-  }
-  return value.map((item) => {
-    if (typeof item !== 'string') throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
-    return validate(item)
-  })
 }
 
 function registerSkillLibraryIpc({ registerTrustedHandle, getLibrary, shell } = {}) {
@@ -127,51 +98,8 @@ function registerSkillLibraryIpc({ registerTrustedHandle, getLibrary, shell } = 
     return library().detail(skillId(parsed.id))
   })
 
-  registerTrustedHandle(CHANNELS.policy, () => library().policy())
-
-  registerTrustedHandle(CHANNELS.updatePolicy, (input) => {
-    const fields = ['untrustedByDefault', 'revokeOnChange', 'denySkillNetwork']
-    const parsed = assertInput(input, fields)
-    if (!fields.some(key => parsed[key] !== undefined)) throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
-    for (const key of fields) {
-      if (parsed[key] !== undefined && typeof parsed[key] !== 'boolean') {
-        throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
-      }
-    }
-    return library().updatePolicy(parsed)
-  })
-
-  registerTrustedHandle(CHANNELS.trust, (input) => {
-    const parsed = assertInput(input, ['id'])
-    return library().trust(skillId(parsed.id))
-  })
-
-  registerTrustedHandle(CHANNELS.revokeTrust, (input) => {
-    const parsed = assertInput(input, ['id'])
-    return library().revokeTrust(skillId(parsed.id))
-  })
-
-  registerTrustedHandle(CHANNELS.setEligible, (input) => {
-    const parsed = assertInput(input, ['id', 'agent', 'enabled'])
-    if (typeof parsed.enabled !== 'boolean') throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
-    return library().setEligible(skillId(parsed.id), agent(parsed.agent), parsed.enabled)
-  })
-
-  registerTrustedHandle(CHANNELS.importFromAgent, (input) => {
-    const parsed = assertInput(input, ['ids', 'onConflict', 'trust'])
-    const ids = stringList(parsed.ids, MAX_IMPORT_IDS, skillId)
-    if (parsed.onConflict !== undefined && !['rename', 'replace', 'error'].includes(parsed.onConflict)) {
-      throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
-    }
-    return library().importFromAgent({
-      ids,
-      onConflict: parsed.onConflict || 'rename',
-      trust: optBoolean(parsed.trust) === true,
-    })
-  })
-
   registerTrustedHandle(CHANNELS.create, (input) => {
-    const parsed = assertInput(input, ['name', 'description', 'body', 'targets'])
+    const parsed = assertInput(input, ['name', 'description', 'body'])
     const name = text(parsed.name, 64)
     if (!validSkillName(name)) throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
     if (typeof parsed.description !== 'string' || parsed.description.length > 2000) {
@@ -179,10 +107,7 @@ function registerSkillLibraryIpc({ registerTrustedHandle, getLibrary, shell } = 
     }
     const body = optionalBody(parsed.body)
     if (body === undefined) throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
-    const targets = parsed.targets === undefined
-      ? []
-      : stringList(parsed.targets, MAX_TARGETS, agent)
-    return library().create({ name, description: parsed.description, body, targets })
+    return library().create({ name, description: parsed.description, body })
   })
 
   registerTrustedHandle(CHANNELS.update, (input) => {
@@ -207,24 +132,6 @@ function registerSkillLibraryIpc({ registerTrustedHandle, getLibrary, shell } = 
       id: skillId(parsed.id),
       confirmName: text(parsed.confirmName, 120),
     })
-  })
-
-  registerTrustedHandle(CHANNELS.project, (input) => {
-    const parsed = assertInput(input, ['id', 'agent'])
-    return library().project(skillId(parsed.id), agent(parsed.agent))
-  })
-
-  registerTrustedHandle(CHANNELS.unproject, (input) => {
-    const parsed = assertInput(input, ['id', 'agent'])
-    return library().unproject(skillId(parsed.id), agent(parsed.agent))
-  })
-
-  registerTrustedHandle(CHANNELS.resolveProjection, (input) => {
-    const parsed = assertInput(input, ['projectionId', 'action'])
-    const id = text(parsed.projectionId, 80)
-    if (!PROJECTION_ID.test(id)) throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
-    if (!PROJECTION_ACTIONS.has(parsed.action)) throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
-    return library().resolveProjection({ projectionId: id, action: parsed.action })
   })
 
   registerTrustedHandle(CHANNELS.reveal, async (input) => {
@@ -260,12 +167,11 @@ function registerSkillLibraryIpc({ registerTrustedHandle, getLibrary, shell } = 
   })
 
   registerTrustedHandle(CHANNELS.marketInstall, (input) => {
-    const parsed = assertInput(input, ['token', 'trust', 'repo'])
+    const parsed = assertInput(input, ['token', 'repo'])
     const token = text(parsed.token, 80)
     if (!TOKEN.test(token)) throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
     return library().market.installEntry({
       token,
-      trust: optBoolean(parsed.trust) === true,
       repo: optBoolean(parsed.repo) === true,
     })
   })
@@ -278,13 +184,12 @@ function registerSkillLibraryIpc({ registerTrustedHandle, getLibrary, shell } = 
   })
 
   registerTrustedHandle(CHANNELS.marketApplyUpdate, (input) => {
-    const parsed = assertInput(input, ['skillId', 'token', 'trust'])
+    const parsed = assertInput(input, ['skillId', 'token'])
     const token = text(parsed.token, 80)
     if (!TOKEN.test(token)) throw ipcError('SKILL_LIBRARY_INPUT_INVALID')
     return library().market.applyUpdate({
       skillId: skillId(parsed.skillId),
       token,
-      trust: optBoolean(parsed.trust) === true,
     })
   })
 }

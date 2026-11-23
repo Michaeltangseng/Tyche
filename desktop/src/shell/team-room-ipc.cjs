@@ -28,10 +28,6 @@ const CHANNELS = Object.freeze({
   writeAuthorized: 'team-room:write-authorized',
   runtimeEvents: 'team-room:runtime-events',
   skillInventory: 'team-room:skill-inventory',
-  trustSkill: 'team-room:skill-trust',
-  revokeSkill: 'team-room:skill-revoke',
-  setSkillEligible: 'team-room:skill-eligible',
-  enableSkillForAgents: 'team-room:skill-enable-agents',
   rememberSkillDefault: 'team-room:skill-remember-default',
 })
 
@@ -295,32 +291,6 @@ function registerTeamRoomIpc({ registerTrustedHandle, getHost, dialog, getMainWi
   })
 
   registerTrustedHandle(CHANNELS.skillInventory, () => host().skillInventoryList())
-
-  registerTrustedHandle(CHANNELS.trustSkill, input => {
-    const parsed = assertInput(input, ['id'])
-    text(parsed.id, 240)
-    return host().trustSkill(parsed)
-  })
-
-  registerTrustedHandle(CHANNELS.revokeSkill, input => {
-    const parsed = assertInput(input, ['id'])
-    text(parsed.id, 240)
-    return host().revokeSkill(parsed)
-  })
-
-  registerTrustedHandle(CHANNELS.setSkillEligible, input => {
-    const parsed = assertInput(input, ['id', 'agent', 'enabled'])
-    text(parsed.id, 240)
-    text(parsed.agent, 40)
-    if (typeof parsed.enabled !== 'boolean') throw ipcError('TEAM_ROOM_INPUT_INVALID')
-    return host().setSkillEligible(parsed)
-  })
-
-  registerTrustedHandle(CHANNELS.enableSkillForAgents, input => {
-    const parsed = assertInput(input, ['id'])
-    text(parsed.id, 240)
-    return host().enableSkillForAgents(parsed)
-  })
 
   registerTrustedHandle(CHANNELS.rememberSkillDefault, input => {
     const parsed = assertInput(input, ['agent', 'skillIds'])

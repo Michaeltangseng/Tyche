@@ -38,276 +38,136 @@ function setup(t) {
     home,
     catalog,
   })
-  return { catalog, home, library }
+  return { catalog, home, library, storageRoot }
 }
 
 function findSkill(library, id) {
   return library.list().skills.find(skill => skill.id === id)
 }
 
-test('native skills start untrusted and only become selectable after trust and eligibility', (t) => {
+test('native Skills are listed read-only and cannot be selected by a role', (t) => {
   const { library } = setup(t)
   const listed = library.list()
   assert.deepEqual(listed.agents.sort(), ['claude', 'codex'])
   const pptx = findSkill(library, 'claude/global/pptx')
   assert.ok(pptx)
-  assert.equal(pptx.trust, 'untrusted')
-  assert.deepEqual(pptx.available, [])
-  assert.throws(() => library.assertSelectable('claude', ['claude/global/pptx']), /SKILL_SELECTION_INVALID/)
-
-  library.trust('claude/global/pptx')
-  library.setEligible('claude/global/pptx', 'claude', true)
-  const trusted = findSkill(library, 'claude/global/pptx')
-  assert.equal(trusted.trust, 'trusted')
-  assert.deepEqual(trusted.available, ['claude'])
-  assert.deepEqual(library.assertSelectable('claude', ['claude/global/pptx']), ['claude/global/pptx'])
-  assert.match(library.materialize('claude', ['claude/global/pptx']).skills[0].body, /pptx workflow/)
-  assert.deepEqual(library.materialize('codex', ['claude/global/pptx']).skills, [])
+  assert.equal(pptx.source, 'native')
+  assert.equal(pptx.originKind, 'claude')
+  assert.equal(pptx.trust, undefined)
+  assert.equal(pptx.canEdit, undefined)
   assert.throws(
-    () => library.setEligible('claude/global/pptx', 'codex', true),
-    /SKILL_AGENT_INVALID/,
-  )
-})
-
-test('import copies a native skill and records a native-origin projection without writing a marker', (t) => {
-  const { home, library } = setup(t)
-  const result = library.importFromAgent({ ids: ['claude/global/pptx'], trust: true })
-  assert.equal(result.imported.length, 1)
-  assert.equal(result.imported[0].id, 'shared/library/pptx')
-  assert.equal(result.imported[0].approved, true)
-
-  assert.equal(fs.existsSync(path.join(home, 'library', 'pptx', 'SKILL.md')), true)
-  assert.equal(fs.existsSync(path.join(home, '.claude', 'skills', 'pptx', '.tyche-managed.json')), false)
-  assert.equal(library.list().skills.some(skill => skill.id === 'claude/global/pptx'), false)
-
-  const shared = findSkill(library, 'shared/library/pptx')
-  assert.equal(shared.trust, 'trusted')
-  assert.equal(shared.projections.length, 1)
-  assert.equal(shared.projections[0].agent, 'claude')
-  assert.equal(shared.projections[0].mode, 'nativeOrigin')
-  assert.equal(shared.projections[0].status, 'deployed')
-  assert.equal(library.list().agents.includes('claude'), true)
-})
-
-test('materialize switches from prompt delivery to native delivery after a valid projection', (t) => {
-  const { library } = setup(t)
-  library.importFromAgent({ ids: ['claude/global/pptx'], trust: true })
-
-  let equipped = library.materialize('codex', ['shared/library/pptx']).skills[0]
-  assert.equal(equipped.delivery, 'prompt')
-  assert.match(equipped.body, /pptx workflow/)
-  assert.equal(equipped.contentHash.length, 64)
-
-  library.project('shared/library/pptx', 'codex')
-  equipped = library.materialize('codex', ['shared/library/pptx']).skills[0]
-  assert.equal(equipped.delivery, 'native')
-  assert.equal(equipped.body, '')
-})
-
-test('projection copies into an Agent directory, detects drift, and restores', (t) => {
-  const { catalog, home, library } = setup(t)
-  library.importFromAgent({ ids: ['claude/global/pptx'], trust: true })
-  library.project('shared/library/pptx', 'codex')
-
-  const target = path.join(home, '.codex', 'skills', 'pptx')
-  assert.equal(fs.existsSync(path.join(target, 'SKILL.md')), true)
-  const marker = JSON.parse(fs.readFileSync(path.join(target, '.tyche-managed.json'), 'utf8'))
-  assert.equal(marker.skillId, 'shared/library/pptx')
-  assert.equal(marker.projectionId.startsWith('proj-'), true)
-
-  let projection = findSkill(library, 'shared/library/pptx').projections.find(item => item.agent === 'codex')
-  assert.equal(projection.status, 'deployed')
-
-  fs.appendFileSync(path.join(target, 'SKILL.md'), '\nLocal edit.\n')
-  catalog.invalidate('codex')
-  library.invalidate()
-  projection = findSkill(library, 'shared/library/pptx').projections.find(item => item.agent === 'codex')
-  assert.equal(projection.status, 'drifted')
-  assert.throws(
-    () => library.unproject('shared/library/pptx', 'codex'),
-    /SKILL_PROJECTION_DRIFTED/,
-  )
-
-  library.resolveProjection({ projectionId: projection.id, action: 'restore' })
-  projection = findSkill(library, 'shared/library/pptx').projections.find(item => item.agent === 'codex')
-  assert.equal(projection.status, 'deployed')
-  assert.doesNotMatch(fs.readFileSync(path.join(target, 'SKILL.md'), 'utf8'), /Local edit/)
-})
-
-test('content changes require re-approval and mark projections outdated', (t) => {
-  const { catalog, home, library } = setup(t)
-  library.importFromAgent({ ids: ['claude/global/pptx'], trust: true })
-  library.project('shared/library/pptx', 'codex')
-
-  fs.appendFileSync(path.join(home, 'library', 'pptx', 'SKILL.md'), '\nNew instruction.\n')
-  catalog.invalidate('claude')
-  library.invalidate()
-
-  let shared = findSkill(library, 'shared/library/pptx')
-  assert.equal(shared.trust, 'changed')
-  assert.equal(shared.projections.find(item => item.agent === 'codex').status, 'outdated')
-  assert.throws(
-    () => library.assertSelectable('codex', ['shared/library/pptx']),
+    () => library.assertSelectable('claude', ['claude/global/pptx']),
     /SKILL_SELECTION_INVALID/,
   )
-
-  library.trust('shared/library/pptx')
-  shared = findSkill(library, 'shared/library/pptx')
-  assert.equal(shared.trust, 'trusted')
-  library.project('shared/library/pptx', 'codex')
-  shared = findSkill(library, 'shared/library/pptx')
-  assert.equal(shared.projections.find(item => item.agent === 'codex').status, 'deployed')
 })
 
-test('an unmarked same-name native folder blocks projection', (t) => {
-  const { catalog, home, library } = setup(t)
-  library.importFromAgent({ ids: ['claude/global/pptx'], trust: true })
-  writeNativeSkill(home, '.gemini', 'pptx', 'Different content', 'A different Skill.')
-  catalog.invalidate('gemini')
-  library.invalidate()
-
-  assert.throws(
-    () => library.project('shared/library/pptx', 'gemini'),
-    /SKILL_PROJECTION_CONFLICT/,
-  )
-  assert.equal(fs.existsSync(path.join(home, '.gemini', 'skills', 'pptx', '.tyche-managed.json')), false)
-  const gemini = findSkill(library, 'gemini/global/pptx')
-  assert.ok(gemini)
-  assert.equal(gemini.conflict?.name, 'pptx')
-})
-
-test('revoking trust removes managed copies and keeps the native source', (t) => {
-  const { home, library } = setup(t)
-  library.importFromAgent({ ids: ['claude/global/pptx'], trust: true })
-  library.project('shared/library/pptx', 'codex')
-
-  library.revokeTrust('shared/library/pptx')
-  assert.equal(fs.existsSync(path.join(home, '.codex', 'skills', 'pptx')), false)
-  assert.equal(fs.existsSync(path.join(home, '.claude', 'skills', 'pptx', 'SKILL.md')), true)
-  const shared = findSkill(library, 'shared/library/pptx')
-  assert.equal(shared.trust, 'untrusted')
-  assert.deepEqual(shared.projections, [])
-})
-
-test('removing a library Skill moves it to trash and removes managed copies only', (t) => {
-  const { home, library } = setup(t)
-  library.importFromAgent({ ids: ['claude/global/pptx'], trust: true })
-  library.project('shared/library/pptx', 'codex')
-
-  library.remove({ id: 'shared/library/pptx', confirmName: 'pptx' })
-  assert.equal(fs.existsSync(path.join(home, 'library', 'pptx')), false)
-  assert.equal(fs.existsSync(path.join(home, '.codex', 'skills', 'pptx')), false)
-  assert.equal(fs.existsSync(path.join(home, '.claude', 'skills', 'pptx', 'SKILL.md')), true)
-  assert.equal(library.list().skills.some(skill => skill.id === 'shared/library/pptx'), false)
-  assert.equal(fs.readdirSync(path.join(home, 'trash')).length, 1)
-})
-
-test('creating a Skill writes the standard frontmatter, trusts it, and can distribute immediately', (t) => {
-  const { home, library } = setup(t)
+test('creating a platform Skill makes it selectable and injectable', (t) => {
+  const { library } = setup(t)
   const created = library.create({
-    name: 'review-kit',
-    description: 'Review code changes',
-    body: '# Review\n\nCheck the diff.',
-    targets: ['codex'],
+    name: 'deck',
+    description: 'Build decks',
+    body: 'Follow the deck workflow.',
   })
-  assert.equal(created.id, 'shared/library/review-kit')
-  assert.equal(created.trust, 'trusted')
-  assert.equal(created.projections.some(projection => projection.agent === 'codex' && projection.status === 'deployed'), true)
-  assert.equal(fs.existsSync(path.join(home, '.codex', 'skills', 'review-kit', 'SKILL.md')), true)
-  assert.match(fs.readFileSync(path.join(home, 'library', 'review-kit', 'SKILL.md'), 'utf8'), /name: review-kit/)
+  assert.equal(created.id, 'shared/library/deck')
+  assert.equal(findSkill(library, 'shared/library/deck').source, 'shared')
+  assert.deepEqual(library.assertSelectable('claude', ['shared/library/deck']), ['shared/library/deck'])
+  const materialized = library.materialize('codex', ['shared/library/deck'])
+  assert.equal(materialized.skills.length, 1)
+  assert.equal(materialized.skills[0].delivery, 'prompt')
+  assert.match(materialized.skills[0].body, /deck workflow/)
+  assert.equal(fs.existsSync(path.join(library.libraryRoot, 'deck', '.tyche-provenance.json')), true)
 })
 
-test('a v1 inventory migrates eligibility, trust, and defaults', (t) => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-skill-migrate-'))
-  t.after(() => fs.rmSync(home, { recursive: true, force: true }))
-  writeNativeSkill(home, '.claude', 'pptx', 'Create presentations', 'Use the pptx workflow.')
-  const storageRoot = path.join(home, 'store')
+test('updating a platform Skill keeps it usable and changes its hash', (t) => {
+  const { library } = setup(t)
+  const created = library.create({ name: 'deck', description: 'Build decks', body: 'One.' })
+  const updated = library.update({ id: created.id, body: 'Two.' })
+  assert.notEqual(updated.contentHash, created.contentHash)
+  assert.deepEqual(library.assertSelectable('claude', [created.id]), [created.id])
+  assert.match(library.materialize('claude', [created.id]).skills[0].body, /Two\./)
+})
+
+test('removing a platform Skill moves it to trash and drops defaults', (t) => {
+  const { library } = setup(t)
+  const created = library.create({ name: 'deck', description: 'Build decks', body: 'Body.' })
+  library.rememberDefault('claude', [created.id])
+  assert.deepEqual(library.loadStore().defaults.claude, [created.id])
+  assert.throws(() => library.remove({ id: created.id, confirmName: 'wrong' }), /SKILL_CONFIRM_MISMATCH/)
+  assert.deepEqual(library.remove({ id: created.id, confirmName: 'deck' }), { removed: true })
+  assert.equal(findSkill(library, created.id), undefined)
+  assert.deepEqual(library.loadStore().defaults.claude, [])
+  assert.equal(fs.existsSync(path.join(library.libraryRoot, 'deck')), false)
+})
+
+test('defaults only keep platform Skills', (t) => {
+  const { library } = setup(t)
+  const created = library.create({ name: 'deck', description: 'Build decks', body: 'Body.' })
+  library.rememberDefault('claude', [created.id])
+  assert.deepEqual(library.defaults('claude'), [created.id])
+  assert.throws(
+    () => library.rememberDefault('claude', ['claude/global/pptx']),
+    /SKILL_SELECTION_INVALID/,
+  )
+})
+
+test('a v1 inventory migrates only defaults', (t) => {
+  const { home, storageRoot } = setup(t)
   fs.mkdirSync(storageRoot, { recursive: true })
-  const legacyPath = path.join(storageRoot, 'skill-inventory.json')
-  fs.writeFileSync(legacyPath, JSON.stringify({
+  fs.writeFileSync(path.join(storageRoot, 'skill-inventory.json'), JSON.stringify({
     schemaVersion: 1,
+    trust: { 'claude/global/pptx': { contentHash: 'a'.repeat(64), trustedAt: new Date().toISOString() } },
     eligibility: { 'claude/global/pptx': ['claude'] },
-    trust: {},
     defaults: { claude: ['claude/global/pptx'] },
   }))
   const catalog = new LocalSkillCatalog({ home })
   const library = new SkillLibrary({
     storagePath: path.join(storageRoot, 'skill-library.json'),
-    legacyPath,
-    libraryRoot: path.join(home, 'library'),
-    backupRoot: path.join(home, 'backups'),
-    trashRoot: path.join(home, 'trash'),
+    legacyPath: path.join(storageRoot, 'skill-inventory.json'),
+    libraryRoot: path.join(home, 'library-2'),
+    backupRoot: path.join(home, 'backups-2'),
+    trashRoot: path.join(home, 'trash-2'),
     home,
     catalog,
   })
-  assert.equal(fs.existsSync(path.join(storageRoot, 'skill-library.json')), true)
-  assert.equal(fs.existsSync(`${legacyPath}.bak`), true)
-  assert.equal(findSkill(library, 'claude/global/pptx').trust, 'untrusted')
-
-  library.trust('claude/global/pptx')
-  assert.deepEqual(findSkill(library, 'claude/global/pptx').available, ['claude'])
+  library.loadStore()
+  const store = JSON.parse(fs.readFileSync(path.join(storageRoot, 'skill-library.json'), 'utf8'))
+  assert.equal(store.schemaVersion, 3)
+  assert.deepEqual(store.defaults, { claude: ['claude/global/pptx'] })
+  assert.equal(store.trust, undefined)
+  assert.equal(store.projections, undefined)
+  assert.equal(fs.existsSync(path.join(storageRoot, 'skill-inventory.json.bak')), true)
 })
 
-test('trust policy blocks network approvals and clears defaults on content change', (t) => {
-  const { catalog, home, library } = setup(t)
-  const native = writeNativeSkill(home, '.claude', 'net-skill', 'Network helper', 'Run the helper.')
-  fs.mkdirSync(path.join(native, 'scripts'))
-  fs.writeFileSync(path.join(native, 'scripts', 'run.sh'), 'curl https://example.com\n', { mode: 0o755 })
-  catalog.invalidate('claude')
-  library.invalidate()
-
-  assert.equal(library.policy().denySkillNetwork, false)
-  library.updatePolicy({ denySkillNetwork: true })
-  const imported = library.importFromAgent({ ids: ['claude/global/net-skill'], trust: true })
-  assert.equal(imported.imported[0].approved, false)
-  assert.equal(findSkill(library, 'shared/library/net-skill').trust, 'untrusted')
-  assert.throws(
-    () => library.trust('shared/library/net-skill'),
-    /SKILL_NETWORK_DENIED/,
-  )
-
-  library.updatePolicy({ denySkillNetwork: false })
-  library.trust('shared/library/net-skill')
-  assert.equal(findSkill(library, 'shared/library/net-skill').trust, 'trusted')
-  library.rememberDefault('codex', ['shared/library/net-skill'])
-  assert.deepEqual(library.loadStore().defaults.codex, ['shared/library/net-skill'])
-
-  library.update({ id: 'shared/library/net-skill', description: 'Network helper updated' })
-  assert.deepEqual(library.loadStore().defaults.codex, [])
-  assert.equal(findSkill(library, 'shared/library/net-skill').trust, 'changed')
-})
-
-test('duplicate imports rename by default and can replace explicitly', (t) => {
-  const { home, library } = setup(t)
-  const first = library.importFromAgent({ ids: ['claude/global/pptx'], trust: true })
-  assert.equal(first.imported[0].name, 'pptx')
-
-  writeNativeSkill(home, '.gemini', 'pptx', 'Another version', 'Different instructions.')
-  const catalog = library.catalog
-  catalog.invalidate('gemini')
-  library.invalidate()
-  const second = library.importFromAgent({ ids: ['gemini/global/pptx'], trust: true })
-  assert.equal(second.imported[0].name, 'pptx-2')
-  assert.equal(fs.existsSync(path.join(home, 'library', 'pptx-2', 'SKILL.md')), true)
-
-  const third = library.importFromAgent({ ids: ['gemini/global/pptx'], trust: true, onConflict: 'replace' })
-  assert.equal(third.imported[0].name, 'pptx')
-})
-
-test('a role may select more than eight trusted skills', (t) => {
-  const { library, home } = setup(t)
-  const ids = []
-  for (let index = 0; index < 9; index += 1) {
-    const name = `many-${index}`
-    writeNativeSkill(home, '.claude', name, `Skill ${index}`, 'body')
-    ids.push(`claude/global/${name}`)
-  }
-  library.catalog.invalidate('claude')
-  library.invalidate()
-  for (const id of ids) {
-    library.trust(id)
-    library.setEligible(id, 'claude', true)
-  }
-  assert.deepEqual(library.assertSelectable('claude', ids), ids)
-  assert.equal(library.materialize('claude', ids).skills.length, 9)
+test('a v2 store drops trust, policy and projections on load', (t) => {
+  const { home, storageRoot } = setup(t)
+  fs.mkdirSync(storageRoot, { recursive: true })
+  fs.writeFileSync(path.join(storageRoot, 'skill-library.json'), JSON.stringify({
+    schemaVersion: 2,
+    policy: { untrustedByDefault: true, revokeOnChange: true, denySkillNetwork: false },
+    sources: {},
+    releases: {},
+    skills: {},
+    approvedHashes: { [String('a'.repeat(64))]: { approvedAt: new Date().toISOString() } },
+    projections: { 'proj-1': { skillId: 'shared/library/x' } },
+    defaults: { claude: ['shared/library/x'] },
+  }))
+  const catalog = new LocalSkillCatalog({ home })
+  const library = new SkillLibrary({
+    storagePath: path.join(storageRoot, 'skill-library.json'),
+    legacyPath: path.join(storageRoot, 'skill-inventory.json'),
+    libraryRoot: path.join(home, 'library-3'),
+    backupRoot: path.join(home, 'backups-3'),
+    trashRoot: path.join(home, 'trash-3'),
+    home,
+    catalog,
+  })
+  const store = library.loadStore()
+  assert.equal(store.schemaVersion, 3)
+  assert.deepEqual(store.defaults, { claude: ['shared/library/x'] })
+  assert.equal(store.policy, undefined)
+  assert.equal(store.approvedHashes, undefined)
+  assert.equal(store.projections, undefined)
+  const persisted = JSON.parse(fs.readFileSync(path.join(storageRoot, 'skill-library.json'), 'utf8'))
+  assert.equal(persisted.schemaVersion, 3)
+  assert.equal(persisted.policy, undefined)
 })

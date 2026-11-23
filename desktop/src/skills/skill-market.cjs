@@ -13,7 +13,6 @@ const {
   skillError,
   validSkillName,
 } = require('./skill-library-util.cjs')
-const { scanSkill } = require('./skill-risk.cjs')
 
 const execFileAsync = promisify(execFile)
 const MAX_ENTRIES = 50
@@ -86,24 +85,19 @@ function sourceDto(source) {
     url: source.url,
     ref: source.ref || '',
     subpath: source.subpath || '',
-    trustTier: source.trustTier || 'community',
     addedAt: source.addedAt || null,
     lastCheckedAt: source.lastCheckedAt || null,
     lastCommit: source.lastCommit || null,
   }
 }
 
-function entryDto(staged, meta, risk) {
+function entryDto(staged, meta) {
   return {
     token: staged.token,
     name: meta.name,
     description: meta.description,
-    preview: meta.preview,
     version: meta.version || null,
     contentHash: meta.contentHash,
-    risk,
-    fileCount: meta.fileCount,
-    totalBytes: meta.totalBytes,
     relativePath: staged.relativePath,
     validName: validSkillName(meta.name),
     repoMode: staged.repoMode === true,
@@ -291,7 +285,6 @@ class SkillMarket {
       url,
       ref,
       subpath,
-      trustTier: 'community',
       addedAt: this.now().toISOString(),
       lastCheckedAt: null,
       lastCommit: null,
@@ -332,8 +325,6 @@ class SkillMarket {
         limits: this.limits,
       })
       if (!meta.contentHash) continue
-      const risk = scanSkill(directory, this.limits)
-      risk.scannedHash = meta.contentHash
       const token = `market-${sha(`${sourceId}\0${commit}\0${relativePath}`).slice(0, 32)}`
       const staged = {
         token,
@@ -346,7 +337,7 @@ class SkillMarket {
         repoMode: path.resolve(directory) !== path.resolve(target),
       }
       this.staged.set(token, staged)
-      entries.push(entryDto(staged, meta, risk))
+      entries.push(entryDto(staged, meta))
     }
     if (!entries.length) {
       removeDirectory(target)
@@ -364,7 +355,7 @@ class SkillMarket {
     }
   }
 
-  installEntry({ token, trust = false, repo = false } = {}) {
+  installEntry({ token, repo = false } = {}) {
     if (!TOKEN.test(String(token || ''))) fail('SKILL_MARKET_ENTRY_INVALID')
     const staged = this.staged.get(token)
     if (!staged) fail('SKILL_MARKET_ENTRY_EXPIRED')
@@ -378,7 +369,6 @@ class SkillMarket {
       repoRoot: staged.root,
       relativePath: staged.relativePath,
       name: staged.name,
-      trust: trust === true,
       repo: repo === true && staged.repoMode === true,
     })
   }
@@ -458,8 +448,6 @@ class SkillMarket {
       removeDirectory(target)
       fail('SKILL_MARKET_ENTRY_INVALID')
     }
-    const risk = scanSkill(directory, this.limits)
-    risk.scannedHash = meta.contentHash
     const token = `market-${sha(`${record.id}\0${commit}\0${relativePath}`).slice(0, 32)}`
     const staged = {
       token,
@@ -482,17 +470,15 @@ class SkillMarket {
       upToDate: meta.contentHash === current.contentHash,
       source: { url: origin.url, ref: origin.ref || '', commit },
       current: {
-        preview: current.preview,
         contentHash: current.contentHash,
         version: current.version,
-        risk: current.risk,
         origin: current.origin,
       },
-      entry: entryDto(staged, meta, risk),
+      entry: entryDto(staged, meta),
     }
   }
 
-  applyUpdate({ skillId, token, trust = false } = {}) {
+  applyUpdate({ skillId, token } = {}) {
     if (!TOKEN.test(String(token || ''))) fail('SKILL_MARKET_ENTRY_INVALID')
     const staged = this.staged.get(token)
     if (!staged || staged.skillId !== skillId) fail('SKILL_MARKET_ENTRY_EXPIRED')
@@ -510,7 +496,6 @@ class SkillMarket {
       stagingDirectory: staged.directory,
       repoRoot: staged.root,
       relativePath: staged.relativePath,
-      trust: trust === true,
     })
   }
 }

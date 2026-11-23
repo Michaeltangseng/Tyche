@@ -42,35 +42,27 @@ function setup(t) {
   return { handlers, home, library, native, opened }
 }
 
-test('skill library IPC validates ids and resolves reveal paths in the main process', async (t) => {
+test('skill library IPC exposes only the catalog surface and validates input', async (t) => {
   const { handlers, library, native, opened } = setup(t)
   assert.equal(typeof handlers.get('skill-library:summary'), 'function')
+  assert.equal(handlers.has('skill-library:trust'), false)
+  assert.equal(handlers.has('skill-library:policy'), false)
+  assert.equal(handlers.has('skill-library:project'), false)
+  assert.equal(handlers.has('skill-library:import'), false)
+
   const summary = handlers.get('skill-library:summary')()
   assert.equal(summary.counts.native, 1)
-  assert.equal(handlers.get('skill-library:policy')().untrustedByDefault, true)
-  assert.equal(
-    handlers.get('skill-library:policy-update')({ denySkillNetwork: true }).denySkillNetwork,
-    true,
-  )
-  assert.throws(
-    () => handlers.get('skill-library:policy-update')({ denySkillNetwork: 'yes' }),
-    /SKILL_LIBRARY_INPUT_INVALID/,
-  )
-  assert.throws(
-    () => handlers.get('skill-library:policy-update')({}),
-    /SKILL_LIBRARY_INPUT_INVALID/,
-  )
-  assert.throws(
-    () => handlers.get('skill-library:policy-update')({ denySkillNetwork: true, path: '/tmp' }),
-    /SKILL_LIBRARY_INPUT_INVALID/,
-  )
+  assert.equal(summary.policy, undefined)
 
   const listed = handlers.get('skill-library:list')()
   assert.equal(listed.skills[0].id, 'claude/global/pptx')
+  assert.equal(listed.skills[0].trust, undefined)
 
   const detail = handlers.get('skill-library:detail')({ id: 'claude/global/pptx' })
   assert.equal(detail.name, 'pptx')
   assert.equal('sourceDirectory' in detail, false)
+  assert.equal('preview' in detail, false)
+  assert.equal('files' in detail, false)
   assert.equal(JSON.stringify(detail).includes(native), false)
 
   assert.throws(
@@ -81,37 +73,32 @@ test('skill library IPC validates ids and resolves reveal paths in the main proc
     () => handlers.get('skill-library:detail')({ id: 'claude/global/pptx', path: '/tmp' }),
     /SKILL_LIBRARY_INPUT_INVALID/,
   )
-  assert.throws(
-    () => handlers.get('skill-library:project')({ id: 'claude/global/pptx', agent: '../../tmp' }),
-    /SKILL_LIBRARY_INPUT_INVALID/,
-  )
-  assert.throws(
-    () => handlers.get('skill-library:import')({ ids: ['../../etc'] }),
-    /SKILL_LIBRARY_INPUT_INVALID/,
-  )
-  assert.throws(
-    () => handlers.get('skill-library:resolve-projection')({ projectionId: '../x', action: 'restore' }),
-    /SKILL_LIBRARY_INPUT_INVALID/,
-  )
-  assert.throws(
-    () => handlers.get('skill-library:import')({ ids: ['claude/global/pptx'], onConflict: 'takeover' }),
-    /SKILL_LIBRARY_INPUT_INVALID/,
-  )
+
+  const created = handlers.get('skill-library:create')({
+    name: 'deck',
+    description: 'Build decks',
+    body: 'Follow the deck workflow.',
+  })
+  assert.equal(created.id, 'shared/library/deck')
+  assert.equal(library.assertSelectable('claude', [created.id])[0], created.id)
+
   assert.throws(
     () => handlers.get('skill-library:create')({ name: '../bad', description: 'x', body: 'y' }),
     /SKILL_LIBRARY_INPUT_INVALID/,
+  )
+  assert.throws(
+    () => handlers.get('skill-library:update')({ id: created.id }),
+    /SKILL_LIBRARY_INPUT_INVALID/,
+  )
+  assert.throws(
+    () => handlers.get('skill-library:remove')({ id: created.id, confirmName: 'wrong' }),
+    /SKILL_CONFIRM_MISMATCH/,
   )
 
   const revealed = await handlers.get('skill-library:reveal')({ id: 'claude/global/pptx' })
   assert.deepEqual(revealed, { opened: true })
   assert.deepEqual(opened, [fs.realpathSync(native)])
 
-  handlers.get('skill-library:trust')({ id: 'claude/global/pptx' })
-  const imported = handlers.get('skill-library:import')({
-    ids: ['claude/global/pptx'],
-    trust: true,
-    onConflict: 'rename',
-  })
-  assert.equal(imported.imported[0].id, 'shared/library/pptx')
-  assert.equal(library.list().skills.some(skill => skill.id === 'claude/global/pptx'), false)
+  handlers.get('skill-library:remove')({ id: created.id, confirmName: 'deck' })
+  assert.equal(library.list().skills.some(skill => skill.id === created.id), false)
 })
