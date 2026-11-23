@@ -17,6 +17,15 @@ describe('skill inventory selection', () => {
     )).toEqual(['claude/global/frontend-design'])
   })
 
+  it('does not cap the number of equipped skills', () => {
+    const many = Array.from({ length: 9 }, (_, index) => ({
+      id: `claude/global/skill-${index}`,
+      trust: 'trusted',
+      eligible: ['claude'],
+    }))
+    expect(keptSkillIds(many.map(skill => skill.id), many, 'claude')).toHaveLength(9)
+  })
+
   it('estimates about 100 tokens for each equipped skill', () => {
     expect(skillTokenEstimate(2)).toBe(200)
     expect(skillTokenEstimate(0)).toBe(0)

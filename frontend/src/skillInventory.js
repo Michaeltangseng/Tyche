@@ -1,5 +1,3 @@
-export const MAX_ROLE_SKILLS = 8
-
 export function selectableSkills(skills, agent) {
   return (Array.isArray(skills) ? skills : []).filter(skill => (
     skill?.trust === 'trusted' && (
@@ -16,7 +14,6 @@ export function keptSkillIds(ids, skills, agent) {
   for (const id of Array.isArray(ids) ? ids : []) {
     if (!allowed.has(id) || kept.includes(id)) continue
     kept.push(id)
-    if (kept.length >= MAX_ROLE_SKILLS) break
   }
   return kept
 }

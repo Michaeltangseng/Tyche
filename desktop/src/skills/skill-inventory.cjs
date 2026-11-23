@@ -7,7 +7,6 @@ const { LocalSkillCatalog } = require('./local-skill-catalog.cjs')
 const AGENT_KINDS = Object.freeze([
   'claude', 'codex', 'gemini', 'pi', 'hermes', 'kimi', 'deepseek', 'qwen', 'opencode', 'openclaw', 'workbuddy',
 ])
-const MAX_ROLE_SKILLS = 8
 const MAX_CAPTAIN_SKILLS = 24
 const DESCRIPTION_LIMIT = 240
 const CAPTAIN_DESCRIPTION_LIMIT = 80
@@ -298,7 +297,7 @@ class SkillInventory {
   assertSelectable(agent, ids) {
     const kind = String(agent || '')
     if (!AGENT_KINDS.includes(kind)) fail('SKILL_INVENTORY_AGENT_INVALID')
-    if (!Array.isArray(ids) || ids.length > MAX_ROLE_SKILLS) fail('SKILL_INVENTORY_SELECTION_INVALID')
+    if (!Array.isArray(ids)) fail('SKILL_INVENTORY_SELECTION_INVALID')
     const available = new Map(this.decorate(this.scan())
       .filter(record => record.trust === 'trusted' && record.eligible.includes(kind))
       .map(record => [record.id, record]))
@@ -350,7 +349,7 @@ class SkillInventory {
     const records = new Map(this.decorate(this.scan()).map(record => [record.id, record]))
     const skills = []
     const dropped = []
-    for (const id of (Array.isArray(ids) ? ids : []).slice(0, MAX_ROLE_SKILLS)) {
+    for (const id of (Array.isArray(ids) ? ids : [])) {
       const record = records.get(id)
       if (!record || record.trust !== 'trusted' || !record.eligible.includes(kind)) {
         dropped.push({ id: String(id || ''), reason: 'unavailable' })
@@ -369,6 +368,5 @@ class SkillInventory {
 
 module.exports = {
   AGENT_KINDS,
-  MAX_ROLE_SKILLS,
   SkillInventory,
 }

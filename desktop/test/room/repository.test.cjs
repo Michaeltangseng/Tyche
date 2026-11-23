@@ -22,3 +22,16 @@ test('creates room, chat, role, prompt revision and participant', t => {
   assert.throws(() => repo.addParticipant({ chatId, roleId }), /ROOM_PARTICIPANT_EXISTS/)
   roomDb.close()
 })
+
+test('stores more than eight skills on a role', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const roomDb = openRoomDatabase({ directory })
+  const repo = createRoomRepository(roomDb)
+  const roomId = repo.createRoom({ name: 'Room', workspace: directory, providers: ['claude'] })
+  const chatId = repo.createChat({ roomId, title: 'Chat' })
+  const skills = Array.from({ length: 9 }, (_, index) => `claude/global/skill-${index}`)
+  const roleId = repo.createRole({ chatId, displayName: 'Worker', provider: 'claude', prompt: 'work', skills })
+  assert.deepEqual(repo.getRole(roleId).skills, skills)
+  roomDb.close()
+})

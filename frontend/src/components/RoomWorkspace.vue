@@ -567,13 +567,12 @@
                 <input
                   type="checkbox"
                   :checked="roleDraft.skills.includes(skill.id)"
-                  :disabled="!roleDraft.skills.includes(skill.id) && roleDraft.skills.length >= maxRoleSkills"
                   @change="toggleRoleSkill(skill.id)"
                 />
                 <span>{{ skill.name }}</span>
               </label>
               <p v-if="droppedSkillIds.length" class="room-agent-quiet">{{ t('room.skillUnavailable', { ids: droppedSkillIds.join(', ') }) }}</p>
-              <p class="room-agent-quiet">{{ t('room.skillTokens', { count: skillTokenEstimate(roleDraft.skills.length) }) }} · {{ t('room.skillLimit') }}</p>
+              <p class="room-agent-quiet">{{ t('room.skillTokens', { count: skillTokenEstimate(roleDraft.skills.length) }) }}</p>
               <button class="secondary-button" type="button" :disabled="busy || !roleDraft.provider" @click="rememberRoleSkills">{{ t('room.rememberSkillDefault') }}</button>
             </section>
             <section class="room-role-preview" :aria-label="t('room.rolePreview')">
@@ -630,7 +629,7 @@ import {
 import { agentLogo } from '../catalog.js'
 import { portraitGlow, portraitId, rolePortrait, rolePortraits } from '../role-portraits.js'
 import { t } from '../i18n.js'
-import { keptSkillIds, MAX_ROLE_SKILLS, selectableSkills, skillTokenEstimate } from '../skillInventory.js'
+import { keptSkillIds, selectableSkills, skillTokenEstimate } from '../skillInventory.js'
 import { useRoomWorkspace } from '../composables/useRoomWorkspace.js'
 import { agentUsageRows, formatUsageLine } from '../room-usage.js'
 import MarkdownMessage from './MarkdownMessage.vue'
@@ -703,7 +702,6 @@ const creating = ref(false)
 const roleSettingsOpen = ref(false)
 const skillInventoryState = ref({ agents: [], skills: [], defaults: {} })
 const droppedSkillIds = ref([])
-const maxRoleSkills = MAX_ROLE_SKILLS
 const roleSettingsRef = ref(null)
 const roleDraft = ref(null)
 const roleSettingsWasCaptain = ref(false)
@@ -1285,7 +1283,6 @@ function toggleRoleSkill(id) {
     roleDraft.value.skills = current.filter(item => item !== id)
     return
   }
-  if (current.length >= maxRoleSkills) return
   roleDraft.value.skills = [...current, id]
 }
 

@@ -232,7 +232,6 @@ export default {
     "room.rememberSkillDefault": "Remember for new roles of this Agent",
     "room.skillTokens": "About {count} tokens",
     "room.skillUnavailable": "These Skills are no longer available: {ids}",
-    "room.skillLimit": "A role can carry at most 8 Skills.",
     "room.roleSkills": "Role skills",
     "room.roleSkillMode": "Role skill mode",
     "room.skillsInherit": "Inherit chat defaults",

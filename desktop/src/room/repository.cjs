@@ -76,7 +76,7 @@ const SKILL_ID = /^[a-z0-9][a-z0-9._-]{0,63}(?:\/[a-z0-9][a-z0-9._-]{0,80}){2}$/
 
 function skillIds(value) {
   if (value === undefined || value === null) return []
-  if (!Array.isArray(value) || value.length > 8 || value.some(id => typeof id !== 'string' || !SKILL_ID.test(id))) {
+  if (!Array.isArray(value) || value.some(id => typeof id !== 'string' || !SKILL_ID.test(id))) {
     throw new TypeError('ROOM_ROLE_SKILLS_INVALID')
   }
   return [...new Set(value)]

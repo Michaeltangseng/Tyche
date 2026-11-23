@@ -44,7 +44,6 @@ const {
   writeProvenance,
 } = require('./skill-library-util.cjs')
 
-const MAX_ROLE_SKILLS = 8
 const MAX_CAPTAIN_SKILLS = 24
 const CAPTAIN_DESCRIPTION_LIMIT = 80
 const SCAN_CACHE_MS = 1500
@@ -673,7 +672,7 @@ class SkillLibrary {
 
   assertSelectable(agent, ids) {
     if (!AGENT_KINDS.includes(agent)) throw skillError('SKILL_AGENT_INVALID')
-    if (!Array.isArray(ids) || ids.length > MAX_ROLE_SKILLS) throw skillError('SKILL_SELECTION_INVALID')
+    if (!Array.isArray(ids)) throw skillError('SKILL_SELECTION_INVALID')
     const available = new Map(this.scan()
       .filter(record => record.trust === 'trusted' && record.available.includes(agent))
       .map(record => [record.id, record]))
@@ -693,7 +692,7 @@ class SkillLibrary {
     const records = new Map(this.scan().map(record => [record.id, record]))
     const skills = []
     const dropped = []
-    for (const id of (Array.isArray(ids) ? ids : []).slice(0, MAX_ROLE_SKILLS)) {
+    for (const id of (Array.isArray(ids) ? ids : [])) {
       const record = records.get(id)
       if (!record || record.trust !== 'trusted' || !record.available.includes(agent)) {
         dropped.push({ id: String(id || ''), reason: 'unavailable' })
@@ -1838,6 +1837,5 @@ class SkillLibrary {
 
 module.exports = {
   MAX_CAPTAIN_SKILLS,
-  MAX_ROLE_SKILLS,
   SkillLibrary,
 }

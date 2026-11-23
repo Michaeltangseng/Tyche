@@ -293,3 +293,21 @@ test('duplicate imports rename by default and can replace explicitly', (t) => {
   const third = library.importFromAgent({ ids: ['gemini/global/pptx'], trust: true, onConflict: 'replace' })
   assert.equal(third.imported[0].name, 'pptx')
 })
+
+test('a role may select more than eight trusted skills', (t) => {
+  const { library, home } = setup(t)
+  const ids = []
+  for (let index = 0; index < 9; index += 1) {
+    const name = `many-${index}`
+    writeNativeSkill(home, '.claude', name, `Skill ${index}`, 'body')
+    ids.push(`claude/global/${name}`)
+  }
+  library.catalog.invalidate('claude')
+  library.invalidate()
+  for (const id of ids) {
+    library.trust(id)
+    library.setEligible(id, 'claude', true)
+  }
+  assert.deepEqual(library.assertSelectable('claude', ids), ids)
+  assert.equal(library.materialize('claude', ids).skills.length, 9)
+})

@@ -232,7 +232,6 @@ export default {
     "room.rememberSkillDefault": "记住为该 Agent 新角色的默认",
     "room.skillTokens": "约 {count} tokens",
     "room.skillUnavailable": "这些 Skill 已不可用：{ids}",
-    "room.skillLimit": "一个角色最多 8 个 Skill。",
     "room.roleSkills": "角色技能",
     "room.roleSkillMode": "角色技能模式",
     "room.skillsInherit": "继承聊天默认",

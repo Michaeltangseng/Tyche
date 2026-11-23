@@ -57,7 +57,7 @@ function text(value, max = 120) {
 
 function skillIdList(value) {
   if (value === undefined) return undefined
-  if (!Array.isArray(value) || value.length > 8
+  if (!Array.isArray(value)
       || value.some(item => typeof item !== 'string' || item.length > 240 || !/^[a-z0-9][a-z0-9._/-]{0,238}$/.test(item))) {
     throw ipcError('TEAM_ROOM_INPUT_INVALID')
   }
