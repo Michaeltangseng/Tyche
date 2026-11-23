@@ -1832,8 +1832,6 @@ export default {
     'settingsUi.category.development': '开发',
     'settingsUi.category.other': '其他',
     'settingsUi.marketUrlPlaceholder': 'https://github.com/owner/repo 或 file:///本地仓库',
-    'settingsUi.marketRefPlaceholder': '分支 / 标签（可选）',
-    'settingsUi.marketSubpathPlaceholder': 'skills/foo（可选）',
     'settingsUi.marketEmptySources': '还没有 Git 来源。',
     'settingsUi.marketInstalledCount': '已安装 {count} 个',
     'settingsUi.marketCheckedAt': '上次检查 {time}',

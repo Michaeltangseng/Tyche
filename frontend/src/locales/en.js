@@ -1832,8 +1832,6 @@ export default {
     'settingsUi.category.development': 'Development',
     'settingsUi.category.other': 'Other',
     'settingsUi.marketUrlPlaceholder': 'https://github.com/owner/repo or file:///local/repo',
-    'settingsUi.marketRefPlaceholder': 'Branch / tag (optional)',
-    'settingsUi.marketSubpathPlaceholder': 'skills/foo (optional)',
     'settingsUi.marketEmptySources': 'No Git source yet.',
     'settingsUi.marketInstalledCount': '{count} installed',
     'settingsUi.marketCheckedAt': 'Checked {time}',

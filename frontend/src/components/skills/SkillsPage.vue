@@ -263,14 +263,6 @@
             <button class="primary-button" type="submit" :disabled="marketBusy || !sourceForm.url">+ {{ t('settingsUi.marketHeroAdd') }}</button>
           </form>
         </div>
-        <div class="market-advanced">
-          <button type="button" class="link-button" @click="showAdvanced = !showAdvanced">{{ showAdvanced ? '−' : '+' }} ref / subpath</button>
-          <template v-if="showAdvanced">
-            <input v-model.trim="sourceForm.ref" type="text" :placeholder="t('settingsUi.marketRefPlaceholder')" />
-            <input v-model.trim="sourceForm.subpath" type="text" :placeholder="t('settingsUi.marketSubpathPlaceholder')" />
-          </template>
-        </div>
-
         <p v-if="marketError" class="settings-banner" role="alert">{{ marketError }}</p>
 
         <section class="market-catalog">
@@ -412,8 +404,7 @@ const marketCategory = ref('all')
 const marketLoading = ref(false)
 const marketBusy = ref(false)
 const marketError = ref('')
-const showAdvanced = ref(false)
-const sourceForm = reactive({ url: '', ref: '', subpath: '' })
+const sourceForm = reactive({ url: '' })
 
 const skills = computed(() => inventory.value.skills || [])
 const agentLabelsAll = computed(() => inventory.value.agentLabels || {})
@@ -642,15 +633,8 @@ async function addMarketSource() {
   marketBusy.value = true
   marketError.value = ''
   try {
-    const source = await props.api.marketAddSource({
-      url: sourceForm.url,
-      ref: sourceForm.ref,
-      subpath: sourceForm.subpath,
-    })
+    const source = await props.api.marketAddSource({ url: sourceForm.url })
     sourceForm.url = ''
-    sourceForm.ref = ''
-    sourceForm.subpath = ''
-    showAdvanced.value = false
     marketSourceId.value = source.id
     await loadMarketSources()
   } catch (caught) {
@@ -940,8 +924,6 @@ onBeforeUnmount(() => {
 .market-hero-copy small { color: color-mix(in srgb, var(--text-soft) 80%, #2dd4bf); font-size: 12px; }
 .market-hero-form { display: flex; flex: 1; gap: 8px; min-width: 320px; justify-content: flex-end; }
 .market-hero-form input { flex: 1; min-width: 200px; height: 38px; padding: 0 12px; border: 1px solid color-mix(in srgb, #2dd4bf 40%, var(--border)); border-radius: 8px; background: color-mix(in srgb, #06181a 45%, var(--surface)); color: var(--text); font: inherit; }
-.market-advanced { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.market-advanced input { height: 30px; padding: 0 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text); font: inherit; font-size: 11px; }
 .link-button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; padding: 0; }
 .market-catalog { display: grid; gap: 8px; }
 .market-section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 2px; }
