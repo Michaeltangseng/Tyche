@@ -8,6 +8,7 @@ const { pathToFileURL } = require('node:url')
 
 const { LocalSkillCatalog } = require('../../src/skills/local-skill-catalog.cjs')
 const { SkillLibrary } = require('../../src/skills/skill-library.cjs')
+const { SkillMarket } = require('../../src/skills/skill-market.cjs')
 
 function git(args, cwd) {
   return execFileSync('git', args, {
@@ -222,4 +223,48 @@ test('the bundled catalog lists real entries and marks installed Skills', (t) =>
   const installed = library.market.catalog().find(entry => entry.id === 'anthropics/pdf')
   assert.equal(installed.installed, true)
   assert.equal(installed.installedId, 'shared/library/pdf')
+})
+
+test('concurrent previews of one source share a single clone', async (t) => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-market-concurrent-'))
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }))
+  const sourceId = `src-${'a'.repeat(32)}`
+  const store = {
+    sources: { [sourceId]: { id: sourceId, url: 'https://example.test/repo.git', ref: '', subpath: '' } },
+    skills: {},
+  }
+  const library = {
+    loadStore: () => store,
+    saveStore: () => {},
+    notify: () => {},
+  }
+  let clones = 0
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  const git = async (args) => {
+    if (args[0] === 'clone') {
+      clones += 1
+      const target = args[args.length - 1]
+      fs.mkdirSync(path.join(target, 'skills', 'alpha'), { recursive: true })
+      fs.writeFileSync(path.join(target, 'skills', 'alpha', 'SKILL.md'), [
+        '---', 'name: alpha', 'description: Alpha', '---', '', 'Body.', '',
+      ].join('\n'))
+      await gate
+      return ''
+    }
+    if (args[0] === 'rev-parse') return 'a'.repeat(40)
+    return ''
+  }
+  const market = new SkillMarket({
+    library,
+    stagingRoot: path.join(home, 'staging'),
+    git,
+  })
+  const first = market.previewSource(sourceId)
+  const second = market.previewSource(sourceId)
+  release()
+  const [left, right] = await Promise.all([first, second])
+  assert.equal(clones, 1)
+  assert.deepEqual(left.entries.map(entry => entry.name), ['alpha'])
+  assert.equal(right, left)
 })

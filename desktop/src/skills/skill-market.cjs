@@ -179,6 +179,8 @@ class SkillMarket {
     this.now = now
     this.git = git
     this.staged = new Map()
+    this.previewTasks = new Map()
+    this.updateTasks = new Map()
     fs.mkdirSync(this.stagingRoot, { recursive: true, mode: 0o700 })
     this.cleanupStaging()
   }
@@ -360,7 +362,16 @@ class SkillMarket {
     return { removed: true }
   }
 
-  async previewSource(sourceId) {
+  previewSource(sourceId) {
+    if (this.previewTasks.has(sourceId)) return this.previewTasks.get(sourceId)
+    const task = this.previewSourceOnce(sourceId).finally(() => {
+      if (this.previewTasks.get(sourceId) === task) this.previewTasks.delete(sourceId)
+    })
+    this.previewTasks.set(sourceId, task)
+    return task
+  }
+
+  async previewSourceOnce(sourceId) {
     if (!SOURCE_ID.test(String(sourceId || ''))) fail('SKILL_MARKET_SOURCE_INVALID')
     const store = this.library.loadStore()
     const source = store.sources[sourceId]
@@ -480,7 +491,17 @@ class SkillMarket {
     return { updates, errors, checkedAt: this.now().toISOString() }
   }
 
-  async previewUpdate({ skillId } = {}) {
+  previewUpdate(input = {}) {
+    const key = String(input?.skillId || '')
+    if (this.updateTasks.has(key)) return this.updateTasks.get(key)
+    const task = this.previewUpdateOnce(input).finally(() => {
+      if (this.updateTasks.get(key) === task) this.updateTasks.delete(key)
+    })
+    this.updateTasks.set(key, task)
+    return task
+  }
+
+  async previewUpdateOnce({ skillId } = {}) {
     const record = this.library.recordById(skillId)
     if (record.sourceKind !== 'market' || !record.origin?.url) fail('SKILL_MARKET_UPDATE_INVALID')
     const origin = record.origin
