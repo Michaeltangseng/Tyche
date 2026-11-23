@@ -54,6 +54,10 @@ test('aggregates persisted message usage and persists budget settings', (t) => {
   assert.equal(month.rooms[0].providers.claude.tokens, 4500)
   assert.equal(month.agents[0].rooms[roomId].costUsd, month.totals.costUsd)
   assert.equal(month.series.length, 22)
+  const day = month.series.find(point => point.date === '2026-11-22')
+  assert.equal(day.rooms[roomId].tokens, 4500)
+  assert.equal(day.roomProviders[roomId].claude.costUsd, month.totals.costUsd)
+  assert.equal(day.providerTokens.claude, 4500)
 
   const saved = report.updateSettings({ monthlyBudgetUsd: 0.01, warnAtPercent: 70 })
   assert.equal(saved.monthlyBudgetUsd, 0.01)

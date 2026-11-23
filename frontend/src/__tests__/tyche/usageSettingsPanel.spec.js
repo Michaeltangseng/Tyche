@@ -7,23 +7,55 @@ const report = {
   range: 'month',
   totals: { costUsd: 1.5, monthlyCostUsd: 1.5, tokens: 1_500_000, turns: 3, interrupted: 1, estimated: true },
   series: [
-    { date: '2026-11-21', total: 0.5, providers: { claude: 0.3, codex: 0.2 } },
-    { date: '2026-11-22', total: 1, providers: { claude: 1 } },
+    {
+      date: '2026-11-21',
+      total: 0.5,
+      providers: { claude: 0.2, codex: 0.3 },
+      providerTokens: { claude: 200_000, codex: 300_000 },
+      rooms: { r2: { tokens: 500_000, costUsd: 0.5 } },
+      roomProviders: { r2: { claude: { tokens: 200_000, costUsd: 0.2 }, codex: { tokens: 300_000, costUsd: 0.3 } } },
+    },
+    {
+      date: '2026-11-22',
+      total: 1,
+      providers: { claude: 1 },
+      providerTokens: { claude: 1_000_000 },
+      rooms: { r1: { tokens: 1_000_000, costUsd: 1 } },
+      roomProviders: { r1: { claude: { tokens: 1_000_000, costUsd: 1 } } },
+    },
   ],
-  rooms: [{
-    id: 'r1',
-    name: 'snake',
-    tokens: 1_500_000,
-    costUsd: 1.5,
-    providers: { claude: { tokens: 1_200_000, costUsd: 1.2 } },
-  }],
-  agents: [{
-    provider: 'claude',
-    tokens: 1_200_000,
-    costUsd: 1.2,
-    share: 0.8,
-    rooms: { r1: { tokens: 1_200_000, costUsd: 1.2 } },
-  }],
+  rooms: [
+    {
+      id: 'r1',
+      name: 'snake',
+      tokens: 1_200_000,
+      costUsd: 1.5,
+      providers: { claude: { tokens: 1_200_000, costUsd: 1.2 } },
+    },
+    {
+      id: 'r2',
+      name: 'room2',
+      tokens: 300_000,
+      costUsd: 0.5,
+      providers: { claude: { tokens: 200_000, costUsd: 0.2 }, codex: { tokens: 300_000, costUsd: 0.3 } },
+    },
+  ],
+  agents: [
+    {
+      provider: 'claude',
+      tokens: 1_200_000,
+      costUsd: 1.2,
+      share: 0.8,
+      rooms: { r1: { tokens: 1_200_000, costUsd: 1.2 } },
+    },
+    {
+      provider: 'codex',
+      tokens: 300_000,
+      costUsd: 0.3,
+      share: 0.2,
+      rooms: { r2: { tokens: 300_000, costUsd: 0.3 } },
+    },
+  ],
   budget: {
     monthlyBudgetUsd: 60,
     warnAtPercent: 80,
@@ -92,6 +124,29 @@ describe('usage settings panel', () => {
     await week.trigger('click')
     await flushPromises()
     expect(api.usageReport).toHaveBeenCalledWith({ range: 'week' })
+    wrapper.unmount()
+  })
+
+  it('filters the Room and Agent lists by a pinned day', async () => {
+    setLocale('en')
+    const api = {
+      usageReport: vi.fn().mockResolvedValue(report),
+      usageSettings: vi.fn().mockResolvedValue(report.budget),
+      updateUsageSettings: vi.fn().mockResolvedValue(report.budget),
+    }
+    window.tycheDesktop = { teamRoom: api }
+    const wrapper = mount(UsageSettingsPanel)
+    await flushPromises()
+
+    await wrapper.findAll('.usage-bar')[1].trigger('click')
+    expect(wrapper.findAll('.room-row')).toHaveLength(1)
+    expect(wrapper.get('.room-row').text()).toContain('snake')
+    expect(wrapper.get('.usage-agents tbody').text()).toContain('Claude')
+    expect(wrapper.get('.usage-agents tbody').text()).not.toContain('Codex')
+
+    await wrapper.get('.usage-tooltip .link-button').trigger('click')
+    expect(wrapper.findAll('.room-row')).toHaveLength(2)
+    expect(wrapper.get('.usage-agents tbody').text()).toContain('Codex')
     wrapper.unmount()
   })
 })

@@ -139,7 +139,14 @@ function createUsageReport({ roomDb, privateRoot, now = () => new Date() }) {
     `).all(queryStart.toISOString())
 
     const days = enumerateDays(start, current)
-    const series = new Map(days.map(day => [day, { date: day, total: 0, providers: {} }]))
+    const series = new Map(days.map(day => [day, {
+      date: day,
+      total: 0,
+      providers: {},
+      providerTokens: {},
+      rooms: {},
+      roomProviders: {},
+    }]))
     const byRoom = new Map()
     const byProvider = new Map()
     let totalTokens = 0
@@ -172,12 +179,23 @@ function createUsageReport({ roomDb, privateRoot, now = () => new Date() }) {
 
       const day = localDateKey(row.created_at)
       const point = series.get(day)
+      const roomKey = String(row.room_id || '')
       if (point) {
         point.total += cost
         point.providers[provider] = (point.providers[provider] || 0) + cost
+        point.providerTokens[provider] = (point.providerTokens[provider] || 0) + tokens
+        const roomPoint = point.rooms[roomKey] || { tokens: 0, costUsd: 0 }
+        roomPoint.tokens += tokens
+        roomPoint.costUsd += cost
+        point.rooms[roomKey] = roomPoint
+        const roomProvider = point.roomProviders[roomKey] || {}
+        const providerPoint = roomProvider[provider] || { tokens: 0, costUsd: 0 }
+        providerPoint.tokens += tokens
+        providerPoint.costUsd += cost
+        roomProvider[provider] = providerPoint
+        point.roomProviders[roomKey] = roomProvider
       }
 
-      const roomKey = String(row.room_id || '')
       const room = byRoom.get(roomKey) || {
         id: roomKey, name: row.room_name || roomKey, tokens: 0, costUsd: 0, providers: {},
       }

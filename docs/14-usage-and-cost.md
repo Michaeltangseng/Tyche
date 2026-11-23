@@ -27,9 +27,11 @@
 | 总 Token | input + output + cached |
 | 接力次数 | 范围内带 usage 的 Agent 回复数 |
 | 被中止的循环 | 这些回复里 status 为 `stopped` / `failed` 的数量 |
-| 每日趋势 | 按本地日期聚合，按 Provider 堆叠；悬停显示 tooltip，点击固定，图例可切换 Provider |
-| 按 Room | 每个 Room 的 token 和费用；点击 Room 可把 Agent 表缩小到该 Room，再次点击或清除取消 |
-| 按 Agent | 按 Provider 聚合的 token、费用和占比；点击 Agent 可让 Room 列表只显示该 Provider 的费用，再次点击或清除取消 |
+| 每日趋势 | 按本地日期聚合，按 Provider 堆叠；悬停显示 tooltip，点击固定当天并把 Room / Agent 表过滤到这一天；图例可切换 Provider |
+| 按 Room | 每个 Room 的 token 和费用；点击 Room 后趋势图、Agent 表都缩小到该 Room，再次点击或清除取消 |
+| 按 Agent | 按 Provider 聚合的 token、费用和占比；点击 Agent 后趋势图和 Room 列表都聚焦该 Provider，再次点击或清除取消 |
+
+三类过滤可以叠加：日期 + Room + Agent。顶部“清除”会一次清掉所有筛选。
 
 ## 预算与限制
 

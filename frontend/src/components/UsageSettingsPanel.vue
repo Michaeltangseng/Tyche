@@ -5,8 +5,11 @@
         <h1>{{ t('systemSettings.usage') }}</h1>
         <p>{{ t('settingsUi.usageLead') }}</p>
       </div>
-      <div class="settings-seg">
-        <button v-for="item in RANGES" :key="item" type="button" :class="{ active: range === item }" @click="load(item)">{{ t(`settingsUi.range.${item}`) }}</button>
+      <div class="usage-head-actions">
+        <button v-if="hasFilters" type="button" class="secondary-button" @click="clearFilters">{{ t('settingsUi.usageClear') }}</button>
+        <div class="settings-seg">
+          <button v-for="item in RANGES" :key="item" type="button" :class="{ active: range === item }" @click="load(item)">{{ t(`settingsUi.range.${item}`) }}</button>
+        </div>
       </div>
     </header>
 
@@ -52,7 +55,7 @@
             <div ref="plotRef" class="usage-plot">
               <div class="usage-bars" @mouseleave="hoveredDate = ''">
                 <span
-                  v-for="point in report.series"
+                  v-for="point in displaySeries"
                   :key="point.date"
                   class="usage-bar"
                   :class="{ active: activePoint?.date === point.date }"
@@ -97,9 +100,9 @@
             <h2>{{ t('settingsUi.byRoom') }}<small v-if="selectedProvider"> · {{ agentLabel(selectedProvider) }}</small></h2>
             <button v-if="selectedProvider" type="button" class="link-button" @click="selectedProvider = ''">{{ t('settingsUi.usageClear') }}</button>
           </div>
-          <p v-if="!visibleRooms.length" class="settings-note">{{ t('settingsUi.usageNoData') }}</p>
+          <p v-if="!roomRows.length" class="settings-note">{{ t('settingsUi.usageNoData') }}</p>
           <div
-            v-for="room in visibleRooms"
+            v-for="room in roomRows"
             :key="room.id"
             class="room-row"
             :class="{ active: selectedRoomId === room.id }"
@@ -112,7 +115,7 @@
           >
             <span>{{ room.name }}</span>
             <i><b :style="{ width: roomWidth(room) }" /></i>
-            <strong>{{ money(roomCost(room)) }}</strong>
+            <strong>{{ money(room.costUsd) }}</strong>
           </div>
         </article>
       </div>
@@ -215,9 +218,22 @@ const selectedProvider = ref('')
 const plotRef = ref(null)
 const tooltip = reactive({ left: '0px', top: '0px' })
 const legend = computed(() => report.value?.agents || [])
-const maxDaily = computed(() => Math.max(0, ...(report.value?.series || []).map(point => visibleTotal(point))))
+const selectedDate = computed(() => pinnedDate.value)
+const selectedPoint = computed(() => (report.value?.series || []).find(point => point.date === selectedDate.value) || null)
+const selectedRoom = computed(() => (report.value?.rooms || []).find(room => room.id === selectedRoomId.value) || null)
+const hasFilters = computed(() => Boolean(selectedDate.value || selectedRoomId.value || selectedProvider.value))
+
+const displaySeries = computed(() => (report.value?.series || []).map(point => {
+  let providers = point.providers || {}
+  if (selectedRoomId.value) {
+    const scoped = point.roomProviders?.[selectedRoomId.value] || {}
+    providers = Object.fromEntries(Object.entries(scoped).map(([provider, value]) => [provider, value.costUsd]))
+  }
+  return { ...point, providers }
+}))
+const maxDaily = computed(() => Math.max(0, ...displaySeries.value.map(point => visibleTotal(point))))
 const activeDate = computed(() => pinnedDate.value || hoveredDate.value)
-const activePoint = computed(() => (report.value?.series || []).find(point => point.date === activeDate.value) || null)
+const activePoint = computed(() => displaySeries.value.find(point => point.date === activeDate.value) || null)
 const activeBreakdown = computed(() => {
   const point = activePoint.value
   if (!point) return []
@@ -226,26 +242,69 @@ const activeBreakdown = computed(() => {
     .map(([provider, cost]) => ({ provider, cost }))
     .sort((left, right) => right.cost - left.cost)
 })
-const selectedRoom = computed(() => (report.value?.rooms || []).find(room => room.id === selectedRoomId.value) || null)
-const visibleRooms = computed(() => {
+
+const roomRows = computed(() => {
   const rooms = report.value?.rooms || []
-  if (!selectedProvider.value) return rooms
-  return rooms.filter(room => (room.providers?.[selectedProvider.value]?.costUsd || 0) > 0)
-})
-const agentRows = computed(() => {
-  const agents = report.value?.agents || []
-  const total = selectedRoom.value?.costUsd || report.value?.totals.costUsd || 0
-  return agents
-    .map(agent => {
-      if (selectedRoomId.value) {
-        const scoped = agent.rooms?.[selectedRoomId.value] || { tokens: 0, costUsd: 0 }
-        return { ...agent, tokens: scoped.tokens, costUsd: scoped.costUsd }
+  const point = selectedPoint.value
+  return rooms
+    .map(room => {
+      let tokens = room.tokens
+      let costUsd = room.costUsd
+      if (point) {
+        if (selectedProvider.value) {
+          const scoped = point.roomProviders?.[room.id]?.[selectedProvider.value] || { tokens: 0, costUsd: 0 }
+          tokens = scoped.tokens
+          costUsd = scoped.costUsd
+        } else {
+          const scoped = point.rooms?.[room.id] || { tokens: 0, costUsd: 0 }
+          tokens = scoped.tokens
+          costUsd = scoped.costUsd
+        }
+      } else if (selectedProvider.value) {
+        const scoped = room.providers?.[selectedProvider.value] || { tokens: 0, costUsd: 0 }
+        tokens = scoped.tokens
+        costUsd = scoped.costUsd
       }
-      return { ...agent, tokens: agent.tokens, costUsd: agent.costUsd }
+      return { ...room, tokens, costUsd }
     })
-    .filter(agent => !selectedRoomId.value || agent.costUsd > 0)
-    .map(agent => ({ ...agent, share: total > 0 ? agent.costUsd / total : 0 }))
-    .filter(agent => !selectedProvider.value || agent.provider === selectedProvider.value)
+    .filter(room => room.costUsd > 0 || room.tokens > 0)
+    .sort((left, right) => right.costUsd - left.costUsd)
+})
+
+const agentRows = computed(() => {
+  const point = selectedPoint.value
+  let rows = []
+  let total = 0
+  if (point) {
+    if (selectedRoomId.value) {
+      const scoped = point.roomProviders?.[selectedRoomId.value] || {}
+      rows = Object.entries(scoped).map(([provider, value]) => ({
+        provider, tokens: value.tokens, costUsd: value.costUsd,
+      }))
+    } else {
+      rows = Object.entries(point.providers || {}).map(([provider, costUsd]) => ({
+        provider,
+        tokens: point.providerTokens?.[provider] || 0,
+        costUsd,
+      }))
+    }
+    total = rows.reduce((sum, row) => sum + row.costUsd, 0)
+  } else if (selectedRoomId.value) {
+    rows = (report.value?.agents || []).map(agent => {
+      const scoped = agent.rooms?.[selectedRoomId.value] || { tokens: 0, costUsd: 0 }
+      return { provider: agent.provider, tokens: scoped.tokens, costUsd: scoped.costUsd }
+    })
+    total = selectedRoom.value?.costUsd || 0
+  } else {
+    rows = (report.value?.agents || []).map(agent => ({
+      provider: agent.provider, tokens: agent.tokens, costUsd: agent.costUsd,
+    }))
+    total = report.value?.totals.costUsd || 0
+  }
+  return rows
+    .filter(row => !selectedProvider.value || row.provider === selectedProvider.value)
+    .filter(row => row.costUsd > 0 || row.tokens > 0)
+    .map(row => ({ ...row, share: total > 0 ? row.costUsd / total : 0 }))
     .sort((left, right) => right.costUsd - left.costUsd)
 })
 const hasChartData = computed(() => maxDaily.value > 0)
@@ -254,7 +313,7 @@ const budgetLine = computed(() => t('settingsUi.budgetLineDynamic', {
   percent: Math.round(report.value?.budget?.usedPercent || 0),
 }))
 const xLabels = computed(() => {
-  const series = report.value?.series || []
+  const series = displaySeries.value
   if (!series.length) return []
   if (series.length === 1) return [series[0].date.slice(5)]
   return [series[0].date.slice(5), series[Math.floor(series.length / 2)].date.slice(5), series[series.length - 1].date.slice(5)]
@@ -292,15 +351,16 @@ function visibleTotal(point) {
     .reduce((sum, [, cost]) => sum + cost, 0)
 }
 
-function roomCost(room) {
-  if (!selectedProvider.value) return room.costUsd
-  return room.providers?.[selectedProvider.value]?.costUsd || 0
+function roomWidth(room) {
+  const max = Math.max(0, ...roomRows.value.map(item => item.costUsd))
+  if (!max) return '0%'
+  return `${Math.max(2, (room.costUsd / max) * 100)}%`
 }
 
-function roomWidth(room) {
-  const max = Math.max(0, ...visibleRooms.value.map(item => roomCost(item)))
-  if (!max) return '0%'
-  return `${Math.max(2, (roomCost(room) / max) * 100)}%`
+function clearFilters() {
+  selectedRoomId.value = ''
+  selectedProvider.value = ''
+  clearInspect()
 }
 
 function showTooltip(point, event) {
@@ -313,7 +373,7 @@ function showTooltip(point, event) {
 
 function focusTooltip(point) {
   hoveredDate.value = point.date
-  const series = report.value?.series || []
+  const series = displaySeries.value
   const index = series.findIndex(item => item.date === point.date)
   tooltip.left = series.length ? `${((index + 0.5) / series.length) * 100}%` : '50%'
   tooltip.top = '8px'
@@ -393,6 +453,7 @@ onMounted(() => load())
 <style scoped>
 .usage-panel { display: grid; gap: 16px; align-content: start; }
 .usage-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.usage-head-actions { display: flex; align-items: center; gap: 8px; }
 .usage-head h1 { margin: 0; font-size: 28px; }
 .usage-head p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
 .stat-grid { display: grid; grid-template-columns: 1.35fr repeat(3, minmax(0, 1fr)); gap: 12px; }
