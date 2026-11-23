@@ -1,6 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import SkillMarketDialog from '../../components/skills/SkillMarketDialog.vue'
 import SkillsPage from '../../components/skills/SkillsPage.vue'
 import { setLocale } from '../../i18n.js'
 import {
@@ -100,112 +99,84 @@ describe('skill library presentation', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('pptx')
-    expect(wrapper.text()).toContain('review')
     expect(wrapper.text()).toContain('Shared library')
-    expect(wrapper.text()).toContain('Claude native')
     expect(wrapper.text()).toContain('Create presentations')
-    expect(wrapper.get('.settings-side').text()).toContain('pptx')
+    expect(wrapper.text()).not.toContain('review')
 
-    const rows = wrapper.findAll('tbody tr')
-    expect(rows[0].text()).toContain('Update')
-    expect(rows[0].text()).toContain('Delete')
-    expect(rows[1].text()).not.toContain('Delete')
-    expect(rows[1].find('.skills-native-toggle').exists()).toBe(false)
-    expect(rows[1].find('.skills-cell-state').exists()).toBe(false)
+    const platformRow = wrapper.find('tbody tr')
+    expect(platformRow.text()).toContain('Update')
+    expect(platformRow.text()).toContain('Delete')
+
+    const nativeTab = wrapper.findAll('.skills-tabs button').find(button => button.text().includes('Agent native Skills'))
+    await nativeTab.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('review')
+    expect(wrapper.get('.skills-subtabs').text()).toContain('Claude')
+    const nativeRow = wrapper.find('tbody tr')
+    expect(nativeRow.text()).not.toContain('Delete')
+    expect(nativeRow.find('.skills-native-toggle').exists()).toBe(false)
+    expect(nativeRow.find('.skills-cell-state').exists()).toBe(false)
     wrapper.unmount()
   })
 
-  it('previews and installs a Git market entry without a trust step', async () => {
+  function marketApi(entry) {
     const sourceId = `src-${'a'.repeat(32)}`
     const token = `market-${'b'.repeat(32)}`
-    const api = {
-      marketSources: vi.fn().mockResolvedValue([{
-        id: sourceId,
-        url: 'https://example.com/repo',
-        ref: 'main',
-        subpath: '',
-        installedCount: 0,
-        lastCheckedAt: null,
-      }]),
-      marketPreview: vi.fn().mockResolvedValue({
-        source: { id: sourceId, url: 'https://example.com/repo', ref: 'main', commit: 'c'.repeat(40) },
-        commit: 'c'.repeat(40),
-        entries: [{
-          token,
-          name: 'alpha',
-          description: 'Alpha Skill',
-          version: null,
-          contentHash: 'd'.repeat(64),
-          relativePath: 'skills/alpha',
-          validName: true,
-        }],
-      }),
-      marketInstall: vi.fn().mockResolvedValue({ id: 'shared/library/alpha' }),
-      marketCheckUpdates: vi.fn().mockResolvedValue({ updates: [] }),
-      marketPreviewUpdate: vi.fn(),
-      marketApplyUpdate: vi.fn(),
-      marketAddSource: vi.fn(),
-      marketRemoveSource: vi.fn(),
-    }
-    const wrapper = mount(SkillMarketDialog, {
-      props: { api },
-      global: { stubs: { teleport: true } },
+    const api = mockApi()
+    api.marketSources.mockResolvedValue([{
+      id: sourceId,
+      url: 'https://example.com/repo',
+      ref: 'main',
+      subpath: '',
+      installedCount: 0,
+      lastCheckedAt: null,
+    }])
+    api.marketPreview.mockResolvedValue({
+      source: { id: sourceId, url: 'https://example.com/repo', ref: 'main', commit: 'c'.repeat(40) },
+      commit: 'c'.repeat(40),
+      entries: [{
+        token,
+        name: 'alpha',
+        description: 'Alpha Skill',
+        version: null,
+        contentHash: 'd'.repeat(64),
+        relativePath: 'skills/alpha',
+        validName: true,
+        ...entry,
+      }],
     })
-    await flushPromises()
-    expect(wrapper.text()).toContain('https://example.com/repo')
+    return { api, token }
+  }
 
-    await wrapper.get('.market-source').trigger('click')
+  async function openMarket(wrapper) {
+    const tab = wrapper.findAll('.skills-tabs button').find(button => button.text().includes('Skill market'))
+    await tab.trigger('click')
     await flushPromises()
+  }
+
+  it('installs a market entry from the source tab without a trust step', async () => {
+    const { api, token } = marketApi({})
+    const wrapper = mount(SkillsPage, { props: { api } })
+    await flushPromises()
+    await openMarket(wrapper)
     expect(wrapper.text()).toContain('Alpha Skill')
-    expect(wrapper.text()).not.toContain('Trust after install')
-    await wrapper.findAll('button').find(button => button.text().includes('Install into the shared library')).trigger('click')
+
+    const add = wrapper.findAll('.skills-row-action').find(button => button.text() === 'Add')
+    await add.trigger('click')
     await flushPromises()
     expect(api.marketInstall).toHaveBeenCalledWith({ token, repo: false })
     wrapper.unmount()
   })
 
   it('installs a repo entry as a whole repo', async () => {
-    const sourceId = `src-${'a'.repeat(32)}`
-    const token = `market-${'b'.repeat(32)}`
-    const api = {
-      marketSources: vi.fn().mockResolvedValue([{
-        id: sourceId,
-        url: 'https://example.com/repo',
-        ref: 'main',
-        subpath: '',
-        installedCount: 0,
-        lastCheckedAt: null,
-      }]),
-      marketPreview: vi.fn().mockResolvedValue({
-        source: { id: sourceId, url: 'https://example.com/repo', ref: 'main', commit: 'c'.repeat(40) },
-        commit: 'c'.repeat(40),
-        entries: [{
-          token,
-          name: 'alpha',
-          description: 'Alpha Skill',
-          version: null,
-          contentHash: 'd'.repeat(64),
-          relativePath: 'skills/alpha',
-          validName: true,
-          repoMode: true,
-        }],
-      }),
-      marketInstall: vi.fn().mockResolvedValue({ id: 'shared/library/alpha' }),
-      marketCheckUpdates: vi.fn().mockResolvedValue({ updates: [] }),
-      marketPreviewUpdate: vi.fn(),
-      marketApplyUpdate: vi.fn(),
-      marketAddSource: vi.fn(),
-      marketRemoveSource: vi.fn(),
-    }
-    const wrapper = mount(SkillMarketDialog, {
-      props: { api },
-      global: { stubs: { teleport: true } },
-    })
+    const { api, token } = marketApi({ repoMode: true })
+    const wrapper = mount(SkillsPage, { props: { api } })
     await flushPromises()
-    await wrapper.get('.market-source').trigger('click')
-    await flushPromises()
-    expect(wrapper.text()).toContain('Install the whole repo')
-    await wrapper.findAll('button').find(button => button.text().includes('Install into the shared library')).trigger('click')
+    await openMarket(wrapper)
+    expect(wrapper.text()).toContain('Repo')
+
+    const add = wrapper.findAll('.skills-row-action').find(button => button.text() === 'Add')
+    await add.trigger('click')
     await flushPromises()
     expect(api.marketInstall).toHaveBeenCalledWith({ token, repo: true })
     wrapper.unmount()
