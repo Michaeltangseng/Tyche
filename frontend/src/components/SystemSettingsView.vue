@@ -39,6 +39,9 @@
               <p>{{ t('systemSettings.agentPageHint') }}</p>
             </div>
             <div class="settings-page-actions">
+              <button class="secondary-button" type="button" @click="connectorOpen = !connectorOpen">
+                {{ t('systemSettings.extensions') }}
+              </button>
               <button class="secondary-button" type="button" :disabled="refreshing" @click="refreshAgents">
                 <RefreshOutline :class="{ spinning: refreshing }" />
                 {{ t('installer.refresh') }}
@@ -46,16 +49,24 @@
             </div>
           </header>
 
+          <ConnectorPackagesPanel v-if="connectorOpen" @close="connectorOpen = false" />
+
           <div class="settings-subtabs" role="tablist" :aria-label="t('systemSettings.agentPageTitle')">
             <button type="button" role="tab" :aria-selected="agentTab === 'local'" :class="{ active: agentTab === 'local' }" @click="agentTab = 'local'">
               {{ t('systemSettings.localAgents', { count: localAgents.length }) }}
             </button>
-            <button v-if="cloudAgents.length" type="button" role="tab" :aria-selected="agentTab === 'cloud'" :class="{ active: agentTab === 'cloud' }" @click="agentTab = 'cloud'">
+            <button type="button" role="tab" :aria-selected="agentTab === 'cloud'" :class="{ active: agentTab === 'cloud' }" @click="agentTab = 'cloud'">
               {{ t('systemSettings.cloudAgentsCount', { count: cloudAgents.length }) }}
+            </button>
+            <button type="button" role="tab" :aria-selected="agentTab === 'mcp'" :class="{ active: agentTab === 'mcp' }" @click="agentTab = 'mcp'">
+              {{ t('systemSettings.mcpTab') }}
             </button>
           </div>
 
-          <div class="agent-table">
+          <CloudAgentBridgePanel v-if="agentTab === 'cloud'" :controller="cloudAgentBridges" />
+          <McpServersPanel v-else-if="agentTab === 'mcp'" />
+
+          <div v-else class="agent-table">
             <div class="agent-table-head">
               <span>Agent</span>
               <span>{{ t('systemSettings.columnStatus') }}</span>
@@ -64,7 +75,7 @@
               <span>{{ t('systemSettings.columnActions') }}</span>
             </div>
             <article
-              v-for="agent in visibleAgents"
+              v-for="agent in localAgents"
               :key="agent.kind"
               class="agent-table-item settings-agent-card"
               :class="{ focused: focusedAgentKind === agent.kind }"
@@ -111,7 +122,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import {
   BarChartOutline,
   ChevronBackOutline,
@@ -127,6 +138,9 @@ import {
   TerminalOutline,
 } from '@vicons/ionicons5'
 import SettingsPages from './SettingsPages.vue'
+import CloudAgentBridgePanel from './CloudAgentBridgePanel.vue'
+import ConnectorPackagesPanel from './ConnectorPackagesPanel.vue'
+import McpServersPanel from './McpServersPanel.vue'
 
 const props = defineProps({
   controller: { type: Object, required: true },
@@ -137,6 +151,7 @@ const {
   agentCatalogGroups,
   agentState,
   closeSettings,
+  cloudAgentBridges,
   focusedAgentKind,
   installConfirmKind,
   installerBusy,
@@ -183,6 +198,7 @@ const groups = [
 ]
 
 const agentTab = ref('local')
+const connectorOpen = ref(false)
 const searchShortcut = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘F' : 'Ctrl F'
 
 const localAgents = computed(() => (agentCatalogGroups.value || [])
@@ -194,11 +210,6 @@ const cloudAgents = computed(() => (agentCatalogGroups.value || [])
 const installedAgentKinds = computed(() => localAgents.value
   .filter(agent => agent.installed && !agent.custom)
   .map(agent => agent.kind))
-const visibleAgents = computed(() => agentTab.value === 'cloud' ? cloudAgents.value : localAgents.value)
-
-watch(cloudAgents, (agents) => {
-  if (!agents.length && agentTab.value === 'cloud') agentTab.value = 'local'
-})
 
 function versionOf(agent) {
   const value = String(agent?.resolvedVersion || agent?.version || '').trim()
