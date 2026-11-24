@@ -1560,12 +1560,12 @@
 }
 
 .team-chat-icon {
-  width: 64px;
-  height: 28px;
+  width: 70px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  padding-left: 3px;
+  padding-left: 5px;
   color: var(--muted);
 }
 
@@ -1609,7 +1609,7 @@
 }
 
 .team-room-chats .project-room-group {
-  --chat-face: 24px;
+  --chat-face: 28px;
   --chat-title-line: 18px;
   --chat-preview-line: 15px;
   --chat-label-gap: 1px;
@@ -1619,7 +1619,7 @@
 .team-face-stack-chat img {
   width: var(--chat-face);
   height: var(--chat-face);
-  margin-left: -17px;
+  margin-left: -22px;
   border: 0;
   box-shadow: 0 0 0 2px var(--sidebar);
   transition: margin-left 160ms ease;
@@ -1640,11 +1640,11 @@
 }
 
 .team-room-chats .project-room-group.active .team-face-stack-chat img:not(:first-child) {
-  margin-left: -9px;
+  margin-left: -13px;
 }
 
 .team-room-chats .project-room-group.active .team-face-stack-chat .team-face-more {
-  margin-left: -8px;
+  margin-left: -6px;
 }
 
 .team-face-stack img {
@@ -1675,16 +1675,16 @@
 }
 
 .team-room-chats {
-  margin: 2px 2px 6px 8px;
+  margin: 2px 2px 6px 16px;
   padding: 0;
   gap: 1px;
 }
 
 .team-room-chats .project-room-group {
   position: relative;
-  height: 36px;
+  height: 38px;
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) 20px;
+  grid-template-columns: 70px minmax(0, 1fr) 20px;
   align-items: center;
   gap: 8px;
   padding: 0 4px 0 2px;
@@ -1692,12 +1692,12 @@
 }
 
 .team-room-chats .project-room-group.has-preview {
-  height: 50px;
+  height: 52px;
 }
 
 .team-face-stack-chat {
-  width: 64px;
-  height: 28px;
+  width: 70px;
+  height: 32px;
   justify-content: flex-start;
 }
 
@@ -1752,8 +1752,12 @@
 }
 
 .team-room-chats .project-room-group-name {
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text);
+}
+
+.team-room-chats .project-room-group.has-preview .project-room-group-name {
+  font-weight: 650;
 }
 
 .team-room-row.active .project-room-copy strong {
