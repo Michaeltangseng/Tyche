@@ -124,3 +124,36 @@ test('assign_in_group writes one message, one assignment, and target queued repl
   assert.throws(() => assign.assign({ chatId, captainRoleId, text: 'self', roleIds: [captainRoleId] }), /ROOM_CAPTAIN_SELF_TARGET/)
   roomDb.close()
 })
+
+test('captain review treats a failed target reply as blocked', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const roomDb = openRoomDatabase({ directory })
+  const repo = createRoomRepository(roomDb)
+  const roomId = repo.createRoom({ name: 'R', workspace: directory })
+  const chatId = repo.createChat({ roomId, title: 'C' })
+  const captainRoleId = repo.createRole({ chatId, displayName: 'Captain', provider: 'claude', prompt: 'route', isCaptain: true })
+  const a = repo.createRole({ chatId, displayName: 'A', provider: 'claude', prompt: 'work' })
+  repo.addParticipant({ chatId, roleId: captainRoleId })
+  repo.addParticipant({ chatId, roleId: a })
+  const timeline = createTimeline({ roomDb, repository: repo })
+  const assignmentMessage = timeline.append({
+    chatId, authorType: 'agent', authorId: captainRoleId, content: '@A do it', mentions: [a], status: 'done',
+  })
+  const reply = timeline.append({
+    chatId, authorType: 'agent', authorId: a, content: 'boom', status: 'failed',
+  })
+  const review = createCaptainReview({ roomDb, repository: repo, timeline })
+  review.recordAssignment({
+    chatId,
+    messageId: assignmentMessage.id,
+    rootMessageId: assignmentMessage.id,
+    targetRoleIds: [a],
+    targetReplyIds: [reply.id],
+  })
+  const pending = review.review({ chatId })
+  assert.equal(pending.length, 1)
+  assert.equal(pending[0].kind, 'assignment_blocked')
+  assert.equal(pending[0].data.failed, true)
+  roomDb.close()
+})

@@ -569,7 +569,13 @@ describe('team room workspace', () => {
       prompt: 'watch',
       prompt_revision: 1,
     })
-    const wrapper = mountRoom(api(snapshot))
+    const wrapper = mountRoom(api(snapshot), {
+      agents: [
+        { kind: 'codex', label: 'Codex' },
+        { kind: 'claude', label: 'Claude Code' },
+        { kind: 'hermes', label: 'Hermes' },
+      ],
+    })
     await flushPromises()
     const chip = wrapper.findAll('.room-agent-chip').find(node => node.text().includes('Hermes'))
     const writer = wrapper.findAll('.room-agent-chip').find(node => node.text().includes('Writer'))
@@ -577,6 +583,37 @@ describe('team room workspace', () => {
     expect(chip.text()).toContain('🔇')
     expect(chip.attributes('data-quiet')).toBe('true')
     expect(writer.attributes('title') || '').not.toContain('Cannot speak')
+  })
+
+  it('marks a role whose Agent is not available on this machine', async () => {
+    const snapshot = data()
+    snapshot.room.launch_providers = ['claude', 'codex', 'kimi']
+    snapshot.roles.push({
+      id: 'kimi',
+      chat_id: 'chat-1',
+      display_name: '笑匠丙',
+      provider: 'kimi',
+      is_captain: false,
+      native_permission: 'default',
+      prompt: 'close',
+      prompt_revision: 1,
+    })
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+
+    const chip = wrapper.findAll('.room-agent-chip').find(node => node.text().includes('笑匠丙'))
+    expect(chip.attributes('data-quiet')).toBe('true')
+    expect(chip.text()).toContain('⚠')
+    expect(chip.attributes('title')).toContain('not available on this machine')
+    expect(wrapper.get('.room-cast-warning').text()).toContain('Agents unavailable: 1')
+
+    await chip.trigger('click')
+    await flushPromises()
+    const option = wrapper.findAll('.room-role-engine-field option')
+      .find(node => node.attributes('value') === 'kimi')
+    expect(option.attributes('disabled')).toBeDefined()
+    expect(wrapper.get('.room-role-v2-footer .primary-button').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('not available on this machine')
   })
 
   it('opens the room and chat requested by the sidebar', async () => {

@@ -40,6 +40,7 @@ function assignmentView(row) {
 }
 
 const BUSY_REPLY = new Set(['queued', 'working', 'stopping'])
+const FAILED_REPLY = new Set(['failed', 'interrupted', 'stopped', 'unknown', 'waiting_for_input'])
 const OPEN_RUN = new Set(['queued', 'starting', 'running', 'in_progress'])
 
 function createCaptainReview({ roomDb, repository, timeline, now = () => Date.now(), outbox = null }) {
@@ -104,6 +105,7 @@ function createCaptainReview({ roomDb, repository, timeline, now = () => Date.no
             `).all(...targetReplyIds)
         if (replies.some(reply => BUSY_REPLY.has(reply.status))) continue
         const waiting = replies.some(reply => reply.status === 'waiting_for_input')
+        const failed = replies.some(reply => FAILED_REPLY.has(reply.status))
 
         let tasks = []
         if (targetRoleIds.length > 0) {
@@ -125,7 +127,7 @@ function createCaptainReview({ roomDb, repository, timeline, now = () => Date.no
         }
 
         const baseline = Math.max(checkpoint, assignmentBaseline)
-        const blocked = waiting || tasks.some(task => task.status === 'blocked')
+        const blocked = waiting || failed || tasks.some(task => task.status === 'blocked')
         const hasNew = chat.activity_seq > baseline
         if (!hasNew && !blocked) continue
 
@@ -149,6 +151,7 @@ function createCaptainReview({ roomDb, repository, timeline, now = () => Date.no
           targetReplyIds,
           taskIds: tasks.map(task => task.id),
           waiting,
+          failed,
         }
         const createdAt = at()
         database.prepare(`

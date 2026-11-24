@@ -90,7 +90,7 @@
               <span v-if="role.is_captain" class="room-captain-mark" :title="t('room.captain')">⚓</span>
             </span>
             <span class="room-chip-name">{{ labelFor(role) }}</span>
-            <span v-if="role.can_speak === false" class="room-agent-mute" aria-hidden="true">🔇</span>
+            <span v-if="role.can_speak === false" class="room-agent-mute" aria-hidden="true">{{ role.unavailable ? '⚠' : '🔇' }}</span>
             <span v-if="replyFor(role)" class="room-chip-live" :title="t('room.relay.replying')">
               <span class="room-chip-live-dot" aria-hidden="true" />
               <span aria-hidden="true">{{ elapsed(replyFor(role).since) }}</span>
@@ -106,6 +106,17 @@
             @click="emit('add-role')"
           >
             <AddOutline />
+          </button>
+          <button
+            v-if="unavailableRoles.length"
+            class="room-cast-warning"
+            type="button"
+            :title="unavailableTitle"
+            :aria-label="unavailableTitle"
+            @click="selectRole(unavailableRoles[0])"
+          >
+            <span aria-hidden="true">⚠</span>
+            <span>{{ t('room.agentsUnavailable', { count: unavailableRoles.length }) }}</span>
           </button>
           <button
             v-if="state.mode === 'settled'"
@@ -189,6 +200,12 @@ const relayNodes = computed(() => (props.state?.nodes || []).map(node => ({
 const recapNodes = computed(() => relayNodes.value.filter(node => (
   node.state === 'done' || node.state === 'attention'
 )))
+const unavailableRoles = computed(() => props.roles.filter(role => role?.unavailable === true))
+const unavailableTitle = computed(() => (
+  unavailableRoles.value.length
+    ? `${unavailableRoles.value.map(role => labelFor(role)).join(', ')} · ${t('room.agentUnavailable')}`
+    : ''
+))
 const recapFaces = computed(() => recapNodes.value.slice(0, 3))
 const recapExtra = computed(() => Math.max(0, recapNodes.value.length - 3))
 const addDisabled = computed(() => props.busy || !props.canAdd)
@@ -237,6 +254,7 @@ function chipStyle(role) {
 
 function chipTitle(role) {
   const base = `${labelFor(role)} · ${role?.provider_label || role?.provider || ''}`
+  if (role?.availability_note) return `${base} · ${role.availability_note}`
   return role?.can_speak === false ? `${base} · ${t('room.cannotSpeak')}` : base
 }
 
@@ -281,6 +299,7 @@ function nodeStatusLabel(node) {
   }
   if (node.state === 'done') return t('room.relay.completed')
   if (node.state === 'attention') return t('room.relay.needsAttention')
+  if (node.role?.unavailable) return t('room.unavailable')
   return t('room.relay.waiting')
 }
 
@@ -471,6 +490,30 @@ function nodeTitle(node) {
   height: 26px;
   flex-basis: 26px;
   margin-left: 2px;
+}
+
+.room-cast-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--warning) 55%, var(--border));
+  border-radius: 999px;
+  background: var(--warning-soft);
+  color: var(--warning);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.room-cast-warning:hover,
+.room-cast-warning:focus-visible {
+  outline: none;
+  border-color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 16%, var(--surface));
 }
 
 .room-relay {

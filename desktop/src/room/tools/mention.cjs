@@ -1,6 +1,8 @@
 const { judgeMention, resolveNamed } = require('../routing.cjs')
 
-function registerMentionTool({ dispatcher, roomDb, repository, timeline, queueReply, canLaunch = null }) {
+function registerMentionTool({
+  dispatcher, roomDb, repository, timeline, queueReply, canLaunch = null, onUnavailable = null,
+}) {
   const { database } = roomDb
 
   dispatcher.register('mention', async (args, context) => {
@@ -50,6 +52,17 @@ function registerMentionTool({ dispatcher, roomDb, repository, timeline, queueRe
         })
         queued += 1
       }
+    }
+    if (unlaunchable.length > 0 && typeof onUnavailable === 'function') {
+      onUnavailable({
+        chatId: context.chatId,
+        roles: unlaunchable.map(item => ({
+          id: item.id,
+          displayName: item.name,
+          provider: item.provider,
+        })),
+        requestedBy: context.roleId,
+      })
     }
     return { targets: ids, unknown, wake, queued, unlaunchable, messageId: mention.id }
   }, {

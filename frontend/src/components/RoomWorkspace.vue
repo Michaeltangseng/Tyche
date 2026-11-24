@@ -41,7 +41,7 @@
         :state="collaboration"
         :roles="castRoles"
         :busy="busy"
-        :can-add="Boolean(snapshot.room.providers?.length)"
+        :can-add="canAddRole"
         @select-role="openRoleSettings"
         @add-role="openNewRole"
         @open-work="workPanelOpen = true"
@@ -529,12 +529,18 @@
                 <span class="room-role-engine-field">
                   <img v-if="agentLogo(roleDraft.provider)" :src="agentLogo(roleDraft.provider)" alt="" />
                   <select :value="roleDraft.provider" :aria-label="t('room.roleEngine')" @change="changeRoleProvider($event.target.value)">
-                    <option v-for="provider in roleProviders" :key="provider" :value="provider">{{ providerLabel(provider) }}</option>
+                    <option
+                      v-for="provider in roleProviders"
+                      :key="provider"
+                      :value="provider"
+                      :disabled="!readyProviderKinds.has(provider)"
+                      :title="providerUnavailableLabel(provider)"
+                    >{{ providerOptionLabel(provider) }}</option>
                   </select>
                 </span>
               </label>
             </div>
-            <p v-if="roleDraft.provider && !canSpeak(roleDraft.provider)" class="room-agent-quiet">{{ t('room.cannotSpeak') }}</p>
+            <p v-if="roleDraft.provider && !canSpeak(roleDraft.provider)" class="room-agent-quiet">{{ providerUnavailableLabel(roleDraft.provider) }}</p>
             <section class="room-role-v2-section">
               <h3>{{ t('room.rolePrompt') }}</h3>
               <div class="room-role-prompt-wrap">
@@ -732,6 +738,7 @@ const pickerError = ref(false)
 const timeline = ref(null)
 
 const availableAgents = computed(() => props.agents.filter(agent => agent && agent.kind))
+const readyProviderKinds = computed(() => new Set(availableAgents.value.map(agent => agent.kind)))
 const selectedCaptain = ref('')
 const projectLabel = computed(() => snapshot.value?.room?.name || rooms.value.find(room => room.id === roomId.value)?.name || t('room.title'))
 const activeChatLabel = computed(() => {
@@ -864,10 +871,17 @@ const roleProviders = computed(() => {
   const enabled = Array.isArray(room?.providers) ? room.providers : []
   const providers = []
   for (const provider of [...launch, ...enabled]) {
-    if (provider && !providers.includes(provider)) providers.push(provider)
+    if (provider && readyProviderKinds.value.has(provider) && !providers.includes(provider)) {
+      providers.push(provider)
+    }
   }
+  // Keep the role's current provider visible even when the Agent is no longer
+  // available, so the user can see why the role is quiet and switch providers.
+  const current = roleDraft.value?.provider
+  if (current && !providers.includes(current)) providers.push(current)
   return providers
 })
+const canAddRole = computed(() => readyProviderKinds.value.size > 0)
 const portraitPage = ref(0)
 const portraitPageSize = 4
 const portraitPageCount = computed(() => Math.max(1, Math.ceil(rolePortraits().length / portraitPageSize)))
@@ -888,6 +902,7 @@ const canSaveRole = computed(() => Boolean(
   roleDraft.value
   && roleDraft.value.displayName.trim()
   && roleDraft.value.provider
+  && canSpeak(roleDraft.value.provider)
   && roleProviders.value.includes(roleDraft.value.provider),
 ))
 
@@ -915,11 +930,16 @@ function faceSrc(role) {
   return rolePortrait(role?.portrait || role?.provider)
 }
 
-const castRoles = computed(() => roles.value.map(role => ({
-  ...role,
-  provider_label: providerLabel(role.provider),
-  can_speak: canSpeak(role.provider),
-})))
+const castRoles = computed(() => roles.value.map(role => {
+  const ready = readyProviderKinds.value.has(role.provider)
+  return {
+    ...role,
+    provider_label: providerLabel(role.provider),
+    can_speak: canSpeak(role.provider),
+    unavailable: !ready,
+    availability_note: ready ? '' : t('room.agentUnavailable'),
+  }
+}))
 
 const collaboration = computed(() => deriveRoomCollaboration({
   tasks: tasks.value,
@@ -955,9 +975,21 @@ function assignmentTargetNames(assignment) {
 }
 
 function canSpeak(provider) {
+  if (!provider) return false
   const list = snapshot.value?.room?.launch_providers
-  if (!Array.isArray(list)) return true
-  return list.includes(provider)
+  if (Array.isArray(list) && !list.includes(provider)) return false
+  return readyProviderKinds.value.has(provider)
+}
+
+function providerUnavailableLabel(provider) {
+  if (!readyProviderKinds.value.has(provider)) return t('room.agentUnavailable')
+  if (!canSpeak(provider)) return t('room.cannotSpeak')
+  return ''
+}
+
+function providerOptionLabel(provider) {
+  const label = providerLabel(provider)
+  return readyProviderKinds.value.has(provider) ? label : `${label} · ${t('room.unavailable')}`
 }
 
 function providerChoiceTitle(provider) {

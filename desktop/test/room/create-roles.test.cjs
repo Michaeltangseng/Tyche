@@ -10,7 +10,7 @@ const { createRoomReadModel } = require('../../src/room/read-model.cjs')
 const { createToolDispatcher } = require('../../src/room/tools/dispatcher.cjs')
 const { createCaptainAssignment, registerCaptainTools } = require('../../src/room/tools/captain.cjs')
 
-function setup(t, { providers = ['claude', 'codex', 'hermes'] } = {}) {
+function setup(t, { providers = ['claude', 'codex', 'hermes'], onUnavailable = null } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
@@ -25,6 +25,7 @@ function setup(t, { providers = ['claude', 'codex', 'hermes'] } = {}) {
   const timeline = createTimeline({ roomDb, repository: repo })
   const dispatcher = createToolDispatcher({ roomDb, repository: repo })
   const queued = []
+  const canLaunch = provider => provider !== 'hermes'
   const captainAssignment = createCaptainAssignment({
     roomDb,
     repository: repo,
@@ -34,6 +35,8 @@ function setup(t, { providers = ['claude', 'codex', 'hermes'] } = {}) {
       return { id: `reply-${queued.length}` }
     },
     requestTick: () => {},
+    canLaunch,
+    onUnavailable,
   })
   registerCaptainTools({
     dispatcher,
@@ -41,7 +44,8 @@ function setup(t, { providers = ['claude', 'codex', 'hermes'] } = {}) {
     captainAssignment,
     timeline,
     roomDb,
-    canLaunch: provider => provider !== 'hermes',
+    canLaunch,
+    onUnavailable,
   })
   return { roomDb, repo, roomId, chatId, captain, timeline, dispatcher, queued }
 }
@@ -151,6 +155,57 @@ test('create_roles rejects a provider that cannot speak and leaves the chat unch
   )
   assert.equal(repo.listParticipants(chatId).length, before)
   assert.equal(timeline.latest(chatId), undefined)
+})
+
+test('create_roles reports an unavailable provider to the user', async t => {
+  const reports = []
+  const { chatId, captain, dispatcher } = setup(t, {
+    onUnavailable: payload => reports.push(payload),
+  })
+  dispatcher.bindRun('run1', { chatId, roleId: captain, allowedTools: ['create_roles'] })
+  await assert.rejects(
+    () => dispatcher.invoke({
+      runId: 'run1',
+      callId: 'roster-kimi',
+      name: 'create_roles',
+      args: { roles: [{ displayName: '笑匠丙', provider: 'hermes', prompt: '收尾' }] },
+    }),
+    /ROOM_ROLE_PROVIDER_NOT_LAUNCHABLE/,
+  )
+  assert.equal(reports.length, 1)
+  assert.deepEqual(reports[0].roles, [{
+    id: '',
+    displayName: '笑匠丙',
+    provider: 'hermes',
+  }])
+  assert.equal(reports[0].requestedBy, captain)
+})
+
+test('assign_in_group reports an unavailable teammate instead of queuing', async t => {
+  const reports = []
+  const { repo, chatId, captain, timeline, dispatcher, queued } = setup(t, {
+    onUnavailable: payload => reports.push(payload),
+  })
+  const hermes = repo.createRole({ chatId, displayName: '笑匠丙', provider: 'hermes', prompt: '收尾' })
+  repo.addParticipant({ chatId, roleId: hermes })
+  dispatcher.bindRun('run1', { chatId, roleId: captain, allowedTools: ['assign_in_group'] })
+  await assert.rejects(
+    () => dispatcher.invoke({
+      runId: 'run1',
+      callId: 'assign-kimi',
+      name: 'assign_in_group',
+      args: { text: '收尾', roleIds: [hermes] },
+    }),
+    /ROOM_CAPTAIN_TARGET_UNAVAILABLE/,
+  )
+  assert.equal(queued.length, 0)
+  assert.equal(timeline.latest(chatId), undefined)
+  assert.equal(reports.length, 1)
+  assert.deepEqual(
+    reports[0].roles.map(role => ({ id: role.id, displayName: role.displayName, provider: role.provider })),
+    [{ id: hermes, displayName: '笑匠丙', provider: 'hermes' }],
+  )
+  assert.equal(reports[0].requestedBy, captain)
 })
 
 test('create_roles can use a provider that can speak even when the room did not start with it', async t => {

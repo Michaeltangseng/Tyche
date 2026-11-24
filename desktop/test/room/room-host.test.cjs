@@ -467,3 +467,34 @@ test('Captain swaps atomically and chat roles stay independent', (t) => {
   assert.match(roles.find(role => role.id === codex.id).prompt, /create_task/)
   assert.match(roles.find(role => role.id === claude.id).prompt, /Do not create tasks yourself/)
 })
+
+test('host gates new rooms and roles by locally available providers', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-host-available-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const workspace = path.join(root, 'workspace')
+  fs.mkdirSync(workspace, { recursive: true })
+  const host = createRoomHost({
+    privateRoot: path.join(root, 'private'),
+    adapterFactory: () => fakeAdapter(),
+    liveness: false,
+    availableProviders: () => new Set(['codex']),
+  })
+  t.after(() => host.close())
+
+  assert.throws(
+    () => host.bootstrap({ name: 'Claude only', workspace, providers: ['claude'] }),
+    /TEAM_ROOM_PROVIDER_NOT_AVAILABLE/,
+  )
+  const created = host.bootstrap({ name: 'Codex room', workspace, providers: ['codex'] })
+  assert.equal(created.roomId.length > 0, true)
+  assert.throws(
+    () => host.createRole({
+      roomId: created.roomId,
+      chatId: created.chatId,
+      displayName: 'Claude',
+      provider: 'claude',
+      prompt: 'p',
+    }),
+    /ROOM_ROLE_PROVIDER_NOT_LAUNCHABLE/,
+  )
+})

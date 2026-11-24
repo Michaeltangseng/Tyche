@@ -30,11 +30,11 @@ const ROLES = [
   },
 ]
 
-function mountRibbon(state) {
+function mountRibbon(state, roles = ROLES) {
   return mount(RoomCollaborationRibbon, {
     props: {
       state,
-      roles: ROLES,
+      roles,
       busy: false,
       canAdd: true,
     },
@@ -64,6 +64,29 @@ describe('room collaboration ribbon', () => {
 
     await wrapper.get('.room-agent-add').trigger('click')
     expect(wrapper.emitted('add-role')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('surfaces an unavailable agent with a warning pill', async () => {
+    const roles = [
+      ...ROLES,
+      {
+        id: 'kimi',
+        display_name: '笑匠丙',
+        provider: 'kimi',
+        provider_label: 'Kimi',
+        is_captain: false,
+        can_speak: false,
+        unavailable: true,
+        availability_note: 'This Agent is not available on this machine.',
+      },
+    ]
+    const wrapper = mountRibbon({ mode: 'idle', nodes: [], replies: [] }, roles)
+
+    const warning = wrapper.get('.room-cast-warning')
+    expect(warning.text()).toContain('Agents unavailable: 1')
+    await warning.trigger('click')
+    expect(wrapper.emitted('select-role')?.at(-1)).toEqual(['kimi'])
     wrapper.unmount()
   })
 

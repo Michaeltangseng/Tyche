@@ -192,6 +192,7 @@ function createRoomHost({
   onChanged = () => {},
   onRuntimeEvent = () => {},
   skillInventory = null,
+  availableProviders = null,
 } = {}) {
   if (typeof privateRoot !== 'string' || !path.isAbsolute(privateRoot)) {
     throw new TypeError('ROOM_HOST_PRIVATE_ROOT_REQUIRED')
@@ -215,6 +216,7 @@ function createRoomHost({
       try { onRuntimeEvent(view) } catch { /* event observers are best-effort */ }
     },
     skillInventory,
+    availableProviders,
     adapterFactory: adapterFactory || (deps => createOarRuntimeAdapter({
       ...deps,
       env,
@@ -255,8 +257,8 @@ function createRoomHost({
       messageLimit: input.messageLimit,
       includeCaptain: input.includeCaptain === true,
     })
-    if (data?.room && typeof service.adapter?.launchProviderIds === 'function') {
-      data.room.launch_providers = service.adapter.launchProviderIds()
+    if (data?.room && typeof service.speakableProviderIds === 'function') {
+      data.room.launch_providers = service.speakableProviderIds()
     }
     return data
   }
@@ -275,6 +277,9 @@ function createRoomHost({
     const name = cleanText(input.name, 120, 'name')
     const workspace = workspacePath(input.workspace)
     const providers = providerList(input.providers)
+    for (const provider of providers) {
+      if (!providerCanSpeak(provider)) throw hostError('TEAM_ROOM_PROVIDER_NOT_AVAILABLE')
+    }
     const allowedCapabilities = stringList(input.allowedCapabilities, 32, 'allowedCapabilities')
     const title = optionalText(input.title, 120, 'title') || name
     const rawRoles = Array.isArray(input.roles) && input.roles.length > 0
@@ -453,6 +458,7 @@ function createRoomHost({
 
   function providerCanSpeak(provider) {
     if (typeof provider !== 'string' || !PROVIDER.test(provider)) return false
+    if (typeof service.providerCanSpeak === 'function') return service.providerCanSpeak(provider)
     if (typeof service.adapter?.hasLauncher !== 'function') return true
     const known = service.adapter.hasLauncher(provider)
     return known === null ? true : known === true
