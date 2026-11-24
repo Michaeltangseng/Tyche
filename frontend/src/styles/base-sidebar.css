@@ -1560,12 +1560,12 @@
 }
 
 .team-chat-icon {
-  width: 52px;
-  height: 22px;
+  width: 64px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  padding-left: 0;
+  padding-left: 3px;
   color: var(--muted);
 }
 
@@ -1609,7 +1609,7 @@
 }
 
 .team-room-chats .project-room-group {
-  --chat-face: 18px;
+  --chat-face: 24px;
   --chat-title-line: 18px;
   --chat-preview-line: 15px;
   --chat-label-gap: 1px;
@@ -1619,7 +1619,7 @@
 .team-face-stack-chat img {
   width: var(--chat-face);
   height: var(--chat-face);
-  margin-left: -12px;
+  margin-left: -17px;
   border: 0;
   box-shadow: 0 0 0 2px var(--sidebar);
   transition: margin-left 160ms ease;
@@ -1627,24 +1627,24 @@
 
 .team-face-stack-chat .team-face-more {
   z-index: 5;
-  width: 14px;
-  height: 14px;
-  margin-left: -10px;
+  width: 18px;
+  height: 18px;
+  margin-left: -12px;
   border: 0;
   box-shadow: 0 0 0 2px var(--sidebar);
   background: var(--surface-active);
   color: var(--text-soft);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   transition: margin-left 160ms ease;
 }
 
 .team-room-chats .project-room-group.active .team-face-stack-chat img:not(:first-child) {
-  margin-left: -5px;
+  margin-left: -9px;
 }
 
 .team-room-chats .project-room-group.active .team-face-stack-chat .team-face-more {
-  margin-left: -6px;
+  margin-left: -8px;
 }
 
 .team-face-stack img {
@@ -1684,7 +1684,7 @@
   position: relative;
   height: 36px;
   display: grid;
-  grid-template-columns: 52px minmax(0, 1fr) 20px;
+  grid-template-columns: 64px minmax(0, 1fr) 20px;
   align-items: center;
   gap: 8px;
   padding: 0 4px 0 2px;
@@ -1696,8 +1696,8 @@
 }
 
 .team-face-stack-chat {
-  width: 52px;
-  height: 22px;
+  width: 64px;
+  height: 28px;
   justify-content: flex-start;
 }
 
