@@ -129,6 +129,17 @@ describe('team room workspace', () => {
       id: 'assignment-1', chat_id: 'chat-1', target_role_ids: ['worker'],
       status: 'settled', created_at: '2026-11-15T10:00:30Z',
     }]
+    snapshot.artifacts = [{
+      id: 'artifact-1',
+      room_id: 'room-1',
+      task_id: 'task-1',
+      run_id: 'run-1',
+      path: 'docs/room.md',
+      kind: 'document',
+      version: '1',
+      status: 'ready',
+      created_at: '2026-11-15T10:02:00Z',
+    }]
     const bridge = api(snapshot)
     const wrapper = mountRoom(bridge)
     await flushPromises()
@@ -142,10 +153,81 @@ describe('team room workspace', () => {
     expect(wrapper.get('.room-report-card').text()).toContain('#1 Write docs')
 
     expect(wrapper.get('.room-ledger').text()).toContain('Write docs')
+
+    await wrapper.get('[data-work-tab="trace"]').trigger('click')
     expect(wrapper.get('.room-ledger').text()).toContain('Captain reviews')
     expect(wrapper.get('.room-ledger').text()).toContain('Assignment settled')
     expect(wrapper.get('.room-ledger').text()).toContain('Captain assignments')
     expect(wrapper.get('.room-ledger').text()).toContain('Writer')
+
+    await wrapper.get('[data-work-tab="artifacts"]').trigger('click')
+    expect(wrapper.get('.room-ledger').text()).toContain('room.md')
+    expect(wrapper.get('.room-artifact-head strong').attributes('title')).toBe('docs/room.md')
+    expect(wrapper.get('.room-ledger').text()).toContain('Writer')
+    expect(wrapper.get('.room-ledger').text()).toContain('Open files')
+
+    await wrapper.get('.room-usage-toggle').trigger('click')
+    expect(wrapper.get('.room-work-tab.active').text()).toContain('Usage')
+  })
+
+  it('defaults the workbench to trace when only assignments exist', async () => {
+    const snapshot = data()
+    snapshot.assignments = [{
+      id: 'assignment-1',
+      chat_id: 'chat-1',
+      target_role_ids: ['worker'],
+      status: 'settled',
+      created_at: '2026-11-15T10:00:30Z',
+    }]
+    snapshot.reviews = [{
+      id: 'review-1',
+      chat_id: 'chat-1',
+      kind: 'assignment_settled',
+      status: 'completed',
+      created_at: '2026-11-15T10:01:00Z',
+    }]
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+
+    const ledger = wrapper.get('.room-ledger')
+    expect(ledger.get('.room-work-tab.active').text()).toContain('Trace')
+    expect(ledger.text()).toContain('Captain assignments')
+  })
+
+  it('shows per-role usage in the workbench usage tab', async () => {
+    const snapshot = data()
+    snapshot.tasks = [{
+      id: 'task-1',
+      chat_id: 'chat-1',
+      number: 1,
+      title: 'Usage task',
+      status: 'in_progress',
+      assignee_role_id: 'worker',
+      created_at: '2026-11-15T10:00:00Z',
+    }]
+    snapshot.messages = [{
+      id: 'reply-1',
+      chat_id: 'chat-1',
+      sequence: 2,
+      author_type: 'agent',
+      author_id: 'worker',
+      author_name: 'Writer',
+      content: 'Done',
+      status: 'done',
+      created_at: '2026-11-15T10:01:00Z',
+      data: {
+        usage: { inputTokens: 1200, outputTokens: 340, cachedInputTokens: 8100, context: { percent: 42 } },
+      },
+    }]
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+
+    await wrapper.get('[data-work-tab="usage"]').trigger('click')
+    const ledger = wrapper.get('.room-ledger')
+    expect(ledger.text()).toContain('Total')
+    expect(ledger.text()).toContain('Writer')
+    expect(ledger.text()).toContain('in 1.2k · out 340 · cache 8.1k')
+    expect(ledger.text()).toContain('42%')
   })
 
   it('creates a room with one captain and no extra members', async () => {
@@ -317,9 +399,9 @@ describe('team room workspace', () => {
     const wrapper = mountRoom(bridge)
     await flushPromises()
     const body = wrapper.get('.room-message-body')
-    expect(body.get('.room-reasoning').text()).toContain('Checking the table')
-    expect(body.html().indexOf('room-reasoning')).toBeLessThan(body.html().indexOf('markdown-body'))
-    const trace = wrapper.get('.room-run-trace')
+    const trace = body.get('.room-run-trace')
+    expect(trace.text()).toContain('Checking the table')
+    expect(body.html().indexOf('markdown-body')).toBeLessThan(body.html().indexOf('room-run-trace'))
     expect(trace.text()).toContain('1 steps')
     trace.element.open = true
     await trace.trigger('toggle')
@@ -367,7 +449,7 @@ describe('team room workspace', () => {
     expect(trace.text()).toContain('1 steps')
   })
 
-  it('renders a reply as markdown with thinking above the answer', async () => {
+  it('renders a reply as markdown and keeps live reasoning inside the run block', async () => {
     const snapshot = data()
     snapshot.messages = [{
       id: 'reply-1', chat_id: 'chat-1', sequence: 2, author_type: 'agent', author_id: 'worker',
@@ -385,7 +467,7 @@ describe('team room workspace', () => {
     const body = wrapper.get('.room-message-body')
     expect(body.get('.markdown-body strong').text()).toBe('Done')
     expect(body.get('table').text()).toContain('A')
-    expect(body.html().indexOf('room-reasoning')).toBeLessThan(body.html().indexOf('markdown-body'))
+    expect(body.get('.room-run-trace').text()).toContain('Checking the table')
   })
 
   it('accepts settled tasks and answers open attentions', async () => {

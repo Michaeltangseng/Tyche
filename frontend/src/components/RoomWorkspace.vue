@@ -51,7 +51,7 @@
         <button v-if="attentions.length" class="room-notice-pill" type="button" @click="scrollToAttention">
           {{ t('room.attentions', { count: attentions.length }) }}
         </button>
-        <button v-if="snapshot" class="room-icon-button room-usage-toggle" type="button" :aria-pressed="usageOpen" :title="t('room.usagePanel')" :aria-label="t('room.usagePanel')" @click="emit('toggle-usage')">
+        <button v-if="snapshot" class="room-icon-button room-usage-toggle" type="button" :aria-pressed="usageOpen" :title="t('room.usagePanel')" :aria-label="t('room.usagePanel')" @click="openUsage">
           <PulseOutline />
         </button>
         <button v-if="snapshot" class="room-icon-button room-files-toggle" type="button" :aria-pressed="filesOpen" :title="t('room.files')" :aria-label="t('room.files')" @click="emit('toggle-files')">
@@ -148,10 +148,6 @@
                     <span v-else-if="entry.message.status" class="room-message-status" :data-status="entry.message.status">{{ statusLabel(entry.message.status) }}</span>
                     <span v-if="turnUsage(entry.message)" class="room-turn-usage">{{ turnUsage(entry.message) }}</span>
                   </header>
-                  <details v-if="replyThinking(entry.message)" class="room-reasoning">
-                    <summary>{{ t('room.thinking') }}</summary>
-                    <p>{{ replyThinking(entry.message) }}</p>
-                  </details>
                   <MarkdownMessage
                     v-if="entry.message.content"
                     :content="entry.message.content"
@@ -224,6 +220,7 @@
                     :run-id="entry.message.id"
                     :live="liveFor(entry.message)"
                     :steps="entry.message.data?.trace || null"
+                    :thinking="replyThinking(entry.message)"
                   />
                   <div v-if="entry.message.status === 'waiting_for_input'" class="room-actions">
                     <span class="room-muted">{{ t('room.waitingForInput') }}</span>
@@ -335,73 +332,151 @@
           <button class="secondary-button" type="button" @click="workPanelOpen = false">{{ t('common.close') }}</button>
         </header>
 
-        <h2>{{ t('room.tasks') }}</h2>
-        <p v-if="!tasks.length" class="room-muted">{{ t('room.noTasks') }}</p>
-        <article v-for="task in tasks" :key="task.id" class="room-card">
-          <header>
-            <strong>{{ taskLabel(task) }}</strong>
-            <span>{{ statusLabel(task.status) }}</span>
-          </header>
-          <p v-if="task.description" class="room-muted">{{ task.description }}</p>
-          <p v-if="task.acceptance" class="room-muted">{{ t('room.acceptance') }}: {{ task.acceptance }}</p>
-          <div v-if="canAcceptTask(task)" class="room-actions">
-            <button class="primary-button" type="button" :disabled="busy" @click="acceptTask(task.id)">{{ t('room.acceptTask') }}</button>
-          </div>
-          <div class="room-runs">
-            <p class="room-runs-title">{{ t('room.runs') }}</p>
-            <p v-if="!taskRuns(task.id).length" class="room-muted">{{ t('room.noRuns') }}</p>
-            <div v-for="run in taskRuns(task.id)" :key="run.id" class="room-run-entry">
-              <p class="room-run-row">
-                <span>{{ roleName(run.role_id) }}</span>
-                <span>{{ run.lane_kind === 'mention' ? t('room.mentionLane') : t('room.executorLane') }}</span>
-                <span :data-status="run.status">{{ statusLabel(run.status) }}</span>
-                <span v-if="run.outcome !== 'pending'" class="room-muted">{{ run.outcome }}</span>
-              </p>
-              <RoomRunTrace :api="api" :room-id="roomId" :chat-id="chatId" :run-id="run.id" />
+        <nav class="room-work-tabs" role="tablist" :aria-label="t('room.workPanel')">
+          <button
+            v-for="tab in workTabs"
+            :key="tab.id"
+            class="room-work-tab"
+            :class="{ active: activeWorkTab === tab.id }"
+            type="button"
+            role="tab"
+            :aria-selected="activeWorkTab === tab.id"
+            :data-work-tab="tab.id"
+            @click="workTab = tab.id"
+          >
+            {{ t(tab.label) }}<span v-if="tab.count" class="room-work-tab-count">{{ tab.count }}</span>
+          </button>
+        </nav>
+
+        <div class="room-work-scroll">
+          <section v-if="activeWorkTab === 'artifacts'" class="room-work-panel" role="tabpanel">
+            <p v-if="!workArtifacts.length" class="room-work-empty">{{ t('room.noArtifacts') }}</p>
+            <article v-for="artifact in workArtifacts" :key="artifact.id" class="room-artifact-card room-work-card">
+              <header class="room-artifact-head">
+                <strong :title="artifact.path">{{ artifactFileName(artifact.path) }}</strong>
+                <span :data-status="artifact.status">{{ statusLabel(artifact.status) }}</span>
+              </header>
+              <div class="room-artifact-meta">
+                <span>{{ artifact.kind }} · {{ artifact.version }}</span>
+                <span v-if="artifactTask(artifact)">{{ taskLabel(artifactTask(artifact)) }}</span>
+              </div>
+              <div class="room-artifact-maker">
+                <span v-if="artifactRole(artifact)" class="room-artifact-face">
+                  <img :src="faceSrc(artifactRole(artifact))" alt="" />
+                </span>
+                <span>{{ artifactRole(artifact) ? roleLabel(artifactRole(artifact)) : t('room.system') }}</span>
+              </div>
+              <button class="secondary-button room-artifact-open" type="button" @click="emit('toggle-files')">
+                {{ t('room.openFiles') }}
+              </button>
+            </article>
+          </section>
+
+          <section v-else-if="activeWorkTab === 'trace'" class="room-work-panel" role="tabpanel">
+            <p v-if="!captainAssignments.length && !runs.length && !reviews.length" class="room-work-empty">{{ t('room.noTrace') }}</p>
+
+            <div v-if="captainAssignments.length" class="room-work-group">
+              <h3 class="room-work-group-title">{{ t('room.captainAssignments') }}</h3>
+              <article
+                v-for="assignment in captainAssignments"
+                :key="`assignment-${assignment.id}`"
+                class="room-trace-item room-work-card"
+                :data-status="assignment.status"
+              >
+                <header>
+                  <strong>{{ t('room.captainAssignment') }}</strong>
+                  <span :data-status="assignment.status">{{ statusLabel(assignment.status) }}</span>
+                </header>
+                <p class="room-trace-targets">{{ assignmentTargetNames(assignment) }}</p>
+                <time>{{ formatTime(assignment.created_at) }}</time>
+              </article>
             </div>
-          </div>
-          <div v-if="taskReports(task.id).length" class="room-reports">
-            <p v-for="report in taskReports(task.id)" :key="report.id" class="room-report-row">
-              <strong>{{ reportKindLabel(report.kind) }}</strong>
-              <span>{{ report.summary }}</span>
-            </p>
-          </div>
-        </article>
 
-        <template v-if="reviews.length">
-          <h2>{{ t('room.captainReviews') }}</h2>
-          <article v-for="review in reviews" :key="review.id" class="room-card room-review-card">
-            <header>
-              <strong>{{ reviewKindLabel(review.kind) }}</strong>
-              <span :data-status="review.status">{{ statusLabel(review.status) }}</span>
-            </header>
-            <time class="room-muted">{{ formatTime(review.created_at) }}</time>
-          </article>
-        </template>
+            <div v-if="runs.length" class="room-work-group">
+              <h3 class="room-work-group-title">{{ t('room.runs') }}</h3>
+              <article
+                v-for="run in runs"
+                :key="`run-${run.id}`"
+                class="room-trace-item room-work-card"
+                :data-status="run.status"
+                :data-live="isRunLive(run) ? 'true' : undefined"
+              >
+                <header>
+                  <strong>{{ roleName(run.role_id) }} · {{ run.lane_kind === 'mention' ? t('room.mentionLane') : t('room.executorLane') }}</strong>
+                  <span :data-status="run.status">{{ statusLabel(run.status) }}</span>
+                </header>
+                <p class="room-trace-targets">{{ taskLabel(tasksById.get(run.task_id)) }}</p>
+                <p v-if="run.outcome && run.outcome !== 'pending'" class="room-trace-outcome">{{ run.outcome }}</p>
+                <RoomRunTrace :api="api" :room-id="roomId" :chat-id="chatId" :run-id="run.id" />
+              </article>
+            </div>
 
-        <template v-if="captainAssignments.length">
-          <h2>{{ t('room.captainAssignments') }}</h2>
-          <article v-for="assignment in captainAssignments" :key="assignment.id" class="room-card">
-            <header>
-              <strong>{{ t('room.captainAssignment') }}</strong>
-              <span :data-status="assignment.status">{{ statusLabel(assignment.status) }}</span>
-            </header>
-            <p class="room-muted">{{ assignmentTargetNames(assignment) }}</p>
-            <time class="room-muted">{{ formatTime(assignment.created_at) }}</time>
-          </article>
-        </template>
+            <div v-if="reviews.length" class="room-work-group">
+              <h3 class="room-work-group-title">{{ t('room.captainReviews') }}</h3>
+              <article
+                v-for="review in reviews"
+                :key="`review-${review.id}`"
+                class="room-trace-item room-work-card"
+                :data-status="review.status"
+              >
+                <header>
+                  <strong>{{ reviewKindLabel(review.kind) }}</strong>
+                  <span :data-status="review.status">{{ statusLabel(review.status) }}</span>
+                </header>
+                <time>{{ formatTime(review.created_at) }}</time>
+              </article>
+            </div>
+          </section>
 
-        <template v-if="artifacts.length">
-          <h2>{{ t('room.artifacts') }}</h2>
-          <article v-for="artifact in artifacts" :key="artifact.id" class="room-card room-artifact-entry">
-            <header>
-              <strong>{{ artifact.path }}</strong>
-              <span :data-status="artifact.status">{{ statusLabel(artifact.status) }}</span>
-            </header>
-            <p class="room-muted">{{ artifact.kind }} · {{ artifact.version }}</p>
-            <p v-if="tasksById.get(artifact.task_id)" class="room-muted">{{ taskLabel(tasksById.get(artifact.task_id)) }}</p>
-          </article>
-        </template>
+          <section v-else-if="activeWorkTab === 'usage'" class="room-work-panel" role="tabpanel">
+            <div class="room-usage-summary room-work-card">
+              <span>{{ t('room.usageTotal') }}</span>
+              <strong>{{ totalUsageLine }}</strong>
+            </div>
+            <ul class="room-usage-list">
+              <li v-for="row in agentUsage" :key="row.id">
+                <div class="room-usage-agent">
+                  <span class="room-usage-face">
+                    <img :src="rolePortrait(rolesById.get(row.id)?.portrait || rolesById.get(row.id)?.provider || row.model)" alt="" />
+                  </span>
+                  <strong>{{ row.name }}</strong>
+                  <span :data-status="row.status">{{ row.status === 'working' ? t('room.usageWorking') : t('room.usageIdle') }}</span>
+                </div>
+                <p class="room-usage-model">{{ row.model }}</p>
+                <p class="room-usage-line">{{ formatUsageLine(row.usage) }}</p>
+                <p v-if="row.contextPercent != null" class="room-usage-context">
+                  {{ t('room.usageContext') }} {{ Math.round(row.contextPercent) }}%
+                  <span class="room-usage-bar" aria-hidden="true"><span :style="{ width: `${Math.max(0, Math.min(100, row.contextPercent))}%` }" /></span>
+                </p>
+              </li>
+            </ul>
+          </section>
+
+          <section v-else class="room-work-panel" role="tabpanel">
+            <p v-if="!tasks.length" class="room-work-empty">{{ t('room.noTasks') }}</p>
+            <article v-for="task in tasks" :key="task.id" class="room-card room-work-card">
+              <header>
+                <strong>{{ taskLabel(task) }}</strong>
+                <span :data-status="task.status">{{ statusLabel(task.status) }}</span>
+              </header>
+              <p v-if="task.description" class="room-muted">{{ task.description }}</p>
+              <p v-if="task.acceptance" class="room-muted">{{ t('room.acceptance') }}: {{ task.acceptance }}</p>
+              <div v-if="canAcceptTask(task)" class="room-actions">
+                <button class="primary-button" type="button" :disabled="busy" @click="acceptTask(task.id)">{{ t('room.acceptTask') }}</button>
+              </div>
+              <div v-if="taskRuns(task.id).length" class="room-work-meta">
+                <span>{{ t('room.runs') }} · {{ taskRuns(task.id).length }}</span>
+                <button class="room-work-link" type="button" @click="workTab = 'trace'">{{ t('room.viewTrace') }}</button>
+              </div>
+              <div v-if="taskReports(task.id).length" class="room-reports">
+                <p v-for="report in taskReports(task.id)" :key="report.id" class="room-report-row">
+                  <strong>{{ reportKindLabel(report.kind) }}</strong>
+                  <span>{{ report.summary }}</span>
+                </p>
+              </div>
+            </article>
+          </section>
+        </div>
       </aside>
     </div>
 
@@ -723,6 +798,7 @@ const roleDraft = ref(null)
 const roleSettingsWasCaptain = ref(false)
 const roleDeleteArmed = ref(false)
 const workPanelOpen = ref(true)
+const workTab = ref('')
 const name = ref('')
 const directory = ref('')
 const titleEditing = ref(false)
@@ -951,6 +1027,37 @@ const collaboration = computed(() => deriveRoomCollaboration({
   liveRuns: liveRuns.value,
 }))
 
+const workArtifacts = computed(() => artifacts.value.filter(artifact => (
+  !artifact.task_id || tasksById.value.has(artifact.task_id)
+)))
+const workTabs = computed(() => [
+  { id: 'artifacts', label: 'room.workTab.artifacts', count: workArtifacts.value.length },
+  {
+    id: 'trace',
+    label: 'room.workTab.trace',
+    count: runs.value.length + captainAssignments.value.length + reviews.value.length,
+  },
+  { id: 'usage', label: 'room.workTab.usage', count: 0 },
+  { id: 'tasks', label: 'room.workTab.tasks', count: tasks.value.length },
+])
+const defaultWorkTab = computed(() => {
+  if (collaboration.value.mode === 'running') return 'trace'
+  if (workArtifacts.value.length) return 'artifacts'
+  if (tasks.value.length) return 'tasks'
+  if (captainAssignments.value.length || reviews.value.length || runs.value.length) return 'trace'
+  return 'usage'
+})
+const activeWorkTab = computed(() => workTab.value || defaultWorkTab.value)
+const totalUsage = computed(() => agentUsage.value.reduce((total, row) => {
+  const usage = row.usage || {}
+  return {
+    inputTokens: total.inputTokens + (Number(usage.inputTokens) || 0),
+    outputTokens: total.outputTokens + (Number(usage.outputTokens) || 0),
+    cachedInputTokens: total.cachedInputTokens + (Number(usage.cachedInputTokens) || 0),
+  }
+}, { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 }))
+const totalUsageLine = computed(() => formatUsageLine(totalUsage.value))
+
 function showPortraitPage(id) {
   const index = rolePortraits().findIndex(item => item.id === id)
   portraitPage.value = index < 0 ? 0 : Math.floor(index / portraitPageSize)
@@ -1038,6 +1145,25 @@ function taskReports(taskId) {
 
 function taskForReport(report) {
   return tasksById.value.get(report?.task_id) || null
+}
+
+function artifactTask(artifact) {
+  return tasksById.value.get(artifact?.task_id) || null
+}
+
+function artifactRole(artifact) {
+  const run = runs.value.find(item => item.id === artifact?.run_id)
+  if (run) return rolesById.value.get(run.role_id) || null
+  const task = artifactTask(artifact)
+  return task ? rolesById.value.get(task.assignee_role_id) || null : null
+}
+
+function artifactFileName(path) {
+  return String(path || '').split(/[\\/]/).pop() || path || ''
+}
+
+function isRunLive(run) {
+  return ['queued', 'starting', 'running', 'in_progress'].includes(run?.status)
 }
 
 function canAcceptTask(task) {
@@ -1409,6 +1535,15 @@ async function removeRole() {
   if (result) closeRoleSettings()
 }
 
+function openUsage() {
+  if (hasWork.value) {
+    workTab.value = 'usage'
+    workPanelOpen.value = true
+    return
+  }
+  emit('toggle-usage')
+}
+
 function scrollToAttention() {
   document.querySelector('.room-attention-card')?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
 }
@@ -1606,11 +1741,66 @@ button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.
 .room-composer-send:disabled { opacity: 0.45; cursor: default; }
 .room-composer-send:not(:disabled) { background: var(--text); color: var(--surface); }
 .room-composer-send:hover:not(:disabled) { background: var(--text); }
-.room-ledger { display: flex; flex: 0 0 min(340px, 36%); flex-direction: column; min-height: 0; overflow: auto; padding: 14px; border-left: 1px solid var(--border); background: var(--surface-raised); }
-.room-ledger-header { display: flex; gap: 10px; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.room-ledger { display: flex; flex: 0 0 min(340px, 36%); flex-direction: column; min-height: 0; overflow: hidden; padding: 12px 12px 0; border-left: 1px solid var(--border); background: var(--surface-raised); }
+.room-ledger-header { display: flex; flex: 0 0 auto; gap: 10px; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
 .room-ledger-header h2 { margin: 0; }
-.room-ledger > h2 { margin-top: 16px; }
+.room-work-tabs { display: flex; flex: 0 0 auto; gap: 2px; padding: 8px 0 0; border-bottom: 1px solid var(--border); }
+.room-work-tab { flex: 1 1 0; min-width: 0; padding: 7px 2px 8px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--faint); font: inherit; font-size: var(--text-2xs); font-weight: 600; text-align: center; white-space: nowrap; cursor: pointer; }
+.room-work-tab:hover { color: var(--text-soft); }
+.room-work-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.room-work-tab-count { margin-left: 3px; color: var(--faint); font-size: 9px; font-variant-numeric: tabular-nums; }
+.room-work-scroll { flex: 1; min-height: 0; overflow: auto; padding: 12px 0 14px; }
+.room-work-panel { display: flex; flex-direction: column; gap: 10px; }
+.room-work-empty { margin: 8px 0; color: var(--faint); font-size: var(--text-xs); line-height: 1.55; text-align: center; }
+.room-work-card { margin: 0; }
+.room-work-group { display: flex; flex-direction: column; gap: 8px; }
+.room-work-group + .room-work-group { margin-top: 4px; }
+.room-work-group-title { margin: 0 0 2px; color: var(--faint); font-size: 10px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; }
+.room-work-meta { display: flex; gap: 8px; align-items: baseline; margin-top: 8px; color: var(--faint); font-size: var(--text-2xs); }
+.room-work-link { padding: 0; border: 0; background: transparent; color: var(--accent-text); font: inherit; font-size: var(--text-2xs); cursor: pointer; }
+.room-work-link:hover, .room-work-link:focus-visible { outline: none; text-decoration: underline; }
+.room-trace-item { position: relative; padding: 10px 11px 10px 14px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--surface) 70%, var(--surface-raised)); }
+.room-trace-item::before { content: ""; position: absolute; top: 12px; bottom: 12px; left: 5px; width: 2px; border-radius: 2px; background: color-mix(in srgb, var(--border-strong) 65%, transparent); }
+.room-trace-item[data-live="true"] { border-color: color-mix(in srgb, var(--accent) 42%, var(--border)); }
+.room-trace-item[data-live="true"]::before { background: var(--accent); box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 55%, transparent); }
+.room-trace-item header { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; }
+.room-trace-item header strong { overflow-wrap: anywhere; font-size: var(--text-xs); }
+.room-trace-item header span { flex: 0 0 auto; color: var(--faint); font-size: 10px; }
+.room-trace-item header span[data-status="running"],
+.room-trace-item header span[data-status="starting"],
+.room-trace-item header span[data-status="queued"],
+.room-trace-item header span[data-status="active"] { color: var(--accent-text); }
+.room-trace-item header span[data-status="blocked"],
+.room-trace-item header span[data-status="failed"],
+.room-trace-item header span[data-status="interrupted"] { color: var(--warning); }
+.room-trace-targets { margin: 4px 0 0; color: var(--text-soft); font-size: var(--text-2xs); line-height: 1.45; }
+.room-trace-outcome { margin: 4px 0 0; color: var(--faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
+.room-trace-item time { display: block; margin-top: 4px; color: var(--faint); font-size: 10px; }
+.room-artifact-card { margin: 0; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--surface) 70%, var(--surface-raised)); }
+.room-artifact-head { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; }
+.room-artifact-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-artifact-head span { flex: 0 0 auto; color: var(--faint); font-size: 10px; }
+.room-artifact-meta { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 4px; color: var(--faint); font-size: var(--text-2xs); }
+.room-artifact-maker { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--text-soft); font-size: var(--text-2xs); }
+.room-artifact-face { width: 22px; height: 22px; display: grid; overflow: hidden; border-radius: 50%; background: #1b2124; }
+.room-artifact-face img { width: 100%; height: 100%; object-fit: cover; object-position: center 12%; }
+.room-artifact-open { align-self: flex-start; margin-top: 8px; }
+.room-usage-summary { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; }
+.room-usage-summary span { color: var(--faint); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
+.room-usage-summary strong { color: var(--text-soft); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.room-usage-list { display: flex; flex-direction: column; gap: 14px; margin: 0; padding: 2px 2px 8px; list-style: none; }
+.room-usage-agent { display: flex; align-items: center; gap: 6px; }
+.room-usage-face { width: 22px; height: 22px; flex: 0 0 22px; display: grid; overflow: hidden; border-radius: 50%; background: #1b2124; }
+.room-usage-face img { width: 100%; height: 100%; object-fit: cover; object-position: center 12%; }
+.room-usage-agent strong { font-size: var(--text-sm); }
+.room-usage-agent > span:last-child { margin-left: auto; color: var(--faint); font-size: var(--text-2xs); }
+.room-usage-agent > span[data-status="working"] { color: var(--accent-text); }
+.room-usage-model, .room-usage-line, .room-usage-context { margin: 2px 0 0; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-variant-numeric: tabular-nums; }
+.room-usage-context { display: flex; gap: 8px; align-items: center; }
+.room-usage-bar { flex: 1; height: 3px; border-radius: 999px; background: var(--surface-active); overflow: hidden; }
+.room-usage-bar span { display: block; height: 100%; background: var(--accent); }
 .room-card { padding: 12px; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 10px; overflow-wrap: anywhere; }
+.room-card.room-work-card { margin-bottom: 0; }
 .room-card header { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; }
 .room-card p { margin: 4px 0; }
 .room-card form { display: flex; flex-wrap: wrap; gap: 8px; }
