@@ -379,10 +379,12 @@ describe('team room workspace', () => {
     await flushPromises()
     expect(wrapper.get('.room-turn-usage').text()).toBe('in 1.2k · out 340 · cache 8.1k')
     expect(wrapper.find('.room-usage-chip').exists()).toBe(false)
-    const rows = wrapper.emitted('usage-change').at(-1)[0]
-    expect(rows.find(row => row.id === 'worker')).toMatchObject({ contextPercent: 42, status: 'working' })
     await wrapper.get('.room-usage-toggle').trigger('click')
-    expect(wrapper.emitted('toggle-usage')).toHaveLength(1)
+    const ledger = wrapper.get('.room-ledger')
+    expect(ledger.get('.room-work-tab.active').text()).toContain('Usage')
+    expect(ledger.text()).toContain('Writer')
+    expect(ledger.text()).toContain('in 1.2k · out 340 · cache 8.1k')
+    expect(ledger.text()).toContain('42%')
   })
 
   it('shows stored thinking and the settled tool trace without loading runtime events', async () => {

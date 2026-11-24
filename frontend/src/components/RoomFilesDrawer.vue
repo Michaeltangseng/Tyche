@@ -12,40 +12,18 @@
       class="project-room-drawer"
       :role="drawer ? 'dialog' : 'complementary'"
       :aria-modal="drawer ? 'true' : undefined"
-      :aria-label="panel === 'usage' ? t('room.usagePanel') : t('room.files')"
+      :aria-label="t('room.files')"
       :style="drawer ? undefined : { width: `${width}px` }"
       tabindex="-1"
     >
       <header class="project-room-drawer-header">
-        <div class="project-room-drawer-tabs" role="tablist">
-          <button type="button" role="tab" :aria-selected="panel === 'files'" :class="{ active: panel === 'files' }" @click="emit('switch', 'files')">{{ t('room.files') }}</button>
-          <button type="button" role="tab" :aria-selected="panel === 'usage'" :class="{ active: panel === 'usage' }" @click="emit('switch', 'usage')">{{ t('room.usagePanel') }}</button>
-        </div>
+        <span class="project-room-drawer-title">{{ t('room.files') }}</span>
         <button class="icon-button" type="button" :title="t('room.closeDrawer')" :aria-label="t('room.closeDrawer')" @click="$emit('close')">
           <CloseOutline />
         </button>
       </header>
 
-      <section v-show="panel === 'usage'" class="project-room-drawer-body room-usage-panel">
-        <p v-if="!usage.length" class="project-room-drawer-empty">{{ t('room.usageEmpty') }}</p>
-        <ul v-else class="room-usage-list">
-          <li v-for="row in usage" :key="row.id">
-            <div class="room-usage-agent">
-              <strong>{{ row.name }}</strong>
-              <span :data-status="row.status">{{ row.status === 'working' ? t('room.usageWorking') : t('room.usageIdle') }}</span>
-            </div>
-            <p class="room-usage-model">{{ row.model }}</p>
-            <p class="room-usage-line">{{ formatUsageLine(row.usage) }}</p>
-            <p v-if="row.contextPercent != null" class="room-usage-context">
-              {{ t('room.usageContext') }} {{ Math.round(row.contextPercent) }}%
-              <span class="room-usage-bar" aria-hidden="true"><span :style="{ width: `${Math.max(0, Math.min(100, row.contextPercent))}%` }" /></span>
-            </p>
-          </li>
-        </ul>
-      </section>
-
       <section
-        v-show="panel === 'files'"
         ref="filesPanel"
         class="project-room-drawer-body project-room-drawer-files"
         :class="{ 'preview-hidden': !previewVisible }"
@@ -90,7 +68,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { CloseOutline, EyeOffOutline, EyeOutline } from '@vicons/ionicons5'
 import { t } from '../i18n.js'
-import { formatUsageLine } from '../room-usage.js'
 import { useWorkdirTree } from '../composables/useWorkdirTree.js'
 import WorkdirTree from './workdir/WorkdirTree.vue'
 import FilePreview from './workdir/FilePreview.vue'
@@ -99,10 +76,8 @@ const props = defineProps({
   api: { type: Object, required: true },
   roomId: { type: String, required: true },
   width: { type: Number, default: 420 },
-  panel: { type: String, default: 'files' },
-  usage: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['close', 'resize', 'switch'])
+const emit = defineEmits(['close', 'resize'])
 
 const panelElement = ref(null)
 const filesPanel = ref(null)
@@ -246,7 +221,7 @@ onMounted(() => {
   syncDrawerMode()
   panelElement.value?.focus?.()
   window.addEventListener('keydown', handleEscape)
-  if (props.panel !== 'usage') ensureFiles()
+  ensureFiles()
 })
 
 let filesLoaded = false
@@ -255,10 +230,6 @@ function ensureFiles() {
   filesLoaded = true
   void tree.loadDirectory('')
 }
-
-watch(() => props.panel, (panel) => {
-  if (panel === 'files') ensureFiles()
-})
 
 onBeforeUnmount(() => {
   drawerMediaQuery?.removeEventListener?.('change', syncDrawerMode)
@@ -277,13 +248,5 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.room-usage-list { display: flex; flex-direction: column; gap: 14px; margin: 0; padding: 4px 2px 12px; list-style: none; }
-.room-usage-agent { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
-.room-usage-agent strong { font-size: var(--text-sm); }
-.room-usage-agent span { color: var(--faint); font-size: var(--text-2xs); }
-.room-usage-agent span[data-status="working"] { color: var(--accent-text); }
-.room-usage-model, .room-usage-line, .room-usage-context { margin: 2px 0 0; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-variant-numeric: tabular-nums; }
-.room-usage-context { display: flex; gap: 8px; align-items: center; }
-.room-usage-bar { flex: 1; height: 3px; border-radius: 999px; background: var(--surface-active); overflow: hidden; }
-.room-usage-bar span { display: block; height: 100%; background: var(--accent); }
+.project-room-drawer-title { color: var(--text-soft); font-size: var(--text-sm); font-weight: 650; }
 </style>

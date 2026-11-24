@@ -84,12 +84,9 @@
           :create-request="roomCreateRequest"
           :open-request="teamRoomOpenRequest"
           :files-open="roomDrawer === 'files'"
-          :usage-open="roomDrawer === 'usage'"
           @create-request-consumed="roomCreateRequest = false"
           @active-change="teamRoomNavigation.syncActive"
           @toggle-files="toggleRoomDrawer('files')"
-          @toggle-usage="toggleRoomDrawer('usage')"
-          @usage-change="roomUsage = $event"
         />
 
         <section v-else class="conversation-pane">
@@ -127,10 +124,7 @@
           :api="api.teamRoom"
           :room-id="activeTeamRoomId"
           :width="roomFilesWidth"
-          :panel="roomDrawer"
-          :usage="roomUsage"
           @close="roomDrawer = null"
-          @switch="roomDrawer = $event"
           @resize="roomFilesWidth = $event"
         />
       </transition>
@@ -440,7 +434,6 @@ const {
 const roomCreateRequest = ref(false)
 const PROJECT_DRAWER_DEFAULT_WIDTH = 420
 const roomDrawer = ref(null)
-const roomUsage = ref([])
 const roomFilesWidth = ref(PROJECT_DRAWER_DEFAULT_WIDTH)
 
 function toggleRoomDrawer(panel) {

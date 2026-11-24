@@ -40,26 +40,6 @@ describe('room files drawer', () => {
     expect(wrapper.get('.file-preview').text()).toContain('hello')
   })
 
-  it('lists every agent total on the usage tab', async () => {
-    const { wrapper } = mountDrawer()
-    await wrapper.setProps({
-      panel: 'usage',
-      usage: [{
-        id: 'captain',
-        name: 'Claude Code',
-        model: 'claude-haiku',
-        status: 'idle',
-        usage: { inputTokens: 1200, outputTokens: 340, cachedInputTokens: 0 },
-        contextPercent: 3,
-      }],
-    })
-    expect(wrapper.get('.room-usage-list').text()).toContain('Claude Code')
-    expect(wrapper.get('.room-usage-list').text()).toContain('in 1.2k · out 340 · cache 0')
-    expect(wrapper.get('.room-usage-list').text()).toContain('Context 3%')
-    await wrapper.get('.project-room-drawer-tabs button').trigger('click')
-    expect(wrapper.emitted('switch')[0]).toEqual(['files'])
-  })
-
   it('emits close from the header and Escape', async () => {
     const { wrapper } = mountDrawer()
     await flushPromises()

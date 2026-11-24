@@ -51,13 +51,13 @@
         <button v-if="attentions.length" class="room-notice-pill" type="button" @click="scrollToAttention">
           {{ t('room.attentions', { count: attentions.length }) }}
         </button>
-        <button v-if="snapshot" class="room-icon-button room-usage-toggle" type="button" :aria-pressed="usageOpen" :title="t('room.usagePanel')" :aria-label="t('room.usagePanel')" @click="openUsage">
+        <button v-if="snapshot" class="room-icon-button room-usage-toggle" type="button" :aria-pressed="showWorkPanel && activeWorkTab === 'usage'" :title="t('room.usagePanel')" :aria-label="t('room.usagePanel')" @click="openUsage">
           <PulseOutline />
         </button>
         <button v-if="snapshot" class="room-icon-button room-files-toggle" type="button" :aria-pressed="filesOpen" :title="t('room.files')" :aria-label="t('room.files')" @click="emit('toggle-files')">
           <FolderOutline />
         </button>
-        <button v-if="hasWork" class="secondary-button room-work-toggle" type="button" :aria-pressed="workPanelOpen" @click="workPanelOpen = !workPanelOpen">
+        <button v-if="hasWork" class="secondary-button room-work-toggle" type="button" :aria-pressed="workPanelOpen" @click="toggleWorkPanel">
           {{ t('room.workPanel') }} · {{ workCount }}
         </button>
         <button class="room-icon-button room-create-button" type="button" data-testid="room-create-open" :aria-label="t('room.create')" :disabled="busy" @click="startCreating">+</button>
@@ -329,7 +329,7 @@
       <aside v-if="showWorkPanel" class="room-ledger" :aria-label="t('room.workPanel')">
         <header class="room-ledger-header">
           <h2>{{ t('room.workPanel') }}</h2>
-          <button class="secondary-button" type="button" @click="workPanelOpen = false">{{ t('common.close') }}</button>
+          <button class="secondary-button" type="button" @click="closeWorkPanel">{{ t('common.close') }}</button>
         </header>
 
         <nav class="room-work-tabs" role="tablist" :aria-label="t('room.workPanel')">
@@ -733,9 +733,8 @@ const props = defineProps({
   createRequest: { type: Boolean, default: false },
   openRequest: { type: Object, default: null },
   filesOpen: { type: Boolean, default: false },
-  usageOpen: { type: Boolean, default: false },
 })
-const emit = defineEmits(['create-request-consumed', 'active-change', 'toggle-files', 'toggle-usage', 'usage-change'])
+const emit = defineEmits(['create-request-consumed', 'active-change', 'toggle-files'])
 
 const {
   rooms,
@@ -798,6 +797,7 @@ const roleDraft = ref(null)
 const roleSettingsWasCaptain = ref(false)
 const roleDeleteArmed = ref(false)
 const workPanelOpen = ref(true)
+const workPanelRequested = ref(false)
 const workTab = ref('')
 const name = ref('')
 const directory = ref('')
@@ -923,8 +923,6 @@ const agentUsage = computed(() => agentUsageRows({
   liveRuns: liveRuns.value,
 }))
 
-watch(agentUsage, rows => emit('usage-change', rows), { immediate: true })
-
 function turnUsage(message) {
   if (message?.author_type !== 'agent') return ''
   return formatUsageLine(liveFor(message)?.usage || message?.data?.usage || usageByRun.value[message.id])
@@ -938,7 +936,9 @@ const workCount = computed(() => (
   + artifacts.value.length
 ))
 const hasWork = computed(() => workCount.value > 0)
-const showWorkPanel = computed(() => workPanelOpen.value && hasWork.value)
+const showWorkPanel = computed(() => (
+  workPanelOpen.value && (hasWork.value || workPanelRequested.value)
+))
 const canCreate = computed(() => Boolean(name.value.trim() && directory.value && selectedCaptain.value))
 
 const roleProviders = computed(() => {
@@ -1230,6 +1230,8 @@ async function uploadWorkspaceFiles() {
 watch(chatId, () => {
   uploadedFiles.value = []
   uploadError.value = false
+  workPanelRequested.value = false
+  workTab.value = ''
 })
 
 function focusComposer() {
@@ -1536,12 +1538,22 @@ async function removeRole() {
 }
 
 function openUsage() {
-  if (hasWork.value) {
-    workTab.value = 'usage'
-    workPanelOpen.value = true
+  workPanelRequested.value = true
+  workPanelOpen.value = true
+  workTab.value = 'usage'
+}
+
+function closeWorkPanel() {
+  workPanelOpen.value = false
+  workPanelRequested.value = false
+}
+
+function toggleWorkPanel() {
+  if (workPanelOpen.value) {
+    closeWorkPanel()
     return
   }
-  emit('toggle-usage')
+  workPanelOpen.value = true
 }
 
 function scrollToAttention() {
