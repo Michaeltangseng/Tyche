@@ -927,6 +927,7 @@ const collaboration = computed(() => deriveRoomCollaboration({
   reports: reports.value,
   messages: messages.value,
   assignments: captainAssignments.value,
+  reviews: reviews.value,
   liveRuns: liveRuns.value,
 }))
 

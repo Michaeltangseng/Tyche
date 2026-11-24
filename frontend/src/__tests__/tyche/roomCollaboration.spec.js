@@ -41,6 +41,29 @@ function agentMessage(overrides = {}) {
   }
 }
 
+function userMessage(overrides = {}) {
+  return {
+    id: 'user-1',
+    chat_id: 'chat-1',
+    author_type: 'user',
+    status: 'done',
+    created_at: '2026-11-15T10:00:00Z',
+    ...overrides,
+  }
+}
+
+function assignment(overrides = {}) {
+  return {
+    id: 'assignment-1',
+    chat_id: 'chat-1',
+    status: 'active',
+    target_role_ids: ['worker'],
+    target_reply_ids: [],
+    created_at: '2026-11-15T10:01:00Z',
+    ...overrides,
+  }
+}
+
 describe('room collaboration derivation', () => {
   it('stays idle without live work or a settled task', () => {
     expect(deriveRoomCollaboration({})).toMatchObject({
@@ -198,6 +221,199 @@ describe('room collaboration derivation', () => {
 
     expect(state.mode).toBe('settled')
     expect(state.tone).toBe('attention')
+    expect(state.nodes[0].state).toBe('attention')
+  })
+
+  it('switches to the relay when a Captain assignment is live', () => {
+    const state = deriveRoomCollaboration({
+      messages: [
+        userMessage(),
+        agentMessage({
+          id: 'worker-reply',
+          author_id: 'worker',
+          status: 'working',
+          created_at: '2026-11-15T10:02:00Z',
+        }),
+      ],
+      assignments: [assignment({
+        target_role_ids: ['worker', 'reviewer'],
+        target_reply_ids: ['worker-reply'],
+      })],
+    })
+
+    expect(state.mode).toBe('running')
+    expect(state.taskNumber).toBe('')
+    expect(state.nodes.map(node => [node.roleId, node.state])).toEqual([
+      ['worker', 'active'],
+      ['reviewer', 'waiting'],
+    ])
+    expect(state.activeRoleId).toBe('worker')
+  })
+
+  it('marks a completed assignment step done and keeps the current one lit', () => {
+    const state = deriveRoomCollaboration({
+      messages: [
+        userMessage(),
+        agentMessage({
+          id: 'worker-done',
+          author_id: 'worker',
+          status: 'done',
+          created_at: '2026-11-15T10:02:00Z',
+          mentions: ['reviewer'],
+        }),
+        agentMessage({
+          id: 'reviewer-live',
+          author_id: 'reviewer',
+          status: 'working',
+          created_at: '2026-11-15T10:03:00Z',
+        }),
+      ],
+      assignments: [assignment({
+        target_role_ids: ['worker', 'reviewer'],
+        target_reply_ids: ['worker-done', 'reviewer-live'],
+      })],
+    })
+
+    expect(state.mode).toBe('running')
+    expect(state.nodes.map(node => [node.roleId, node.state])).toEqual([
+      ['worker', 'done'],
+      ['reviewer', 'active'],
+    ])
+    expect(state.activeRoleId).toBe('reviewer')
+  })
+
+  it('uses a completed handoff message when the assignment has no reply ids', () => {
+    const state = deriveRoomCollaboration({
+      messages: [
+        userMessage(),
+        agentMessage({
+          id: 'worker-done',
+          author_id: 'worker',
+          status: 'done',
+          created_at: '2026-11-15T10:02:00Z',
+          mentions: ['reviewer'],
+        }),
+        agentMessage({
+          id: 'reviewer-live',
+          author_id: 'reviewer',
+          status: 'working',
+          created_at: '2026-11-15T10:03:00Z',
+        }),
+      ],
+      assignments: [assignment({ target_role_ids: ['worker', 'reviewer'] })],
+    })
+
+    expect(state.mode).toBe('running')
+    expect(state.nodes.map(node => [node.roleId, node.state])).toEqual([
+      ['worker', 'done'],
+      ['reviewer', 'active'],
+    ])
+  })
+
+  it('shows assigned roles waiting before the first reply starts', () => {
+    const state = deriveRoomCollaboration({
+      messages: [userMessage()],
+      assignments: [assignment({ target_role_ids: ['worker', 'reviewer'] })],
+    })
+
+    expect(state.mode).toBe('running')
+    expect(state.nodes.map(node => node.state)).toEqual(['waiting', 'waiting'])
+    expect(state.activeRoleId).toBe('')
+  })
+
+  it('does not replay an assignment from a previous user turn', () => {
+    const state = deriveRoomCollaboration({
+      messages: [
+        userMessage({ created_at: '2026-11-15T10:10:00Z' }),
+        agentMessage({ id: 'new-reply', status: 'working', created_at: '2026-11-15T10:11:00Z' }),
+      ],
+      assignments: [assignment({ created_at: '2026-11-15T09:00:00Z' })],
+    })
+
+    expect(state.mode).toBe('replying')
+  })
+
+  it('adds a live Captain reply to the assignment relay', () => {
+    const state = deriveRoomCollaboration({
+      messages: [
+        userMessage(),
+        agentMessage({
+          id: 'worker-done',
+          author_id: 'worker',
+          status: 'done',
+          created_at: '2026-11-15T10:02:00Z',
+          mentions: ['reviewer'],
+        }),
+        agentMessage({
+          id: 'captain-live',
+          author_id: 'captain',
+          status: 'working',
+          created_at: '2026-11-15T10:03:00Z',
+        }),
+      ],
+      assignments: [assignment({ target_reply_ids: ['worker-done'] })],
+    })
+
+    expect(state.mode).toBe('running')
+    expect(state.nodes.map(node => [node.roleId, node.state])).toEqual([
+      ['worker', 'done'],
+      ['captain', 'active'],
+    ])
+    expect(state.activeRoleId).toBe('captain')
+  })
+
+  it('recaps settled assignment work with the roles that replied', () => {
+    const state = deriveRoomCollaboration({
+      messages: [
+        userMessage(),
+        agentMessage({
+          id: 'worker-done',
+          author_id: 'worker',
+          status: 'done',
+          created_at: '2026-11-15T10:02:00Z',
+          mentions: ['reviewer'],
+        }),
+        agentMessage({
+          id: 'reviewer-done',
+          author_id: 'reviewer',
+          status: 'done',
+          created_at: '2026-11-15T10:03:00Z',
+        }),
+      ],
+      assignments: [assignment({
+        target_role_ids: ['worker', 'reviewer'],
+        target_reply_ids: ['worker-done', 'reviewer-done'],
+      })],
+      reviews: [{
+        id: 'review-1',
+        chat_id: 'chat-1',
+        kind: 'assignment_settled',
+        status: 'done',
+        created_at: '2026-11-15T10:04:00Z',
+      }],
+    })
+
+    expect(state.mode).toBe('settled')
+    expect(state.tone).toBe('done')
+    expect(state.nodes.map(node => node.state)).toEqual(['done', 'done'])
+    expect(state.settledAt).toBe('2026-11-15T10:04:00.000Z')
+  })
+
+  it('keeps a failed assignment step visible as attention', () => {
+    const state = deriveRoomCollaboration({
+      messages: [
+        userMessage(),
+        agentMessage({
+          id: 'worker-failed',
+          author_id: 'worker',
+          status: 'failed',
+          created_at: '2026-11-15T10:02:00Z',
+        }),
+      ],
+      assignments: [assignment({ target_reply_ids: ['worker-failed'] })],
+    })
+
+    expect(state.mode).toBe('running')
     expect(state.nodes[0].state).toBe('attention')
   })
 })

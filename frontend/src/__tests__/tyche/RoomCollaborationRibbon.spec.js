@@ -151,8 +151,7 @@ describe('room collaboration ribbon', () => {
           roleId: 'codex',
           state: 'done',
           status: 'completed',
-          runId: 'run-2',
-          activationKey: 'run-2:done',
+          activationKey: 'assignment:codex:done',
         },
       ],
     })

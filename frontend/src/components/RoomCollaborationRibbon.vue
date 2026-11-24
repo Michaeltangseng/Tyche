@@ -186,7 +186,9 @@ const relayNodes = computed(() => (props.state?.nodes || []).map(node => ({
     can_speak: true,
   },
 })))
-const recapNodes = computed(() => relayNodes.value.filter(node => node.runId))
+const recapNodes = computed(() => relayNodes.value.filter(node => (
+  node.state === 'done' || node.state === 'attention'
+)))
 const recapFaces = computed(() => recapNodes.value.slice(0, 3))
 const recapExtra = computed(() => Math.max(0, recapNodes.value.length - 3))
 const addDisabled = computed(() => props.busy || !props.canAdd)
