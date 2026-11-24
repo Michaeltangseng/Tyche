@@ -594,6 +594,7 @@ export default {
     'nav.conversations': '对话',
     'nav.direct': '单聊',
     'nav.sidebarAgents': '本机 Agent',
+    'nav.manageAgents': '管理 Agent',
     'nav.collapseAgents': '收起本机 Agent',
     'nav.expandAgents': '展开本机 Agent',
     'nav.searchSidebar': '搜索会话、成员...',

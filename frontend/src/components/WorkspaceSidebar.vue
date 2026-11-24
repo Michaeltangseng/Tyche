@@ -121,8 +121,17 @@
                 class="attention-dot agent-attention-dot"
                 :title="t('humanGate.waiting')"
               />
-              <span class="member-presence" :data-tone="memberPresence(agent)" />
             </span>
+            <span class="agent-cast-status" :data-tone="memberPresence(agent)" aria-hidden="true" />
+          </button>
+          <button
+            class="agent-cast-add"
+            type="button"
+            :title="t('nav.manageAgents')"
+            :aria-label="t('nav.manageAgents')"
+            @click="openAgentManager"
+          >
+            <AddOutline />
           </button>
         </div>
         <div v-if="!sidebarAgentsCollapsed || searching" id="sidebar-agent-list">
@@ -733,6 +742,10 @@ function focusSidebarSearch() {
 }
 
 function openSidebarSettings() {
+  openSystemSettings?.('agents')
+}
+
+function openAgentManager() {
   openSystemSettings?.('agents')
 }
 

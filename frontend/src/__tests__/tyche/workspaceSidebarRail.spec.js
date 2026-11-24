@@ -221,12 +221,14 @@ describe('workspace sidebar rail', () => {
         { kind: 'hermes', label: 'Hermes', logo: './hermes.svg', ready: false },
       ],
     }]
+    fixture.openSystemSettings = vi.fn()
     const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })
 
     const cast = wrapper.findAll('.agent-cast-item')
     expect(cast).toHaveLength(1)
     expect(cast[0].attributes('title')).toContain('Codex')
     expect(cast[0].find('.agent-cast-face img').attributes('src')).toBe('./codex.svg')
+    expect(cast[0].find('.agent-cast-status').attributes('data-tone')).toBe('ready')
     expect(wrapper.find('.agent-cast-item[title*="Hermes"]').exists()).toBe(false)
     expect(wrapper.get('.agent-nav-section .nav-heading-count').text()).toBe('1')
     expect(wrapper.find('.sidebar-agent-main').exists()).toBe(false)
@@ -235,6 +237,8 @@ describe('workspace sidebar rail', () => {
     expect(fixture.handleSidebarAgentMain).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'codex' }),
     )
+    await wrapper.get('.agent-cast-add').trigger('click')
+    expect(fixture.openSystemSettings).toHaveBeenCalledWith('agents')
     wrapper.unmount()
   })
 })

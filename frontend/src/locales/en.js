@@ -594,6 +594,7 @@ export default {
     'nav.conversations': 'Conversations',
     'nav.direct': 'Direct chats',
     'nav.sidebarAgents': 'Local Agents',
+    'nav.manageAgents': 'Manage Agents',
     'nav.collapseAgents': 'Collapse local Agents',
     'nav.expandAgents': 'Expand local Agents',
     'nav.searchSidebar': 'Search chats and members...',
