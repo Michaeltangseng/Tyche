@@ -298,7 +298,7 @@
                 </span>
                 <span class="project-room-copy">
                   <strong>{{ room.name }}</strong>
-                  <small>{{ roomSummary(room) }}</small>
+                  <small v-if="roomUnreadCount(room)">{{ t('room.unreadReplies', { count: roomUnreadCount(room) }) }}</small>
                 </span>
               </button>
               <button
@@ -320,14 +320,22 @@
               <p v-if="!room.chats?.length" class="team-room-chat-empty">
                 {{ t('room.noChats') }}
               </p>
-              <div v-for="chat in room.chats" :key="chat.id" class="project-room-group-row">
+              <div
+                v-for="chat in room.chats"
+                :key="chat.id"
+                class="project-room-group-row"
+                :class="{ 'has-preview': chatIsUnread(room, chat) }"
+              >
                 <button
                   class="project-room-group"
-                  :class="{ active: isTeamChatSelected(room.id, chat.id) }"
+                  :class="{
+                    active: isTeamChatSelected(room.id, chat.id),
+                    'has-preview': chatIsUnread(room, chat),
+                  }"
                   type="button"
-                  :title="t('room.openChat', { name: chat.title })"
+                  :title="chatRowTitle(room, chat)"
                   :aria-current="isTeamChatSelected(room.id, chat.id) ? 'page' : undefined"
-                  @click="selectTeamChat(room.id, chat.id)"
+                  @click="openTeamChat(room, chat)"
                 >
                   <span v-if="chatFaces(chat).faces.length" class="team-face-stack team-face-stack-chat" aria-hidden="true">
                     <img v-for="(member, index) in chatFaces(chat).faces" :key="`${member.provider}-${member.name}-${index}`" :src="rolePortrait(member.portrait || member.provider)" alt="" />
@@ -339,23 +347,28 @@
                   <span class="team-chat-copy">
                     <span class="team-chat-title">
                       <span class="project-room-group-name">{{ teamChatLabel(room, chat) }}</span>
-                      <span
-                        v-if="isChatRunning(chat)"
-                        class="team-chat-live"
-                        role="img"
-                        :title="t('room.chatRunning')"
-                        :aria-label="t('room.chatRunning')"
-                      />
-                      <span
-                        v-else-if="chatHasFreshReply(room, chat)"
-                        class="team-chat-dot"
-                        role="img"
-                        :title="t('room.freshReply')"
-                        :aria-label="t('room.freshReply')"
-                      />
-                      <time v-if="chatTime(chat)">{{ chatTime(chat) }}</time>
                     </span>
-                    <small :data-empty="chat.activity?.text ? undefined : 'true'">{{ chatActivityLabel(chat) }}</small>
+                    <small
+                      v-if="chatIsUnread(room, chat)"
+                      class="team-chat-preview"
+                      :title="chatActivityLabel(chat)"
+                    >{{ chatActivityLabel(chat) }}</small>
+                  </span>
+                  <span class="team-chat-status">
+                    <span
+                      v-if="isChatRunning(chat)"
+                      class="team-chat-live"
+                      role="img"
+                      :title="t('room.chatRunning')"
+                      :aria-label="t('room.chatRunning')"
+                    />
+                    <span
+                      v-else-if="chatIsUnread(room, chat)"
+                      class="team-chat-dot"
+                      role="img"
+                      :title="t('room.freshReply')"
+                      :aria-label="t('room.freshReply')"
+                    />
                   </span>
                 </button>
                 <button
@@ -365,7 +378,7 @@
                   :aria-label="t('room.deleteChat', { name: teamChatLabel(room, chat) })"
                   @click.stop="openTeamDelete({ type: 'chat', roomId: room.id, chatId: chat.id, name: teamChatLabel(room, chat) }, $event)"
                 >
-                  <TrashOutline />
+                  <EllipsisHorizontal />
                 </button>
               </div>
               <button class="team-room-new-chat" type="button" @click="addTeamChat(room.id)">
@@ -448,6 +461,7 @@ import {
   ChevronBackOutline,
   ChevronForwardOutline,
   CloudOutline,
+  EllipsisHorizontal,
   PencilOutline,
   PeopleOutline,
   SearchOutline,
@@ -456,6 +470,7 @@ import {
 } from '@vicons/ionicons5'
 
 import { portraitGlow, rolePortrait } from '../role-portraits.js'
+import { loadRoomChatSeen, saveRoomChatSeen } from '../room-chat-read-state.js'
 import { roomMascot } from '../room-mascots.js'
 import RoomMascot from './RoomMascot.vue'
 
@@ -529,12 +544,12 @@ const {
   visibleGroupGroups,
 } = props.controller
 
+const storedChatSeen = loadRoomChatSeen()
+const seenChatActivity = ref(storedChatSeen || {})
+let seenChatActivityInitialized = storedChatSeen !== null
+
 function isSelectedConversation(group) {
   return unref(activeView) === 'conversation' && unref(selectedGroupId) === group.id
-}
-
-function memberList(chat) {
-  return Array.isArray(chat?.members) ? chat.members : []
 }
 
 function orderedMembers(members) {
@@ -556,27 +571,6 @@ function stackedMembers(members, limit = 3) {
   return { faces: visible.slice(0, limit), extra: Math.max(0, visible.length - limit) }
 }
 
-function roomMembers(room) {
-  const best = new Map()
-  for (const chat of room.chats || []) {
-    for (const member of orderedMembers(memberList(chat))) {
-      const key = member.provider || member.name
-      if (!key) continue
-      const rank = Number(member.last_seq) || 0
-      const existing = best.get(key)
-      if (!existing || rank > existing.rank) best.set(key, { member, rank })
-    }
-  }
-  return [...best.values()].sort((a, b) => b.rank - a.rank).map(item => item.member)
-}
-
-function roomSummary(room) {
-  const members = roomMembers(room).length
-  const chats = room.chatTotal ?? room.chats?.length ?? 0
-  if (!members) return t('room.chatCount', { count: chats })
-  return t('room.roomFaces', { members, chats })
-}
-
 const RUNNING_CHAT_STATUSES = new Set(['working', 'queued', 'starting', 'running'])
 
 function isChatRunning(chat) {
@@ -587,9 +581,17 @@ function roomRunning(room) {
   return (room?.chats || []).some(isChatRunning)
 }
 
-function chatHasFreshReply(room, chat) {
+function chatIsUnread(room, chat) {
   if (isTeamChatSelected(room.id, chat.id)) return false
-  return chat?.activity?.author === 'agent' && Boolean(chat?.activity?.text)
+  if (chat?.activity?.author !== 'agent' || !chat?.activity?.text) return false
+  const seq = Number(chat?.activity_seq) || 0
+  const seen = Number(seenChatActivity.value[chat.id]) || 0
+  return seq > seen
+}
+
+function roomUnreadCount(room) {
+  const chats = Array.isArray(room?.chats) ? room.chats : []
+  return chats.filter(chat => chatIsUnread(room, chat)).length
 }
 
 function chatActivityLabel(chat) {
@@ -607,6 +609,12 @@ function chatTime(chat) {
   const date = new Date(value || '')
   if (Number.isNaN(date.getTime())) return ''
   return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+}
+
+function chatRowTitle(room, chat) {
+  const label = t('room.openChat', { name: teamChatLabel(room, chat) })
+  const time = chatTime(chat)
+  return time ? `${label} · ${time}` : label
 }
 
 function teamChatLabel(room, chat) {
@@ -725,13 +733,62 @@ const teamRoomList = computed(() => {
   return Array.isArray(value) ? value : []
 })
 
+watch(teamRoomList, (rooms) => {
+  if (!seenChatActivityInitialized) {
+    if (!rooms.length) return
+    const seen = {}
+    for (const room of rooms) {
+      for (const chat of room.chats || []) seen[chat.id] = Number(chat.activity_seq) || 0
+    }
+    seenChatActivity.value = seen
+    seenChatActivityInitialized = true
+    saveRoomChatSeen(seen)
+    return
+  }
+  const next = { ...seenChatActivity.value }
+  let changed = false
+  for (const room of rooms) {
+    for (const chat of room.chats || []) {
+      if (!isTeamChatSelected(room.id, chat.id)) continue
+      const seq = Number(chat.activity_seq) || 0
+      if (next[chat.id] !== seq) {
+        next[chat.id] = seq
+        changed = true
+      }
+    }
+  }
+  if (changed) {
+    seenChatActivity.value = next
+    saveRoomChatSeen(next)
+  }
+}, { immediate: true, deep: true })
+
+function markChatSeen(chat) {
+  const seq = Number(chat?.activity_seq) || 0
+  if (!chat?.id || Number(seenChatActivity.value[chat.id]) === seq) return
+  const next = { ...seenChatActivity.value, [chat.id]: seq }
+  seenChatActivity.value = next
+  saveRoomChatSeen(next)
+}
+
+function openTeamChat(room, chat) {
+  markChatSeen(chat)
+  selectTeamChat(room.id, chat.id)
+}
+
+function chatActivityTime(chat) {
+  const value = Date.parse(chat?.activity?.created_at || chat?.updated_at || chat?.created_at || '')
+  return Number.isFinite(value) ? value : 0
+}
+
 const filteredTeamRooms = computed(() => teamRoomList.value.flatMap(room => {
-  const chats = Array.isArray(room.chats) ? room.chats : []
-  if (!searching.value) return [{ ...room, chatTotal: chats.length }]
+  const chats = [...(Array.isArray(room.chats) ? room.chats : [])]
+    .sort((a, b) => chatActivityTime(b) - chatActivityTime(a))
+  if (!searching.value) return [{ ...room, chats }]
   const roomHit = queryMatches(room.name)
   const matchedChats = chats.filter(chat => queryMatches(teamChatLabel(room, chat), chat.title))
   if (!roomHit && !matchedChats.length) return []
-  return [{ ...room, chats: matchedChats.length ? matchedChats : chats, chatTotal: chats.length }]
+  return [{ ...room, chats: matchedChats.length ? matchedChats : chats }]
 }))
 
 function focusSidebarSearch() {

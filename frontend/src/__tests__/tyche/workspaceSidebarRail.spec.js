@@ -1,6 +1,6 @@
 import { nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceSidebar from '../../components/WorkspaceSidebar.vue'
 
 function controller() {
@@ -66,6 +66,8 @@ function controller() {
 }
 
 describe('workspace sidebar rail', () => {
+  beforeEach(() => localStorage.clear())
+
   it('offers team-room creation in the expanded sidebar', async () => {
     const fixture = controller()
     fixture.roomWorkspaceAvailable = ref(true)
@@ -90,9 +92,17 @@ describe('workspace sidebar rail', () => {
       primary_chat_id: 'chat-1',
       chats: [
         {
+          id: 'chat-2',
+          title: 'Research',
+          is_primary: false,
+          activity_seq: 2,
+          activity: { name: 'Claude', author: 'agent', status: 'done', text: 'The date is December 25.', created_at: '2026-11-20T09:00:00Z' },
+        },
+        {
           id: 'chat-1',
           title: 'Team chat',
           is_primary: true,
+          activity_seq: 4,
           members: [
             { name: 'Claude', provider: 'claude', last_seq: 1 },
             { name: 'Codex', provider: 'codex', last_seq: 4 },
@@ -101,12 +111,15 @@ describe('workspace sidebar rail', () => {
           ],
           activity: { name: 'Pi', author: 'agent', status: 'done', text: 'snake.html', created_at: '2026-11-20T10:00:00Z' },
         },
-        { id: 'chat-2', title: 'Research', is_primary: false },
       ],
     }])
     fixture.isTeamRoomExpanded = () => true
     fixture.isTeamChatSelected = (roomId, chatId) => chatId === 'chat-1'
     const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })
+    expect(wrapper.find('.team-room-row .project-room-copy small').exists()).toBe(false)
+    fixture.teamRooms.value[0].chats[0].activity_seq = 3
+    await nextTick()
+    expect(wrapper.get('.team-room-row .project-room-copy small').text()).toBe('room.unreadReplies')
 
     expect(wrapper.get('.team-room-nav-section').text()).toContain('Team Alpha')
     expect(wrapper.find('.team-room-row .team-face-stack-room').exists()).toBe(false)
@@ -117,20 +130,26 @@ describe('workspace sidebar rail', () => {
     const chats = wrapper.findAll('.team-room-chats .project-room-group')
     expect(chats).toHaveLength(2)
     expect(chats[0].text()).toContain('Team chat')
-    expect(chats[0].text()).toContain('room.activityLine')
+    expect(chats[0].classes()).not.toContain('has-preview')
+    expect(chats[0].find('.team-chat-preview').exists()).toBe(false)
     expect(chats[0].findAll('.team-face-stack-chat img')).toHaveLength(3)
     expect(chats[0].get('.team-face-stack-chat .team-face-more').text()).toBe('+1')
     expect(chats[0].find('.team-chat-dot').exists()).toBe(false)
+    expect(chats[1].text()).toContain('Research')
     expect(chats[1].find('.team-chat-icon').exists()).toBe(true)
     expect(chats[1].find('.team-face-stack-chat').exists()).toBe(false)
-    expect(chats[1].find('.team-chat-dot').exists()).toBe(false)
-    expect(chats[1].get('small').attributes('data-empty')).toBe('true')
-    expect(chats[1].text()).toContain('room.noMessages')
+    expect(chats[1].classes()).toContain('has-preview')
+    expect(chats[1].get('.team-chat-preview').text()).toContain('room.activityLine')
+    expect(chats[1].find('.team-chat-status .team-chat-dot').exists()).toBe(true)
+    expect(chats[1].find('.team-chat-title time').exists()).toBe(false)
     expect(wrapper.get('.team-room-new-chat').text()).toContain('room.newChatAction')
-    expect(wrapper.text()).toContain('room.roomFaces')
+    expect(wrapper.text()).not.toContain('room.roomFaces')
 
     await chats[1].trigger('click')
     expect(fixture.selectTeamChat).toHaveBeenCalledWith('team-1', 'chat-2')
+    await nextTick()
+    expect(wrapper.findAll('.team-room-chats .project-room-group')[1].classes()).not.toContain('has-preview')
+    expect(wrapper.find('.team-room-row .project-room-copy small').exists()).toBe(false)
 
     await wrapper.get('.team-room-row .project-room-open').trigger('click')
     expect(fixture.handleTeamRoomClick).toHaveBeenCalledWith(expect.objectContaining({ id: 'team-1' }))
