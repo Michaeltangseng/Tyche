@@ -19,6 +19,13 @@ const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
 const originalClipboard = navigator.clipboard
 const originalExecCommand = document.execCommand
 
+async function expandAgents(wrapper) {
+  const heading = wrapper.find('.agent-nav-section .nav-heading')
+  if (!heading.exists() || heading.attributes('aria-expanded') !== 'false') return
+  await heading.trigger('click')
+  await flushPromises()
+}
+
 beforeEach(() => {
   localStorage.clear()
   localStorage.setItem('tyche-theme', 'light')
@@ -86,6 +93,7 @@ describe('Tyche workbench', () => {
       desktopBridge.localWorkspace.get.mockImplementation(async () => structuredClone(state))
     })
 
+    await expandAgents(wrapper)
     expect(wrapper.findAll('.sidebar-agent')).toHaveLength(1)
     expect(wrapper.get('.sidebar-agent-main').text()).toContain('Codex')
     await wrapper.get('.sidebar-settings-entry').trigger('click')
@@ -187,6 +195,7 @@ describe('Tyche workbench', () => {
       )
     })
 
+    await expandAgents(wrapper)
     const codexAgent = wrapper.findAll('.sidebar-agent').find(node => node.text().includes('Codex'))
     expect(codexAgent).toBeTruthy()
     expect(codexAgent.get('.direct-session-list').classes()).toContain('direct-session-list')
@@ -301,6 +310,7 @@ describe('Tyche workbench', () => {
       desktopBridge.localAttachments.pickAttachments.mockRejectedValueOnce(new Error('LOCAL_ATTACHMENT_INPUT_INVALID'))
     })
 
+    await expandAgents(wrapper)
     await wrapper.get('.direct-session-open').trigger('click')
     expect(wrapper.findAll('.message-dismiss-button')).toHaveLength(1)
     await wrapper.get('.message-dismiss-button').trigger('click')

@@ -87,14 +87,45 @@
           class="nav-heading"
           type="button"
           :title="sidebarAgentsCollapsed ? t('nav.expandAgents') : t('nav.collapseAgents')"
-          :aria-expanded="String(!sidebarAgentsCollapsed)"
+          :aria-expanded="String(!sidebarAgentsCollapsed || searching)"
           aria-controls="sidebar-agent-list"
           @click="sidebarAgentsCollapsed = !sidebarAgentsCollapsed"
         >
           <span>{{ t('nav.sidebarAgents') }}</span>
           <small v-if="sidebarAgentsCollapsed" class="nav-heading-count">{{ sidebarAgentCount }}</small>
+          <ChevronForwardOutline class="nav-heading-chevron" :class="{ open: !sidebarAgentsCollapsed || searching }" aria-hidden="true" />
         </button>
-        <div v-if="!sidebarAgentsCollapsed" id="sidebar-agent-list">
+        <div
+          v-if="sidebarAgentsCollapsed && !searching && railAgents.length"
+          class="agent-cast"
+          :aria-label="t('nav.sidebarAgents')"
+        >
+          <button
+            v-for="agent in railAgents"
+            :key="agent.kind"
+            class="agent-cast-item"
+            :class="{ active: isRailAgentActive(agent), unavailable: !agent.ready }"
+            :data-tone="memberPresence(agent)"
+            :style="{ '--agent-glow': portraitGlow(agent.kind) }"
+            type="button"
+            :title="castAgentTitle(agent)"
+            :aria-label="castAgentTitle(agent)"
+            :disabled="isDirectCreationPending(agent.kind)"
+            @click="handleSidebarAgentMain(agent)"
+          >
+            <span class="agent-cast-face">
+              <img :src="rolePortrait(agent.kind)" :alt="agent.label" />
+              <CloudOutline v-if="agent.cloud" class="agent-cast-cloud" aria-hidden="true" />
+              <span
+                v-if="agentAwaitingDecision(agent.kind)"
+                class="attention-dot agent-attention-dot"
+                :title="t('humanGate.waiting')"
+              />
+              <span class="member-presence" :data-tone="memberPresence(agent)" />
+            </span>
+          </button>
+        </div>
+        <div v-if="!sidebarAgentsCollapsed || searching" id="sidebar-agent-list">
           <div v-if="discoveringAgents && !sidebarAgentGroups.length" class="sidebar-discovery" role="status">
             <span v-for="index in 3" :key="index" class="sidebar-discovery-row" aria-hidden="true"><i /><b /></span>
             <p>{{ t('onboarding.detecting') }}</p>
@@ -252,6 +283,16 @@
                 :aria-controls="`team-room-chats-${room.id}`"
                 @click="handleTeamRoomClick(room)"
               >
+                <span class="team-face-stack team-face-stack-room" aria-hidden="true">
+                  <img
+                    v-for="(member, index) in roomFaces(room).faces"
+                    :key="`${member.provider}-${member.name}-${index}`"
+                    :src="rolePortrait(member.portrait || member.provider)"
+                    alt=""
+                  />
+                  <span v-if="roomFaces(room).extra" class="team-face-more">+{{ roomFaces(room).extra }}</span>
+                  <span v-if="roomRunning(room)" class="team-room-live" :title="t('room.chatRunning')" />
+                </span>
                 <span class="project-room-copy">
                   <strong>{{ room.name }}</strong>
                   <small>{{ roomSummary(room) }}</small>
@@ -285,15 +326,25 @@
                   :aria-current="isTeamChatSelected(room.id, chat.id) ? 'page' : undefined"
                   @click="selectTeamChat(room.id, chat.id)"
                 >
-                  <span class="team-face-stack team-face-stack-chat" aria-hidden="true">
+                  <span v-if="isTeamChatSelected(room.id, chat.id)" class="team-face-stack team-face-stack-chat" aria-hidden="true">
                     <img v-for="(member, index) in stackedMembers(chat.members).faces" :key="`${member.provider}-${member.name}-${index}`" :src="rolePortrait(member.portrait || member.provider)" alt="" />
                     <span v-if="stackedMembers(chat.members).extra" class="team-face-more">+{{ stackedMembers(chat.members).extra }}</span>
+                  </span>
+                  <span v-else class="team-chat-icon" aria-hidden="true">
+                    <ChatbubblesOutline />
                   </span>
                   <span class="team-chat-copy">
                     <span class="team-chat-title">
                       <span class="project-room-group-name">{{ teamChatLabel(room, chat) }}</span>
                       <span
-                        v-if="chatHasFreshReply(room, chat)"
+                        v-if="isChatRunning(chat)"
+                        class="team-chat-live"
+                        role="img"
+                        :title="t('room.chatRunning')"
+                        :aria-label="t('room.chatRunning')"
+                      />
+                      <span
+                        v-else-if="chatHasFreshReply(room, chat)"
                         class="team-chat-dot"
                         role="img"
                         :title="t('room.freshReply')"
@@ -401,7 +452,7 @@ import {
   TrashOutline,
 } from '@vicons/ionicons5'
 
-import { rolePortrait } from '../role-portraits.js'
+import { portraitGlow, rolePortrait } from '../role-portraits.js'
 
 const props = defineProps({
   controller: { type: Object, required: true },
@@ -519,6 +570,16 @@ function roomSummary(room) {
   return t('room.roomFaces', { members, chats })
 }
 
+const RUNNING_CHAT_STATUSES = new Set(['working', 'queued', 'starting', 'running'])
+
+function isChatRunning(chat) {
+  return RUNNING_CHAT_STATUSES.has(chat?.activity?.status)
+}
+
+function roomRunning(room) {
+  return (room?.chats || []).some(isChatRunning)
+}
+
 function chatHasFreshReply(room, chat) {
   if (isTeamChatSelected(room.id, chat.id)) return false
   return chat?.activity?.author === 'agent' && Boolean(chat?.activity?.text)
@@ -626,6 +687,10 @@ function memberStatus(agent) {
   if (presence === 'waiting') return t('nav.agentWaiting')
   if (presence === 'ready') return t('nav.agentIdle')
   return agentState(agent).label
+}
+
+function castAgentTitle(agent) {
+  return agent.ready ? `${agent.label} · ${memberStatus(agent)}` : `${agent.label}: ${agentState(agent).label}`
 }
 
 function matchingSessions(agent) {

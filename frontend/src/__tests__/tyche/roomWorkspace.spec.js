@@ -238,7 +238,7 @@ describe('team room workspace', () => {
     expect(rows).toHaveLength(2)
     expect(rows[0].text()).toContain('A joke')
     expect(rows[0].text()).toContain('Please score it')
-    expect(rows[0].text()).toContain('@Writer')
+    expect(rows[0].text()).toContain('Handoff to Writer')
     expect(rows[1].text()).toContain('Seven')
     expect(rows[1].text()).not.toContain('Please score it')
   })

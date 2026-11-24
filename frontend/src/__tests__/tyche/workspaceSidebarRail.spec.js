@@ -105,17 +105,23 @@ describe('workspace sidebar rail', () => {
       ],
     }])
     fixture.isTeamRoomExpanded = () => true
+    fixture.isTeamChatSelected = (roomId, chatId) => chatId === 'chat-1'
     const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })
 
     expect(wrapper.get('.team-room-nav-section').text()).toContain('Team Alpha')
+    const roomFaces = wrapper.findAll('.team-room-row .team-face-stack-room img')
+    expect(roomFaces).toHaveLength(3)
+    expect(roomFaces[0].attributes('src')).toContain('codex')
+    expect(wrapper.get('.team-room-row .team-face-more').text()).toBe('+1')
     const chats = wrapper.findAll('.team-room-chats .project-room-group')
     expect(chats).toHaveLength(2)
     expect(chats[0].text()).toContain('Team chat')
     expect(chats[0].text()).toContain('room.activityLine')
-    expect(chats[0].findAll('.team-face-stack img')).toHaveLength(3)
-    expect(chats[0].get('.team-face-stack img').attributes('src')).toContain('codex')
-    expect(chats[0].get('.team-face-more').text()).toBe('+1')
-    expect(chats[0].find('.team-chat-dot').exists()).toBe(true)
+    expect(chats[0].findAll('.team-face-stack-chat img')).toHaveLength(3)
+    expect(chats[0].get('.team-face-stack-chat .team-face-more').text()).toBe('+1')
+    expect(chats[0].find('.team-chat-dot').exists()).toBe(false)
+    expect(chats[1].find('.team-chat-icon').exists()).toBe(true)
+    expect(chats[1].find('.team-face-stack-chat').exists()).toBe(false)
     expect(chats[1].find('.team-chat-dot').exists()).toBe(false)
     expect(chats[1].get('small').attributes('data-empty')).toBe('true')
     expect(chats[1].text()).toContain('room.noMessages')
@@ -201,5 +207,24 @@ describe('workspace sidebar rail', () => {
       agentSection.element.compareDocumentPosition(teamSection.element)
         & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
+  })
+
+  it('renders the local agent cast when the agent section is collapsed', async () => {
+    const fixture = controller()
+    fixture.sidebarCollapsed.value = false
+    fixture.sidebarAgentsCollapsed.value = true
+    const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })
+
+    const cast = wrapper.findAll('.agent-cast-item')
+    expect(cast).toHaveLength(1)
+    expect(cast[0].attributes('title')).toContain('Codex')
+    expect(wrapper.find('.agent-cast-face img').exists()).toBe(true)
+    expect(wrapper.find('.sidebar-agent-main').exists()).toBe(false)
+
+    await cast[0].trigger('click')
+    expect(fixture.handleSidebarAgentMain).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'codex' }),
+    )
+    wrapper.unmount()
   })
 })

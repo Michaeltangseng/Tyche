@@ -35,40 +35,17 @@
         </div>
       </div>
 
-      <div v-if="snapshot" class="room-agent-strip" :aria-label="t('room.members', { count: roles.length })">
-        <button
-          v-for="role in roles"
-          :key="role.id"
-          class="room-agent-chip"
-          type="button"
-          :data-speaking="roleSpeaking(role) ? 'true' : undefined"
-          :data-quiet="role.provider && !canSpeak(role.provider) ? 'true' : undefined"
-          :style="chipStyle(role)"
-          :title="agentTitle(role)"
-          :aria-label="`${t('room.configureRole')}: ${roleLabel(role)}`"
-          @click="openRoleSettings(role.id)"
-        >
-          <span v-if="role.provider" class="room-chip-face">
-            <span class="room-chip-photo">
-              <img class="room-portrait" :src="faceSrc(role)" alt="" />
-            </span>
-            <span v-if="role.is_captain" class="room-captain-mark" :title="t('room.captain')">⚓</span>
-          </span>
-          <span class="room-chip-name">{{ roleLabel(role) }}</span>
-          <span v-if="role.provider && !canSpeak(role.provider)" class="room-agent-mute" aria-hidden="true">🔇</span>
-        </button>
-        <span v-if="!roles.length" class="room-agent-idle">{{ t('room.teamIdle') }}</span>
-        <button
-          class="room-agent-add"
-          type="button"
-          :title="t('room.addAgent')"
-          :aria-label="t('room.addAgent')"
-          :disabled="busy || !(snapshot.room.providers?.length)"
-          @click="openNewRole"
-        >
-          <AddOutline />
-        </button>
-      </div>
+      <RoomCollaborationRibbon
+        v-if="snapshot"
+        class="room-collaboration"
+        :state="collaboration"
+        :roles="castRoles"
+        :busy="busy"
+        :can-add="Boolean(snapshot.room.providers?.length)"
+        @select-role="openRoleSettings"
+        @add-role="openNewRole"
+        @open-work="workPanelOpen = true"
+      />
 
       <div class="room-header-actions">
         <button v-if="attentions.length" class="room-notice-pill" type="button" @click="scrollToAttention">
@@ -161,7 +138,14 @@
                     <span v-if="entry.isCaptain" class="room-agent-badge">{{ t('room.captain') }}</span>
                     <span v-if="entry.isReviewReply" class="room-agent-badge">{{ t('room.reviewReply') }}</span>
                     <time>{{ formatTime(entry.createdAt) }}</time>
-                    <span class="room-message-status" :data-status="entry.message.status">{{ statusLabel(entry.message.status) }}</span>
+                    <span
+                      v-if="isTerminalMessage(entry.message)"
+                      class="room-message-stamp"
+                      role="img"
+                      :title="statusLabel(entry.message.status)"
+                      :aria-label="statusLabel(entry.message.status)"
+                    >✓</span>
+                    <span v-else-if="entry.message.status" class="room-message-status" :data-status="entry.message.status">{{ statusLabel(entry.message.status) }}</span>
                     <span v-if="turnUsage(entry.message)" class="room-turn-usage">{{ turnUsage(entry.message) }}</span>
                   </header>
                   <details v-if="replyThinking(entry.message)" class="room-reasoning">
@@ -183,14 +167,39 @@
                     aria-live="polite"
                   />
                   <p v-else-if="isWorking(entry.message) && !entry.handoffs.length" class="room-live-output" aria-live="polite">{{ t('room.liveOutput') }}</p>
-                  <MarkdownMessage
-                    v-for="handoff in entry.handoffs"
-                    :key="handoff.message.id"
-                    class="room-message-handoff"
-                    :content="handoff.message.content"
-                    :mention-profiles="mentionProfiles"
-                  />
-                  <div v-if="entry.mentions.length" class="room-mention-row">
+                  <div v-if="entry.handoffs.length" class="room-handoff-list">
+                    <div
+                      v-for="handoff in entry.handoffs"
+                      :key="handoff.message.id"
+                      class="room-handoff"
+                      :data-live="handoffLive(handoff) ? 'true' : undefined"
+                    >
+                      <div v-if="handoffTargets(handoff).length" class="room-handoff-strip">
+                        <span class="room-handoff-face">
+                          <img v-if="entry.provider || entry.portrait" :src="rolePortrait(entry.portrait || entry.provider)" alt="" />
+                          <span v-else>{{ entry.author.slice(0, 1) }}</span>
+                        </span>
+                        <span class="room-handoff-arrow" aria-hidden="true">→</span>
+                        <span
+                          v-for="target in handoffTargets(handoff)"
+                          :key="target.id"
+                          class="room-handoff-face"
+                          :title="roleLabel(target)"
+                        >
+                          <img :src="faceSrc(target)" alt="" />
+                        </span>
+                        <span class="room-handoff-label">
+                          {{ t('room.handoffTo', { names: handoffTargets(handoff).map(roleLabel).join(' · ') }) }}
+                        </span>
+                      </div>
+                      <MarkdownMessage
+                        class="room-message-handoff"
+                        :content="handoff.message.content"
+                        :mention-profiles="mentionProfiles"
+                      />
+                    </div>
+                  </div>
+                  <div v-if="entry.mentions.length && !entry.handoffs.length" class="room-mention-row">
                     <span v-for="name in entry.mentions" :key="name" class="room-mention-chip">@{{ name }}</span>
                   </div>
                   <div v-if="rosterRoles(entry).length" class="room-roster" :aria-label="t('room.roster')">
@@ -610,7 +619,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
-  AddOutline,
   AtOutline,
   AttachOutline,
   CheckmarkCircleOutline,
@@ -632,7 +640,9 @@ import { t } from '../i18n.js'
 import { keptSkillIds, selectableSkills, skillTokenEstimate } from '../skillInventory.js'
 import { useRoomWorkspace } from '../composables/useRoomWorkspace.js'
 import { agentUsageRows, formatUsageLine } from '../room-usage.js'
+import { deriveRoomCollaboration } from '../roomCollaboration.js'
 import MarkdownMessage from './MarkdownMessage.vue'
+import RoomCollaborationRibbon from './RoomCollaborationRibbon.vue'
 import RoomRunTrace from './RoomRunTrace.vue'
 
 const props = defineProps({
@@ -745,6 +755,23 @@ function isHandoff(message) {
   if (!message || message.author_type !== 'agent') return false
   if (message.kind === 'mention') return true
   return !message.reply_to && Array.isArray(message.mentions) && message.mentions.length > 0
+}
+
+const TERMINAL_MESSAGE_STATUSES = new Set(['done', 'completed', 'accepted'])
+
+function isTerminalMessage(message) {
+  return TERMINAL_MESSAGE_STATUSES.has(message?.status)
+}
+
+function handoffTargets(handoff) {
+  const ids = handoff?.message?.mentions || []
+  return ids.map(id => rolesById.value.get(id)).filter(Boolean)
+}
+
+function handoffLive(handoff) {
+  const activeRoleId = collaboration.value.activeRoleId
+  if (!activeRoleId || collaboration.value.mode === 'idle') return false
+  return handoffTargets(handoff).some(role => role.id === activeRoleId)
 }
 
 const entries = computed(() => {
@@ -888,16 +915,20 @@ function faceSrc(role) {
   return rolePortrait(role?.portrait || role?.provider)
 }
 
-function chipStyle(role) {
-  return { '--chip-tint': portraitGlow(role?.portrait || role?.provider) }
-}
+const castRoles = computed(() => roles.value.map(role => ({
+  ...role,
+  provider_label: providerLabel(role.provider),
+  can_speak: canSpeak(role.provider),
+})))
 
-function roleSpeaking(role) {
-  return messages.value.some(message => (
-    message.author_id === role?.id
-    && ['queued', 'working', 'starting'].includes(message.status)
-  ))
-}
+const collaboration = computed(() => deriveRoomCollaboration({
+  tasks: tasks.value,
+  runs: runs.value,
+  reports: reports.value,
+  messages: messages.value,
+  assignments: captainAssignments.value,
+  liveRuns: liveRuns.value,
+}))
 
 function showPortraitPage(id) {
   const index = rolePortraits().findIndex(item => item.id === id)
@@ -926,11 +957,6 @@ function canSpeak(provider) {
   const list = snapshot.value?.room?.launch_providers
   if (!Array.isArray(list)) return true
   return list.includes(provider)
-}
-
-function agentTitle(role) {
-  const base = `${roleLabel(role)} · ${providerLabel(role.provider)}`
-  return role?.provider && !canSpeak(role.provider) ? `${base} · ${t('room.cannotSpeak')}` : base
 }
 
 function providerChoiceTitle(provider) {
@@ -1428,30 +1454,14 @@ onBeforeUnmount(() => {
   .room-chat-title-clip.marquee:hover .room-chat-title-text { animation: none; }
 }
 .room-subtitle { max-width: 34ch; overflow: hidden; color: var(--faint); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
-.room-agent-strip { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: 12px; align-items: center; min-width: 0; }
+.room-collaboration { flex: 1 1 auto; min-width: 0; }
 .room-roster { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .room-roster-card { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 168px; max-width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .room-roster-card:hover { border-color: var(--border-strong); background: var(--surface-hover); }
-.room-roster-card img { width: 22px; height: 22px; object-fit: contain; }
+.room-roster-card img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; object-position: center 12%; }
 .room-roster-name { max-width: 100%; overflow: hidden; font-size: var(--text-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .room-roster-duty { display: -webkit-box; overflow: hidden; color: var(--text-soft); font-size: var(--text-2xs); line-height: 1.4; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-.room-agent-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 180px; padding: 2px 6px 2px 2px; border: 0; border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: var(--text-xs); cursor: pointer; }
-.room-agent-chip:hover { background: rgb(255 255 255 / 0.06); }
-.room-chip-face { position: relative; width: 22px; height: 22px; flex: 0 0 22px; display: grid; }
-.room-chip-photo { display: grid; overflow: hidden; width: 22px; height: 22px; border-radius: 50%; background: color-mix(in srgb, var(--chip-tint, var(--accent)) 15%, transparent); }
-.room-chip-photo img { width: 100%; height: 100%; border: 0; border-radius: 0; background: transparent; object-fit: cover; object-position: center 12%; transform: scale(1.55); }
-.room-agent-chip[data-speaking="true"] .room-chip-photo { box-shadow: 0 0 0 2px color-mix(in srgb, var(--chip-tint, var(--accent)) 75%, white); }
-.room-agent-chip[data-quiet="true"] .room-chip-photo { opacity: 0.5; }
-.room-captain-mark { position: absolute; right: -3px; bottom: -3px; width: 10px; height: 10px; display: grid; place-items: center; border-radius: 50%; background: #2a1c12; color: #ff8a3d; font-size: 8px; line-height: 1; }
-.room-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.room-agent-mute { flex: 0 0 auto; font-size: 11px; line-height: 1; opacity: 0.8; }
-.room-agent-quiet { color: var(--text-muted); font-size: var(--text-xs); }
 .room-agent-badge { flex: 0 0 auto; margin-left: 2px; padding: 1px 5px; border-radius: 999px; background: var(--surface-active); color: var(--text-soft); font-size: 10px; font-weight: 600; }
-.room-agent-idle { flex: 1 1 auto; color: var(--faint); font-size: var(--text-xs); }
-.room-agent-add { width: 28px; height: 28px; flex: 0 0 28px; display: inline-grid; place-items: center; padding: 0; border: 1px dashed var(--border); border-radius: 999px; background: transparent; color: var(--muted); cursor: pointer; }
-.room-agent-add svg { width: 15px; height: 15px; }
-.room-agent-add:hover, .room-agent-add:focus-visible { outline: none; border-color: var(--accent); color: var(--accent); }
-.room-agent-add:disabled { opacity: 0.45; cursor: not-allowed; }
 .room-header-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .room-notice-pill { padding: 5px 11px; border: 1px solid color-mix(in srgb, var(--accent) 62%, var(--border)); border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-size: var(--text-xs); font-weight: 600; cursor: pointer; }
 .room-icon-button { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); color: var(--text-soft); font-size: 20px; line-height: 1; cursor: pointer; }
@@ -1581,7 +1591,24 @@ button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.
 .room-message .markdown-body th, .room-message .markdown-body td { padding: 6px 8px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
 .room-message .markdown-body th { color: var(--text-soft); font-weight: 600; }
 .room-message-streaming::after { content: ""; display: inline-block; width: 7px; height: 0.95em; margin-left: 3px; background: var(--accent); vertical-align: text-bottom; animation: room-caret 1s steps(1) infinite; }
-.room-message-handoff { margin-top: 10px; }
+.room-message-stamp { align-self: center; display: inline-grid; flex: 0 0 auto; place-items: center; width: 14px; height: 14px; border-radius: 50%; background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text-soft); font-size: 9px; font-weight: 700; line-height: 1; }
+.room-handoff-list { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.room-handoff { position: relative; padding-left: 12px; border-left: 2px solid color-mix(in srgb, var(--border-strong) 65%, transparent); }
+.room-handoff[data-live="true"] { border-left-color: color-mix(in srgb, var(--accent) 65%, transparent); }
+.room-handoff-strip { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; color: var(--faint); font-size: var(--text-2xs); }
+.room-handoff-face { display: grid; flex: 0 0 18px; place-items: center; width: 18px; height: 18px; overflow: hidden; border-radius: 50%; background: #1b2124; color: var(--text-soft); font-size: 9px; font-weight: 600; }
+.room-handoff-face img { width: 100%; height: 100%; object-fit: cover; object-position: center 12%; }
+.room-handoff-arrow { color: var(--faint); font-size: 11px; line-height: 1; }
+.room-handoff[data-live="true"] .room-handoff-arrow { color: var(--accent-text); animation: room-handoff-flow 1.6s ease-in-out infinite; }
+.room-handoff-label { overflow: hidden; color: var(--text-soft); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
+.room-message-handoff { margin-top: 0; }
+@keyframes room-handoff-flow {
+  0%, 100% { opacity: 0.65; transform: translateX(0); }
+  50% { opacity: 1; transform: translateX(2px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .room-handoff[data-live="true"] .room-handoff-arrow { animation: none; }
+}
 @keyframes room-caret { 50% { opacity: 0; } }
 .room-trace-list { padding-left: 18px; }
 .room-trace-list li { margin-bottom: 8px; }
@@ -1742,7 +1769,7 @@ input:not([type=checkbox]), select, textarea { max-width: 100%; padding: 8px 10p
 textarea { line-height: 1.5; }
 button:disabled { cursor: not-allowed; opacity: 0.55; }
 @media (max-width: 950px) {
-  .room-agent-strip { order: 3; flex-basis: 100%; }
+  .room-collaboration { order: 3; flex-basis: 100%; }
   .room-header-actions { margin-left: auto; }
   .room-body { position: relative; }
   .room-ledger { position: absolute; inset: 0 0 0 auto; z-index: 20; width: min(360px, 100%); box-shadow: -18px 0 50px rgb(0 0 0 / 0.18); }
@@ -1803,7 +1830,9 @@ body.room-overlay-open { overflow: hidden; }
 </style>
 
 <style scoped>
-.room-turn-usage { margin-left: auto; color: var(--faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.room-turn-usage { margin-left: auto; color: var(--faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-variant-numeric: tabular-nums; opacity: 0.55; white-space: nowrap; transition: opacity 0.16s ease; }
+.room-message:hover .room-turn-usage,
+.room-message:focus-within .room-turn-usage { opacity: 1; }
 .room-run-trace { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); font-size: var(--text-xs); }
 .room-run-trace > summary { display: flex; gap: 8px; align-items: center; color: var(--text-soft); cursor: pointer; }
 .room-run-trace-count { padding: 1px 6px; border-radius: 999px; background: var(--surface-active); color: var(--faint); font-size: 10px; }

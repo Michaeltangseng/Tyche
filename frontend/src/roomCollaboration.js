@@ -1,0 +1,334 @@
+/**
+ * Derive the collaboration posture of one chat for the room header.
+ *
+ * The header never invents a pipeline. Nodes come from recorded facts only:
+ * task runs, the task assignee, Captain assignment targets, and the agent
+ * reply that is actually in flight. A plan the Agent has not written down
+ * does not appear as "waiting".
+ *
+ * Modes:
+ *   idle      no live work and no settled task to recap
+ *   replying  an agent reply is streaming, but no task run is live
+ *   running   a TaskRun is live, queued, or the task is in progress
+ *   settled   the latest task finished; the header keeps a quiet recap
+ */
+
+const LIVE_RUN_STATUSES = new Set(['starting', 'running'])
+const DONE_RUN_STATUSES = new Set(['completed'])
+const ATTENTION_RUN_STATUSES = new Set(['failed', 'interrupted'])
+const ACTIVE_MESSAGE_STATUSES = new Set(['queued', 'starting', 'working'])
+
+function timestamp(value) {
+  const parsed = new Date(value || '').getTime()
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
+function runTime(run) {
+  return timestamp(run?.queued_at) || timestamp(run?.started_at) || timestamp(run?.ended_at)
+}
+
+function sortRuns(list) {
+  return [...list].sort((left, right) => (
+    runTime(left) - runTime(right)
+    || String(left?.id || '').localeCompare(String(right?.id || ''))
+  ))
+}
+
+function latestByCreatedAt(list) {
+  return [...list].sort((left, right) => (
+    timestamp(left?.created_at) - timestamp(right?.created_at)
+    || String(left?.id || '').localeCompare(String(right?.id || ''))
+  )).at(-1) || null
+}
+
+function latestTimestamp(list, keys) {
+  let value = 0
+  for (const item of list) {
+    for (const key of keys) value = Math.max(value, timestamp(item?.[key]))
+  }
+  return value
+}
+
+function isTerminalRun(run) {
+  return DONE_RUN_STATUSES.has(run?.status) || ATTENTION_RUN_STATUSES.has(run?.status)
+}
+
+function idleState() {
+  return {
+    mode: 'idle',
+    nodes: [],
+    replies: [],
+    activeRoleId: '',
+    activeSince: null,
+    activeRunId: '',
+    taskId: '',
+    taskNumber: '',
+    taskLabel: '',
+    extraActiveTasks: 0,
+    settledAt: null,
+    tone: '',
+  }
+}
+
+/**
+ * Build one node per role. A role that ran twice keeps its latest run, so the
+ * node shows what that role is doing now rather than replaying its history.
+ */
+function buildNodes({ task, runs, assignment, activeReply, replies }) {
+  const orderedRoleIds = []
+  const latestRunByRole = new Map()
+  for (const run of sortRuns(runs)) {
+    if (!run?.role_id) continue
+    if (!latestRunByRole.has(run.role_id)) orderedRoleIds.push(run.role_id)
+    latestRunByRole.set(run.role_id, run)
+  }
+
+  // The assignee is a recorded fact even before its run is queued.
+  if (task?.assignee_role_id && !latestRunByRole.has(task.assignee_role_id)) {
+    latestRunByRole.set(task.assignee_role_id, null)
+    orderedRoleIds.push(task.assignee_role_id)
+  }
+  // Captain assignments are authorization facts; show roles that were handed
+  // work but have not produced a run yet.
+  for (const roleId of assignment?.target_role_ids || []) {
+    if (!roleId || latestRunByRole.has(roleId)) continue
+    latestRunByRole.set(roleId, null)
+    orderedRoleIds.push(roleId)
+  }
+
+  const liveRunIds = new Set(
+    runs.filter(run => LIVE_RUN_STATUSES.has(run.status)).map(run => run.id),
+  )
+  // A queued run is the current beat when nothing has started yet.
+  const fallbackQueued = liveRunIds.size
+    ? null
+    : sortRuns(runs.filter(run => run.status === 'queued'))[0] || null
+
+  const nodes = orderedRoleIds.map((roleId) => {
+    const run = latestRunByRole.get(roleId) || null
+    let state = 'waiting'
+    let status = 'assigned'
+    let since = null
+    let activationKey = `${roleId}:waiting`
+
+    if (run) {
+      status = run.status
+      if (LIVE_RUN_STATUSES.has(run.status)) {
+        state = 'active'
+        since = run.started_at || run.queued_at || null
+        activationKey = run.id
+      } else if (run.status === 'queued' && fallbackQueued?.id === run.id) {
+        state = 'active'
+        since = null
+        activationKey = run.id
+      } else if (DONE_RUN_STATUSES.has(run.status)) {
+        state = 'done'
+        activationKey = `${run.id}:done`
+      } else if (ATTENTION_RUN_STATUSES.has(run.status)) {
+        state = 'attention'
+        activationKey = `${run.id}:attention`
+      }
+    }
+
+    return {
+      roleId,
+      state,
+      status,
+      since,
+      runId: run?.id || '',
+      taskId: task?.id || '',
+      activationKey,
+      source: run ? 'run' : 'assigned',
+    }
+  })
+
+  // A live chat reply is also a fact. If it comes from a role that is not in
+  // the task chain, append it; if the role is already there but idle, let the
+  // reply take the spotlight.
+  for (const reply of replies || []) {
+    if (!reply?.roleId) continue
+    const existing = nodes.find(node => node.roleId === reply.roleId)
+    if (existing) {
+      if (existing.state === 'active') continue
+      existing.state = 'active'
+      existing.status = 'replying'
+      existing.since = reply.since || null
+      existing.activationKey = `reply:${reply.messageId || reply.roleId}`
+      existing.source = 'reply'
+      continue
+    }
+    nodes.push({
+      roleId: reply.roleId,
+      state: 'active',
+      status: 'replying',
+      since: reply.since || null,
+      runId: '',
+      taskId: task?.id || '',
+      activationKey: `reply:${reply.messageId || reply.roleId}`,
+      source: 'reply',
+    })
+  }
+
+  if (activeReply?.author_id) {
+    const existing = nodes.find(node => node.roleId === activeReply.author_id)
+    if (existing && existing.source !== 'reply' && existing.state !== 'active') {
+      existing.state = 'active'
+      existing.status = 'replying'
+      existing.since = activeReply.created_at || null
+      existing.activationKey = `reply:${activeReply.id}`
+      existing.source = 'reply'
+    }
+  }
+
+  return nodes
+}
+
+function latestRoleId(nodes) {
+  const active = nodes.filter(node => node.state === 'active')
+  const latest = [...active].sort((left, right) => (
+    timestamp(left.since) - timestamp(right.since)
+    || String(left.activationKey).localeCompare(String(right.activationKey))
+  )).at(-1)
+  return latest?.roleId || ''
+}
+
+function activeSince(nodes) {
+  const active = nodes.filter(node => node.state === 'active')
+  const latest = [...active].sort((left, right) => (
+    timestamp(left.since) - timestamp(right.since)
+  )).at(-1)
+  return latest?.since || null
+}
+
+export function deriveRoomCollaboration({
+  tasks = [],
+  runs = [],
+  reports = [],
+  messages = [],
+  assignments = [],
+  liveRuns = {},
+} = {}) {
+  const runsByTask = new Map()
+  for (const run of runs) {
+    if (!runsByTask.has(run.task_id)) runsByTask.set(run.task_id, [])
+    runsByTask.get(run.task_id).push(run)
+  }
+
+  const liveMessageIds = new Set(Object.keys(liveRuns || {}))
+  const activeMessages = messages.filter(message => (
+    message.author_type === 'agent'
+    && (ACTIVE_MESSAGE_STATUSES.has(message.status) || liveMessageIds.has(message.id))
+  ))
+  const latestActiveMessage = latestByCreatedAt(activeMessages)
+  const repliesByRole = new Map()
+  for (const message of activeMessages) {
+    if (!message.author_id) continue
+    const previous = repliesByRole.get(message.author_id)
+    if (!previous || timestamp(message.created_at) >= timestamp(previous.since)) {
+      repliesByRole.set(message.author_id, {
+        roleId: message.author_id,
+        since: message.created_at || null,
+        messageId: message.id,
+      })
+    }
+  }
+  const replies = [...repliesByRole.values()]
+
+  const activeRuns = runs.filter(run => LIVE_RUN_STATUSES.has(run.status))
+  const queuedRuns = runs.filter(run => run.status === 'queued')
+  const inProgressTasks = tasks.filter(task => task.status === 'in_progress')
+  const activeTaskIds = new Set([
+    ...activeRuns.map(run => run.task_id),
+    ...queuedRuns.map(run => run.task_id),
+    ...inProgressTasks.map(task => task.id),
+  ])
+
+  if (activeTaskIds.size) {
+    const focusRun = sortRuns([...activeRuns, ...queuedRuns]).at(-1) || null
+    const focusTask = tasks.find(task => task.id === focusRun?.task_id)
+      || latestByCreatedAt(inProgressTasks)
+      || tasks.find(task => task.id === [...activeTaskIds][0])
+      || null
+
+    if (focusTask) {
+      const taskRuns = sortRuns(runsByTask.get(focusTask.id) || [])
+      const assignment = assignments.find(item => item.id === focusTask.captain_assignment_id) || null
+      const nodes = buildNodes({ task: focusTask, runs: taskRuns, assignment, activeReply: latestActiveMessage, replies })
+      if (nodes.length) {
+        return {
+          mode: 'running',
+          nodes,
+          replies,
+          activeRoleId: latestRoleId(nodes),
+          activeSince: activeSince(nodes),
+          activeRunId: nodes.find(node => node.state === 'active' && node.runId)?.runId || '',
+          taskId: focusTask.id,
+          taskNumber: focusTask.number ?? '',
+          taskLabel: focusTask.title || '',
+          extraActiveTasks: Math.max(0, activeTaskIds.size - 1),
+          settledAt: null,
+          tone: '',
+        }
+      }
+    }
+  }
+
+  if (latestActiveMessage) {
+    return {
+      ...idleState(),
+      mode: 'replying',
+      replies,
+      activeRoleId: latestActiveMessage.author_id || '',
+      activeSince: latestActiveMessage.created_at || null,
+      activeRunId: latestActiveMessage.id || '',
+    }
+  }
+
+  const latestTask = latestByCreatedAt(tasks)
+  const latestTaskRuns = latestTask ? sortRuns(runsByTask.get(latestTask.id) || []) : []
+  if (latestTask && latestTaskRuns.length && latestTaskRuns.every(isTerminalRun)) {
+    const lastUserMessage = [...messages].reverse().find(message => message.author_type === 'user')
+    const lastActivity = Math.max(
+      timestamp(latestTask.updated_at),
+      latestTaskRuns.reduce((latest, run) => Math.max(
+        latest,
+        timestamp(run.ended_at),
+        timestamp(run.started_at),
+        timestamp(run.queued_at),
+      ), 0),
+      latestTimestamp(reports.filter(report => report.task_id === latestTask.id), ['created_at']),
+    )
+    const userStartedNextTurn = lastUserMessage
+      && timestamp(lastUserMessage.created_at) > lastActivity
+    if (!userStartedNextTurn) {
+      const assignment = assignments.find(item => item.id === latestTask.captain_assignment_id) || null
+      const nodes = buildNodes({ task: latestTask, runs: latestTaskRuns, assignment, activeReply: null, replies: [] })
+        .filter(node => node.runId)
+        .map(node => ({
+          ...node,
+          state: node.state === 'attention' ? 'attention' : 'done',
+          status: node.state === 'attention' ? node.status : 'completed',
+        }))
+      const hasAttention = nodes.some(node => node.state === 'attention')
+        || latestTask.status === 'blocked'
+      const tone = hasAttention
+        ? 'attention'
+        : latestTask.status === 'in_review' ? 'review' : 'done'
+      const settledAt = new Date(
+        lastActivity || timestamp(latestTask.created_at) || Date.now(),
+      ).toISOString()
+      return {
+        ...idleState(),
+        mode: 'settled',
+        nodes,
+        taskId: latestTask.id,
+        taskNumber: latestTask.number ?? '',
+        taskLabel: latestTask.title || '',
+        settledAt,
+        tone,
+      }
+    }
+  }
+
+  return idleState()
+}
