@@ -49,12 +49,12 @@
     <div v-if="sidebarCollapsed" class="sidebar-rail">
       <div class="sidebar-rail-scroll">
         <section
-          v-if="railAgents.length"
+          v-if="castAgents.length"
           class="sidebar-rail-section"
           :aria-label="t('nav.sidebarAgents')"
         >
           <button
-            v-for="agent in railAgents"
+            v-for="agent in castAgents"
             :key="agent.kind"
             class="sidebar-rail-item"
             :class="{ active: isRailAgentActive(agent), unavailable: !agent.ready }"
@@ -92,16 +92,16 @@
           @click="sidebarAgentsCollapsed = !sidebarAgentsCollapsed"
         >
           <span>{{ t('nav.sidebarAgents') }}</span>
-          <small v-if="sidebarAgentsCollapsed" class="nav-heading-count">{{ sidebarAgentCount }}</small>
+          <small v-if="sidebarAgentsCollapsed" class="nav-heading-count">{{ castAgents.length }}</small>
           <ChevronForwardOutline class="nav-heading-chevron" :class="{ open: !sidebarAgentsCollapsed || searching }" aria-hidden="true" />
         </button>
         <div
-          v-if="sidebarAgentsCollapsed && !searching && railAgents.length"
+          v-if="sidebarAgentsCollapsed && !searching && castAgents.length"
           class="agent-cast"
           :aria-label="t('nav.sidebarAgents')"
         >
           <button
-            v-for="agent in railAgents"
+            v-for="agent in castAgents"
             :key="agent.kind"
             class="agent-cast-item"
             :class="{ active: isRailAgentActive(agent), unavailable: !agent.ready }"
@@ -114,7 +114,7 @@
             @click="handleSidebarAgentMain(agent)"
           >
             <span class="agent-cast-face">
-              <img :src="rolePortrait(agent.kind)" :alt="agent.label" />
+              <img :src="agent.logo" :alt="agent.label" />
               <CloudOutline v-if="agent.cloud" class="agent-cast-cloud" aria-hidden="true" />
               <span
                 v-if="agentAwaitingDecision(agent.kind)"
@@ -754,6 +754,7 @@ onBeforeUnmount(() => {
 const railAgents = computed(() => (
   unref(sidebarAgentGroups).flatMap(group => group.agents)
 ))
+const castAgents = computed(() => railAgents.value.filter(agent => agent.ready === true))
 
 function isRailAgentActive(agent) {
   return directGroupsFor(agent.kind).some(group => isSelectedConversation(group))

@@ -1062,11 +1062,12 @@
 .agent-cast-face img {
   width: 32px;
   height: 32px;
+  box-sizing: border-box;
+  padding: 5px;
   border: 2px solid var(--sidebar);
   border-radius: 50%;
-  background: #1b2124;
-  object-fit: cover;
-  object-position: center 12%;
+  background: color-mix(in srgb, var(--surface-active) 78%, transparent);
+  object-fit: contain;
   transition: transform 160ms ease, box-shadow 160ms ease;
 }
 

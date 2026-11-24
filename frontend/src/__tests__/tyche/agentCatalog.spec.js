@@ -27,14 +27,22 @@ describe('Agent compatibility state', () => {
     expect(catalog.agentState(agent).label).toBe('Bridge support needed')
     expect(catalog.agentStateNote(agent)).toContain('cannot run it yet')
   })
-  it('shows an invocable local CLI as available without a warning', () => {
+  it('shows an invocable local CLI as ready and keeps unverified as a note', () => {
     setLocale('en')
     expect(catalogFor({ kind: 'zcode', installed: true, available: true,
-      credentialState: 'unknown', availabilitySource: 'local-cli' }).label).toBe('Ready (unverified)')
+      credentialState: 'unknown', availabilitySource: 'local-cli' }).label).toBe('Ready')
     expect(catalogFor({ kind: 'zcode', installed: true, available: true,
-      credentialState: 'ready', availabilitySource: 'native-credential' }).label).toBe('Ready (unverified)')
+      credentialState: 'ready', availabilitySource: 'native-credential' }).label).toBe('Ready')
     expect(catalogFor({ kind: 'zcode', installed: true, available: true,
       credentialState: 'ready', availabilitySource: 'verified-run', recentlyVerified: true }).label).toBe('Ready')
+    const catalog = useAgentCatalog({
+      activeGroup: ref(null), installCatalog: ref({ agents: [] }),
+      snapshot: ref({ agents: [] }), t, theme: ref('light'),
+    })
+    expect(catalog.agentStateNote({
+      kind: 'zcode', installed: true, ready: true, recentlyVerified: false,
+      availabilitySource: 'local-cli',
+    })).toContain('has not yet been verified')
   })
   it('shows a Hermes install without a provider as needing model configuration', () => {
     setLocale('en')
@@ -81,7 +89,7 @@ describe('Agent compatibility state', () => {
     const agent = { kind: 'workbuddy', installed: true, available: false, credentialState: 'missing', availabilitySource: 'workbuddy-desktop-locked' }
     expect(catalogFor(agent).label).toBe('CLI setup needed')
   })
-  it('keeps installed unavailable Agents visible while respecting hidden preferences and runnable choices', () => {
+  it('keeps installed unavailable Agents in the expanded list while respecting hidden preferences', () => {
     const snapshot = ref({ agents: [
       { kind: 'codex', installed: true, available: false, credentialState: 'missing', showInSidebar: true },
       { kind: 'hermes', installed: true, available: false, showInSidebar: false },

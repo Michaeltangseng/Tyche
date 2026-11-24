@@ -85,7 +85,7 @@
                   <img :src="agent.logo" :alt="agent.label" />
                   <strong>{{ agent.label }}</strong>
                 </span>
-                <span class="agent-state" :class="displayedState(agent).tone">
+                <span class="agent-state" :class="displayedState(agent).tone" :title="displayedState(agent).description || ''">
                   <i class="status-dot" aria-hidden="true" />
                   {{ displayedState(agent).label }}
                 </span>

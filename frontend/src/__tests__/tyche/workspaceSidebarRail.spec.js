@@ -209,16 +209,26 @@ describe('workspace sidebar rail', () => {
     ).toBeTruthy()
   })
 
-  it('renders the local agent cast when the agent section is collapsed', async () => {
+  it('renders only usable Agents with their logos in the collapsed cast', async () => {
     const fixture = controller()
     fixture.sidebarCollapsed.value = false
     fixture.sidebarAgentsCollapsed.value = true
+    const localGroup = fixture.sidebarAgentGroups.value[0]
+    fixture.sidebarAgentGroups.value = [{
+      ...localGroup,
+      agents: [
+        ...localGroup.agents,
+        { kind: 'hermes', label: 'Hermes', logo: './hermes.svg', ready: false },
+      ],
+    }]
     const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })
 
     const cast = wrapper.findAll('.agent-cast-item')
     expect(cast).toHaveLength(1)
     expect(cast[0].attributes('title')).toContain('Codex')
-    expect(wrapper.find('.agent-cast-face img').exists()).toBe(true)
+    expect(cast[0].find('.agent-cast-face img').attributes('src')).toBe('./codex.svg')
+    expect(wrapper.find('.agent-cast-item[title*="Hermes"]').exists()).toBe(false)
+    expect(wrapper.get('.agent-nav-section .nav-heading-count').text()).toBe('1')
     expect(wrapper.find('.sidebar-agent-main').exists()).toBe(false)
 
     await cast[0].trigger('click')
