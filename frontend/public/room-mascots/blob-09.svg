@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="螺旋面包">
+  <defs>
+    <linearGradient id="blob-09-grad" gradientUnits="userSpaceOnUse" x1="0" y1="8" x2="0" y2="58">
+      <stop offset="0" stop-color="#F9D5A7"/>
+      <stop offset="1" stop-color="#E8A87C"/>
+    </linearGradient>
+    <style>
+      .eye { transform-box: fill-box; transform-origin: center; animation: tyche-blink 7.40s ease-in-out infinite; animation-delay: 4.8s; }
+      @keyframes tyche-blink { 0%, 92%, 100% { transform: scaleY(1); } 94%, 97% { transform: scaleY(0.08); } }
+      @media (prefers-reduced-motion: reduce) { .eye { animation: none; } }
+    </style>
+  </defs>
+  <path class="body" fill="url(#blob-09-grad)" d="M32 12C47 12 57 24 57 37C57 49 47 55 32 55C17 55 7 49 7 37C7 24 17 12 32 12Z"/><path d="M21 25c3-6 12-5 12 1c0 4-6 4-6 1c0-1.5 2-2 3-1" fill="none" stroke="#D98A5F" stroke-width="2" stroke-linecap="round" opacity="0.75"/>
+  <g class="eyes"><ellipse class="eye" cx="25" cy="40" rx="2.6" ry="3.8" fill="#1F2D3D"/><ellipse class="eye" cx="39" cy="40" rx="2.6" ry="3.8" fill="#1F2D3D"/></g>
+  <circle class="dot" cx="46" cy="45" r="2.2" fill="#2EC4B6"/>
+</svg>

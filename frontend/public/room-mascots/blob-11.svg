@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="花生">
+  <defs>
+    <linearGradient id="blob-11-grad" gradientUnits="userSpaceOnUse" x1="0" y1="8" x2="0" y2="58">
+      <stop offset="0" stop-color="#FBE8C4"/>
+      <stop offset="1" stop-color="#F8B9C4"/>
+    </linearGradient>
+    <style>
+      .eye { transform-box: fill-box; transform-origin: center; animation: tyche-blink 8.10s ease-in-out infinite; animation-delay: 6.0s; }
+      @keyframes tyche-blink { 0%, 92%, 100% { transform: scaleY(1); } 94%, 97% { transform: scaleY(0.08); } }
+      @media (prefers-reduced-motion: reduce) { .eye { animation: none; } }
+    </style>
+  </defs>
+  <path class="body" fill="url(#blob-11-grad)" d="M20 18C27 18 29 22 32 22C35 22 37 18 44 18C53 18 59 25 59 33C59 41 53 48 44 48C37 48 35 44 32 44C29 44 27 48 20 48C11 48 5 41 5 33C5 25 11 18 20 18Z"/>
+  <g class="eyes"><ellipse class="eye" cx="24" cy="34" rx="2.6" ry="3.8" fill="#1F2D3D"/><path class="eye" d="M41 31l-4 3l4 3" fill="none" stroke="#1F2D3D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <circle class="dot" cx="47" cy="38" r="2.2" fill="#2EC4B6"/>
+</svg>

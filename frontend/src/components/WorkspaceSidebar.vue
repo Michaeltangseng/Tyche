@@ -292,14 +292,8 @@
                 :aria-controls="`team-room-chats-${room.id}`"
                 @click="handleTeamRoomClick(room)"
               >
-                <span class="team-face-stack team-face-stack-room" aria-hidden="true">
-                  <img
-                    v-for="(member, index) in roomFaces(room).faces"
-                    :key="`${member.provider}-${member.name}-${index}`"
-                    :src="rolePortrait(member.portrait || member.provider)"
-                    alt=""
-                  />
-                  <span v-if="roomFaces(room).extra" class="team-face-more">+{{ roomFaces(room).extra }}</span>
+                <span class="room-mascot" aria-hidden="true">
+                  <img :src="roomMascot(room).src" alt="" />
                   <span v-if="roomRunning(room)" class="team-room-live" :title="t('room.chatRunning')" />
                 </span>
                 <span class="project-room-copy">
@@ -462,6 +456,7 @@ import {
 } from '@vicons/ionicons5'
 
 import { portraitGlow, rolePortrait } from '../role-portraits.js'
+import { roomMascot } from '../room-mascots.js'
 
 const props = defineProps({
   controller: { type: Object, required: true },
@@ -560,7 +555,7 @@ function stackedMembers(members, limit = 3) {
   return { faces: visible.slice(0, limit), extra: Math.max(0, visible.length - limit) }
 }
 
-function roomFaces(room) {
+function roomMembers(room) {
   const best = new Map()
   for (const chat of room.chats || []) {
     for (const member of orderedMembers(memberList(chat))) {
@@ -571,13 +566,11 @@ function roomFaces(room) {
       if (!existing || rank > existing.rank) best.set(key, { member, rank })
     }
   }
-  const faces = [...best.values()].sort((a, b) => b.rank - a.rank).map(item => item.member)
-  return stackedMembers(faces, 3)
+  return [...best.values()].sort((a, b) => b.rank - a.rank).map(item => item.member)
 }
 
 function roomSummary(room) {
-  const faces = roomFaces(room)
-  const members = faces.faces.length + faces.extra
+  const members = roomMembers(room).length
   const chats = room.chatTotal ?? room.chats?.length ?? 0
   if (!members) return t('room.chatCount', { count: chats })
   return t('room.roomFaces', { members, chats })

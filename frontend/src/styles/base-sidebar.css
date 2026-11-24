@@ -1470,21 +1470,30 @@
 .team-face-stack img:nth-child(3) { z-index: 2; }
 .team-face-stack .team-face-more { z-index: 1; }
 
-.team-face-stack-room {
-  --room-face: 20px;
+.room-mascot {
   position: relative;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
 }
 
-.team-face-stack-room img {
-  width: var(--room-face);
-  height: var(--room-face);
-  margin-left: calc(var(--room-face) * -0.45);
+.room-mascot img {
+  width: 27px;
+  height: 27px;
+  object-fit: contain;
+  transition: transform 160ms ease;
+}
+
+.team-room-row:hover .room-mascot img {
+  transform: scale(1.06);
 }
 
 .team-room-live {
   position: absolute;
-  top: -2px;
-  right: -2px;
+  top: 1px;
+  right: 1px;
   width: 7px;
   height: 7px;
   border: 1.5px solid var(--sidebar);
@@ -1527,12 +1536,6 @@
   .team-chat-live {
     animation: none;
   }
-}
-
-.team-face-stack-room .team-face-more {
-  width: calc(var(--room-face) * 0.68);
-  height: calc(var(--room-face) * 0.68);
-  margin-left: calc(var(--room-face) * -0.36);
 }
 
 .team-room-chats .project-room-group {
