@@ -167,6 +167,9 @@ export function useAgentCatalog({
       })[agent.incompatibilityReason] || 'agent.incompatible'
       return { label: t(reasonKey), tone: 'warning', icon: WarningOutline }
     }
+    if (agent.availabilitySource === 'hermes-provider-unconfigured') {
+      return { label: t('agent.needsProvider'), tone: 'warning', icon: WarningOutline }
+    }
     if (agent.credentialState === 'missing' || agent.incompatibilityReason === 'LOCAL_AGENT_AUTH_REQUIRED') {
       return { label: t('agent.needsLogin'), tone: 'warning', icon: WarningOutline }
     }
@@ -178,6 +181,7 @@ export function useAgentCatalog({
   function agentStateNote(agent) {
     if (!agent || agent.ready || agent.custom || !agent.installed) return ''
     if (agent.availabilitySource === 'cloud-bridge-unsupported') return t('agent.note.cloudBridgeUnsupported')
+    if (agent.availabilitySource === 'hermes-provider-unconfigured') return t('agent.note.needsProvider')
     if (agent.availabilitySource === 'native-runtime-unavailable') return t('agent.note.nativeRuntimeUnavailable')
     if (agent.availabilitySource === 'native-secret-unresolved') return t('agent.note.nativeSecretUnresolved')
     if (agent.availabilitySource === 'workbuddy-desktop-locked') return t('workbuddy.desktopLocked')

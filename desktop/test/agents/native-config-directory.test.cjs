@@ -606,6 +606,23 @@ test('a selected native directory survives workspace restart', t => {
   assert.equal(nativeConfigEnvironment('hermes', restored.state.agentPreferences).HERMES_HOME, selected)
 })
 
+test('Hermes reports a missing provider when auto has no API key', t => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-missing-provider-'))
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }))
+  const root = path.join(home, '.hermes')
+  fs.mkdirSync(root)
+  fs.writeFileSync(path.join(root, 'config.yaml'),
+    'model:\n  provider: auto\n  default: anthropic/claude-opus-4.6\n  base_url: https://openrouter.ai/api/v1\n')
+  const env = { HOME: home }
+  assert.deepEqual(nativeCredentialState('hermes', { home, env }), {
+    state: 'missing', source: 'hermes-provider-unconfigured',
+  })
+  fs.writeFileSync(path.join(root, '.env'), 'OPENROUTER_API_KEY=synthetic-key\n')
+  assert.deepEqual(nativeCredentialState('hermes', { home, env }), {
+    state: 'ready', source: 'native-credential',
+  })
+})
+
 test('Hermes accepts a native directory configured through .env alone', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-hermes-env-config-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))

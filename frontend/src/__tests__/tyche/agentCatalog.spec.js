@@ -36,6 +36,20 @@ describe('Agent compatibility state', () => {
     expect(catalogFor({ kind: 'zcode', installed: true, available: true,
       credentialState: 'ready', availabilitySource: 'verified-run', recentlyVerified: true }).label).toBe('Ready')
   })
+  it('shows a Hermes install without a provider as needing model configuration', () => {
+    setLocale('en')
+    const agent = {
+      kind: 'hermes', installed: true, available: false, ready: false,
+      credentialState: 'missing', availabilitySource: 'hermes-provider-unconfigured',
+    }
+    expect(catalogFor(agent).label).toBe('Needs model/provider')
+    const catalog = useAgentCatalog({
+      activeGroup: ref(null), directGroupsFor: () => [], installCatalog: ref({ agents: [] }),
+      snapshot: ref({ agents: [] }), t, theme: ref('light'),
+    })
+    expect(catalog.agentStateNote(agent)).toContain('No inference provider')
+  })
+
   it('explains when the isolated native runtime could not be prepared', () => {
     setLocale('en')
     const catalog = useAgentCatalog({

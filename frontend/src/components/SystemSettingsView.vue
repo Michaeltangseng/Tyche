@@ -244,8 +244,10 @@ function versionOf(agent) {
 
 function authOf(agent) {
   if (!agent?.installed) return '—'
-  const tested = testResults.value[agent.kind]?.credentialState
-  const state = tested || agent.credentialState
+  const test = testResults.value[agent.kind]
+  const source = test?.availabilitySource || agent.availabilitySource
+  if (source === 'hermes-provider-unconfigured') return t('systemSettings.authNeedsProvider')
+  const state = test?.credentialState || agent.credentialState
   if (state === 'ready') return t('systemSettings.authReady')
   if (state === 'missing') return t('systemSettings.authMissing')
   return t('systemSettings.authUnknown')
@@ -255,6 +257,9 @@ function displayedState(agent) {
   const test = testResults.value[agent.kind]
   if (!test) return agentState(agent)
   if (test.available) return { label: t('agent.ready'), tone: 'ready' }
+  if (test.availabilitySource === 'hermes-provider-unconfigured') {
+    return { label: t('agent.needsProvider'), tone: 'warning' }
+  }
   if (test.credentialState === 'missing') return { label: t('agent.needsLogin'), tone: 'warning' }
   return { label: t('agent.unavailable'), tone: 'warning' }
 }
@@ -281,6 +286,9 @@ async function testAgent(agent) {
 function testResultText(result) {
   if (result?.error) return t('systemSettings.testError')
   if (result?.available) return t('systemSettings.testPassed')
+  if (result?.availabilitySource === 'hermes-provider-unconfigured') {
+    return t('systemSettings.testNeedsProvider')
+  }
   if (result?.credentialState === 'missing') return t('systemSettings.testNeedsLogin')
   return t('systemSettings.testFailed')
 }

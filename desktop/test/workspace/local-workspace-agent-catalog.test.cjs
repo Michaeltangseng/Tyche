@@ -1355,3 +1355,36 @@ test('a definitive signed-out answer, a recorded auth failure or an incompatible
   await catalog.refresh()
   assert.equal(agents()[0].available, false)
 })
+
+test('a native Hermes provider failure replaces a successful-run readiness and persists', async () => {
+  const agent = {
+    kind: 'hermes', executable: '/tmp/hermes', resolvedVersion: '0.20.0',
+    compatibilityState: 'compatible', available: true,
+  }
+  let probe = { state: 'ready', source: 'native-credential' }
+  const { agents, catalog, state, events } = fixture({
+    initialAgents: [agent],
+    detectAgents: async () => [agent],
+    credentialState: async () => probe,
+  })
+  await catalog.refresh()
+  assert.equal(agents()[0].available, true)
+  catalog.markRuntimeCredential('hermes', 'ready', {
+    verifiedRun: true,
+    verificationIdentity: agentVerificationIdentity(agent),
+  })
+  assert.equal(state.agentRuntime.hermes.credentialState, 'ready')
+
+  probe = { state: 'missing', source: 'hermes-provider-unconfigured' }
+  await catalog.refresh()
+  assert.equal(agents()[0].available, false)
+  assert.equal(agents()[0].credentialState, 'missing')
+  assert.equal(agents()[0].availabilitySource, 'hermes-provider-unconfigured')
+  assert.equal(state.agentRuntime.hermes.credentialState, 'missing')
+  assert.equal(events.includes('save'), true)
+
+  probe = { state: 'ready', source: 'native-credential' }
+  await catalog.refresh()
+  assert.equal(agents()[0].available, true)
+  assert.equal(state.agentRuntime.hermes, undefined)
+})
