@@ -1494,10 +1494,12 @@
 }
 
 .team-chat-icon {
-  width: 36px;
+  width: 70px;
   height: 36px;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-left: 9px;
   color: var(--muted);
 }
 
@@ -1566,13 +1568,13 @@
 .team-room-chats .project-room-group.active .team-face-stack-chat img:not(:first-child),
 .team-face-stack-chat:hover img:not(:first-child),
 .team-face-stack-chat:focus-within img:not(:first-child) {
-  margin-left: -10px;
+  margin-left: -16px;
 }
 
 .team-room-chats .project-room-group.active .team-face-stack-chat .team-face-more,
 .team-face-stack-chat:hover .team-face-more,
 .team-face-stack-chat:focus-within .team-face-more {
-  margin-left: -6px;
+  margin-left: -8px;
 }
 
 .team-face-stack img {
@@ -1621,7 +1623,9 @@
 }
 
 .team-face-stack-chat {
+  width: 70px;
   height: 36px;
+  justify-content: flex-start;
 }
 
 .team-chat-copy {

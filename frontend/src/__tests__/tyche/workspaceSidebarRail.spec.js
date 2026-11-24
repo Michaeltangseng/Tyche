@@ -117,8 +117,8 @@ describe('workspace sidebar rail', () => {
     expect(chats).toHaveLength(2)
     expect(chats[0].text()).toContain('Team chat')
     expect(chats[0].text()).toContain('room.activityLine')
-    expect(chats[0].findAll('.team-face-stack-chat img')).toHaveLength(3)
-    expect(chats[0].get('.team-face-stack-chat .team-face-more').text()).toBe('+1')
+    expect(chats[0].findAll('.team-face-stack-chat img')).toHaveLength(2)
+    expect(chats[0].get('.team-face-stack-chat .team-face-more').text()).toBe('+2')
     expect(chats[0].find('.team-chat-dot').exists()).toBe(false)
     expect(chats[1].find('.team-chat-icon').exists()).toBe(true)
     expect(chats[1].find('.team-face-stack-chat').exists()).toBe(false)
@@ -149,6 +149,39 @@ describe('workspace sidebar rail', () => {
     document.body.querySelector('.sidebar-delete-popover .danger-button')?.click()
     await nextTick()
     expect(fixture.deleteTeamChat).toHaveBeenCalledWith('team-1', 'chat-2')
+    wrapper.unmount()
+  })
+
+  it('shows member faces on unselected chats and only uses the chat icon for empty ones', async () => {
+    const fixture = controller()
+    fixture.roomWorkspaceAvailable = ref(true)
+    fixture.sidebarCollapsed.value = false
+    fixture.teamRooms = ref([{
+      id: 'team-1',
+      name: 'Team Alpha',
+      primary_chat_id: 'chat-1',
+      chats: [
+        {
+          id: 'chat-1',
+          title: 'Team chat',
+          is_primary: true,
+          members: [
+            { name: 'Claude', provider: 'claude', last_seq: 1 },
+            { name: 'Codex', provider: 'codex', last_seq: 4 },
+          ],
+        },
+        { id: 'chat-2', title: 'Empty', is_primary: false, members: [] },
+      ],
+    }])
+    fixture.isTeamRoomExpanded = () => true
+    const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })
+
+    const chats = wrapper.findAll('.team-room-chats .project-room-group')
+    expect(chats[0].classes()).not.toContain('active')
+    expect(chats[0].findAll('.team-face-stack-chat img')).toHaveLength(2)
+    expect(chats[0].find('.team-chat-icon').exists()).toBe(false)
+    expect(chats[1].find('.team-face-stack-chat').exists()).toBe(false)
+    expect(chats[1].find('.team-chat-icon').exists()).toBe(true)
     wrapper.unmount()
   })
 

@@ -335,9 +335,9 @@
                   :aria-current="isTeamChatSelected(room.id, chat.id) ? 'page' : undefined"
                   @click="selectTeamChat(room.id, chat.id)"
                 >
-                  <span v-if="isTeamChatSelected(room.id, chat.id)" class="team-face-stack team-face-stack-chat" aria-hidden="true">
-                    <img v-for="(member, index) in stackedMembers(chat.members).faces" :key="`${member.provider}-${member.name}-${index}`" :src="rolePortrait(member.portrait || member.provider)" alt="" />
-                    <span v-if="stackedMembers(chat.members).extra" class="team-face-more">+{{ stackedMembers(chat.members).extra }}</span>
+                  <span v-if="chatFaces(chat).faces.length" class="team-face-stack team-face-stack-chat" aria-hidden="true">
+                    <img v-for="(member, index) in chatFaces(chat).faces" :key="`${member.provider}-${member.name}-${index}`" :src="rolePortrait(member.portrait || member.provider)" alt="" />
+                    <span v-if="chatFaces(chat).extra" class="team-face-more">+{{ chatFaces(chat).extra }}</span>
                   </span>
                   <span v-else class="team-chat-icon" aria-hidden="true">
                     <ChatbubblesOutline />
@@ -544,6 +544,10 @@ function memberList(chat) {
 function orderedMembers(members) {
   return [...(Array.isArray(members) ? members : [])]
     .sort((a, b) => (Number(b?.last_seq) || 0) - (Number(a?.last_seq) || 0))
+}
+
+function chatFaces(chat) {
+  return stackedMembers(chat.members, 2)
 }
 
 function stackedMembers(members, limit = 3) {
