@@ -1472,21 +1472,59 @@
 
 .room-mascot {
   position: relative;
-  width: 28px;
-  height: 28px;
+  width: 38px;
+  height: 38px;
   display: grid;
   place-items: center;
-  flex: 0 0 28px;
+  flex: 0 0 38px;
 }
 
-.room-mascot img {
-  width: 27px;
-  height: 27px;
-  object-fit: contain;
+.room-mascot-art {
+  width: 36px;
+  height: 36px;
+  display: block;
   transition: transform 160ms ease;
 }
 
-.team-room-row:hover .room-mascot img {
+.room-mascot-art svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.room-mascot-art .eye {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 160ms ease-out;
+}
+
+.room-mascot-art .eyes {
+  transition: transform 200ms ease-out;
+}
+
+@keyframes room-mascot-blink {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.1); }
+}
+
+.room-mascot-art.is-blinking .eye {
+  animation: room-mascot-blink 150ms ease-in-out;
+}
+
+.room-mascot-art.look-left .eyes {
+  transform: translateX(-2px);
+}
+
+.room-mascot-art.look-right .eyes {
+  transform: translateX(2px);
+}
+
+.room-mascot-art.is-squinting .eye {
+  transform: scaleY(0.3);
+}
+
+.team-room-row:hover .room-mascot-art {
   transform: scale(1.06);
 }
 
@@ -1503,7 +1541,7 @@
 }
 
 .team-chat-icon {
-  width: 70px;
+  width: 84px;
   height: 36px;
   display: flex;
   align-items: center;
@@ -1535,6 +1573,18 @@
   .team-room-live,
   .team-chat-live {
     animation: none;
+  }
+
+  .room-mascot-art,
+  .room-mascot-art .eye,
+  .room-mascot-art .eyes {
+    transform: none !important;
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .team-room-row:hover .room-mascot-art {
+    transform: none !important;
   }
 }
 
@@ -1571,13 +1621,13 @@
 .team-room-chats .project-room-group.active .team-face-stack-chat img:not(:first-child),
 .team-face-stack-chat:hover img:not(:first-child),
 .team-face-stack-chat:focus-within img:not(:first-child) {
-  margin-left: -16px;
+  margin-left: -18px;
 }
 
 .team-room-chats .project-room-group.active .team-face-stack-chat .team-face-more,
 .team-face-stack-chat:hover .team-face-more,
 .team-face-stack-chat:focus-within .team-face-more {
-  margin-left: -8px;
+  margin-left: -10px;
 }
 
 .team-face-stack img {
@@ -1626,7 +1676,7 @@
 }
 
 .team-face-stack-chat {
-  width: 70px;
+  width: 84px;
   height: 36px;
   justify-content: flex-start;
 }

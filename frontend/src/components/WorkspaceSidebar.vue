@@ -293,7 +293,7 @@
                 @click="handleTeamRoomClick(room)"
               >
                 <span class="room-mascot" aria-hidden="true">
-                  <img :src="roomMascot(room).src" alt="" />
+                  <RoomMascot :mascot="roomMascot(room)" />
                   <span v-if="roomRunning(room)" class="team-room-live" :title="t('room.chatRunning')" />
                 </span>
                 <span class="project-room-copy">
@@ -457,6 +457,7 @@ import {
 
 import { portraitGlow, rolePortrait } from '../role-portraits.js'
 import { roomMascot } from '../room-mascots.js'
+import RoomMascot from './RoomMascot.vue'
 
 const props = defineProps({
   controller: { type: Object, required: true },
@@ -542,7 +543,7 @@ function orderedMembers(members) {
 }
 
 function chatFaces(chat) {
-  return stackedMembers(chat.members, 2)
+  return stackedMembers(chat.members, 3)
 }
 
 function stackedMembers(members, limit = 3) {
