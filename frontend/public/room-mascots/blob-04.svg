@@ -5,12 +5,12 @@
       <stop offset="1" stop-color="#A3BFF5"/>
     </linearGradient>
     <style>
-      .eye { transform-box: fill-box; transform-origin: center; animation: tyche-blink 5.65s ease-in-out infinite; animation-delay: 1.8s; }
-      @keyframes tyche-blink { 0%, 92%, 100% { transform: scaleY(1); } 94%, 97% { transform: scaleY(0.08); } }
+      .eye { transform-box: fill-box; transform-origin: center; animation: tyche-blink 3.48s ease-in-out infinite; animation-delay: 1.0s; }
+      @keyframes tyche-blink { 0%, 92%, 100% { transform: scaleY(1); } 94%, 97% { transform: scaleY(0.03); } }
       @media (prefers-reduced-motion: reduce) { .eye { animation: none; } }
     </style>
   </defs>
   <rect class="body" fill="url(#blob-04-grad)" x="11" y="11" width="42" height="42" rx="12" transform="rotate(-6 32 32)"/>
-  <g class="eyes"><ellipse class="eye" cx="25" cy="34" rx="2.6" ry="3.8" fill="#1F2D3D"/><ellipse class="eye" cx="39" cy="34" rx="2.6" ry="3.8" fill="#1F2D3D"/></g>
+  <g class="eyes"><ellipse class="eye" cx="25" cy="34" rx="3.4" ry="4.9" fill="#1F2D3D"/><ellipse class="eye" cx="39" cy="34" rx="3.4" ry="4.9" fill="#1F2D3D"/></g>
   <circle class="dot" cx="46" cy="40" r="2.2" fill="#2EC4B6"/>
 </svg>

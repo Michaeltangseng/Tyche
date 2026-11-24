@@ -5,12 +5,12 @@
       <stop offset="1" stop-color="#C2B0EE"/>
     </linearGradient>
     <style>
-      .eye { transform-box: fill-box; transform-origin: center; animation: tyche-blink 7.75s ease-in-out infinite; animation-delay: 5.4s; }
-      @keyframes tyche-blink { 0%, 92%, 100% { transform: scaleY(1); } 94%, 97% { transform: scaleY(0.08); } }
+      .eye { transform-box: fill-box; transform-origin: center; animation: tyche-blink 4.44s ease-in-out infinite; animation-delay: 3.1s; }
+      @keyframes tyche-blink { 0%, 92%, 100% { transform: scaleY(1); } 94%, 97% { transform: scaleY(0.03); } }
       @media (prefers-reduced-motion: reduce) { .eye { animation: none; } }
     </style>
   </defs>
   <path class="body" fill="url(#blob-10-grad)" d="M10 40C8 33 14 28 21 30C24 24 33 23 37 28C42 24 51 26 52 32C58 33 59 41 54 44C50 49 40 47 34 48C26 50 14 49 10 40Z"/>
-  <g class="eyes"><path class="eye" d="M21 40q3-4 6 0" fill="none" stroke="#1F2D3D" stroke-width="2.2" stroke-linecap="round"/><path class="eye" d="M36 40q3-4 6 0" fill="none" stroke="#1F2D3D" stroke-width="2.2" stroke-linecap="round"/></g>
+  <g class="eyes"><path class="eye" d="M20 40q4-5 8 0" fill="none" stroke="#1F2D3D" stroke-width="2.6" stroke-linecap="round"/><path class="eye" d="M35 40q4-5 8 0" fill="none" stroke="#1F2D3D" stroke-width="2.6" stroke-linecap="round"/></g>
   <circle class="dot" cx="47" cy="41" r="2.2" fill="#2EC4B6"/>
 </svg>

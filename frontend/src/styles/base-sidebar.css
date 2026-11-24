@@ -1491,6 +1491,8 @@
   height: 100%;
   display: block;
   overflow: visible;
+  transform-origin: center;
+  transition: transform 180ms ease-out;
 }
 
 .room-mascot-art .eye {
@@ -1505,23 +1507,44 @@
 
 @keyframes room-mascot-blink {
   0%, 100% { transform: scaleY(1); }
-  50% { transform: scaleY(0.1); }
+  50% { transform: scaleY(0.03); }
+}
+
+@keyframes room-mascot-nod {
+  0%, 100% { transform: translateY(0) scale(1); }
+  45% { transform: translateY(1.5px) scale(0.985); }
 }
 
 .room-mascot-art.is-blinking .eye {
   animation: room-mascot-blink 150ms ease-in-out;
 }
 
+.room-mascot-art.is-blinking svg {
+  animation: room-mascot-nod 190ms ease-in-out;
+}
+
 .room-mascot-art.look-left .eyes {
-  transform: translateX(-2px);
+  transform: translateX(-5px);
 }
 
 .room-mascot-art.look-right .eyes {
-  transform: translateX(2px);
+  transform: translateX(5px);
 }
 
 .room-mascot-art.is-squinting .eye {
-  transform: scaleY(0.3);
+  transform: scaleY(0.2);
+}
+
+.room-mascot-art.look-left svg {
+  transform: translateX(-1.5px) rotate(-4deg);
+}
+
+.room-mascot-art.look-right svg {
+  transform: translateX(1.5px) rotate(4deg);
+}
+
+.room-mascot-art.is-squinting svg {
+  transform: translateY(1px) scale(0.97);
 }
 
 .team-room-row:hover .room-mascot-art {
@@ -1576,6 +1599,7 @@
   }
 
   .room-mascot-art,
+  .room-mascot-art svg,
   .room-mascot-art .eye,
   .room-mascot-art .eyes {
     transform: none !important;

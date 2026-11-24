@@ -5,12 +5,12 @@
       <stop offset="1" stop-color="#F2B25C"/>
     </linearGradient>
     <style>
-      .eye { transform-box: fill-box; transform-origin: center; animation: tyche-blink 8.45s ease-in-out infinite; animation-delay: 6.6s; }
-      @keyframes tyche-blink { 0%, 92%, 100% { transform: scaleY(1); } 94%, 97% { transform: scaleY(0.08); } }
+      .eye { transform-box: fill-box; transform-origin: center; animation: tyche-blink 4.76s ease-in-out infinite; animation-delay: 3.8s; }
+      @keyframes tyche-blink { 0%, 92%, 100% { transform: scaleY(1); } 94%, 97% { transform: scaleY(0.03); } }
       @media (prefers-reduced-motion: reduce) { .eye { animation: none; } }
     </style>
   </defs>
   <path class="body" fill="url(#blob-12-grad)" stroke="url(#blob-12-grad)" stroke-width="4" stroke-linejoin="round" d="M32 8C35 8 37 17 42 22C47 27 56 29 56 32C56 35 47 37 42 42C37 47 35 56 32 56C29 56 27 47 22 42C17 37 8 35 8 32C8 29 17 27 22 22C27 17 29 8 32 8Z"/>
-  <g class="eyes"><ellipse class="eye" cx="27" cy="33" rx="2.6" ry="3.8" fill="#1F2D3D"/><ellipse class="eye" cx="37" cy="33" rx="2.6" ry="3.8" fill="#1F2D3D"/></g>
+  <g class="eyes"><ellipse class="eye" cx="27" cy="33" rx="3.4" ry="4.9" fill="#1F2D3D"/><ellipse class="eye" cx="37" cy="33" rx="3.4" ry="4.9" fill="#1F2D3D"/></g>
   <circle class="dot" cx="42" cy="38" r="2.2" fill="#2EC4B6"/>
 </svg>

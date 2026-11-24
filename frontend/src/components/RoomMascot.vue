@@ -82,22 +82,22 @@ function runAction() {
   if (!document.hidden && !prefersReducedMotion()) {
     clearAction()
     const roll = Math.random()
-    if (roll < 0.62) {
+    if (roll < 0.45) {
       art.classList.add('is-blinking')
       actionTimer = window.setTimeout(() => {
         art.classList.remove('is-blinking')
         actionTimer = 0
-      }, 190)
+      }, 170)
     } else {
-      const action = roll < 0.82 ? 'look-left' : roll < 0.94 ? 'look-right' : 'is-squinting'
+      const action = roll < 0.70 ? 'look-left' : roll < 0.90 ? 'look-right' : 'is-squinting'
       art.classList.add(action)
       actionTimer = window.setTimeout(() => {
         art.classList.remove(action)
         actionTimer = 0
-      }, 900 + Math.random() * 700)
+      }, 600 + Math.random() * 400)
     }
   }
-  scheduleNext(2400 + Math.random() * 4200)
+  scheduleNext(1000 + Math.random() * 1800)
 }
 
 function followEyes(event) {
@@ -110,7 +110,7 @@ function followEyes(event) {
   if (!rect.width || !rect.height) return
   const dx = Math.max(-1, Math.min(1, (event.clientX - (rect.left + rect.width / 2)) / (rect.width / 2)))
   const dy = Math.max(-1, Math.min(1, (event.clientY - (rect.top + rect.height / 2)) / (rect.height / 2)))
-  eyes.style.transform = `translate(${(dx * 2).toFixed(2)}px, ${(dy * 1.5).toFixed(2)}px)`
+  eyes.style.transform = `translate(${(dx * 4).toFixed(2)}px, ${(dy * 2.5).toFixed(2)}px)`
 }
 
 function resetEyes() {
@@ -120,7 +120,7 @@ function resetEyes() {
 
 onMounted(() => {
   if (prefersReducedMotion()) return
-  scheduleNext(900 + Math.random() * 2200)
+  scheduleNext(400 + Math.random() * 900)
 })
 
 onBeforeUnmount(() => {

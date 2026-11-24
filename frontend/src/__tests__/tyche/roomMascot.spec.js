@@ -42,15 +42,15 @@ describe('RoomMascot', () => {
     const wrapper = mount(RoomMascot, { props: { mascot: ROOM_MASCOTS[0] } })
 
     expect(wrapper.classes()).not.toContain('is-blinking')
-    await vi.advanceTimersByTimeAsync(900)
+    await vi.advanceTimersByTimeAsync(400)
     expect(wrapper.classes()).toContain('is-blinking')
-    await vi.advanceTimersByTimeAsync(190)
+    await vi.advanceTimersByTimeAsync(170)
     expect(wrapper.classes()).not.toContain('is-blinking')
 
-    random.mockReturnValue(0.7)
-    await vi.advanceTimersByTimeAsync(2400)
+    random.mockReturnValue(0.6)
+    await vi.advanceTimersByTimeAsync(1000)
     expect(wrapper.classes()).toContain('look-left')
-    await vi.advanceTimersByTimeAsync(1390)
+    await vi.advanceTimersByTimeAsync(840)
     expect(wrapper.classes()).not.toContain('look-left')
 
     wrapper.unmount()
