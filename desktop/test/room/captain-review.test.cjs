@@ -58,6 +58,10 @@ test('captain review waits for settlement and review traffic does not advance ac
   const pending = review.review({ chatId })
   assert.equal(pending.length, 1)
   assert.equal(pending[0].kind, 'assignment_settled')
+  assert.equal(
+    roomDb.database.prepare('SELECT status FROM captain_assignments LIMIT 1').get().status,
+    'settled',
+  )
   const activityBefore = timeline.activitySeq(chatId)
   const delivered = review.deliver({ chatId })
   assert.equal(timeline.activitySeq(chatId), activityBefore)
@@ -155,5 +159,9 @@ test('captain review treats a failed target reply as blocked', t => {
   assert.equal(pending.length, 1)
   assert.equal(pending[0].kind, 'assignment_blocked')
   assert.equal(pending[0].data.failed, true)
+  assert.equal(
+    roomDb.database.prepare('SELECT status FROM captain_assignments LIMIT 1').get().status,
+    'blocked',
+  )
   roomDb.close()
 })

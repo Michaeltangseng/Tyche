@@ -293,6 +293,20 @@ function buildAssignmentNodes({ assignments = [], messages = [], replies = [], s
         node.state = 'done'
         node.status = 'completed'
         node.activationKey = `handoff:${handoff.id}`
+        continue
+      }
+
+      // The assignment status is the final fallback when reply rows are
+      // missing. Settled work still renders a done node; blocked work stays
+      // visible as attention instead of disappearing from the relay.
+      if (assignment.status === 'settled') {
+        node.state = 'done'
+        node.status = 'completed'
+        node.activationKey = `assignment:${roleId}:${assignment.id}:settled`
+      } else if (assignment.status === 'blocked') {
+        node.state = 'attention'
+        node.status = 'blocked'
+        node.activationKey = `assignment:${roleId}:${assignment.id}:blocked`
       }
     }
   }
@@ -374,21 +388,22 @@ export function deriveRoomCollaboration({
   const lastUserMessage = [...messages].reverse().find(message => message.author_type === 'user')
   const lastUserAt = timestamp(lastUserMessage?.created_at)
   // Assignments are the Captain's recorded authorization for the current
-  // user turn. Older active rows stay in the ledger, so scope them to the
-  // latest user message instead of replaying history.
-  const activeAssignments = [...assignments]
-    .filter(assignment => assignment?.status === 'active')
+  // user turn. Include settled/blocked rows too: the relay keeps its done
+  // nodes after the review marks the assignment finished. Older rows stay in
+  // the ledger, so scope the chain to the latest user message.
+  const currentAssignments = [...assignments]
+    .filter(assignment => assignment && !['cancelled', 'deleted'].includes(assignment.status))
     .filter(assignment => !lastUserAt || timestamp(assignment.created_at) >= lastUserAt)
     .sort((left, right) => (
       timestamp(left.created_at) - timestamp(right.created_at)
       || String(left?.id || '').localeCompare(String(right?.id || ''))
     ))
-  const assignmentChainStart = activeAssignments.length
-    ? Math.min(...activeAssignments.map(assignment => timestamp(assignment.created_at) || lastUserAt || 0))
+  const assignmentChainStart = currentAssignments.length
+    ? Math.min(...currentAssignments.map(assignment => timestamp(assignment.created_at) || lastUserAt || 0))
     : 0
-  const assignmentNodes = activeAssignments.length
+  const assignmentNodes = currentAssignments.length
     ? buildAssignmentNodes({
-        assignments: activeAssignments,
+        assignments: currentAssignments,
         messages,
         replies,
         since: assignmentChainStart,
@@ -459,7 +474,7 @@ export function deriveRoomCollaboration({
   // An assignment owns the turn as soon as a target is actively replying or
   // needs attention. Waiting-only assignments are handled after the settled
   // task check so a finished task is not replaced by a stale waiting node.
-  if (activeAssignments.length && (replies.length > 0 || assignmentHasActive || assignmentHasAttention)) {
+  if (currentAssignments.length && (replies.length > 0 || assignmentHasActive || assignmentHasAttention)) {
     return assignmentRunningState()
   }
 
@@ -519,11 +534,11 @@ export function deriveRoomCollaboration({
     }
   }
 
-  if (activeAssignments.length && assignmentHasWaiting) {
+  if (currentAssignments.length && assignmentHasWaiting) {
     return assignmentRunningState()
   }
 
-  if (activeAssignments.length && assignmentAllDone) {
+  if (currentAssignments.length && assignmentAllDone) {
     const chainRoleIds = new Set(assignmentNodes.map(node => node.roleId))
     const chainMessages = messages.filter(message => (
       chainRoleIds.has(message.author_id)
@@ -531,7 +546,7 @@ export function deriveRoomCollaboration({
     ))
     const chainReviews = reviews.filter(review => timestamp(review.created_at) >= assignmentChainStart)
     const settledAt = Math.max(
-      latestTimestamp(activeAssignments, ['created_at']),
+      latestTimestamp(currentAssignments, ['created_at']),
       latestTimestamp(chainMessages, ['created_at']),
       latestTimestamp(chainReviews, ['created_at']),
     )

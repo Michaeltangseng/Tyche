@@ -416,4 +416,72 @@ describe('room collaboration derivation', () => {
     expect(state.mode).toBe('running')
     expect(state.nodes[0].state).toBe('attention')
   })
+
+  it('keeps a settled assignment step in the relay while the next step is live', () => {
+    const state = deriveRoomCollaboration({
+      messages: [
+        userMessage(),
+        agentMessage({
+          id: 'worker-done',
+          author_id: 'worker',
+          status: 'done',
+          created_at: '2026-11-15T10:02:00Z',
+          mentions: ['reviewer'],
+        }),
+        agentMessage({
+          id: 'reviewer-live',
+          author_id: 'reviewer',
+          status: 'working',
+          created_at: '2026-11-15T10:03:00Z',
+        }),
+      ],
+      assignments: [
+        assignment({
+          id: 'assignment-worker',
+          status: 'settled',
+          target_role_ids: ['worker'],
+          target_reply_ids: ['worker-done'],
+          created_at: '2026-11-15T10:01:00Z',
+        }),
+        assignment({
+          id: 'assignment-reviewer',
+          status: 'active',
+          target_role_ids: ['reviewer'],
+          target_reply_ids: ['reviewer-live'],
+          created_at: '2026-11-15T10:02:30Z',
+        }),
+      ],
+    })
+
+    expect(state.mode).toBe('running')
+    expect(state.nodes.map(node => [node.roleId, node.state])).toEqual([
+      ['worker', 'done'],
+      ['reviewer', 'active'],
+    ])
+    expect(state.activeRoleId).toBe('reviewer')
+  })
+
+  it('uses a settled assignment as a done node when reply rows are unavailable', () => {
+    const state = deriveRoomCollaboration({
+      messages: [userMessage()],
+      assignments: [assignment({ status: 'settled' })],
+    })
+
+    expect(state.mode).toBe('settled')
+    expect(state.nodes).toEqual([expect.objectContaining({
+      roleId: 'worker',
+      state: 'done',
+    })])
+  })
+
+  it('keeps a blocked assignment visible as attention', () => {
+    const state = deriveRoomCollaboration({
+      messages: [userMessage()],
+      assignments: [assignment({ status: 'blocked' })],
+    })
+
+    expect(state.mode).toBe('running')
+    expect(state.nodes[0].state).toBe('attention')
+  })
+
 })
