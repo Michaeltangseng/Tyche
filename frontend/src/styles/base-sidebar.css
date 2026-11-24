@@ -1443,6 +1443,11 @@
   line-height: 16px;
 }
 
+/* Align the expanded room name with its chat titles below. */
+.team-room-row.expanded .project-room-copy {
+  margin-left: 37px;
+}
+
 .team-face-stack {
   display: flex;
   align-items: center;

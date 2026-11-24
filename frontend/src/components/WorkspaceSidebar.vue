@@ -282,7 +282,13 @@
         </div>
         <div v-if="filteredTeamRooms.length" class="project-room-list team-room-list">
           <div v-for="room in filteredTeamRooms" :key="room.id" class="project-room-entry team-room-entry">
-            <div class="project-room-row team-room-row" :class="{ active: isTeamRoomSelected(room.id) }">
+            <div
+              class="project-room-row team-room-row"
+              :class="{
+                active: isTeamRoomSelected(room.id),
+                expanded: searching || isTeamRoomExpanded(room.id),
+              }"
+            >
               <button
                 class="project-room-open"
                 type="button"
