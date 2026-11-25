@@ -1080,32 +1080,35 @@ function createRoomHost({
   function setWorkspace(input = {}) {
     const room = requireRoom(input.roomId)
     const next = workspacePath(input.workspace)
-    if (next === room.workspace) {
+    const result = roomDb.withTransaction(() => {
+      if (next === room.workspace) {
+        roomDb.database.prepare(`
+          UPDATE rooms SET workspace_confirmed = 1, updated_at = ? WHERE id = ?
+        `).run(new Date().toISOString(), room.id)
+        closeWorkspaceAttentions(room.id)
+        return { roomId: room.id, moved: false }
+      }
+      const pendingMove = room.workspaceOrigin === 'default' && scratchHasFiles(room.workspace)
+      if (pendingMove && input.move !== true && input.move !== false) {
+        return { roomId: room.id, needsMove: true }
+      }
+      if (pendingMove && input.move === true) moveScratchFiles(room.workspace, next)
+      const at = new Date().toISOString()
       roomDb.database.prepare(`
-        UPDATE rooms SET workspace_confirmed = 1, updated_at = ? WHERE id = ?
-      `).run(new Date().toISOString(), room.id)
+        UPDATE rooms
+        SET workspace = ?, workspace_origin = 'user', workspace_confirmed = 1,
+            write_authorized_root = CASE
+              WHEN write_authorized_root IS NULL OR write_authorized_root = '' OR write_authorized_root = ?
+              THEN ?
+              ELSE write_authorized_root
+            END,
+            updated_at = ?
+        WHERE id = ?
+      `).run(next, room.workspace, next, at, room.id)
       closeWorkspaceAttentions(room.id)
-      return { roomId: room.id, moved: false }
-    }
-    const pendingMove = room.workspaceOrigin === 'default' && scratchHasFiles(room.workspace)
-    if (pendingMove && input.move !== true && input.move !== false) {
-      return { roomId: room.id, needsMove: true }
-    }
-    if (pendingMove && input.move === true) moveScratchFiles(room.workspace, next)
-    const at = new Date().toISOString()
-    roomDb.database.prepare(`
-      UPDATE rooms
-      SET workspace = ?, workspace_origin = 'user', workspace_confirmed = 1,
-          write_authorized_root = CASE
-            WHEN write_authorized_root IS NULL OR write_authorized_root = '' OR write_authorized_root = ?
-            THEN ?
-            ELSE write_authorized_root
-          END,
-          updated_at = ?
-      WHERE id = ?
-    `).run(next, room.workspace, next, at, room.id)
-    closeWorkspaceAttentions(room.id)
-    return { roomId: room.id, moved: input.move === true }
+      return { roomId: room.id, moved: input.move === true }
+    })
+    return result
   }
 
   function confirmWorkspace(input = {}) {

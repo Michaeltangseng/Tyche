@@ -57,9 +57,6 @@
         <button v-if="snapshot" class="room-icon-button room-files-toggle" type="button" :aria-pressed="filesOpen" :title="t('room.files')" :aria-label="t('room.files')" @click="emit('toggle-files')">
           <FolderOutline />
         </button>
-        <button v-if="snapshot" class="secondary-button room-workspace-switch" type="button" @click="workspaceDialogOpen = true">
-          {{ t('room.switchWorkspace') }}
-        </button>
         <button class="room-icon-button room-create-button" type="button" data-testid="room-create-open" :aria-label="t('room.create')" :disabled="busy" @click="startCreating">+</button>
       </div>
     </header>
@@ -261,7 +258,7 @@
                 <header><strong>{{ t('room.needsYou') }}</strong></header>
                 <p>{{ t('room.workspaceAsk') }}</p>
                 <div class="room-actions">
-                  <button class="primary-button" type="button" :disabled="busy" @click="workspaceDialogOpen = true">{{ t('room.switchWorkspace') }}</button>
+                  <button class="primary-button" type="button" :disabled="busy" @click="emit('configure-workspace')">{{ t('room.switchWorkspace') }}</button>
                 </div>
               </template>
               <template v-else>
@@ -398,31 +395,6 @@
           </section>
         </div>
       </aside>
-    </div>
-
-
-    <div v-if="workspaceDialogOpen" class="room-modal-backdrop" @click.self="closeWorkspaceDialog">
-      <section class="room-workspace-dialog" role="dialog" aria-modal="true" :aria-label="t('room.switchWorkspace')" @keydown.esc.stop="closeWorkspaceDialog">
-        <header>
-          <strong>{{ t('room.switchWorkspace') }}</strong>
-          <button class="room-icon-button" type="button" :aria-label="t('common.close')" @click="closeWorkspaceDialog">
-            <CloseOutline />
-          </button>
-        </header>
-        <div class="room-workspace-copy">
-          <strong>{{ workspaceName }}</strong>
-          <small>{{ t('room.workspaceHint') }}</small>
-        </div>
-        <div class="room-workspace-actions">
-          <button class="secondary-button" type="button" :disabled="workspaceBusy" @click="chooseWorkspace">{{ t('room.setWorkspace') }}</button>
-          <button v-if="workspaceDefault && !workspaceConfirmed" class="secondary-button" type="button" :disabled="workspaceBusy" @click="keepWorkspace">{{ t('room.keepScratch') }}</button>
-        </div>
-        <p v-if="workspaceNeedsMove" class="room-workspace-move">
-          <span>{{ t('room.moveScratchTitle') }}</span>
-          <button class="primary-button" type="button" :disabled="workspaceBusy" @click="confirmWorkspaceMove(true)">{{ t('room.moveScratchConfirm') }}</button>
-          <button class="secondary-button" type="button" :disabled="workspaceBusy" @click="confirmWorkspaceMove(false)">{{ t('room.moveScratchSkip') }}</button>
-        </p>
-      </section>
     </div>
 
     <div v-if="roleSettingsOpen" class="room-modal-backdrop room-role-backdrop" @click.self="closeRoleSettings" @wheel.self.prevent>
@@ -630,13 +602,12 @@ import RoomWorkflow from './RoomWorkflow.vue'
 
 const props = defineProps({
   api: { type: Object, required: true },
-  pickDirectory: { type: Function, required: true },
   agents: { type: Array, default: () => [] },
   createRequest: { type: Boolean, default: false },
   openRequest: { type: Object, default: null },
   filesOpen: { type: Boolean, default: false },
 })
-const emit = defineEmits(['create-request-consumed', 'active-change', 'toggle-files', 'open-files'])
+const emit = defineEmits(['create-request-consumed', 'active-change', 'toggle-files', 'open-files', 'configure-workspace'])
 
 const {
   rooms,
@@ -696,16 +667,6 @@ const roleSettingsRef = ref(null)
 const roleDraft = ref(null)
 const roleSettingsWasCaptain = ref(false)
 const roleDeleteArmed = ref(false)
-const workspaceDialogOpen = ref(false)
-const workspaceBusy = ref(false)
-const workspaceNeedsMove = ref(false)
-const pendingWorkspace = ref('')
-const roomRecord = computed(() => snapshot.value?.room || null)
-const workspaceDefault = computed(() => roomRecord.value?.workspace_default === true)
-const workspaceConfirmed = computed(() => roomRecord.value?.workspace_confirmed !== false)
-const workspaceName = computed(() => (
-  workspaceDefault.value ? t('room.scratchLabel') : (roomRecord.value?.workspace_label || t('room.scratchLabel'))
-))
 const workPanelOpen = ref(true)
 const ledger = ref(null)
 const LEDGER_MIN = 280
@@ -1490,70 +1451,9 @@ function focusWorkflowMessage(node) {
   workflowFocusTimer = window.setTimeout(() => target.classList.remove('room-message-focus'), 1600)
 }
 
-function closeWorkspaceDialog() {
-  if (workspaceBusy.value) return
-  workspaceDialogOpen.value = false
-  workspaceNeedsMove.value = false
-  pendingWorkspace.value = ''
-}
-
-async function applyWorkspace(workspace, move) {
-  if (!props.api?.setWorkspace || !roomId.value || !workspace) return null
-  const input = { roomId: roomId.value, workspace }
-  if (move !== undefined) input.move = move
-  return props.api.setWorkspace(input)
-}
-
-async function chooseWorkspace() {
-  if (workspaceBusy.value || typeof props.pickDirectory !== 'function') return
-  workspaceBusy.value = true
-  workspaceNeedsMove.value = false
-  try {
-    const selected = await props.pickDirectory()
-    if (!selected) return
-    const result = await applyWorkspace(String(selected))
-    if (result?.needsMove) {
-      pendingWorkspace.value = String(selected)
-      workspaceNeedsMove.value = true
-      return
-    }
-    pendingWorkspace.value = ''
-    workspaceDialogOpen.value = false
-  } finally {
-    workspaceBusy.value = false
-  }
-}
-
-async function confirmWorkspaceMove(move) {
-  if (workspaceBusy.value || !pendingWorkspace.value) return
-  workspaceBusy.value = true
-  try {
-    await applyWorkspace(pendingWorkspace.value, move)
-    pendingWorkspace.value = ''
-    workspaceNeedsMove.value = false
-    workspaceDialogOpen.value = false
-  } finally {
-    workspaceBusy.value = false
-  }
-}
-
-async function keepWorkspace() {
-  if (workspaceBusy.value || !props.api?.confirmWorkspace || !roomId.value) return
-  workspaceBusy.value = true
-  try {
-    await props.api.confirmWorkspace({ roomId: roomId.value })
-    workspaceDialogOpen.value = false
-  } finally {
-    workspaceBusy.value = false
-  }
-}
-
 function handleEscape(event) {
   if (event.key !== 'Escape') return
-  if (workspaceDialogOpen.value) {
-    event.preventDefault()
-    closeWorkspaceDialog()
-  } else if (roleSettingsOpen.value) {
+  if (roleSettingsOpen.value) {
     event.preventDefault()
     closeRoleSettings()
   } else if (titleEditing.value) {
@@ -1572,7 +1472,7 @@ watch(attentions, (list) => {
   const open = list.find(item => item.type === 'workspace_directory')
   if (!open || open.id === promptedWorkspaceAttention) return
   promptedWorkspaceAttention = open.id
-  workspaceDialogOpen.value = true
+  emit('configure-workspace')
 })
 
 watch(() => props.createRequest, (requested) => {
@@ -1633,14 +1533,6 @@ onBeforeUnmount(() => {
 .room-roster-duty { display: -webkit-box; overflow: hidden; color: var(--text-soft); font-size: var(--text-2xs); line-height: 1.4; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 .room-agent-badge { flex: 0 0 auto; margin-left: 2px; padding: 1px 5px; border-radius: 999px; background: var(--surface-active); color: var(--text-soft); font-size: 10px; font-weight: 600; }
 .room-header-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-.room-workspace-switch { height: 32px; padding: 0 10px; font-size: var(--text-xs); }
-.room-workspace-dialog { width: min(420px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-raised); box-shadow: var(--shadow); }
-.room-workspace-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.room-workspace-dialog header strong { font-size: var(--text-sm); }
-.room-workspace-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.room-workspace-copy small { color: var(--text-soft); font-size: var(--text-xs); line-height: 1.45; }
-.room-workspace-actions, .room-workspace-move { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.room-workspace-move { margin: 0; color: var(--text-soft); font-size: var(--text-xs); }
 .room-notice-pill { padding: 5px 11px; border: 1px solid color-mix(in srgb, var(--accent) 62%, var(--border)); border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-size: var(--text-xs); font-weight: 600; cursor: pointer; }
 .room-icon-button { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); color: var(--text-soft); font-size: 20px; line-height: 1; cursor: pointer; }
 .room-icon-button:hover { border-color: var(--border-strong); color: var(--text); }

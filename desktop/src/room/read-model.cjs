@@ -1,10 +1,10 @@
 /**
  * Display-safe read model for the new room domain.
  *
- * The renderer receives no absolute workspace paths, session ids, native
- * session refs, process ids or raw tool activity. Message data is reduced to
- * an allowlist of display flags; trace details belong to a separately
- * authorized trace endpoint.
+ * The renderer receives no session ids, native session refs, process ids,
+ * or raw tool activity. workspace_path is the directory the user edits from
+ * the chat menu. Message data is reduced to an allowlist of display flags;
+ * trace details belong to a separately authorized trace endpoint.
  *
  * Field names are snake_case so the room UI consumes the domain ledger
  * directly.
@@ -44,6 +44,7 @@ function roomView(row, chats) {
     id: row.id,
     name: row.name,
     workspace_label: row.workspace_origin === 'default' ? '' : path.basename(row.workspace),
+    workspace_path: typeof row.workspace === 'string' ? row.workspace : '',
     workspace_default: row.workspace_origin === 'default',
     workspace_confirmed: Number(row.workspace_confirmed) === 1,
     write_authorized: typeof row.write_authorized_root === 'string' && row.write_authorized_root.length > 0,

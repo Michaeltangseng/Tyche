@@ -41,7 +41,7 @@
         :open-system-settings="openSystemSettings" :toggle-locale="toggleLocale" :toggle-theme="toggleTheme"
         :shortcut-definitions="shortcutDefinitions" />
 
-      <WorkspaceSidebar :controller="workspaceSidebarController" />
+      <WorkspaceSidebar ref="workspaceSidebar" :controller="workspaceSidebarController" />
 
       <section
         class="workspace-pane"
@@ -79,13 +79,13 @@
         <RoomWorkspace
           v-else-if="activeView === 'rooms' && api?.teamRoom"
           :api="api.teamRoom"
-          :pick-directory="() => workspace.pickDirectory()"
           :agents="readyAgents"
           :create-request="roomCreateRequest"
           :open-request="teamRoomOpenRequest"
           :files-open="roomDrawer === 'files'"
           @create-request-consumed="roomCreateRequest = false"
           @active-change="teamRoomNavigation.syncActive"
+          @configure-workspace="workspaceSidebar?.openWorkspaceEditor?.()"
           @toggle-files="toggleRoomDrawer('files')"
           @open-files="roomDrawer = 'files'"
         />
@@ -436,6 +436,7 @@ const roomCreateRequest = ref(false)
 
 const PROJECT_DRAWER_DEFAULT_WIDTH = 420
 const roomDrawer = ref(null)
+const workspaceSidebar = ref(null)
 const roomFilesWidth = ref(PROJECT_DRAWER_DEFAULT_WIDTH)
 
 function toggleRoomDrawer(panel) {
@@ -946,6 +947,8 @@ const {
     deleteTeamChat: teamRoomNavigation.deleteChat,
     deleteTeamRoom: teamRoomNavigation.deleteRoom,
     renameTeamChat: teamRoomNavigation.renameChat,
+    setTeamWorkspace: teamRoomNavigation.setWorkspace,
+    pickTeamDirectory: () => workspace.value?.pickDirectory?.(),
     handleTeamRoomClick: teamRoomNavigation.handleRoomClick,
     isTeamChatSelected: teamRoomNavigation.isChatSelected,
     isTeamRoomExpanded: teamRoomNavigation.isExpanded,

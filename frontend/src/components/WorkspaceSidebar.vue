@@ -345,6 +345,7 @@
                 :title="t('room.chatActions', { name: teamChatLabel(row.room, row.chat) })"
                 :aria-label="t('room.chatActions', { name: teamChatLabel(row.room, row.chat) })"
                 :aria-expanded="isChatMenuOpen(row.room, row.chat) ? 'true' : 'false'"
+                :data-chat-menu="row.chat.id"
                 aria-haspopup="menu"
                 @click.stop="toggleChatMenu(row.room, row.chat, $event)"
               >
@@ -407,7 +408,43 @@
         <TrashOutline />
         <span>{{ t('room.deleteConfirm') }}</span>
       </button>
+      <button class="team-chat-menu-item team-chat-menu-workspace" type="button" role="menuitem" @click="beginWorkspaceEdit">
+        <FolderOutline />
+        <span>{{ t('room.switchWorkspace') }}</span>
+      </button>
     </span>
+    <span v-if="workspaceTarget" class="team-delete-backdrop" aria-hidden="true" @click="cancelWorkspacePath" />
+    <section
+      v-if="workspaceTarget"
+      class="team-workspace-dialog"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="t('room.switchWorkspace')"
+    >
+      <strong>{{ t('room.switchWorkspace') }}</strong>
+      <form class="team-chat-workspace" @submit.prevent="confirmWorkspacePath">
+        <label>
+          <span>{{ t('room.workspacePath') }}</span>
+          <span class="team-chat-workspace-field">
+            <input
+              v-model="workspaceDraft"
+              type="text"
+              spellcheck="false"
+              :aria-label="t('room.workspacePath')"
+              :disabled="workspaceSaving"
+            />
+            <button class="team-chat-workspace-browse" type="button" :disabled="workspaceSaving" :title="t('room.browseWorkspace')" :aria-label="t('room.browseWorkspace')" @click="browseWorkspace">
+              <FolderOpenOutline />
+            </button>
+          </span>
+        </label>
+        <p v-if="workspaceMovePending">{{ t('room.moveScratchTitle') }}</p>
+        <span class="team-chat-workspace-actions">
+          <button class="secondary-button compact" type="button" :disabled="workspaceSaving" @click="cancelWorkspacePath">{{ t('common.cancel') }}</button>
+          <button class="primary-button compact" type="submit" :disabled="workspaceSaving || !workspaceDraft.trim()">{{ t('common.confirm') }}</button>
+        </span>
+      </form>
+    </section>
     <span v-if="teamDeleteTarget" class="team-delete-backdrop" aria-hidden="true" @click="dismissTeamDelete" />
     <span
       v-if="teamDeleteTarget"
@@ -442,6 +479,8 @@ import {
   ChevronForwardOutline,
   CloudOutline,
   EllipsisHorizontal,
+  FolderOpenOutline,
+  FolderOutline,
   PencilOutline,
   SearchOutline,
   SettingsOutline,
@@ -471,6 +510,8 @@ const {
   deleteTeamChat,
   deleteTeamRoom,
   renameTeamChat,
+  setTeamWorkspace,
+  pickTeamDirectory,
   directGroupsFor,
   discoveringAgents,
   dismissSidebarDeleteConfirmation,
@@ -595,6 +636,10 @@ const teamDeletePopoverStyle = ref({})
 const teamChatMenu = ref(null)
 const teamChatMenuStyle = ref({})
 const teamChatMenuButton = ref(null)
+const workspaceDraft = ref('')
+const workspaceMovePending = ref(false)
+const workspaceSaving = ref(false)
+const workspaceTarget = ref(null)
 const teamRenameTarget = ref(null)
 const teamRenameDraft = ref('')
 const teamRenameInput = ref(null)
@@ -638,6 +683,59 @@ function toggleChatMenu(room, chat, event) {
   }
   teamChatMenu.value = { room, chat, key: chatMenuKey(room, chat) }
 }
+
+function openWorkspaceDialog(room) {
+  workspaceTarget.value = { roomId: room.id }
+  workspaceDraft.value = room?.workspace_path || ''
+  workspaceMovePending.value = false
+}
+
+function beginWorkspaceEdit() {
+  const current = teamChatMenu.value
+  if (!current) return
+  openWorkspaceDialog(current.room)
+  dismissChatMenu()
+}
+
+async function browseWorkspace() {
+  if (workspaceSaving.value || typeof pickTeamDirectory !== 'function') return
+  const selected = await pickTeamDirectory()
+  if (selected) workspaceDraft.value = String(selected)
+}
+
+function cancelWorkspacePath() {
+  if (workspaceSaving.value) return
+  workspaceTarget.value = null
+  workspaceMovePending.value = false
+}
+
+async function confirmWorkspacePath() {
+  const current = workspaceTarget.value
+  const path = workspaceDraft.value.trim()
+  if (!current || workspaceSaving.value || !path || typeof setTeamWorkspace !== 'function') return
+  workspaceSaving.value = true
+  try {
+    const result = await setTeamWorkspace(current.roomId, path, workspaceMovePending.value ? true : undefined)
+    if (!result) return
+    if (result.needsMove) {
+      workspaceMovePending.value = true
+      return
+    }
+    workspaceTarget.value = null
+    workspaceMovePending.value = false
+  } finally {
+    workspaceSaving.value = false
+  }
+}
+
+function openWorkspaceEditor() {
+  const row = flatTeamChats.value.find(item => isTeamChatSelected(item.room.id, item.chat.id)) || flatTeamChats.value[0]
+  if (!row) return
+  if (unref(sidebarCollapsed)) sidebarCollapsed.value = false
+  nextTick(() => openWorkspaceDialog(row.room))
+}
+
+defineExpose({ openWorkspaceEditor })
 
 function handleChatMenuPointer(event) {
   const target = event.target

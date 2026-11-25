@@ -178,6 +178,23 @@ export function useTeamRoomNavigation({ roomApi, activeView, t, showError = () =
     }
   }
 
+  async function setWorkspace(roomId, workspace, move) {
+    const api = roomApi?.value
+    const id = String(roomId || '')
+    const next = String(workspace || '').trim()
+    if (!api?.setWorkspace || !id || !next) return null
+    try {
+      const input = { roomId: id, workspace: next }
+      if (move === true || move === false) input.move = move
+      const result = await api.setWorkspace(input)
+      if (!result?.needsMove) await load()
+      return result
+    } catch (cause) {
+      showError(cause)
+      return null
+    }
+  }
+
   async function deleteChat(roomId, chatId) {
     const api = roomApi?.value
     const id = String(roomId || '')
@@ -275,6 +292,7 @@ export function useTeamRoomNavigation({ roomApi, activeView, t, showError = () =
     renameChat,
     deleteRoom,
     deleteChat,
+    setWorkspace,
     syncActive,
     isRoomSelected,
     isChatSelected,

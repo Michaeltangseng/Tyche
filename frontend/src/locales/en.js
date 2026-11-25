@@ -36,6 +36,8 @@ export default {
     "room.workspaceAsk": "Choose a working directory before files are changed.",
     "room.setWorkspace": "Set working directory",
     "room.switchWorkspace": "Switch directory",
+    "room.workspacePath": "Working directory path",
+    "room.browseWorkspace": "Browse for a directory",
     "room.keepScratch": "Keep this directory",
     "room.moveScratchTitle": "This chat already has files. Move them to the new directory?",
     "room.moveScratchConfirm": "Move",

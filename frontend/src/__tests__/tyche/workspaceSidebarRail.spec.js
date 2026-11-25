@@ -1,5 +1,5 @@
 import { nextTick, ref } from 'vue'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceSidebar from '../../components/WorkspaceSidebar.vue'
 
@@ -15,6 +15,8 @@ function controller() {
     deleteTeamChat: vi.fn(),
     deleteTeamRoom: vi.fn(),
     renameTeamChat: vi.fn(),
+    setTeamWorkspace: vi.fn(async () => ({ roomId: 'team-1', moved: false })),
+    pickTeamDirectory: vi.fn(async () => '/tmp/picked'),
     directGroupsFor: () => [],
     discoveringAgents: ref(false),
     dismissSidebarDeleteConfirmation: vi.fn(),
@@ -90,6 +92,7 @@ describe('workspace sidebar rail', () => {
     fixture.teamRooms = ref([{
       id: 'team-1',
       name: 'Team Alpha',
+      workspace_path: '/tmp/tyche-demo',
       primary_chat_id: 'chat-1',
       chats: [
         {
@@ -144,6 +147,8 @@ describe('workspace sidebar rail', () => {
     const menu = document.body.querySelector('.team-chat-menu-popover')
     expect(menu?.textContent).toContain('room.renameChatAction')
     expect(menu?.textContent).toContain('room.deleteConfirm')
+    expect(menu?.textContent).toContain('room.switchWorkspace')
+    expect(menu.querySelector('.team-chat-workspace')).toBeNull()
     expect(menu?.style.left).toBe('210px')
     expect(menu?.style.top).toBe('40px')
     menu.querySelector('.team-chat-menu-delete')?.click()
@@ -151,6 +156,22 @@ describe('workspace sidebar rail', () => {
     document.body.querySelector('.sidebar-delete-popover .danger-button')?.click()
     await nextTick()
     expect(fixture.deleteTeamChat).toHaveBeenCalledWith('team-1', 'chat-2')
+
+    await menuButton.trigger('click')
+    await nextTick()
+    document.body.querySelector('.team-chat-menu-workspace')?.click()
+    await nextTick()
+    const directoryDialog = document.body.querySelector('.team-workspace-dialog')
+    const pathInput = directoryDialog.querySelector('.team-chat-workspace input')
+    expect(pathInput?.value).toBe('/tmp/tyche-demo')
+    document.body.querySelector('.team-chat-workspace-browse')?.click()
+    await flushPromises()
+    expect(pathInput.value).toBe('/tmp/picked')
+    pathInput.value = '/tmp/project'
+    pathInput.dispatchEvent(new Event('input', { bubbles: true }))
+    directoryDialog.querySelector('.team-chat-workspace').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    await nextTick()
+    expect(fixture.setTeamWorkspace).toHaveBeenCalledWith('team-1', '/tmp/project', undefined)
 
     await rows[0].get('.team-chat-menu').trigger('click')
     await nextTick()

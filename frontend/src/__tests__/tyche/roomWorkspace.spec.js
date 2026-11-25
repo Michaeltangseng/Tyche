@@ -87,7 +87,6 @@ function mountRoom(bridge, options = {}) {
     attachTo: document.body,
     props: {
       api: bridge,
-      pickDirectory: vi.fn(async () => '/tmp/demo'),
       agents: [
         { kind: 'codex', label: 'Codex' },
         { kind: 'claude', label: 'Claude Code' },
@@ -378,15 +377,11 @@ describe('team room workspace', () => {
     }))
   })
 
-  it('opens directory settings from the header instead of the files drawer', async () => {
+  it('keeps directory setup out of the chat header', async () => {
     const wrapper = mountRoom(api())
     await flushPromises()
+    expect(wrapper.find('.room-workspace-switch').exists()).toBe(false)
     expect(wrapper.find('.room-workspace-dialog').exists()).toBe(false)
-    await wrapper.get('.room-workspace-switch').trigger('click')
-    const dialog = wrapper.get('.room-workspace-dialog')
-    expect(dialog.text()).toContain('Switch directory')
-    expect(dialog.text()).toContain('Set working directory')
-    expect(dialog.text()).toContain('demo')
   })
 
   it('folds a mention handoff into the same author bubble', async () => {

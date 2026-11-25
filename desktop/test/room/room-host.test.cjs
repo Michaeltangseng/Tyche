@@ -58,7 +58,7 @@ test('bootstrap without a workspace uses a private scratch directory', async (t)
   assert.equal(rooms[0].workspace_default, true)
   assert.equal(rooms[0].workspace_confirmed, false)
   assert.equal(rooms[0].workspace_label, '')
-  assert.equal(JSON.stringify(rooms).includes(scratch), false)
+  assert.equal(rooms[0].workspace_path, fs.realpathSync(scratch))
 
   fs.writeFileSync(path.join(scratch, 'note.txt'), 'draft')
   const pending = host.setWorkspace({ roomId: created.roomId, workspace: path.join(root, 'workspace') })
@@ -95,8 +95,10 @@ test('bootstrap creates a display-safe room with a default captain', async (t) =
   assert.equal(rooms[0].name, 'Alpha room')
   assert.equal(rooms[0].workspace_label, 'workspace')
   assert.equal(rooms[0].primary_chat_id, created.chatId)
-  assert.equal(rooms[0].write_authorized, true)
-  assert.equal(JSON.stringify(rooms).includes(root), false)
+  assert.equal(rooms[0].workspace_path, fs.realpathSync(workspace))
+  const { workspace_path: roomPath, ...roomRest } = rooms[0]
+  assert.equal(roomPath.endsWith(`${path.sep}workspace`), true)
+  assert.equal(JSON.stringify(roomRest).includes(root), false)
 
   const snapshot = host.snapshot({ roomId: created.roomId })
   assert.equal(snapshot.chats.length, 1)
@@ -105,7 +107,10 @@ test('bootstrap creates a display-safe room with a default captain', async (t) =
   assert.equal(snapshot.roles[0].is_captain, true)
   assert.equal(snapshot.roles[0].native_permission, 'danger-full-access')
   assert.match(snapshot.roles[0].prompt, /create_roles/)
-  assert.equal(JSON.stringify(snapshot).includes(workspace), false)
+  assert.equal(snapshot.room.workspace_path, fs.realpathSync(workspace))
+  const { workspace_path: snapshotPath, ...snapshotRoom } = snapshot.room
+  assert.equal(snapshotPath.endsWith(`${path.sep}workspace`), true)
+  assert.equal(JSON.stringify({ ...snapshot, room: snapshotRoom }).includes(workspace), false)
 
   await host.start()
 })

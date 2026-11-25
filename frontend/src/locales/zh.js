@@ -36,6 +36,8 @@ export default {
     "room.workspaceAsk": "开始改文件之前，先确认工作目录。",
     "room.setWorkspace": "设置工作目录",
     "room.switchWorkspace": "切换工作目录",
+    "room.workspacePath": "工作目录路径",
+    "room.browseWorkspace": "查找目录",
     "room.keepScratch": "继续使用这个目录",
     "room.moveScratchTitle": "这个聊天里已经有文件。要移到新目录吗？",
     "room.moveScratchConfirm": "移动",
