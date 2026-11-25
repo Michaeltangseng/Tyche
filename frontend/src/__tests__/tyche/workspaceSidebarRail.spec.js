@@ -14,6 +14,7 @@ function controller() {
     deleteSidebarConversation: vi.fn(),
     deleteTeamChat: vi.fn(),
     deleteTeamRoom: vi.fn(),
+    renameTeamChat: vi.fn(),
     directGroupsFor: () => [],
     discoveringAgents: ref(false),
     dismissSidebarDeleteConfirmation: vi.fn(),
@@ -119,7 +120,10 @@ describe('workspace sidebar rail', () => {
     const rows = wrapper.findAll('.team-chat-row')
     expect(rows).toHaveLength(2)
     expect(rows[0].text()).toContain('Team chat')
+    expect(rows[0].text()).toContain('room.activityLine')
     expect(rows[1].text()).toContain('Research')
+    expect(rows[1].text()).toContain('room.activityLine')
+    expect(wrapper.text()).not.toContain('room.scratchLabel')
     expect(wrapper.find('.team-room-chats').exists()).toBe(false)
     expect(wrapper.find('.team-face-stack-chat').exists()).toBe(false)
     const mascots = wrapper.findAll('.team-chat-row .team-member-mascot .room-mascot-art svg')
@@ -133,11 +137,25 @@ describe('workspace sidebar rail', () => {
     await wrapper.get('.team-room-add').trigger('click')
     expect(fixture.openTeamRoomCreate).toHaveBeenCalled()
 
-    await rows[1].get('.team-room-delete').trigger('click')
+    await rows[1].get('.team-chat-menu').trigger('click')
+    await nextTick()
+    const menu = document.body.querySelector('.team-chat-menu-popover')
+    expect(menu?.textContent).toContain('room.renameChatAction')
+    expect(menu?.textContent).toContain('room.deleteConfirm')
+    menu.querySelector('.team-chat-menu-delete')?.click()
     await nextTick()
     document.body.querySelector('.sidebar-delete-popover .danger-button')?.click()
     await nextTick()
     expect(fixture.deleteTeamChat).toHaveBeenCalledWith('team-1', 'chat-2')
+
+    await rows[0].get('.team-chat-menu').trigger('click')
+    await nextTick()
+    document.body.querySelector('.team-chat-menu-rename')?.click()
+    await nextTick()
+    const input = wrapper.get('.team-chat-rename input')
+    await input.setValue('Relay jokes')
+    await input.trigger('keydown', { key: 'Enter' })
+    expect(fixture.renameTeamChat).toHaveBeenCalledWith('team-1', 'chat-1', 'Relay jokes')
     wrapper.unmount()
   })
 

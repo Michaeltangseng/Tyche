@@ -15,6 +15,7 @@ export function createWorkspaceControllers({
     activeView: app.activeView,
     deleteTeamChat: app.deleteTeamChat,
     deleteTeamRoom: app.deleteTeamRoom,
+    renameTeamChat: app.renameTeamChat,
     agentState: agentCatalog.agentState,
     collapsedGroupMenu: collapsedGroupMenu.collapsedGroupMenu,
     collapsedGroupMenuButton: collapsedGroupMenu.collapsedGroupMenuButton,

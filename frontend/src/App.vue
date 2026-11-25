@@ -960,6 +960,7 @@ const {
     addTeamChat: teamRoomNavigation.addChat,
     deleteTeamChat: teamRoomNavigation.deleteChat,
     deleteTeamRoom: teamRoomNavigation.deleteRoom,
+    renameTeamChat: teamRoomNavigation.renameChat,
     handleTeamRoomClick: teamRoomNavigation.handleRoomClick,
     isTeamChatSelected: teamRoomNavigation.isChatSelected,
     isTeamRoomExpanded: teamRoomNavigation.isExpanded,

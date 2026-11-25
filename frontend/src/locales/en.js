@@ -40,6 +40,8 @@ export default {
     "room.moveScratchConfirm": "Move",
     "room.moveScratchSkip": "Leave them",
     "room.renameChat": "Rename chat",
+    "room.chatActions": "Actions for {name}",
+    "room.renameChatAction": "Rename",
     "room.noChats": "No chats yet",
     "room.deleteTitle": "Delete {name}?",
     "room.deleteConfirm": "Delete",

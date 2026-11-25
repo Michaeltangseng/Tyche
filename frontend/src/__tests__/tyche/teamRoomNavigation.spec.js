@@ -79,6 +79,17 @@ describe('team room navigation', () => {
     expect(model.openRequest.value).toMatchObject({ roomId: 'room-1', chatId: 'chat-3' })
   })
 
+  it('renames a chat and reloads the room list', async () => {
+    const renameChat = vi.fn(async ({ title }) => ({ title }))
+    const { model, roomApi } = setup({ rooms: sampleRooms })
+    roomApi.value.renameChat = renameChat
+    await flushPromises()
+
+    await model.renameChat('room-1', 'chat-2', 'Relay jokes')
+    expect(renameChat).toHaveBeenCalledWith({ roomId: 'room-1', chatId: 'chat-2', title: 'Relay jokes' })
+    expect(roomApi.value.listRooms).toHaveBeenCalledTimes(2)
+  })
+
   it('syncs the active chat reported by the workspace without leaving the rooms view', async () => {
     const { model, activeView } = setup({ rooms: sampleRooms })
     await flushPromises()

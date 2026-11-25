@@ -284,9 +284,35 @@
           <div v-for="row in flatTeamChats" :key="row.chat.id" class="project-room-entry team-room-entry team-chat-row">
             <div
               class="project-room-row team-room-row"
-              :class="{ active: isTeamChatSelected(row.room.id, row.chat.id) }"
+              :class="{
+                active: isTeamChatSelected(row.room.id, row.chat.id),
+                'menu-open': isChatMenuOpen(row.room, row.chat),
+                renaming: isChatRenaming(row.room, row.chat),
+              }"
             >
+              <form
+                v-if="isChatRenaming(row.room, row.chat)"
+                class="project-room-open team-chat-rename"
+                @submit.prevent="commitTeamRename"
+              >
+                <span class="team-member-mascots" aria-hidden="true">
+                  <span v-for="member in chatMemberMascots(row.chat)" :key="member.key" class="team-member-mascot">
+                    <RoomMascot :mascot="member.mascot" />
+                  </span>
+                </span>
+                <input
+                  ref="teamRenameInput"
+                  v-model="teamRenameDraft"
+                  type="text"
+                  maxlength="80"
+                  :aria-label="t('room.renameChat')"
+                  @blur="commitTeamRename"
+                  @keydown.enter.prevent="commitTeamRename"
+                  @keydown.esc.prevent="cancelTeamRename"
+                />
+              </form>
               <button
+                v-else
                 class="project-room-open"
                 type="button"
                 :title="chatRowTitle(row.room, row.chat)"
@@ -305,13 +331,15 @@
                 </span>
               </button>
               <button
-                class="project-room-delete team-room-delete"
+                class="team-chat-menu"
                 type="button"
-                :title="t('room.deleteChat', { name: teamChatLabel(row.room, row.chat) })"
-                :aria-label="t('room.deleteChat', { name: teamChatLabel(row.room, row.chat) })"
-                @click.stop="openTeamDelete(chatDeleteTarget(row.room, row.chat), $event)"
+                :title="t('room.chatActions', { name: teamChatLabel(row.room, row.chat) })"
+                :aria-label="t('room.chatActions', { name: teamChatLabel(row.room, row.chat) })"
+                :aria-expanded="isChatMenuOpen(row.room, row.chat) ? 'true' : 'false'"
+                aria-haspopup="menu"
+                @click.stop="toggleChatMenu(row.room, row.chat, $event)"
               >
-                <TrashOutline />
+                <EllipsisHorizontal />
               </button>
             </div>
           </div>
@@ -354,6 +382,22 @@
           {{ t('settings.deleteConfirm') }}
         </button>
       </span>
+    </span>
+    <span
+      v-if="teamChatMenu"
+      class="team-chat-menu-popover"
+      role="menu"
+      :style="teamChatMenuStyle"
+      :aria-label="t('room.chatActions', { name: teamChatLabel(teamChatMenu.room, teamChatMenu.chat) })"
+    >
+      <button class="team-chat-menu-item team-chat-menu-rename" type="button" role="menuitem" @click="beginTeamRename">
+        <PencilOutline />
+        <span>{{ t('room.renameChatAction') }}</span>
+      </button>
+      <button class="team-chat-menu-item danger team-chat-menu-delete" type="button" role="menuitem" @click="chooseTeamDelete">
+        <TrashOutline />
+        <span>{{ t('room.deleteConfirm') }}</span>
+      </button>
     </span>
     <span v-if="teamDeleteTarget" class="team-delete-backdrop" aria-hidden="true" @click="dismissTeamDelete" />
     <span
@@ -418,6 +462,7 @@ const {
   deleteSidebarConversation,
   deleteTeamChat,
   deleteTeamRoom,
+  renameTeamChat,
   directGroupsFor,
   discoveringAgents,
   dismissSidebarDeleteConfirmation,
@@ -485,22 +530,14 @@ function isChatRunning(chat) {
   return RUNNING_CHAT_STATUSES.has(chat?.activity?.status)
 }
 
-function chatIsUnread(room, chat) {
-  if (isTeamChatSelected(room.id, chat.id)) return false
-  if (chat?.activity?.author !== 'agent' || !chat?.activity?.text) return false
-  const seq = Number(chat?.activity_seq) || 0
-  const seen = Number(seenChatActivity.value[chat.id]) || 0
-  return seq > seen
-}
-
 function chatActivityLabel(chat) {
   const activity = chat?.activity
-  if (!activity?.text) return t('room.noMessages')
-  if (['working', 'queued', 'starting', 'running'].includes(activity.status) && activity.name) {
-    return t('room.memberWorking', { name: activity.name })
+  if (activity?.text) {
+    const name = activity.author === 'user' ? t('room.you') : activity.name
+    return name ? t('room.activityLine', { name, text: activity.text }) : activity.text
   }
-  const name = activity.author === 'user' ? t('room.you') : activity.name
-  return name ? t('room.activityLine', { name, text: activity.text }) : activity.text
+  if (isChatRunning(chat) && activity?.name) return t('room.memberWorking', { name: activity.name })
+  return t('room.noMessages')
 }
 
 function chatTime(chat) {
@@ -529,10 +566,8 @@ function chatMemberMascots(chat) {
   })
 }
 
-function chatSubtitle(room, chat) {
-  if (chatIsUnread(room, chat) || isChatRunning(chat)) return chatActivityLabel(chat)
-  if (room?.workspace_default) return t('room.scratchLabel')
-  return room?.workspace_label || ''
+function chatSubtitle(_room, chat) {
+  return chatActivityLabel(chat)
 }
 
 function chatDeleteTarget(room, chat) {
@@ -549,9 +584,99 @@ function teamChatLabel(room, chat) {
 
 const teamDeleteTarget = ref(null)
 const teamDeletePopoverStyle = ref({})
+const teamChatMenu = ref(null)
+const teamChatMenuStyle = ref({})
+const teamChatMenuButton = ref(null)
+const teamRenameTarget = ref(null)
+const teamRenameDraft = ref('')
+const teamRenameInput = ref(null)
+let teamRenameSettled = false
 
-function openTeamDelete(target, event) {
-  const rect = event?.currentTarget?.getBoundingClientRect?.()
+function chatMenuKey(room, chat) {
+  return `${room?.id || ''}:${chat?.id || ''}`
+}
+
+function isChatMenuOpen(room, chat) {
+  return teamChatMenu.value?.key === chatMenuKey(room, chat)
+}
+
+function isChatRenaming(room, chat) {
+  const target = teamRenameTarget.value
+  return Boolean(target && target.roomId === room?.id && target.chatId === chat?.id)
+}
+
+function dismissChatMenu(restoreFocus = false) {
+  const button = teamChatMenuButton.value
+  teamChatMenu.value = null
+  teamChatMenuButton.value = null
+  if (restoreFocus) void nextTick(() => button?.focus?.())
+}
+
+function toggleChatMenu(room, chat, event) {
+  if (isChatMenuOpen(room, chat)) {
+    dismissChatMenu()
+    return
+  }
+  dismissTeamDelete()
+  const button = event?.currentTarget
+  const rect = button?.getBoundingClientRect?.()
+  teamChatMenuButton.value = button || null
+  if (rect && typeof window !== 'undefined') {
+    const width = 168
+    const left = Math.min(Math.max(8, rect.right - width), Math.max(8, window.innerWidth - width - 8))
+    const top = Math.min(rect.bottom + 6, Math.max(8, window.innerHeight - 96))
+    teamChatMenuStyle.value = { top: `${top}px`, left: `${left}px` }
+  }
+  teamChatMenu.value = { room, chat, key: chatMenuKey(room, chat) }
+}
+
+function handleChatMenuPointer(event) {
+  const target = event.target
+  if (target instanceof Element && target.closest('.team-chat-menu, .team-chat-menu-popover')) return
+  dismissChatMenu()
+}
+
+function beginTeamRename() {
+  const current = teamChatMenu.value
+  if (!current) return
+  const title = teamChatLabel(current.room, current.chat) || ''
+  teamRenameSettled = false
+  teamRenameDraft.value = title
+  teamRenameTarget.value = { roomId: current.room.id, chatId: current.chat.id, title }
+  dismissChatMenu()
+  void nextTick(() => {
+    const input = Array.isArray(teamRenameInput.value) ? teamRenameInput.value[0] : teamRenameInput.value
+    input?.focus?.()
+    input?.select?.()
+  })
+}
+
+function cancelTeamRename() {
+  teamRenameSettled = true
+  teamRenameTarget.value = null
+}
+
+function commitTeamRename() {
+  if (teamRenameSettled) return
+  const target = teamRenameTarget.value
+  if (!target) return
+  teamRenameSettled = true
+  const title = teamRenameDraft.value.replace(/\s+/g, ' ').trim().slice(0, 80)
+  teamRenameTarget.value = null
+  if (!title || title === target.title) return
+  void renameTeamChat(target.roomId, target.chatId, title)
+}
+
+function chooseTeamDelete() {
+  const current = teamChatMenu.value
+  const anchor = teamChatMenuButton.value
+  dismissChatMenu()
+  if (!current) return
+  openTeamDelete(chatDeleteTarget(current.room, current.chat), anchor)
+}
+
+function openTeamDelete(target, anchor) {
+  const rect = anchor?.getBoundingClientRect?.()
   teamDeleteTarget.value = target
   if (!rect || typeof window === 'undefined') return
   const width = 278
@@ -565,10 +690,15 @@ function dismissTeamDelete() {
 }
 
 function handleTeamDeleteKey(event) {
-  if (event.key === 'Escape') {
+  if (event.key !== 'Escape') return
+  if (teamChatMenu.value) {
     event.preventDefault()
-    dismissTeamDelete()
+    dismissChatMenu(true)
+    return
   }
+  if (!teamDeleteTarget.value) return
+  event.preventDefault()
+  dismissTeamDelete()
 }
 
 function confirmTeamDelete() {
@@ -579,14 +709,18 @@ function confirmTeamDelete() {
   else void deleteTeamChat(target.roomId, target.chatId)
 }
 
-watch(teamDeleteTarget, (target) => {
+watch([teamDeleteTarget, teamChatMenu], ([deleteTarget, menu]) => {
   if (typeof document === 'undefined') return
   document.removeEventListener('keydown', handleTeamDeleteKey)
-  if (target) document.addEventListener('keydown', handleTeamDeleteKey)
+  document.removeEventListener('pointerdown', handleChatMenuPointer, true)
+  if (deleteTarget || menu) document.addEventListener('keydown', handleTeamDeleteKey)
+  if (menu) document.addEventListener('pointerdown', handleChatMenuPointer, true)
 })
 
 onBeforeUnmount(() => {
-  if (typeof document !== 'undefined') document.removeEventListener('keydown', handleTeamDeleteKey)
+  if (typeof document === 'undefined') return
+  document.removeEventListener('keydown', handleTeamDeleteKey)
+  document.removeEventListener('pointerdown', handleChatMenuPointer, true)
 })
 
 const sidebarAgentCount = computed(() => (

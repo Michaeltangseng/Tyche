@@ -40,6 +40,8 @@ export default {
     "room.moveScratchConfirm": "移动",
     "room.moveScratchSkip": "不移动",
     "room.renameChat": "编辑聊天名称",
+    "room.chatActions": "{name} 的操作",
+    "room.renameChatAction": "重命名",
     "room.noChats": "暂无聊天",
     "room.deleteTitle": "删除 {name}？",
     "room.deleteConfirm": "删除",

@@ -162,6 +162,22 @@ export function useTeamRoomNavigation({ roomApi, activeView, t, showError = () =
     }
   }
 
+  async function renameChat(roomId, chatId, title) {
+    const api = roomApi?.value
+    const id = String(roomId || '')
+    const targetChat = String(chatId || '')
+    const next = String(title || '').trim()
+    if (!api?.renameChat || !id || !targetChat || !next) return null
+    try {
+      const result = await api.renameChat({ roomId: id, chatId: targetChat, title: next })
+      await load()
+      return result
+    } catch (cause) {
+      showError(cause)
+      return null
+    }
+  }
+
   async function deleteChat(roomId, chatId) {
     const api = roomApi?.value
     const id = String(roomId || '')
@@ -256,6 +272,7 @@ export function useTeamRoomNavigation({ roomApi, activeView, t, showError = () =
     handleRoomClick,
     selectChat,
     addChat,
+    renameChat,
     deleteRoom,
     deleteChat,
     syncActive,
