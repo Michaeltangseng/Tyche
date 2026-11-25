@@ -677,6 +677,7 @@ describe('team room workspace', () => {
       provider: 'codex',
       prompt: 'Review the work.',
     }))
+    expect(() => structuredClone(bridge.createRole.mock.calls.at(-1)[0])).not.toThrow()
 
     await wrapper.findAll('.room-agent-chip')[1].trigger('click')
     await flushPromises()

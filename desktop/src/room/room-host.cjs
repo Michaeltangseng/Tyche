@@ -530,10 +530,10 @@ function createRoomHost({
   }
 
   function selectedSkills(provider, skills) {
-    if (skills === undefined) return []
+    if (skills === undefined || skills === null) return []
     if (!Array.isArray(skills)) throw hostError('ROOM_ROLE_SKILLS_INVALID')
+    if (skills.length === 0) return []
     if (!skillInventory) {
-      if (skills.length === 0) return []
       throw hostError('ROOM_ROLE_SKILL_NOT_AVAILABLE')
     }
     try {

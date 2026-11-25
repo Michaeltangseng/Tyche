@@ -255,6 +255,37 @@ test('files are read from the room workspace without renderer paths', async (t) 
   })
 })
 
+test('an empty skill list can create a role without a catalog match', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-host-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const workspace = path.join(root, 'workspace')
+  fs.mkdirSync(workspace, { recursive: true })
+  const host = createRoomHost({
+    privateRoot: path.join(root, 'private'),
+    adapterFactory: () => fakeAdapter(),
+    liveness: false,
+    skillInventory: {
+      assertSelectable() {
+        throw new Error('SKILL_AGENT_INVALID')
+      },
+      projectSources() {
+        return []
+      },
+    },
+  })
+  t.after(() => host.close())
+  const created = host.bootstrap({ name: 'Skills', workspace, providers: ['codex'] })
+  const role = host.createRole({
+    roomId: created.roomId,
+    chatId: created.chatId,
+    displayName: 'Extra',
+    provider: 'codex',
+    skills: [],
+  })
+  assert.equal(typeof role.roleId, 'string')
+  assert.deepEqual(host.snapshot({ roomId: created.roomId }).roles.find(item => item.id === role.roleId).skills, [])
+})
+
 test('roles can be created, updated, and deleted while unused', (t) => {
   const { workspace, host } = createHost(t)
   const created = host.bootstrap({ name: 'Roles', workspace, providers: ['codex', 'claude'] })

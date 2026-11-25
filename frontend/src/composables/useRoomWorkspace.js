@@ -1,6 +1,14 @@
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { indexUsageByRun, mergeUsage } from '../room-usage.js'
 
+function plainRecord(value) {
+  if (Array.isArray(value)) return value.map(item => plainRecord(item))
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, plainRecord(item)]))
+  }
+  return value
+}
+
 /**
  * Renderer-side room domain adapter.
  *
@@ -453,7 +461,7 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
     const targetRoom = roomId.value
     const targetChat = chatId.value
     return mutate(async () => {
-      const result = await api.createRole({ roomId: targetRoom, chatId: targetChat, ...input })
+      const result = await api.createRole({ roomId: targetRoom, chatId: targetChat, ...plainRecord(input) })
       await refresh({ afterCurrent: true })
       return result
     })
@@ -462,7 +470,7 @@ export function useRoomWorkspace({ api, pollMs = 5000 } = {}) {
   async function updateRole(roleId, input) {
     const targetRoom = roomId.value
     return mutate(async () => {
-      const result = await api.updateRole({ roomId: targetRoom, roleId, ...input })
+      const result = await api.updateRole({ roomId: targetRoom, roleId, ...plainRecord(input) })
       await refresh({ afterCurrent: true })
       return result
     })
