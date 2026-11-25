@@ -938,9 +938,7 @@ const portraitPageSize = 4
 const portraitPageCount = computed(() => Math.max(1, Math.ceil(ROOM_MASCOTS.length / portraitPageSize)))
 const visiblePortraits = computed(() => ROOM_MASCOTS.slice(portraitPage.value * portraitPageSize, (portraitPage.value + 1) * portraitPageSize))
 const draftFace = computed(() => (roleDraft.value ? roleFace(roleDraft.value) : null))
-const welcomeRoles = computed(() => [...roles.value]
-  .sort((a, b) => Number(b.is_captain) - Number(a.is_captain))
-  .slice(0, 4))
+const welcomeRoles = computed(() => roles.value)
 const welcomePrompts = computed(() => {
   const captain = roles.value.find(role => role.is_captain) || roles.value[0]
   const other = roles.value.find(role => role && role !== captain)
@@ -1660,7 +1658,7 @@ onBeforeUnmount(() => {
 .room-welcome { max-width: 620px; margin: clamp(32px, 9vh, 96px) auto 0; text-align: center; }
 .room-welcome h2 { margin: 0 0 8px; font-size: var(--text-2xl); }
 .room-welcome p { margin: 0 0 8px; line-height: 1.65; }
-.room-welcome-team { display: flex; justify-content: center; align-items: flex-end; gap: 18px; margin-bottom: 18px; }
+.room-welcome-team { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; gap: 18px; margin-bottom: 18px; }
 .room-welcome-face { position: relative; display: block; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .room-welcome-face img { width: 48px; height: 48px; border: 1.5px solid #12161a; border-radius: 50%; object-fit: cover; background: #1b2124; box-shadow: 0 8px 20px rgb(0 0 0 / 0.28); transform-origin: 50% 85%; transition: transform 0.18s ease; }
 .room-welcome-face.captain img { width: 64px; height: 64px; }

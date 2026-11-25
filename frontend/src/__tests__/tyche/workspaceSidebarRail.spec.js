@@ -217,20 +217,56 @@ describe('workspace sidebar rail', () => {
     wrapper.unmount()
   })
 
-  it('keeps agent entries in the collapsed rail', async () => {
+  it('hides local agents in the collapsed rail', async () => {
     const fixture = controller()
     const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })
 
     expect(wrapper.find('.conversation-nav').exists()).toBe(false)
     expect(wrapper.find('.sidebar-rail').exists()).toBe(true)
+    expect(wrapper.find('.sidebar-rail [aria-label="Codex"]').exists()).toBe(false)
+    expect(wrapper.find('.sidebar-footer .sidebar-user-mark').exists()).toBe(true)
+    expect(wrapper.find('.sidebar-footer .icon-button').exists()).toBe(true)
+    wrapper.unmount()
+  })
 
-    const [agentButton] = wrapper.findAll('.sidebar-rail-item')
-    expect(agentButton.attributes('aria-label')).toBe('Codex')
+  it('stacks the latest chats in the collapsed rail', async () => {
+    const fixture = controller()
+    fixture.roomWorkspaceAvailable = ref(true)
+    const chats = Array.from({ length: 9 }, (_, index) => ({
+      id: `chat-${index + 1}`,
+      title: `Chat ${index + 1}`,
+      updated_at: `2026-11-${String(index + 1).padStart(2, '0')}T10:00:00Z`,
+      members: index === 8
+        ? [
+          { id: 'a', name: 'A', is_captain: true, last_seq: 1 },
+          { id: 'b', name: 'B', last_seq: 3 },
+          { id: 'c', name: 'C', last_seq: 2 },
+          { id: 'd', name: 'D', last_seq: 0 },
+        ]
+        : [{ id: `solo-${index}`, name: 'Solo' }],
+    }))
+    fixture.teamRooms = ref([{ id: 'team-1', name: 'Team', primary_chat_id: 'chat-1', chats }])
+    const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })
 
-    await agentButton.trigger('click')
-    expect(fixture.handleSidebarAgentMain).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'codex' }),
-    )
+    expect(wrapper.find('.sidebar-rail [aria-label="Codex"]').exists()).toBe(false)
+    const railChats = wrapper.findAll('.sidebar-rail-chat')
+    expect(railChats).toHaveLength(8)
+    expect(railChats[0].attributes('aria-label')).toBe('Chat 9')
+    expect(railChats[0].get('.rail-chat-stack').attributes('data-count')).toBe('3')
+    expect(railChats[0].findAll('.rail-chat-face')).toHaveLength(3)
+    expect(railChats.at(-1).attributes('aria-label')).toBe('Chat 2')
+
+    await railChats[0].trigger('pointerenter')
+    expect(wrapper.get('.rail-chat-label').text()).toBe('Chat 9')
+    expect(wrapper.get('.rail-chat-stick').attributes('data-traveling')).toBe('false')
+
+    await railChats[1].trigger('pointerenter')
+    expect(wrapper.get('.rail-chat-label').text()).toBe('Chat 8')
+    expect(wrapper.get('.rail-chat-stick').attributes('data-traveling')).toBe('true')
+
+    await railChats[0].trigger('click')
+    expect(fixture.selectTeamChat).toHaveBeenCalledWith('team-1', 'chat-9')
+    wrapper.unmount()
   })
 
   it('renders agents before team rooms when the sidebar expands', async () => {

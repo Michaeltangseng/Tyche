@@ -358,11 +358,11 @@ function nodeTitle(node) {
 
 .room-chip-photo {
   display: grid;
-  overflow: hidden;
+  overflow: visible;
   width: 26px;
   height: 26px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--chip-tint, var(--accent)) 15%, transparent);
+  border-radius: 0;
+  background: transparent;
   transition: box-shadow 0.2s ease;
 }
 

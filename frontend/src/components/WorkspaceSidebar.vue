@@ -49,36 +49,45 @@
     <div v-if="sidebarCollapsed" class="sidebar-rail">
       <div class="sidebar-rail-scroll">
         <section
-          v-if="castAgents.length"
+          v-if="recentRailChats.length"
           class="sidebar-rail-section"
-          :aria-label="t('nav.sidebarAgents')"
+          :aria-label="t('room.chatList')"
+          @pointerleave="leaveRailChat"
+          @focusout="leaveRailChat"
         >
+          <span
+            v-if="railHover"
+            class="rail-chat-stick"
+            :data-traveling="railHover.traveling ? 'true' : 'false'"
+            :style="{ '--stick-y': `${railHover.offset}px` }"
+          />
           <button
-            v-for="agent in castAgents"
-            :key="agent.kind"
-            class="sidebar-rail-item"
-            :class="{ active: isRailAgentActive(agent), unavailable: !agent.ready }"
+            v-for="row in recentRailChats"
+            :key="row.chat.id"
+            class="sidebar-rail-item sidebar-rail-chat"
+            :class="{ active: isTeamChatSelected(row.room.id, row.chat.id) }"
             type="button"
-            :title="`${agent.label} · ${agentState(agent).label}`"
-            :aria-label="agent.label"
-            :disabled="isDirectCreationPending(agent.kind)"
-            @click="handleSidebarAgentMain(agent)"
+            :aria-label="teamChatLabel(row.room, row.chat)"
+            :aria-current="isTeamChatSelected(row.room.id, row.chat.id) ? 'page' : undefined"
+            @pointerenter="hoverRailChat($event, row)"
+            @focus="hoverRailChat($event, row)"
+            @click="openTeamChat(row.room, row.chat)"
           >
-            <span class="agent-logo-cloud" :class="{ cloud: agent.cloud }">
-              <img :src="agent.logo" :alt="agent.label" />
-              <CloudOutline v-if="agent.cloud" aria-hidden="true" />
-              <span
-                v-if="agentAwaitingDecision(agent.kind)"
-                class="attention-dot agent-attention-dot"
-                :title="t('humanGate.waiting')"
-              />
+            <span class="rail-chat-stack" :data-count="String(chatMemberMascots(row.chat).length)">
+              <span v-for="member in chatMemberMascots(row.chat)" :key="member.key" class="rail-chat-face">
+                <RoomMascot :mascot="member.mascot" />
+              </span>
             </span>
           </button>
         </section>
 
-        <button v-if="roomWorkspaceAvailable" class="sidebar-rail-item" type="button" :title="t('room.title')" :aria-label="t('room.title')" :aria-current="activeView === 'rooms' ? 'page' : undefined" @click="openRoomWorkspace"><PeopleOutline /></button>
         <button v-if="roomWorkspaceAvailable" class="sidebar-rail-item sidebar-rail-add" type="button" :title="t('room.createChat')" :aria-label="t('room.createChat')" @click="openTeamRoomCreate"><AddOutline /></button>
       </div>
+      <div
+        v-if="railHover"
+        class="rail-chat-label"
+        :style="{ top: `${railHover.labelTop}px`, left: `${railHover.labelLeft}px` }"
+      >{{ railHover.label }}</div>
     </div>
 
     <nav v-else class="conversation-nav" :aria-label="t('nav.conversations')">
@@ -349,7 +358,7 @@
       <p v-if="searching && !filteredAgentGroups.length && !flatTeamChats.length" class="nav-empty">{{ t('nav.searchEmpty') }}</p>
     </nav>
 
-    <footer v-if="!sidebarCollapsed" class="sidebar-footer">
+    <footer class="sidebar-footer">
       <button class="sidebar-user" type="button" :title="t('nav.you')" :aria-label="t('nav.you')" @click="openSidebarSettings">
         <span class="sidebar-user-mark" aria-hidden="true">{{ youMark }}</span>
         <span>{{ t('nav.you') }}</span>
@@ -434,7 +443,6 @@ import {
   CloudOutline,
   EllipsisHorizontal,
   PencilOutline,
-  PeopleOutline,
   SearchOutline,
   SettingsOutline,
   TrashOutline,
@@ -853,6 +861,40 @@ const flatTeamChats = computed(() => {
   return visible.sort((a, b) => chatActivityTime(b.chat) - chatActivityTime(a.chat))
 })
 
+const recentRailChats = computed(() => flatTeamChats.value.slice(0, 8))
+const railHover = ref(null)
+let railHoverTimer = 0
+
+function hoverRailChat(event, row) {
+  const button = event.currentTarget
+  if (!(button instanceof HTMLElement)) return
+  const rect = button.getBoundingClientRect()
+  const previous = railHover.value
+  const traveling = Boolean(previous && previous.id !== row.chat.id)
+  railHover.value = {
+    id: row.chat.id,
+    label: teamChatLabel(row.room, row.chat),
+    offset: button.offsetTop,
+    traveling,
+    labelTop: rect.top + rect.height / 2,
+    labelLeft: rect.right + 10,
+  }
+  window.clearTimeout(railHoverTimer)
+  if (!traveling) return
+  railHoverTimer = window.setTimeout(() => {
+    if (railHover.value?.id === row.chat.id) {
+      railHover.value = { ...railHover.value, traveling: false }
+    }
+  }, 140)
+}
+
+function leaveRailChat(event) {
+  const next = event.relatedTarget
+  if (next instanceof Element && next.closest('.sidebar-rail-chat')) return
+  window.clearTimeout(railHoverTimer)
+  railHover.value = null
+}
+
 function focusSidebarSearch() {
   if (unref(sidebarCollapsed)) sidebarCollapsed.value = false
   nextTick(() => sidebarSearchInput.value?.focus())
@@ -879,6 +921,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleSidebarSearchKey)
+  window.clearTimeout(railHoverTimer)
 })
 
 const railAgents = computed(() => (
