@@ -31,7 +31,10 @@ const MAX_MESSAGE_LENGTH = 100_000
 const MAX_FILES_READ_BYTES = 512 * 1024
 const ROOM_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/
 const PROVIDER = /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/
-const PORTRAIT_IDS = new Set(['claude', 'codex', 'pi', 'gemini', 'hermes', 'deepseek', 'kimi', 'qwen'])
+const PORTRAIT_IDS = new Set([
+  'claude', 'codex', 'pi', 'gemini', 'hermes', 'deepseek', 'kimi', 'qwen',
+  '01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12',
+])
 const PREVIOUS_CAPTAIN_PROMPT = [
   'You are the Captain of this chat.',
   'When the current members cannot cover the request, call create_roles with a name, provider, responsibilities, and prompt for each new member.',

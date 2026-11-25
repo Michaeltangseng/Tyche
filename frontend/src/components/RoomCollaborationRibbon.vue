@@ -24,7 +24,7 @@
               @click="selectRole(node.role)"
             >
               <span class="room-relay-face">
-                <RoomMascot v-if="node.role" :mascot="roomMascot(node.role)" />
+                <RoomMascot v-if="node.role" :mascot="roleFace(node.role)" />
                 <span v-else class="room-relay-initial">{{ initialFor(node.role) }}</span>
                 <span
                   v-if="node.state === 'active'"
@@ -80,7 +80,7 @@
           >
             <span v-if="role.provider" class="room-chip-face">
               <span class="room-chip-photo">
-                <RoomMascot :mascot="roomMascot(role)" />
+                <RoomMascot :mascot="roleFace(role)" />
               </span>
               <span v-if="role.is_captain" class="room-captain-mark" :title="t('room.captain')">⚓</span>
             </span>
@@ -126,7 +126,7 @@
               <RoomMascot
                 v-for="node in recapFaces"
                 :key="node.roleId"
-                :mascot="roomMascot(node.role || { id: node.roleId })"
+                :mascot="roleFace(node.role || { id: node.roleId })"
               />
               <span v-if="recapExtra" class="room-recap-more">+{{ recapExtra }}</span>
             </span>
@@ -145,7 +145,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { AddOutline, ChevronForwardOutline } from '@vicons/ionicons5'
 import { t } from '../i18n.js'
 import { portraitGlow } from '../role-portraits.js'
-import { roomMascot } from '../room-mascots.js'
+import { roleFace } from '../room-mascots.js'
 import RoomMascot from './RoomMascot.vue'
 
 const props = defineProps({

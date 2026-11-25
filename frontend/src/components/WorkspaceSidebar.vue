@@ -442,7 +442,7 @@ import {
 
 import { portraitGlow } from '../role-portraits.js'
 import { loadRoomChatSeen, saveRoomChatSeen } from '../room-chat-read-state.js'
-import { roomMascot } from '../room-mascots.js'
+import { roleFace } from '../room-mascots.js'
 import RoomMascot from './RoomMascot.vue'
 
 const props = defineProps({
@@ -562,7 +562,7 @@ function chatMemberMascots(chat) {
   const faces = visible.length ? visible : [{ id: chat?.id || 'chat' }]
   return faces.map(member => {
     const key = member.id || `${member.provider || ''}:${member.name || ''}`
-    return { key, mascot: roomMascot({ id: key }) }
+    return { key, mascot: roleFace(member.id ? member : { id: key }) }
   })
 }
 

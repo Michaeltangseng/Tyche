@@ -613,8 +613,12 @@ describe('team room workspace', () => {
     await flushPromises()
     expect(wrapper.get('.room-role-engine-field select').findAll('option').map(node => node.element.value))
       .toEqual(['claude', 'codex'])
-    expect(wrapper.findAll('.room-role-provider-choice').map(node => node.attributes('data-portrait')))
-      .toEqual(['claude', 'codex', 'pi', 'gemini'])
+    const portraits = wrapper.findAll('.room-role-provider-choice').map(node => node.attributes('data-portrait'))
+    expect(portraits).toHaveLength(4)
+    expect(portraits.every(id => /^\d{2}$/.test(id))).toBe(true)
+    expect(wrapper.find('.room-role-provider-choice.active').attributes('data-portrait')).toMatch(/^\d{2}$/)
+    expect(wrapper.find('.room-role-v2-avatar .room-mascot-art').exists()).toBe(true)
+    expect(wrapper.find('.room-portrait').exists()).toBe(false)
   })
 
   it('opens the role dialog from a roster card', async () => {

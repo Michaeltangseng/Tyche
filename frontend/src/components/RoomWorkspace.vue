@@ -96,7 +96,7 @@
                   :aria-label="`${t('room.configureRole')}: ${roleLabel(role)}`"
                   @click="openRoleSettings(role.id)"
                 >
-                  <RoomMascot :mascot="roomMascot(role)" />
+                  <RoomMascot :mascot="roleFace(role)" />
                   <span v-if="role.is_captain" class="room-welcome-wave">{{ t('room.welcomeWave') }}</span>
                 </button>
               </div>
@@ -127,11 +127,11 @@
                   :aria-label="`${t('room.configureRole')}: ${entry.author}`"
                   @click="openRoleSettings(entry.roleId)"
                 >
-                  <RoomMascot v-if="entry.roleId" :mascot="roomMascot({ id: entry.roleId })" />
+                  <RoomMascot v-if="entry.roleId" :mascot="roleFace(rolesById.get(entry.roleId) || { id: entry.roleId })" />
                   <span v-else>{{ entry.author.slice(0, 1) }}</span>
                 </button>
                 <span v-else-if="!entry.isUser && !entry.isSystem" class="room-message-avatar">
-                  <RoomMascot v-if="entry.roleId" :mascot="roomMascot({ id: entry.roleId })" />
+                  <RoomMascot v-if="entry.roleId" :mascot="roleFace(rolesById.get(entry.roleId) || { id: entry.roleId })" />
                   <span v-else>{{ entry.author.slice(0, 1) }}</span>
                 </span>
                 <div class="room-message-body">
@@ -175,7 +175,7 @@
                     >
                       <div v-if="handoffTargets(handoff).length" class="room-handoff-strip">
                         <span class="room-handoff-face">
-                          <RoomMascot v-if="entry.roleId" :mascot="roomMascot({ id: entry.roleId })" />
+                          <RoomMascot v-if="entry.roleId" :mascot="roleFace(rolesById.get(entry.roleId) || { id: entry.roleId })" />
                           <span v-else>{{ entry.author.slice(0, 1) }}</span>
                         </span>
                         <span class="room-handoff-arrow" aria-hidden="true">→</span>
@@ -185,7 +185,7 @@
                           class="room-handoff-face"
                           :title="roleLabel(target)"
                         >
-                          <RoomMascot :mascot="roomMascot(target)" />
+                          <RoomMascot :mascot="roleFace(target)" />
                         </span>
                         <span class="room-handoff-label">
                           {{ t('room.handoffTo', { names: handoffTargets(handoff).map(roleLabel).join(' · ') }) }}
@@ -210,7 +210,7 @@
                       :aria-label="`${t('room.configureRole')}: ${roleLabel(role)}`"
                       @click="openRoleSettings(role.id)"
                     >
-                      <RoomMascot v-if="role.provider" :mascot="roomMascot(role)" />
+                      <RoomMascot v-if="role.provider" :mascot="roleFace(role)" />
                       <span class="room-roster-name">{{ roleLabel(role) }}</span>
                       <span v-if="role.responsibilities" class="room-roster-duty">{{ role.responsibilities }}</span>
                     </button>
@@ -382,7 +382,7 @@
               <li v-for="row in agentUsage" :key="row.id">
                 <div class="room-usage-agent">
                   <span class="room-usage-face">
-                    <RoomMascot :mascot="roomMascot(rolesById.get(row.id) || { id: row.id })" />
+                    <RoomMascot :mascot="roleFace(rolesById.get(row.id) || { id: row.id })" />
                   </span>
                   <strong>{{ row.name }}</strong>
                   <span :data-status="row.status">{{ row.status === 'working' ? t('room.usageWorking') : t('room.usageIdle') }}</span>
@@ -448,7 +448,7 @@
           <aside class="room-role-v2-side">
             <div class="room-role-v2-profile">
               <div class="room-role-v2-avatar">
-                <img v-if="roleDraft.portrait || roleDraft.provider" class="room-portrait" :src="rolePortrait(roleDraft.portrait || roleDraft.provider)" alt="" />
+                <RoomMascot v-if="draftFace" :mascot="draftFace" />
                 <span v-else>{{ (roleDraft.displayName || '?').slice(0, 1) }}</span>
               </div>
               <h3 class="room-role-v2-heading">{{ t('room.rolePortrait') }}</h3>
@@ -458,18 +458,18 @@
                 </button>
                 <div class="room-role-v2-provider-icons" role="group" :aria-label="t('room.rolePortrait')">
                   <button
-                    v-for="portrait in visiblePortraits"
-                    :key="portrait.id"
+                    v-for="mascot in visiblePortraits"
+                    :key="mascot.id"
                     class="room-role-provider-choice"
-                    :class="{ active: roleDraft.portrait === portrait.id }"
+                    :class="{ active: roleDraft.portrait === mascot.id }"
                     type="button"
-                    :data-portrait="portrait.id"
-                    :aria-label="portrait.id"
-                    :aria-pressed="roleDraft.portrait === portrait.id"
-                    @click="roleDraft.portrait = portrait.id"
+                    :data-portrait="mascot.id"
+                    :aria-label="mascot.name"
+                    :aria-pressed="roleDraft.portrait === mascot.id"
+                    @click="roleDraft.portrait = mascot.id"
                   >
-                    <img class="room-portrait" :src="portrait.src" alt="" />
-                    <CheckmarkCircleOutline v-if="roleDraft.portrait === portrait.id" class="room-role-portrait-check" />
+                    <RoomMascot :mascot="mascot" />
+                    <CheckmarkCircleOutline v-if="roleDraft.portrait === mascot.id" class="room-role-portrait-check" />
                   </button>
                 </div>
                 <button class="room-portrait-arrow" type="button" :aria-label="t('room.portraitNext')" :disabled="portraitPage >= portraitPageCount - 1" @click="portraitPage += 1">
@@ -566,8 +566,8 @@
             <section class="room-role-preview" :aria-label="t('room.rolePreview')">
               <h3>{{ t('room.rolePreview') }}</h3>
               <div class="room-role-preview-card">
-                <span class="room-role-preview-face" :style="{ '--portrait-glow': portraitGlow(roleDraft.portrait || roleDraft.provider) }">
-                  <img :src="rolePortrait(roleDraft.portrait || roleDraft.provider)" alt="" />
+                <span class="room-role-preview-face">
+                  <RoomMascot v-if="draftFace" :mascot="draftFace" />
                 </span>
                 <div class="room-role-preview-copy">
                   <header>
@@ -615,8 +615,7 @@ import {
 } from '@vicons/ionicons5'
 import { agentLogo } from '../catalog.js'
 import { desktopApi } from '../desktop.js'
-import { portraitGlow, portraitId, rolePortrait, rolePortraits } from '../role-portraits.js'
-import { roomMascot } from '../room-mascots.js'
+import { roomMascot, roleFace, ROOM_MASCOTS, mascotById } from '../room-mascots.js'
 import RoomMascot from './RoomMascot.vue'
 import { t } from '../i18n.js'
 import { keptSkillIds, selectableSkills, skillTokenEstimate } from '../skillInventory.js'
@@ -936,8 +935,9 @@ const roleProviders = computed(() => {
 const canAddRole = computed(() => readyProviderKinds.value.size > 0)
 const portraitPage = ref(0)
 const portraitPageSize = 4
-const portraitPageCount = computed(() => Math.max(1, Math.ceil(rolePortraits().length / portraitPageSize)))
-const visiblePortraits = computed(() => rolePortraits().slice(portraitPage.value * portraitPageSize, (portraitPage.value + 1) * portraitPageSize))
+const portraitPageCount = computed(() => Math.max(1, Math.ceil(ROOM_MASCOTS.length / portraitPageSize)))
+const visiblePortraits = computed(() => ROOM_MASCOTS.slice(portraitPage.value * portraitPageSize, (portraitPage.value + 1) * portraitPageSize))
+const draftFace = computed(() => (roleDraft.value ? roleFace(roleDraft.value) : null))
 const welcomeRoles = computed(() => [...roles.value]
   .sort((a, b) => Number(b.is_captain) - Number(a.is_captain))
   .slice(0, 4))
@@ -1016,8 +1016,12 @@ const totalUsage = computed(() => agentUsage.value.reduce((total, row) => {
 const totalUsageLine = computed(() => formatUsageLine(totalUsage.value))
 
 function showPortraitPage(id) {
-  const index = rolePortraits().findIndex(item => item.id === id)
+  const index = ROOM_MASCOTS.findIndex(item => item.id === id)
   portraitPage.value = index < 0 ? 0 : Math.floor(index / portraitPageSize)
+}
+
+function savedFaceId(role) {
+  return mascotById(role?.portrait)?.id || roleFace(role).id
 }
 
 function roleLabel(role) {
@@ -1341,7 +1345,7 @@ function openNewRole() {
     id: '',
     displayName: '',
     provider: roleProviders.value[0] || '',
-    portrait: portraitId(roleProviders.value[0] || ''),
+    portrait: roomMascot({ id: roleProviders.value[0] || 'role' }).id,
     prompt: '',
     responsibilities: '',
     isCaptain: !roles.value.some(role => role.is_captain),
@@ -1368,7 +1372,7 @@ function openRoleSettings(roleId) {
     id: role.id,
     displayName: role.display_name || '',
     provider: role.provider || '',
-    portrait: role.portrait || portraitId(role.provider || ''),
+    portrait: savedFaceId(role),
     prompt: role.prompt || '',
     responsibilities: role.responsibilities || '',
     isCaptain: role.is_captain === true,
@@ -1889,7 +1893,8 @@ button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.
 .room-role-v2-side { overflow: auto; padding: 18px; border-right: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 72%, var(--surface-raised)); }
 .room-role-v2-profile { display: flex; flex-direction: column; gap: 10px; padding: 18px 16px; border: 1px solid var(--border); border-radius: 16px; background: color-mix(in srgb, var(--surface-raised) 70%, transparent); }
 .room-role-v2-avatar { display: grid; place-items: center; width: 208px; height: 208px; margin: 0 auto 4px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--border-strong) 78%, transparent); border-radius: 50%; background: #1b2124; box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04); }
-.room-role-v2-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.room-role-v2-avatar :deep(.room-mascot-art) { width: 168px; height: 168px; }
+.room-role-v2-avatar :deep(.room-mascot-art svg) { width: 168px; height: 168px; }
 .room-role-v2-avatar span { color: var(--text-soft); font-size: var(--text-3xl); font-weight: 600; }
 .room-role-v2-heading { margin: 4px 0 0; color: var(--text-soft); font-size: var(--text-xs); font-weight: 600; text-align: left; }
 .room-role-engine { display: inline-flex; align-items: center; gap: 6px; align-self: center; padding: 3px 8px 3px 4px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text-soft); font-size: var(--text-2xs); }
@@ -1902,6 +1907,8 @@ button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.
 .room-portrait-arrow:disabled { opacity: 0.28; cursor: default; background: transparent; }
 .room-role-v2-provider-icons { display: grid; grid-template-columns: repeat(4, 40px); justify-content: start; gap: 6px; width: 100%; margin: 0; }
 .room-portrait-pager .room-role-provider-choice { width: 40px; height: 40px; }
+.room-portrait-pager .room-role-provider-choice :deep(.room-mascot-art),
+.room-portrait-pager .room-role-provider-choice :deep(.room-mascot-art svg) { width: 32px; height: 32px; }
 .room-role-provider-choice { position: relative; width: 44px; height: 44px; display: inline-grid; place-items: center; padding: 0; overflow: visible; border: 2px solid transparent; border-radius: 50%; background: #1b2124; cursor: pointer; }
 .room-role-provider-choice img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .room-role-provider-choice:hover, .room-role-provider-choice:focus-visible { outline: none; border-color: var(--border-strong); }
@@ -1951,9 +1958,9 @@ button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.
 .room-permission-warning { margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--warning-soft); color: var(--warning); font-size: var(--text-2xs); line-height: 1.45; }
 .room-role-preview h3 { margin: 0 0 4px; color: var(--text-soft); font-size: var(--text-xs); font-weight: 600; text-align: left; }
 .room-role-preview-card { display: flex; align-items: center; justify-content: flex-start; gap: 18px; margin: 0; padding: 10px 4px 4px; border: 0; background: transparent; text-align: left; }
-.room-role-preview-face { position: relative; width: 88px; height: 88px; flex: 0 0 88px; }
-.room-role-preview-face::before { content: ""; position: absolute; z-index: 0; inset: -8px; background: radial-gradient(circle, color-mix(in srgb, var(--portrait-glow) 34%, transparent) 0%, transparent 72%); pointer-events: none; }
-.room-role-preview-face img { position: relative; z-index: 1; width: 88px; height: 88px; border-radius: 50%; object-fit: cover; background: transparent; }
+.room-role-preview-face { position: relative; width: 88px; height: 88px; flex: 0 0 88px; display: grid; place-items: center; }
+.room-role-preview-face :deep(.room-mascot-art),
+.room-role-preview-face :deep(.room-mascot-art svg) { width: 72px; height: 72px; }
 .room-role-preview-copy { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .room-role-preview-card header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .room-role-preview-card strong { font-size: var(--text-md); }

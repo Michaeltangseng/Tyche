@@ -25,3 +25,11 @@ export function roomMascot(room) {
   }
   return ROOM_MASCOTS[hash % ROOM_MASCOTS.length]
 }
+
+export function mascotById(id) {
+  return ROOM_MASCOTS.find(item => item.id === String(id || '')) || null
+}
+
+export function roleFace(role) {
+  return mascotById(role?.portrait) || roomMascot({ id: role?.id || role?.provider || role?.display_name || role?.displayName || role?.name || '' })
+}

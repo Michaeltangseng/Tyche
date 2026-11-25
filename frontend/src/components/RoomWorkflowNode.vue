@@ -11,7 +11,7 @@
       @click="emit('select', node)"
     >
       <span class="room-flow-face">
-        <RoomMascot :mascot="roomMascot(role || { id: node.roleId })" />
+        <RoomMascot :mascot="roleFace(role || { id: node.roleId })" />
       </span>
       <strong>{{ roleName }}</strong>
       <small v-if="!incomingLabel && node.title">{{ node.title }}</small>
@@ -42,7 +42,7 @@
 <script setup>
 import { computed } from 'vue'
 import { t } from '../i18n.js'
-import { roomMascot } from '../room-mascots.js'
+import { roleFace } from '../room-mascots.js'
 import RoomMascot from './RoomMascot.vue'
 
 const props = defineProps({
