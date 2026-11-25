@@ -570,7 +570,9 @@ function createOarRuntimeAdapter({
         roleId: run.roleId,
         provider: role.provider,
         promptRevision: rolePromptRevision(run.roleId),
-        permissionMode: role.nativePermission || 'read-only',
+        permissionMode: room?.workspaceOrigin === 'default' && room?.workspaceConfirmed !== true
+          ? 'read-only'
+          : (role.nativePermission || 'read-only'),
         workspaceRef: workspace,
         skillBindings,
         model: role.model ?? null,

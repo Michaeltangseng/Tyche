@@ -24,12 +24,7 @@
               @click="selectRole(node.role)"
             >
               <span class="room-relay-face">
-                <img
-                  v-if="hasPortrait(node.role)"
-                  class="room-relay-portrait"
-                  :src="portraitFor(node.role)"
-                  alt=""
-                />
+                <RoomMascot v-if="node.role" :mascot="roomMascot(node.role)" />
                 <span v-else class="room-relay-initial">{{ initialFor(node.role) }}</span>
                 <span
                   v-if="node.state === 'active'"
@@ -85,7 +80,7 @@
           >
             <span v-if="role.provider" class="room-chip-face">
               <span class="room-chip-photo">
-                <img class="room-portrait" :src="portraitFor(role)" alt="" />
+                <RoomMascot :mascot="roomMascot(role)" />
               </span>
               <span v-if="role.is_captain" class="room-captain-mark" :title="t('room.captain')">⚓</span>
             </span>
@@ -128,11 +123,10 @@
             @click="emit('open-work')"
           >
             <span v-if="recapFaces.length" class="room-recap-faces" aria-hidden="true">
-              <img
+              <RoomMascot
                 v-for="node in recapFaces"
                 :key="node.roleId"
-                :src="portraitFor(node.role)"
-                alt=""
+                :mascot="roomMascot(node.role || { id: node.roleId })"
               />
               <span v-if="recapExtra" class="room-recap-more">+{{ recapExtra }}</span>
             </span>
@@ -150,7 +144,9 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { AddOutline, ChevronForwardOutline } from '@vicons/ionicons5'
 import { t } from '../i18n.js'
-import { portraitGlow, rolePortrait } from '../role-portraits.js'
+import { portraitGlow } from '../role-portraits.js'
+import { roomMascot } from '../room-mascots.js'
+import RoomMascot from './RoomMascot.vue'
 
 const props = defineProps({
   state: {
@@ -234,14 +230,6 @@ function replyFor(role) {
 
 function labelFor(role) {
   return role?.display_name || role?.id || ''
-}
-
-function hasPortrait(role) {
-  return Boolean(role?.provider || role?.portrait)
-}
-
-function portraitFor(role) {
-  return rolePortrait(role?.portrait || role?.provider)
 }
 
 function glowFor(role) {
@@ -378,15 +366,11 @@ function nodeTitle(node) {
   transition: box-shadow 0.2s ease;
 }
 
-.room-chip-photo img {
+.room-chip-photo :deep(.room-mascot-art),
+.room-relay-face :deep(.room-mascot-art),
+.room-recap-faces :deep(.room-mascot-art) {
   width: 100%;
   height: 100%;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  object-fit: cover;
-  object-position: center 12%;
-  transform: scale(1.55);
 }
 
 .room-agent-chip[data-speaking="true"] .room-chip-photo {

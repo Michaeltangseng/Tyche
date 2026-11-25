@@ -73,7 +73,7 @@
       <div class="room-landing-inner">
         <h2>{{ rooms.length ? t('room.loading') : t('room.emptyProjects') }}</h2>
         <p v-if="!rooms.length" class="room-muted">{{ t('room.createHint') }}</p>
-        <button v-if="!rooms.length" class="primary-button" type="button" :disabled="busy" @click="startCreating">{{ t('room.create') }}</button>
+        <button v-if="!rooms.length" class="primary-button" type="button" :disabled="busy" @click="startCreating">{{ t('room.createChat') }}</button>
       </div>
     </div>
 
@@ -95,7 +95,7 @@
                   :aria-label="`${t('room.configureRole')}: ${roleLabel(role)}`"
                   @click="openRoleSettings(role.id)"
                 >
-                  <img class="room-portrait" :src="faceSrc(role)" alt="" />
+                  <RoomMascot :mascot="roomMascot(role)" />
                   <span v-if="role.is_captain" class="room-welcome-wave">{{ t('room.welcomeWave') }}</span>
                 </button>
               </div>
@@ -125,11 +125,11 @@
                   :aria-label="`${t('room.configureRole')}: ${entry.author}`"
                   @click="openRoleSettings(entry.roleId)"
                 >
-                  <img v-if="entry.provider || entry.portrait" class="room-portrait" :src="rolePortrait(entry.portrait || entry.provider)" alt="" />
+                  <RoomMascot v-if="entry.roleId" :mascot="roomMascot({ id: entry.roleId })" />
                   <span v-else>{{ entry.author.slice(0, 1) }}</span>
                 </button>
                 <span v-else-if="!entry.isUser && !entry.isSystem" class="room-message-avatar">
-                  <img v-if="entry.provider || entry.portrait" class="room-portrait" :src="rolePortrait(entry.portrait || entry.provider)" alt="" />
+                  <RoomMascot v-if="entry.roleId" :mascot="roomMascot({ id: entry.roleId })" />
                   <span v-else>{{ entry.author.slice(0, 1) }}</span>
                 </span>
                 <div class="room-message-body">
@@ -172,7 +172,7 @@
                     >
                       <div v-if="handoffTargets(handoff).length" class="room-handoff-strip">
                         <span class="room-handoff-face">
-                          <img v-if="entry.provider || entry.portrait" :src="rolePortrait(entry.portrait || entry.provider)" alt="" />
+                          <RoomMascot v-if="entry.roleId" :mascot="roomMascot({ id: entry.roleId })" />
                           <span v-else>{{ entry.author.slice(0, 1) }}</span>
                         </span>
                         <span class="room-handoff-arrow" aria-hidden="true">→</span>
@@ -182,7 +182,7 @@
                           class="room-handoff-face"
                           :title="roleLabel(target)"
                         >
-                          <img :src="faceSrc(target)" alt="" />
+                          <RoomMascot :mascot="roomMascot(target)" />
                         </span>
                         <span class="room-handoff-label">
                           {{ t('room.handoffTo', { names: handoffTargets(handoff).map(roleLabel).join(' · ') }) }}
@@ -207,7 +207,7 @@
                       :aria-label="`${t('room.configureRole')}: ${roleLabel(role)}`"
                       @click="openRoleSettings(role.id)"
                     >
-                      <img v-if="role.provider" class="room-portrait" :src="faceSrc(role)" alt="" />
+                      <RoomMascot v-if="role.provider" :mascot="roomMascot(role)" />
                       <span class="room-roster-name">{{ roleLabel(role) }}</span>
                       <span v-if="role.responsibilities" class="room-roster-duty">{{ role.responsibilities }}</span>
                     </button>
@@ -254,6 +254,14 @@
             </template>
 
             <article v-for="attention in attentions" :key="attention.id" class="room-attention-card">
+              <template v-if="attention.type === 'workspace_directory'">
+                <header><strong>{{ t('room.needsYou') }}</strong></header>
+                <p>{{ t('room.workspaceAsk') }}</p>
+                <div class="room-actions">
+                  <button class="primary-button" type="button" :disabled="busy" @click="emit('open-files')">{{ t('room.setWorkspace') }}</button>
+                </div>
+              </template>
+              <template v-else>
               <header><strong>{{ t('room.needsYou') }}</strong><span>{{ attention.type }}</span></header>
               <p>{{ attention.question }}</p>
               <form @submit.prevent="answer(attention)">
@@ -264,6 +272,7 @@
                 <input v-else v-model="answers[attention.id]" :aria-label="attention.question" :placeholder="t('room.answer')" required />
                 <button class="secondary-button" type="submit" :disabled="busy || !answers[attention.id]">{{ t('room.submit') }}</button>
               </form>
+              </template>
             </article>
           </div>
         </div>
@@ -437,7 +446,7 @@
               <li v-for="row in agentUsage" :key="row.id">
                 <div class="room-usage-agent">
                   <span class="room-usage-face">
-                    <img :src="rolePortrait(rolesById.get(row.id)?.portrait || rolesById.get(row.id)?.provider || row.model)" alt="" />
+                    <RoomMascot :mascot="roomMascot(rolesById.get(row.id) || { id: row.id })" />
                   </span>
                   <strong>{{ row.name }}</strong>
                   <span :data-status="row.status">{{ row.status === 'working' ? t('room.usageWorking') : t('room.usageIdle') }}</span>
@@ -483,7 +492,7 @@
     <div v-if="creating" class="room-modal-backdrop" @click.self="creating = false" @wheel.self.prevent>
       <form class="room-create room-modal" role="dialog" aria-modal="true" aria-labelledby="room-create-title" @submit.prevent="create" @keydown.esc.stop="creating = false">
         <header class="room-create-header">
-          <h2 id="room-create-title">{{ t('room.create') }}</h2>
+          <h2 id="room-create-title">{{ t('room.createChat') }}</h2>
           <button class="room-icon-button" type="button" :aria-label="t('common.close')" @click="creating = false">
             <CloseOutline />
           </button>
@@ -494,16 +503,6 @@
             <span>{{ t('room.name') }}</span>
             <input v-model="name" maxlength="120" required autofocus />
           </label>
-          <div class="room-create-field">
-            <span>{{ t('room.directory') }}</span>
-            <div class="room-directory">
-              <input :value="directory" readonly :placeholder="t('room.noDirectory')" :aria-label="t('room.directory')" />
-              <button class="secondary-button" type="button" :disabled="busy || picking" @click="chooseDirectory">
-                <FolderOutline aria-hidden="true" />
-                {{ t('room.chooseDirectory') }}
-              </button>
-            </div>
-          </div>
           <fieldset class="room-create-field">
             <legend class="room-create-legend">
               <span>{{ t('room.captain') }}</span>
@@ -522,7 +521,7 @@
         </div>
         <div class="room-actions room-create-footer">
           <button class="secondary-button" type="button" :disabled="busy" @click="creating = false">{{ t('common.cancel') }}</button>
-          <button class="primary-button" :disabled="busy || picking || !canCreate">{{ t('room.create') }}</button>
+          <button class="primary-button" :disabled="busy || !canCreate">{{ t('room.createChat') }}</button>
         </div>
       </form>
     </div>
@@ -717,6 +716,8 @@ import {
 } from '@vicons/ionicons5'
 import { agentLogo } from '../catalog.js'
 import { portraitGlow, portraitId, rolePortrait, rolePortraits } from '../role-portraits.js'
+import { roomMascot } from '../room-mascots.js'
+import RoomMascot from './RoomMascot.vue'
 import { t } from '../i18n.js'
 import { keptSkillIds, selectableSkills, skillTokenEstimate } from '../skillInventory.js'
 import { useRoomWorkspace } from '../composables/useRoomWorkspace.js'
@@ -734,7 +735,7 @@ const props = defineProps({
   openRequest: { type: Object, default: null },
   filesOpen: { type: Boolean, default: false },
 })
-const emit = defineEmits(['create-request-consumed', 'active-change', 'toggle-files'])
+const emit = defineEmits(['create-request-consumed', 'active-change', 'toggle-files', 'open-files'])
 
 const {
   rooms,
@@ -800,7 +801,6 @@ const workPanelOpen = ref(true)
 const workPanelRequested = ref(false)
 const workTab = ref('')
 const name = ref('')
-const directory = ref('')
 const titleEditing = ref(false)
 const titleOverflows = ref(false)
 const titleClip = ref(null)
@@ -809,7 +809,6 @@ let titleEditCancelled = false
 const draft = ref('')
 const composerInput = ref(null)
 const answers = ref({})
-const picking = ref(false)
 const pickerError = ref(false)
 const timeline = ref(null)
 
@@ -939,7 +938,7 @@ const hasWork = computed(() => workCount.value > 0)
 const showWorkPanel = computed(() => (
   workPanelOpen.value && (hasWork.value || workPanelRequested.value)
 ))
-const canCreate = computed(() => Boolean(name.value.trim() && directory.value && selectedCaptain.value))
+const canCreate = computed(() => Boolean(name.value.trim() && selectedCaptain.value))
 
 const roleProviders = computed(() => {
   const room = snapshot.value?.room
@@ -1306,24 +1305,13 @@ async function answer(attention) {
 
 function startCreating() {
   pickerError.value = false
-  directory.value = ''
-  name.value = ''
+  name.value = t('room.newChatTitle')
   selectedCaptain.value = availableAgents.value[0]?.kind || ''
-  creating.value = true
-}
-
-async function chooseDirectory() {
-  if (picking.value) return
-  picking.value = true
-  pickerError.value = false
-  try {
-    const selected = await props.pickDirectory()
-    if (selected) directory.value = String(selected)
-  } catch {
-    pickerError.value = true
-  } finally {
-    picking.value = false
+  if (availableAgents.value.length === 1) {
+    void create()
+    return
   }
+  creating.value = true
 }
 
 async function create() {
@@ -1338,15 +1326,13 @@ async function create() {
   }]
   const result = await createRoom({
     name: name.value.trim(),
-    workspace: directory.value,
-    title: t('room.newChatTitle'),
+    title: name.value.trim(),
     providers,
     roles,
   })
   if (result) {
     creating.value = false
     name.value = ''
-    directory.value = ''
   }
 }
 
@@ -1587,6 +1573,14 @@ watch([roomId, chatId], ([nextRoom, nextChat]) => {
   emit('active-change', { roomId: nextRoom, chatId: nextChat })
 })
 
+let promptedWorkspaceAttention = ''
+watch(attentions, (list) => {
+  const open = list.find(item => item.type === 'workspace_directory')
+  if (!open || open.id === promptedWorkspaceAttention) return
+  promptedWorkspaceAttention = open.id
+  emit('open-files')
+})
+
 watch(() => props.createRequest, (requested) => {
   if (!requested) return
   emit('create-request-consumed')
@@ -1686,7 +1680,11 @@ onBeforeUnmount(() => {
 .room-message-avatar { display: grid; flex: 0 0 44px; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: var(--text-soft); font: inherit; font-size: var(--text-xs); font-weight: 600; }
 button.room-message-avatar { cursor: pointer; }
 button.room-message-avatar:focus-visible { outline: none; }
-.room-message-avatar img { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; background: #1b2124; transform-origin: 50% 85%; transition: transform 0.18s ease; }
+.room-message-avatar :deep(.room-mascot-art),
+.room-welcome-face :deep(.room-mascot-art) { width: 44px; height: 44px; }
+.room-handoff-face :deep(.room-mascot-art),
+.room-roster-card :deep(.room-mascot-art),
+.room-usage-face :deep(.room-mascot-art) { width: 100%; height: 100%; }
 button.room-message-avatar:hover img,
 button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.62s ease-in-out; transform: scale(1.5); }
 @media (prefers-reduced-motion: reduce) {

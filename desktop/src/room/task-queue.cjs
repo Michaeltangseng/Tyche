@@ -123,6 +123,30 @@ function createTaskQueue({ roomDb, repository, timeline, outbox, now = () => Dat
           throw new Error('ROOM_TASK_ASSIGNEE_INVALID')
         }
       }
+      const roomRow = database.prepare(`
+        SELECT r.workspace_origin AS origin, r.workspace_confirmed AS confirmed
+        FROM rooms r JOIN chats c ON c.room_id = r.id
+        WHERE c.id = ?
+      `).get(chatId)
+      if (roomRow?.origin === 'default' && Number(roomRow.confirmed) !== 1) {
+        const open = database.prepare(`
+          SELECT id FROM attentions
+          WHERE chat_id = ? AND type = 'workspace_directory' AND status = 'open'
+          LIMIT 1
+        `).get(chatId)
+        if (!open) {
+          database.prepare(`
+            INSERT INTO attentions (id, chat_id, task_id, type, question, options_json, status, requested_by, created_at)
+            VALUES (?, ?, NULL, 'workspace_directory', ?, '[]', 'open', 'captain', ?)
+          `).run(
+            crypto.randomUUID(),
+            chatId,
+            'Set a working directory before files are changed.',
+            at(),
+          )
+        }
+        throw new Error('ROOM_WORKSPACE_UNCONFIRMED')
+      }
       return roomDb.withTransaction(() => {
         const next = database.prepare(`
           SELECT COALESCE(MAX(t.number), 0) + 1 AS number

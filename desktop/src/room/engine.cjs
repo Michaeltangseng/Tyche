@@ -180,7 +180,9 @@ function createEngine({
             roleId: role.id,
             provider: role.provider,
             promptRevision,
-            permissionMode: role.nativePermission || 'read-only',
+            permissionMode: room?.workspaceOrigin === 'default' && room?.workspaceConfirmed !== true
+              ? 'read-only'
+              : (role.nativePermission || 'read-only'),
             workspaceRef: room.workspace,
             skillBindings,
             model: role.model,

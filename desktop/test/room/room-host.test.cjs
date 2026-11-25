@@ -46,6 +46,38 @@ test('the production host assembles the OAR adapter by default', async (t) => {
   await host.start()
 })
 
+test('bootstrap without a workspace uses a private scratch directory', async (t) => {
+  const { root, host } = createHost(t)
+  const created = host.bootstrap({
+    name: 'Scratch chat',
+    providers: ['codex'],
+  })
+  const scratch = path.join(root, 'private', 'chats', created.chatId)
+  assert.equal(fs.existsSync(scratch), true)
+  const rooms = host.listRooms()
+  assert.equal(rooms[0].workspace_default, true)
+  assert.equal(rooms[0].workspace_confirmed, false)
+  assert.equal(rooms[0].workspace_label, '')
+  assert.equal(JSON.stringify(rooms).includes(scratch), false)
+
+  fs.writeFileSync(path.join(scratch, 'note.txt'), 'draft')
+  const pending = host.setWorkspace({ roomId: created.roomId, workspace: path.join(root, 'workspace') })
+  assert.equal(pending.needsMove, true)
+  assert.equal(host.listRooms()[0].workspace_default, true)
+
+  const moved = host.setWorkspace({
+    roomId: created.roomId,
+    workspace: path.join(root, 'workspace'),
+    move: true,
+  })
+  assert.equal(moved.moved, true)
+  assert.equal(fs.existsSync(path.join(root, 'workspace', 'note.txt')), true)
+  const bound = host.listRooms()[0]
+  assert.equal(bound.workspace_default, false)
+  assert.equal(bound.workspace_confirmed, true)
+  assert.equal(bound.workspace_label, 'workspace')
+})
+
 test('bootstrap creates a display-safe room with a default captain', async (t) => {
   const { root, workspace, host } = createHost(t)
   const created = host.bootstrap({

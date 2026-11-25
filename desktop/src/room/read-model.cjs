@@ -43,7 +43,9 @@ function roomView(row, chats) {
   return {
     id: row.id,
     name: row.name,
-    workspace_label: path.basename(row.workspace),
+    workspace_label: row.workspace_origin === 'default' ? '' : path.basename(row.workspace),
+    workspace_default: row.workspace_origin === 'default',
+    workspace_confirmed: Number(row.workspace_confirmed) === 1,
     write_authorized: typeof row.write_authorized_root === 'string' && row.write_authorized_root.length > 0,
     providers: parseJson(row.providers_json, []),
     allowed_capabilities: parseJson(row.allowed_capabilities_json, []),

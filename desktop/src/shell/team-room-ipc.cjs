@@ -26,6 +26,8 @@ const CHANNELS = Object.freeze({
   filesRead: 'team-room:files-read',
   importFiles: 'team-room:files-import',
   writeAuthorized: 'team-room:write-authorized',
+  setWorkspace: 'team-room:workspace-set',
+  confirmWorkspace: 'team-room:workspace-confirm',
   runtimeEvents: 'team-room:runtime-events',
   skillInventory: 'team-room:skill-inventory',
   usageReport: 'team-room:usage-report',
@@ -291,6 +293,22 @@ function registerTeamRoomIpc({ registerTrustedHandle, getHost, dialog, getMainWi
     text(parsed.roomId)
     if (typeof parsed.authorized !== 'boolean') throw ipcError('TEAM_ROOM_INPUT_INVALID')
     return host().setWriteAuthorized(parsed)
+  })
+
+  registerTrustedHandle(CHANNELS.setWorkspace, input => {
+    const parsed = assertInput(input, ['roomId', 'workspace', 'move'])
+    text(parsed.roomId)
+    text(parsed.workspace, 4096)
+    if (parsed.move !== undefined && typeof parsed.move !== 'boolean') {
+      throw ipcError('TEAM_ROOM_INPUT_INVALID')
+    }
+    return host().setWorkspace(parsed)
+  })
+
+  registerTrustedHandle(CHANNELS.confirmWorkspace, input => {
+    const parsed = assertInput(input, ['roomId'])
+    text(parsed.roomId)
+    return host().confirmWorkspace(parsed)
   })
 
   registerTrustedHandle(CHANNELS.skillInventory, () => host().skillInventoryList())

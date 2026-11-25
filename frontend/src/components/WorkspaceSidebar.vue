@@ -77,7 +77,7 @@
         </section>
 
         <button v-if="roomWorkspaceAvailable" class="sidebar-rail-item" type="button" :title="t('room.title')" :aria-label="t('room.title')" :aria-current="activeView === 'rooms' ? 'page' : undefined" @click="openRoomWorkspace"><PeopleOutline /></button>
-        <button v-if="roomWorkspaceAvailable" class="sidebar-rail-item sidebar-rail-add" type="button" :title="t('room.createTeamRoom')" :aria-label="t('room.createTeamRoom')" @click="openTeamRoomCreate"><AddOutline /></button>
+        <button v-if="roomWorkspaceAvailable" class="sidebar-rail-item sidebar-rail-add" type="button" :title="t('room.createChat')" :aria-label="t('room.createChat')" @click="openTeamRoomCreate"><AddOutline /></button>
       </div>
     </div>
 
@@ -275,128 +275,48 @@
 
       <section v-if="roomWorkspaceAvailable" class="nav-section team-room-nav-section">
         <div class="nav-heading project-room-heading team-room-heading" role="heading" aria-level="2">
-          <span>{{ t('room.title') }}</span>
-          <button class="project-room-add team-room-add" type="button" :title="t('room.createTeamRoom')" :aria-label="t('room.createTeamRoom')" @click="openTeamRoomCreate">
+          <span>{{ t('room.chatList') }}</span>
+          <button class="project-room-add team-room-add" type="button" :title="t('room.createChat')" :aria-label="t('room.createChat')" @click="openTeamRoomCreate">
             <AddOutline />
           </button>
         </div>
-        <div v-if="filteredTeamRooms.length" class="project-room-list team-room-list">
-          <div v-for="room in filteredTeamRooms" :key="room.id" class="project-room-entry team-room-entry">
+        <div v-if="flatTeamChats.length" class="project-room-list team-room-list">
+          <div v-for="row in flatTeamChats" :key="row.chat.id" class="project-room-entry team-room-entry team-chat-row">
             <div
               class="project-room-row team-room-row"
-              :class="{
-                active: isTeamRoomSelected(room.id),
-                expanded: searching || isTeamRoomExpanded(room.id),
-              }"
+              :class="{ active: isTeamChatSelected(row.room.id, row.chat.id) }"
             >
               <button
                 class="project-room-open"
                 type="button"
-                :title="t(isTeamRoomExpanded(room.id) ? 'room.collapseChats' : 'room.expandChats', { name: room.name })"
-                :aria-current="isTeamRoomSelected(room.id) ? 'page' : undefined"
-                :aria-expanded="String(searching || isTeamRoomExpanded(room.id))"
-                :aria-controls="`team-room-chats-${room.id}`"
-                @click="handleTeamRoomClick(room)"
+                :title="chatRowTitle(row.room, row.chat)"
+                :aria-current="isTeamChatSelected(row.room.id, row.chat.id) ? 'page' : undefined"
+                @click="openTeamChat(row.room, row.chat)"
               >
                 <span class="room-mascot" aria-hidden="true">
-                  <RoomMascot :mascot="roomMascot(room)" />
-                  <span v-if="roomRunning(room)" class="team-room-live" :title="t('room.chatRunning')" />
+                  <RoomMascot :mascot="roomMascot(row.chat)" />
+                  <span v-if="isChatRunning(row.chat)" class="team-room-live" :title="t('room.chatRunning')" />
                 </span>
                 <span class="project-room-copy">
-                  <strong>{{ room.name }}</strong>
-                  <small v-if="roomUnreadCount(room)">{{ t('room.unreadReplies', { count: roomUnreadCount(room) }) }}</small>
+                  <strong>{{ teamChatLabel(row.room, row.chat) }}</strong>
+                  <small v-if="chatSubtitle(row.room, row.chat)">{{ chatSubtitle(row.room, row.chat) }}</small>
                 </span>
               </button>
               <button
                 class="project-room-delete team-room-delete"
                 type="button"
-                :title="t('room.deleteRoom', { name: room.name })"
-                :aria-label="t('room.deleteRoom', { name: room.name })"
-                @click.stop="openTeamDelete({ type: 'room', roomId: room.id, name: room.name }, $event)"
+                :title="t('room.deleteChat', { name: teamChatLabel(row.room, row.chat) })"
+                :aria-label="t('room.deleteChat', { name: teamChatLabel(row.room, row.chat) })"
+                @click.stop="openTeamDelete(chatDeleteTarget(row.room, row.chat), $event)"
               >
                 <TrashOutline />
-              </button>
-              <ChevronForwardOutline class="team-room-chevron" :class="{ open: searching || isTeamRoomExpanded(room.id) }" />
-            </div>
-            <div
-              v-if="searching || isTeamRoomExpanded(room.id)"
-              :id="`team-room-chats-${room.id}`"
-              class="project-room-groups team-room-chats"
-            >
-              <p v-if="!room.chats?.length" class="team-room-chat-empty">
-                {{ t('room.noChats') }}
-              </p>
-              <div
-                v-for="chat in room.chats"
-                :key="chat.id"
-                class="project-room-group-row"
-                :class="{ 'has-preview': chatIsUnread(room, chat) }"
-              >
-                <button
-                  class="project-room-group"
-                  :class="{
-                    active: isTeamChatSelected(room.id, chat.id),
-                    'has-preview': chatIsUnread(room, chat),
-                  }"
-                  type="button"
-                  :title="chatRowTitle(room, chat)"
-                  :aria-current="isTeamChatSelected(room.id, chat.id) ? 'page' : undefined"
-                  @click="openTeamChat(room, chat)"
-                >
-                  <span v-if="chatFaces(chat).faces.length" class="team-face-stack team-face-stack-chat" aria-hidden="true">
-                    <img v-for="(member, index) in chatFaces(chat).faces" :key="`${member.provider}-${member.name}-${index}`" :src="rolePortrait(member.portrait || member.provider)" alt="" />
-                    <span v-if="chatFaces(chat).extra" class="team-face-more">+{{ chatFaces(chat).extra }}</span>
-                  </span>
-                  <span v-else class="team-chat-icon" aria-hidden="true">
-                    <ChatbubblesOutline />
-                  </span>
-                  <span class="team-chat-copy">
-                    <span class="team-chat-title">
-                      <span class="project-room-group-name">{{ teamChatLabel(room, chat) }}</span>
-                    </span>
-                    <small
-                      v-if="chatIsUnread(room, chat)"
-                      class="team-chat-preview"
-                      :title="chatActivityLabel(chat)"
-                    >{{ chatActivityLabel(chat) }}</small>
-                  </span>
-                  <span class="team-chat-status">
-                    <span
-                      v-if="isChatRunning(chat)"
-                      class="team-chat-live"
-                      role="img"
-                      :title="t('room.chatRunning')"
-                      :aria-label="t('room.chatRunning')"
-                    />
-                    <span
-                      v-else-if="chatIsUnread(room, chat)"
-                      class="team-chat-dot"
-                      role="img"
-                      :title="t('room.freshReply')"
-                      :aria-label="t('room.freshReply')"
-                    />
-                  </span>
-                </button>
-                <button
-                  class="project-room-group-delete team-room-delete-chat"
-                  type="button"
-                  :title="t('room.deleteChat', { name: teamChatLabel(room, chat) })"
-                  :aria-label="t('room.deleteChat', { name: teamChatLabel(room, chat) })"
-                  @click.stop="openTeamDelete({ type: 'chat', roomId: room.id, chatId: chat.id, name: teamChatLabel(room, chat) }, $event)"
-                >
-                  <EllipsisHorizontal />
-                </button>
-              </div>
-              <button class="team-room-new-chat" type="button" @click="addTeamChat(room.id)">
-                <AddOutline aria-hidden="true" />
-                <span>{{ t('room.newChatAction') }}</span>
               </button>
             </div>
           </div>
         </div>
       </section>
 
-      <p v-if="searching && !filteredAgentGroups.length && !filteredTeamRooms.length" class="nav-empty">{{ t('nav.searchEmpty') }}</p>
+      <p v-if="searching && !filteredAgentGroups.length && !flatTeamChats.length" class="nav-empty">{{ t('nav.searchEmpty') }}</p>
     </nav>
 
     <footer v-if="!sidebarCollapsed" class="sidebar-footer">
@@ -462,7 +382,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, unref, watch } from 'vue'
 import {
   AddOutline,
-  ChatbubblesOutline,
   CheckmarkCircleOutline,
   ChevronBackOutline,
   ChevronForwardOutline,
@@ -475,7 +394,7 @@ import {
   TrashOutline,
 } from '@vicons/ionicons5'
 
-import { portraitGlow, rolePortrait } from '../role-portraits.js'
+import { portraitGlow } from '../role-portraits.js'
 import { loadRoomChatSeen, saveRoomChatSeen } from '../room-chat-read-state.js'
 import { roomMascot } from '../room-mascots.js'
 import RoomMascot from './RoomMascot.vue'
@@ -558,33 +477,10 @@ function isSelectedConversation(group) {
   return unref(activeView) === 'conversation' && unref(selectedGroupId) === group.id
 }
 
-function orderedMembers(members) {
-  return [...(Array.isArray(members) ? members : [])]
-    .sort((a, b) => (Number(b?.last_seq) || 0) - (Number(a?.last_seq) || 0))
-}
-
-function chatFaces(chat) {
-  return stackedMembers(chat.members, 3)
-}
-
-function stackedMembers(members, limit = 3) {
-  const list = orderedMembers(members)
-  const spoken = list.filter(member => Number(member?.last_seq) > 0)
-  const source = spoken.length
-    ? spoken
-    : list.filter(member => member?.is_captain).slice(0, 1)
-  const visible = source.length ? source : list.slice(0, 1)
-  return { faces: visible.slice(0, limit), extra: Math.max(0, visible.length - limit) }
-}
-
 const RUNNING_CHAT_STATUSES = new Set(['working', 'queued', 'starting', 'running'])
 
 function isChatRunning(chat) {
   return RUNNING_CHAT_STATUSES.has(chat?.activity?.status)
-}
-
-function roomRunning(room) {
-  return (room?.chats || []).some(isChatRunning)
 }
 
 function chatIsUnread(room, chat) {
@@ -593,11 +489,6 @@ function chatIsUnread(room, chat) {
   const seq = Number(chat?.activity_seq) || 0
   const seen = Number(seenChatActivity.value[chat.id]) || 0
   return seq > seen
-}
-
-function roomUnreadCount(room) {
-  const chats = Array.isArray(room?.chats) ? room.chats : []
-  return chats.filter(chat => chatIsUnread(room, chat)).length
 }
 
 function chatActivityLabel(chat) {
@@ -621,6 +512,19 @@ function chatRowTitle(room, chat) {
   const label = t('room.openChat', { name: teamChatLabel(room, chat) })
   const time = chatTime(chat)
   return time ? `${label} · ${time}` : label
+}
+
+function chatSubtitle(room, chat) {
+  if (chatIsUnread(room, chat) || isChatRunning(chat)) return chatActivityLabel(chat)
+  if (room?.workspace_default) return t('room.scratchLabel')
+  return room?.workspace_label || ''
+}
+
+function chatDeleteTarget(room, chat) {
+  const name = teamChatLabel(room, chat)
+  const onlyChat = (room?.chats || []).length <= 1
+  if (onlyChat) return { type: 'room', roomId: room.id, name }
+  return { type: 'chat', roomId: room.id, chatId: chat.id, name }
 }
 
 function teamChatLabel(room, chat) {
@@ -787,15 +691,17 @@ function chatActivityTime(chat) {
   return Number.isFinite(value) ? value : 0
 }
 
-const filteredTeamRooms = computed(() => teamRoomList.value.flatMap(room => {
-  const chats = [...(Array.isArray(room.chats) ? room.chats : [])]
-    .sort((a, b) => chatActivityTime(b) - chatActivityTime(a))
-  if (!searching.value) return [{ ...room, chats }]
-  const roomHit = queryMatches(room.name)
-  const matchedChats = chats.filter(chat => queryMatches(teamChatLabel(room, chat), chat.title))
-  if (!roomHit && !matchedChats.length) return []
-  return [{ ...room, chats: matchedChats.length ? matchedChats : chats }]
-}))
+const flatTeamChats = computed(() => {
+  const rows = teamRoomList.value.flatMap(room => (
+    [...(Array.isArray(room.chats) ? room.chats : [])]
+      .sort((a, b) => chatActivityTime(b) - chatActivityTime(a))
+      .map(chat => ({ room, chat }))
+  ))
+  const visible = searching.value
+    ? rows.filter(row => queryMatches(teamChatLabel(row.room, row.chat), row.chat.title, row.room.name, row.room.workspace_label))
+    : rows
+  return visible.sort((a, b) => chatActivityTime(b.chat) - chatActivityTime(a.chat))
+})
 
 function focusSidebarSearch() {
   if (unref(sidebarCollapsed)) sidebarCollapsed.value = false
