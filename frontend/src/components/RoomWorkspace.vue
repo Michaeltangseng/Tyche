@@ -1,5 +1,5 @@
 <template>
-  <section class="room-workspace">
+  <section ref="workspaceRoot" class="room-workspace">
     <header class="room-toolbar room-header">
       <div class="room-heading">
         <div class="room-title-row">
@@ -198,19 +198,19 @@
                   <div v-if="entry.mentions.length && !entry.handoffs.length" class="room-mention-row">
                     <span v-for="name in entry.mentions" :key="name" class="room-mention-chip">@{{ name }}</span>
                   </div>
-                  <div v-if="rosterRoles(entry).length" class="room-roster" :aria-label="t('room.roster')">
-                    <button
-                      v-for="role in rosterRoles(entry)"
-                      :key="role.id"
-                      class="room-roster-card"
-                      type="button"
-                      :aria-label="`${t('room.configureRole')}: ${roleLabel(role)}`"
-                      @click="openRoleSettings(role.id)"
-                    >
-                      <RoomMascot v-if="role.provider" :mascot="roleFace(role)" />
-                      <span class="room-roster-name">{{ roleLabel(role) }}</span>
-                      <span v-if="role.responsibilities" class="room-roster-duty">{{ role.responsibilities }}</span>
-                    </button>
+                  <div v-if="rosterRoles(entry).length" class="room-roster" :data-roster="entry.message.id" :aria-label="t('room.roster')">
+                    <span v-for="role in rosterRoles(entry)" :key="role.id" class="room-roster-slot">
+                      <button
+                        class="room-roster-card"
+                        type="button"
+                        :aria-label="`${t('room.configureRole')}: ${roleLabel(role)}`"
+                        @click="openRoleSettings(role.id)"
+                      >
+                        <RoomMascot v-if="role.provider" :mascot="roleFace(role)" />
+                        <span class="room-roster-name">{{ roleLabel(role) }}</span>
+                        <span v-if="role.responsibilities" class="room-roster-duty">{{ role.responsibilities }}</span>
+                      </button>
+                    </span>
                   </div>
                   <RoomRunTrace
                     v-if="entry.message.author_type === 'agent'"
@@ -748,6 +748,7 @@ const answers = ref({})
 const pickerError = ref(false)
 const missingCaptain = ref(false)
 const timeline = ref(null)
+const workspaceRoot = ref(null)
 
 const availableAgents = computed(() => props.agents.filter(agent => agent && agent.kind))
 const readyProviderKinds = computed(() => new Set(availableAgents.value.map(agent => agent.kind)))
@@ -992,6 +993,183 @@ function rosterRoles(entry) {
   if (!Array.isArray(ids)) return []
   return ids.map(id => rolesById.value.get(id)).filter(Boolean)
 }
+
+const rosterSeededChats = new Set()
+const rosterSeen = new Set()
+const rosterTimers = []
+const rosterQueue = []
+let rosterPlaying = false
+const ROSTER_FAN_MS = 1360
+const ROSTER_FAN_STAGGER_MS = 140
+const ROSTER_HOLD_MS = 1500
+const ROSTER_RETURN_STAGGER_MS = 500
+const ROSTER_RETURN_MS = 1400
+
+function prefersReducedMotion() {
+  return typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+function rosterMessageIds() {
+  return messages.value
+    .filter(message => Array.isArray(message?.data?.roleIds) && message.data.roleIds.length && message.id)
+    .map(message => message.id)
+}
+
+function clearRosterMotion(card) {
+  if (!card) return
+  card.getAnimations?.().forEach(animation => animation.cancel())
+  card.style.position = ''
+  card.style.left = ''
+  card.style.top = ''
+  card.style.width = ''
+  card.style.margin = ''
+  card.style.zIndex = ''
+  card.style.transform = ''
+  card.style.transformOrigin = ''
+  card.style.filter = ''
+  card.style.opacity = ''
+  delete card.dataset.intro
+}
+
+function finishRosterCard(card) {
+  if (!card || card._rosterSettled) return
+  card._rosterSettled = true
+  clearRosterMotion(card)
+}
+
+function settleRosterCard(card) {
+  if (!card?.isConnected || card._rosterSettled) return
+  card.dataset.intro = 'settle'
+  card._rosterPop?.commitStyles?.()
+  card._rosterPop?.cancel()
+  const slot = card.parentElement?.getBoundingClientRect?.()
+  const current = card.getBoundingClientRect()
+  if (!slot || slot.width < 2 || current.width < 2 || typeof card.animate !== 'function') {
+    finishRosterCard(card)
+    return
+  }
+  const angle = card._rosterAngle || 0
+  card.style.position = 'fixed'
+  card.style.margin = '0'
+  card.style.zIndex = card.style.zIndex || '80'
+  card.style.filter = 'none'
+  card.style.opacity = '1'
+  card.style.transform = 'none'
+  card.style.left = `${current.left}px`
+  card.style.top = `${current.top}px`
+  card.style.width = `${current.width}px`
+  const midLeft = current.left + (slot.left - current.left) * 0.45
+  const arcTop = Math.min(current.top, slot.top) - 36
+  const motion = card.animate([
+    { left: `${current.left}px`, top: `${current.top}px`, width: `${current.width}px`, transform: `rotate(${angle}deg)` },
+    { left: `${midLeft}px`, top: `${arcTop}px`, width: `${(current.width + slot.width) / 2}px`, transform: `rotate(${angle * 0.35}deg)`, offset: 0.45 },
+    { left: `${slot.left}px`, top: `${slot.top}px`, width: `${slot.width}px`, transform: 'rotate(0deg)' },
+  ], { duration: ROSTER_RETURN_MS, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'forwards' })
+  motion.finished?.then(() => finishRosterCard(card)).catch(() => finishRosterCard(card))
+  rosterTimers.push(window.setTimeout(() => finishRosterCard(card), ROSTER_RETURN_MS + 80))
+}
+
+function chatStageRect() {
+  const rect = workspaceRoot.value?.getBoundingClientRect?.()
+  if (rect && rect.width > 2 && rect.height > 2) return rect
+  return { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight }
+}
+
+function fanPlacement(count, index) {
+  const stage = chatStageRect()
+  const centerX = stage.left + stage.width / 2
+  const centerY = stage.top + stage.height / 2
+  const mid = (count - 1) / 2
+  if (count <= 1) return { x: centerX, y: centerY, angle: -4 }
+  const cardWidth = 220
+  const room = Math.max(cardWidth, stage.width - 48)
+  const step = Math.max(36, Math.min(184, (room - cardWidth) / (count - 1)))
+  const angleStep = Math.min(7, 32 / (count - 1))
+  return {
+    x: centerX + (index - mid) * step,
+    y: centerY + Math.abs(index - mid) * 10,
+    angle: (index - mid) * angleStep,
+  }
+}
+
+function playRosterIntro(messageId) {
+  const root = document.querySelector(`[data-roster="${messageId}"]`)
+  const cards = [...(root?.querySelectorAll('.room-roster-card') || [])]
+  if (!cards.length) return 0
+  const fanReady = (cards.length - 1) * ROSTER_FAN_STAGGER_MS + ROSTER_FAN_MS
+  cards.forEach((card, index) => {
+    const place = fanPlacement(cards.length, index)
+    const returnOrder = cards.length - 1 - index
+    card.dataset.intro = 'center'
+    card._rosterSettled = false
+    card._rosterAngle = place.angle
+    if (typeof card.animate !== 'function') return
+    card.style.position = 'fixed'
+    card.style.left = `${place.x}px`
+    card.style.top = `${place.y}px`
+    card.style.width = '220px'
+    card.style.margin = '0'
+    card.style.zIndex = String(80 + index)
+    card.style.transformOrigin = '50% 70%'
+    card.style.opacity = '0'
+    const fan = `translate(-50%, -50%) rotate(${place.angle}deg)`
+    card._rosterPop = card.animate([
+      { opacity: 0, filter: 'blur(9px)', transform: `${fan} scale(0.9)` },
+      { opacity: 0.55, filter: 'blur(2px)', transform: `${fan} scale(1.04)`, offset: 0.62 },
+      { opacity: 1, filter: 'blur(0px)', transform: `${fan} scale(1.08)` },
+    ], {
+      duration: ROSTER_FAN_MS,
+      delay: index * ROSTER_FAN_STAGGER_MS,
+      easing: 'cubic-bezier(0.16, 0.84, 0.3, 1)',
+      fill: 'forwards',
+    })
+    rosterTimers.push(window.setTimeout(
+      () => settleRosterCard(card),
+      fanReady + ROSTER_HOLD_MS + returnOrder * ROSTER_RETURN_STAGGER_MS,
+    ))
+  })
+  return fanReady + ROSTER_HOLD_MS + Math.max(0, cards.length - 1) * ROSTER_RETURN_STAGGER_MS + ROSTER_RETURN_MS + 80
+}
+
+function pumpRosterQueue() {
+  if (rosterPlaying || !rosterQueue.length) return
+  const messageId = rosterQueue.shift()
+  const duration = playRosterIntro(messageId)
+  if (!duration) {
+    pumpRosterQueue()
+    return
+  }
+  rosterPlaying = true
+  rosterTimers.push(window.setTimeout(() => {
+    rosterPlaying = false
+    pumpRosterQueue()
+  }, duration))
+}
+
+watch([chatId, messages], () => {
+  const chat = chatId.value
+  if (!chat || !snapshot.value) return
+  const ids = rosterMessageIds()
+  if (!rosterSeededChats.has(chat)) {
+    ids.forEach(id => rosterSeen.add(`${chat}:${id}`))
+    rosterSeededChats.add(chat)
+    return
+  }
+  if (prefersReducedMotion()) {
+    ids.forEach(id => rosterSeen.add(`${chat}:${id}`))
+    return
+  }
+  for (const id of ids) {
+    const key = `${chat}:${id}`
+    if (rosterSeen.has(key)) continue
+    rosterSeen.add(key)
+    nextTick(() => {
+      rosterQueue.push(id)
+      pumpRosterQueue()
+    })
+  }
+}, { flush: 'post' })
 
 function canSpeak(provider) {
   if (!provider) return false
@@ -1501,6 +1679,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleEscape)
   finishLedgerResize()
   document.body.classList.remove('room-overlay-open')
+  rosterTimers.splice(0).forEach(timer => window.clearTimeout(timer))
+  rosterQueue.splice(0)
+  rosterPlaying = false
 })
 </script>
 <style scoped>
@@ -1526,8 +1707,41 @@ onBeforeUnmount(() => {
 .room-subtitle { max-width: 34ch; overflow: hidden; color: var(--faint); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
 .room-collaboration { flex: 1 1 auto; min-width: 0; }
 .room-roster { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.room-roster-slot { width: 168px; max-width: 100%; }
 .room-roster-card { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 168px; max-width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .room-roster-card:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+.room-roster-card[data-intro] { pointer-events: none; }
+.room-roster-card[data-intro="center"] { width: 220px; max-width: none; padding: 18px 16px 16px; gap: 8px; border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); box-shadow: 0 22px 48px rgb(0 0 0 / 0.38); }
+.room-roster-card[data-intro="center"]::before,
+.room-roster-card[data-intro="center"]::after { content: ""; position: absolute; inset: -28px; pointer-events: none; opacity: 0; background-repeat: no-repeat; animation: room-roster-glint 1360ms ease forwards; }
+.room-roster-card[data-intro="center"]::before {
+  background-image:
+    radial-gradient(circle, #fff 0 1.5px, transparent 2.4px),
+    radial-gradient(circle, #fff 0 1.2px, transparent 2px),
+    radial-gradient(circle, #fff 0 1.6px, transparent 2.6px),
+    radial-gradient(circle, #fff 0 1px, transparent 1.8px),
+    radial-gradient(circle, #fff 0 1.3px, transparent 2.2px);
+  background-size: 6px 6px, 5px 5px, 7px 7px, 4px 4px, 5px 5px;
+  background-position: 10% 16%, 84% 12%, 18% 78%, 78% 72%, 50% 0%;
+}
+.room-roster-card[data-intro="center"]::after {
+  background-image:
+    radial-gradient(circle, color-mix(in srgb, var(--accent) 70%, #fff) 0 1.4px, transparent 2.4px),
+    radial-gradient(circle, #fff 0 1.1px, transparent 2px),
+    radial-gradient(circle, color-mix(in srgb, var(--accent) 70%, #fff) 0 1.5px, transparent 2.5px);
+  background-size: 6px 6px, 4px 4px, 6px 6px;
+  background-position: 92% 42%, 6% 46%, 64% 90%;
+  animation-delay: 180ms;
+}
+@keyframes room-roster-glint {
+  0% { opacity: 0; transform: scale(1.4); }
+  32% { opacity: 1; }
+  100% { opacity: 0; transform: scale(0.78); }
+}
+.room-roster-card[data-intro="center"] :deep(.room-mascot-art),
+.room-roster-card[data-intro="center"] :deep(.room-mascot-art svg) { width: 84px; height: 84px; }
+.room-roster-card[data-intro="center"] .room-roster-name { font-size: var(--text-md, 16px); }
+.room-roster-card[data-intro="center"] .room-roster-duty { display: block; overflow: visible; -webkit-line-clamp: unset; }
 .room-roster-card img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; object-position: center 12%; }
 .room-roster-name { max-width: 100%; overflow: hidden; font-size: var(--text-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .room-roster-duty { display: -webkit-box; overflow: hidden; color: var(--text-soft); font-size: var(--text-2xs); line-height: 1.4; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
@@ -1586,6 +1800,9 @@ button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.
 @media (prefers-reduced-motion: reduce) {
   button.room-message-avatar:hover img,
   button.room-message-avatar:focus-visible img { animation: none; transform: scale(1.5); }
+  .room-roster-card[data-intro] { position: static; left: auto; top: auto; width: 168px; transform: none; filter: none; box-shadow: none; }
+  .room-roster-card[data-intro="center"]::before,
+  .room-roster-card[data-intro="center"]::after { animation: none; opacity: 0; }
 }
 .room-user-avatar { border-radius: 50%; background: var(--surface-active); }
 .room-user-avatar svg { width: 22px; height: 22px; }

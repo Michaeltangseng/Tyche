@@ -637,10 +637,41 @@ describe('team room workspace', () => {
     const card = wrapper.get('.room-roster-card')
     expect(card.text()).toContain('Writer')
     expect(card.text()).toContain('Write the draft')
+    expect(card.attributes('data-intro')).toBeUndefined()
     await card.trigger('click')
     await flushPromises()
     expect(wrapper.get('.room-role-modal').text()).toContain('Writer')
     expect(wrapper.get('.room-role-prompt').element.value).toBe('write')
+  })
+
+  it('raises a newly arrived roster from the center before it settles', async () => {
+    const snapshot = data()
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    expect(wrapper.find('.room-roster-card').exists()).toBe(false)
+
+    snapshot.roles[1].responsibilities = 'Write the draft'
+    snapshot.messages = [{
+      id: 'roster-live',
+      chat_id: 'chat-1',
+      sequence: 2,
+      author_type: 'agent',
+      author_id: 'captain',
+      author_name: 'Captain',
+      content: 'Added Writer.',
+      status: 'done',
+      data: { roleIds: ['worker'] },
+      created_at: '2026-11-15T10:05:00Z',
+    }]
+    bridge.emitChanged()
+    await new Promise(resolve => setTimeout(resolve, 160))
+    await flushPromises()
+
+    const card = document.body.querySelector('.room-roster-card')
+    expect(card?.textContent).toContain('Writer')
+    expect(card?.dataset.intro).toBe('center')
+    wrapper.unmount()
   })
 
   it('updates role prompts, creates roles, and deletes unused roles', async () => {
