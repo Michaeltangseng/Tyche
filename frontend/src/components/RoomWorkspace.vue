@@ -1228,31 +1228,47 @@ async function startCreating() {
     missingCaptain.value = true
     return
   }
-  let kind = agents[0].kind
-  try {
-    const saved = (await desktopApi()?.workPreferences?.get())?.defaultCaptainKind
-    if (saved && agents.some(agent => agent.kind === saved)) kind = saved
-  } catch { /* the first available agent stays the Captain */ }
-  selectedCaptain.value = kind
+  const team = await startingTeam(agents)
+  selectedCaptain.value = team.find(role => role.isCaptain)?.provider || team[0].provider
   name.value = t('room.newChatTitle')
-  await create()
+  await create(team)
 }
 
-async function create() {
-  if (!canCreate.value) return
-  const provider = selectedCaptain.value
-  const providers = [provider]
-  const roles = [{
-    displayName: availableAgents.value.find(agent => agent.kind === provider)?.label || provider,
-    provider,
+function roleForAgent(agents, kind, isCaptain) {
+  return {
+    displayName: agents.find(agent => agent.kind === kind)?.label || kind,
+    provider: kind,
     prompt: '',
-    isCaptain: true,
-  }]
+    isCaptain,
+  }
+}
+
+async function startingTeam(agents) {
+  const fallback = agents[0].kind
+  let prefs = {}
+  try {
+    prefs = (await desktopApi()?.workPreferences?.get()) || {}
+  } catch { /* the first available agent stays the Captain */ }
+  const available = new Set(agents.map(agent => agent.kind))
+  const captain = available.has(prefs.defaultCaptainKind) ? prefs.defaultCaptainKind : fallback
+  if (prefs.chatStartMode !== 'multi') return [roleForAgent(agents, captain, true)]
+  const members = [...new Set((Array.isArray(prefs.defaultMemberKinds) ? prefs.defaultMemberKinds : []).filter(kind => available.has(kind)))]
+  const kinds = members.includes(captain) ? members : [captain, ...members]
+  const lead = kinds.includes(captain) ? captain : kinds[0]
+  return (kinds.length ? kinds : [fallback]).map(kind => roleForAgent(agents, kind, kind === lead))
+}
+
+async function create(team) {
+  const roles = Array.isArray(team) && team.length ? team : null
+  if (!roles && !canCreate.value) return
+  const provider = roles?.[0]?.provider || selectedCaptain.value
+  if (!provider) return
+  const resolved = roles || [roleForAgent(availableAgents.value, provider, true)]
   const result = await createRoom({
     name: name.value.trim(),
     title: name.value.trim(),
-    providers,
-    roles,
+    providers: [...new Set(resolved.map(role => role.provider))],
+    roles: resolved,
   })
   if (result) name.value = ''
 }

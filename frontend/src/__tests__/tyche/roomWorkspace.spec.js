@@ -77,6 +77,7 @@ function api(snapshot = data()) {
 const cleanup = []
 afterEach(() => {
   cleanup.splice(0).forEach(dispose => dispose())
+  delete window.tycheDesktop
   vi.useRealTimers()
 })
 
@@ -310,6 +311,33 @@ describe('team room workspace', () => {
       providers: ['codex'],
       roles: [
         { displayName: 'Codex', provider: 'codex', prompt: '', isCaptain: true },
+      ],
+    })
+  })
+
+  it('starts a chat with every preferred member and the chosen Captain', async () => {
+    window.tycheDesktop = {
+      workPreferences: {
+        get: async () => ({
+          chatStartMode: 'multi',
+          defaultCaptainKind: 'claude',
+          defaultMemberKinds: ['codex', 'claude'],
+        }),
+      },
+    }
+    const bridge = api()
+    bridge.listRooms.mockResolvedValueOnce([])
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    await wrapper.get('[data-testid="room-create-open"]').trigger('click')
+    await flushPromises()
+    expect(bridge.bootstrap).toHaveBeenCalledWith({
+      name: 'New chat',
+      title: 'New chat',
+      providers: ['codex', 'claude'],
+      roles: [
+        { displayName: 'Codex', provider: 'codex', prompt: '', isCaptain: false },
+        { displayName: 'Claude Code', provider: 'claude', prompt: '', isCaptain: true },
       ],
     })
   })

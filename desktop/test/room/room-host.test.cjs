@@ -519,6 +519,18 @@ test('host gates new rooms and roles by locally available providers', async (t) 
   )
   const created = host.bootstrap({ name: 'Codex room', workspace, providers: ['codex'] })
   assert.equal(created.roomId.length > 0, true)
+  const mixed = host.bootstrap({
+    name: 'Mixed room',
+    workspace,
+    providers: ['kimi', 'codex'],
+    roles: [
+      { displayName: 'Kimi', provider: 'kimi', prompt: 'aside', isCaptain: false },
+      { displayName: 'Codex', provider: 'codex', prompt: 'lead', isCaptain: true },
+    ],
+  })
+  const mixedRoles = host.snapshot({ roomId: mixed.roomId }).roles
+  assert.deepEqual(mixedRoles.map(role => role.display_name), ['Codex'])
+  assert.deepEqual(mixedRoles.map(role => role.is_captain), [true])
   assert.throws(
     () => host.createRole({
       roomId: created.roomId,

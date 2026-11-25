@@ -320,15 +320,18 @@ function createRoomHost({
   function bootstrap(input = {}) {
     const name = cleanText(input.name, 120, 'name')
     const explicitWorkspace = input.workspace ? workspacePath(input.workspace) : ''
-    const providers = providerList(input.providers)
-    for (const provider of providers) {
-      if (!providerCanSpeak(provider)) throw hostError('TEAM_ROOM_PROVIDER_NOT_AVAILABLE')
-    }
+    const requested = providerList(input.providers)
+    const providers = requested.filter(provider => providerCanSpeak(provider))
+    if (!providers.length) throw hostError('TEAM_ROOM_PROVIDER_NOT_AVAILABLE')
     const allowedCapabilities = stringList(input.allowedCapabilities, 32, 'allowedCapabilities')
     const title = optionalText(input.title, 120, 'title') || name
-    const rawRoles = Array.isArray(input.roles) && input.roles.length > 0
+    let rawRoles = Array.isArray(input.roles) && input.roles.length > 0
       ? input.roles
       : [{ displayName: 'Captain', provider: providers[0], prompt: DEFAULT_CAPTAIN_PROMPT, isCaptain: true }]
+    rawRoles = rawRoles.filter(role => providers.includes(typeof role?.provider === 'string' ? role.provider : ''))
+    if (!rawRoles.length) {
+      rawRoles = [{ displayName: 'Captain', provider: providers[0], prompt: DEFAULT_CAPTAIN_PROMPT, isCaptain: true }]
+    }
     if (MAX_ROOM_ROLES != null && rawRoles.length > MAX_ROOM_ROLES) {
       throw hostError('TEAM_ROOM_INPUT_INVALID', 'too many roles')
     }

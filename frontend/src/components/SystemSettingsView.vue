@@ -125,6 +125,7 @@
           :theme-preference="themePreference"
           :skill-api="skillApi"
           :installed-agent-kinds="installedAgentKinds"
+          :open-agent-detail="openAgentDetail"
         />
       </div>
     </div>
@@ -168,6 +169,7 @@ const {
   installerBusy,
   installerPhaseLabel,
   installerState,
+  openAgentDetail,
   refreshAgents,
   refreshing,
   requestInstall,
@@ -234,7 +236,7 @@ const cloudAgents = computed(() => sortAgents((agentCatalogGroups.value || [])
   .filter(group => group.id === 'cloud')
   .flatMap(group => group.agents || [])))
 const installedAgentKinds = computed(() => localAgents.value
-  .filter(agent => agent.installed && !agent.custom)
+  .filter(agent => agent.installed && agent.ready && !agent.custom)
   .map(agent => agent.kind))
 
 function versionOf(agent) {

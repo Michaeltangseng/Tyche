@@ -146,21 +146,41 @@
         </article>
       </div>
       <article class="settings-card">
-        <h2>{{ t('settingsUi.defaultCaptain') }}</h2>
-        <p class="settings-note">{{ t('settingsUi.defaultCaptainHint') }}</p>
-        <div class="settings-actions">
-          <button
+        <h2>{{ t('settingsUi.chatStart') }}</h2>
+        <p class="settings-note">{{ t('settingsUi.chatStartHint') }}</p>
+        <div class="settings-seg chat-start-mode" role="radiogroup" :aria-label="t('settingsUi.chatStart')">
+          <button type="button" role="radio" :aria-checked="chatStartMode === 'single'" :class="{ active: chatStartMode === 'single' }" :disabled="savingCaptain" @click="setChatStartMode('single')">{{ t('settingsUi.chatStartSingle') }}</button>
+          <button type="button" role="radio" :aria-checked="chatStartMode === 'multi'" :class="{ active: chatStartMode === 'multi' }" :disabled="savingCaptain" @click="setChatStartMode('multi')">{{ t('settingsUi.chatStartMulti') }}</button>
+        </div>
+        <div class="pref-members" :role="chatStartMode === 'multi' ? 'group' : 'radiogroup'" :aria-label="t('settingsUi.chatStart')">
+          <div
             v-for="agent in captainChoices"
             :key="agent.kind"
-            class="chip"
-            :class="{ active: captainKind === agent.kind }"
-            type="button"
-            :disabled="savingCaptain"
-            @click="chooseCaptain(agent.kind)"
+            class="pref-member"
+            :data-selected="memberSelected(agent.kind) ? 'true' : undefined"
           >
-            <img :src="agent.logo" alt="" />
-            {{ agent.label }}
-          </button>
+            <button
+              class="pref-member-logo"
+              type="button"
+              :aria-label="t('systemSettings.openAgentDetail', { agent: agent.label })"
+              @click="openAgentDetail?.({ kind: agent.kind, label: agent.label })"
+            >
+              <img :src="agent.logo" alt="" />
+            </button>
+            <button class="pref-member-name" type="button" :role="chatStartMode === 'multi' ? 'checkbox' : 'radio'" :aria-checked="memberSelected(agent.kind)" :disabled="savingCaptain" @click="toggleStartMember(agent.kind)">
+              {{ agent.label }}
+            </button>
+            <button
+              v-if="chatStartMode === 'multi' && memberSelected(agent.kind) && captainKind !== agent.kind"
+              class="pref-member-captain"
+              type="button"
+              :disabled="savingCaptain"
+              @click="makeStartCaptain(agent.kind)"
+            >
+              {{ t('settingsUi.makeCaptain') }}
+            </button>
+            <span v-else-if="captainKind === agent.kind && memberSelected(agent.kind)" class="pref-member-badge">{{ t('settingsUi.defaultCaptain') }}</span>
+          </div>
           <span v-if="!captainChoices.length" class="settings-note">{{ t('room.noProviders') }}</span>
         </div>
       </article>
@@ -240,6 +260,7 @@ const props = defineProps({
   themePreference: { type: [String, Object], required: true },
   skillApi: { type: Object, default: null },
   installedAgentKinds: { type: Array, default: () => [] },
+  openAgentDetail: { type: Function, default: null },
 })
 
 const titles = {
@@ -303,6 +324,8 @@ const shortcuts = [
   { id: 'send', keys: '⏎' },
 ]
 const captainKind = ref('')
+const chatStartMode = ref('single')
+const memberKinds = ref([])
 const savingCaptain = ref(false)
 const captainChoices = computed(() => (props.installedAgentKinds || []).map(kind => ({
   kind,
@@ -315,27 +338,81 @@ async function loadCaptainPreference() {
   if (!bridge?.get) return
   try {
     const value = await bridge.get()
-    const saved = value?.defaultCaptainKind || ''
-    captainKind.value = captainChoices.value.some(agent => agent.kind === saved)
-      ? saved
-      : (captainChoices.value[0]?.kind || '')
+    const choices = captainChoices.value
+    const known = kind => choices.some(agent => agent.kind === kind)
+    const savedCaptain = known(value?.defaultCaptainKind) ? value.defaultCaptainKind : (choices[0]?.kind || '')
+    const savedMembers = (Array.isArray(value?.defaultMemberKinds) ? value.defaultMemberKinds : []).filter(known)
+    const mode = value?.chatStartMode === 'multi' ? 'multi' : 'single'
+    chatStartMode.value = mode
+    captainKind.value = savedCaptain
+    memberKinds.value = mode === 'single'
+      ? (savedCaptain ? [savedCaptain] : [])
+      : (savedMembers.includes(savedCaptain) || !savedCaptain ? savedMembers : [savedCaptain, ...savedMembers])
+    if (mode === 'multi' && savedCaptain && !memberKinds.value.includes(savedCaptain)) {
+      memberKinds.value = [savedCaptain, ...memberKinds.value]
+    }
   } catch { /* keep the current selection */ }
 }
 
-async function chooseCaptain(kind) {
+function memberSelected(kind) {
+  return chatStartMode.value === 'single' ? captainKind.value === kind : memberKinds.value.includes(kind)
+}
+
+async function saveStartTeam({ mode, captain, members }) {
   const bridge = desktopApi()?.workPreferences
   if (!bridge?.get || !bridge?.save || savingCaptain.value) return
   savingCaptain.value = true
-  const previous = captainKind.value
-  captainKind.value = kind
+  const previous = { mode: chatStartMode.value, captain: captainKind.value, members: [...memberKinds.value] }
+  chatStartMode.value = mode
+  captainKind.value = captain
+  memberKinds.value = members
   try {
     const current = await bridge.get()
-    await bridge.save({ ...current, defaultCaptainKind: kind })
+    await bridge.save({
+      ...current,
+      chatStartMode: mode,
+      defaultCaptainKind: captain,
+      defaultMemberKinds: members,
+    })
   } catch {
-    captainKind.value = previous
+    chatStartMode.value = previous.mode
+    captainKind.value = previous.captain
+    memberKinds.value = previous.members
   } finally {
     savingCaptain.value = false
   }
+}
+
+function setChatStartMode(mode) {
+  const captain = captainKind.value || captainChoices.value[0]?.kind || ''
+  if (!captain) return
+  if (mode === 'single') {
+    void saveStartTeam({ mode, captain, members: [captain] })
+    return
+  }
+  const members = memberKinds.value.includes(captain) ? [...memberKinds.value] : [captain, ...memberKinds.value]
+  void saveStartTeam({ mode, captain, members })
+}
+
+function toggleStartMember(kind) {
+  const captain = captainKind.value || kind
+  if (chatStartMode.value !== 'multi') {
+    void saveStartTeam({ mode: 'single', captain: kind, members: [kind] })
+    return
+  }
+  if (memberKinds.value.includes(kind)) {
+    if (memberKinds.value.length === 1) return
+    const members = memberKinds.value.filter(item => item !== kind)
+    void saveStartTeam({ mode: 'multi', captain: members.includes(captain) ? captain : members[0], members })
+    return
+  }
+  if (memberKinds.value.length >= 8) return
+  void saveStartTeam({ mode: 'multi', captain, members: [...memberKinds.value, kind] })
+}
+
+function makeStartCaptain(kind) {
+  const members = memberKinds.value.includes(kind) ? [...memberKinds.value] : [...memberKinds.value, kind]
+  void saveStartTeam({ mode: 'multi', captain: kind, members })
 }
 
 onMounted(() => { if (props.section === 'preferences') void loadCaptainPreference() })
@@ -355,6 +432,19 @@ watch(() => props.section, (section) => {
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--border); border-radius: 99px; background: transparent; color: var(--text-soft); font: inherit; font-size: 12px; cursor: pointer; }
 .chip img { width: 16px; height: 16px; object-fit: contain; }
 .chip.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
+.pref-members { display: grid; gap: 8px; margin-top: 12px; }
+.chat-start-mode button[aria-checked="false"] { background: transparent; color: var(--muted); }
+.chat-start-mode button[aria-checked="true"] { background: var(--accent); color: var(--accent-contrast, #041416); }
+.pref-member { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 12px; }
+.pref-member[data-selected="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.pref-member-logo, .pref-member-name, .pref-member-captain { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.pref-member-logo { width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border-radius: 10px; }
+.pref-member-logo img { width: 22px; height: 22px; object-fit: contain; }
+.pref-member-logo:hover, .pref-member-logo:focus-visible { outline: none; background: var(--surface-hover); }
+.pref-member-name { flex: 1; min-width: 0; padding: 0; text-align: left; font-size: 13px; }
+.pref-member-captain, .pref-member-badge { flex: 0 0 auto; color: var(--accent-text); font-size: 12px; }
+.pref-member-captain { padding: 4px 8px; border-radius: 999px; }
+.pref-member-captain:hover, .pref-member-captain:focus-visible { outline: none; background: var(--surface-hover); }
 .chip.warn { border-color: #f5a524; color: #f5a524; }
 .mock-filters { flex-wrap: wrap; margin-bottom: 8px; }
 .mock-filters input { height: 32px; min-width: 160px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }

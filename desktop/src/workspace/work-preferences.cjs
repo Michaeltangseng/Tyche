@@ -8,21 +8,24 @@ const schema = z.strictObject({
   detail: score(['concise', 'balanced', 'thorough']),
   initiative: score(['ask', 'balanced', 'proactive']),
   evidence: score(['practical', 'balanced', 'strict']),
-  preferredAgentKinds: z.array(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/)).max(8),
+  preferredAgentKinds: z.array(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/)).max(8).default([]),
   instructions: z.string().max(800),
+  chatStartMode: z.enum(['single', 'multi']).default('single'),
   defaultCaptainKind: z.union([
     z.literal(''),
     z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/),
   ]).default(''),
+  defaultMemberKinds: z.array(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/)).max(8).default([]),
 })
 const DEFAULTS = {
-  detail: 50, initiative: 50, evidence: 50, preferredAgentKinds: [], instructions: '', defaultCaptainKind: '',
+  detail: 50, initiative: 50, evidence: 50, preferredAgentKinds: [], instructions: '',
+  chatStartMode: 'single', defaultCaptainKind: '', defaultMemberKinds: [],
 }
 
 function parseWorkPreferences(input) {
   const result = schema.safeParse(input)
   if (!result.success) throw new Error('LOCAL_WORK_PREFERENCES_INVALID')
-  return { ...result.data, preferredAgentKinds: [...new Set(result.data.preferredAgentKinds)] }
+  return { ...result.data, preferredAgentKinds: [...new Set(result.data.preferredAgentKinds)], defaultMemberKinds: [...new Set(result.data.defaultMemberKinds)] }
 }
 function loadedWorkPreferences(input) {
   try { return parseWorkPreferences(input) } catch { return structuredClone(DEFAULTS) }

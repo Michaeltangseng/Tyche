@@ -623,8 +623,9 @@ function toggleChatMenu(room, chat, event) {
   teamChatMenuButton.value = button || null
   if (rect && typeof window !== 'undefined') {
     const width = 168
-    const left = Math.min(Math.max(8, rect.right - width), Math.max(8, window.innerWidth - width - 8))
-    const top = Math.min(rect.bottom + 6, Math.max(8, window.innerHeight - 96))
+    const gap = 6
+    const left = Math.min(rect.right + gap, Math.max(8, window.innerWidth - width - 8))
+    const top = Math.min(Math.max(8, rect.top), Math.max(8, window.innerHeight - 96))
     teamChatMenuStyle.value = { top: `${top}px`, left: `${left}px` }
   }
   teamChatMenu.value = { room, chat, key: chatMenuKey(room, chat) }
