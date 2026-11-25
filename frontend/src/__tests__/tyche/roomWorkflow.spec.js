@@ -94,7 +94,10 @@ describe('room workflow', () => {
     expect(graph.edges.map(edge => edge.label)).toEqual(['讲一个笑话', '该你了', '再来一个'])
     const speakers = graph.nodes.filter(node => node.roleId === 'jia')
     expect(speakers[0].live).toBe(false)
+    expect(speakers[0].messageId).toBe('m2')
     expect(speakers[1].live).toBe(true)
+    expect(speakers[1].messageId).toBe('m6')
+    expect(graph.nodes.find(node => node.roleId === 'yi').messageId).toBe('m4')
   })
 
   it('shows an assignment target until a later task records that handoff', () => {

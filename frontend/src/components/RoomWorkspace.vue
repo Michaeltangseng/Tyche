@@ -111,6 +111,7 @@
             <template v-for="entry in entries" :key="entry.key">
               <article
                 v-if="entry.kind === 'message'"
+                :id="`room-message-${entry.message.id}`"
                 class="room-message"
                 :class="{
                   'room-message-user': entry.isUser,
@@ -168,6 +169,7 @@
                     <div
                       v-for="handoff in entry.handoffs"
                       :key="handoff.message.id"
+                      :id="`room-message-${handoff.message.id}`"
                       class="room-handoff"
                       :data-live="handoffLive(handoff) ? 'true' : undefined"
                     >
@@ -336,7 +338,14 @@
         </div>
       </section>
 
-      <aside v-if="showWorkPanel" class="room-ledger" :aria-label="t('room.workPanel')">
+      <aside v-if="showWorkPanel" ref="ledger" class="room-ledger" :style="{ '--room-ledger-width': `${ledgerWidth}px` }" :aria-label="t('room.workPanel')">
+        <div
+          class="project-room-drawer-resize room-ledger-resize"
+          role="separator"
+          aria-orientation="vertical"
+          :aria-label="t('room.ledgerResize')"
+          @pointerdown.prevent="startLedgerResize"
+        />
         <header class="room-ledger-header">
           <h2>{{ t('room.workPanel') }}</h2>
           <button class="secondary-button" type="button" @click="closeWorkPanel">{{ t('common.close') }}</button>
@@ -361,7 +370,7 @@
         <div class="room-work-scroll">
           <section v-if="activeWorkTab === 'trace'" class="room-work-panel" role="tabpanel">
             <p v-if="!workflow.nodes.length" class="room-work-empty">{{ t('room.noTrace') }}</p>
-            <RoomWorkflow v-else :workflow="workflow" :roles="roles" />
+            <RoomWorkflow v-else :workflow="workflow" :roles="roles" @select="focusWorkflowMessage" />
           </section>
 
           <section v-else-if="activeWorkTab === 'usage'" class="room-work-panel" role="tabpanel">
@@ -699,6 +708,72 @@ const workspaceName = computed(() => (
   workspaceDefault.value ? t('room.scratchLabel') : (roomRecord.value?.workspace_label || t('room.scratchLabel'))
 ))
 const workPanelOpen = ref(true)
+const ledger = ref(null)
+const LEDGER_MIN = 280
+const LEDGER_MAX = 760
+const LEDGER_DEFAULT = 340
+const LEDGER_WIDTH_KEY = 'tyche.roomLedgerWidth'
+
+function clampLedgerWidth(value) {
+  const width = Number(value)
+  if (!Number.isFinite(width)) return LEDGER_DEFAULT
+  return Math.min(LEDGER_MAX, Math.max(LEDGER_MIN, Math.round(width)))
+}
+
+function readLedgerWidth() {
+  try {
+    const stored = localStorage.getItem(LEDGER_WIDTH_KEY)
+    if (stored == null || stored === '') return LEDGER_DEFAULT
+    return clampLedgerWidth(stored)
+  } catch {
+    return LEDGER_DEFAULT
+  }
+}
+
+const ledgerWidth = ref(readLedgerWidth())
+let ledgerResize = null
+let ledgerResizeFrame = 0
+
+function renderedLedgerWidth() {
+  const value = Number(ledger.value?.getBoundingClientRect?.().width)
+  return Number.isFinite(value) && value > 0 ? Math.round(value) : ledgerWidth.value
+}
+
+function startLedgerResize(event) {
+  ledgerResize = { startX: event.clientX, lastX: event.clientX, startWidth: renderedLedgerWidth() }
+  document.body.classList.add('drawer-resizing')
+  window.addEventListener('pointermove', handleLedgerResize)
+  window.addEventListener('pointerup', finishLedgerResize)
+  window.addEventListener('pointercancel', finishLedgerResize)
+}
+
+function handleLedgerResize(event) {
+  if (!ledgerResize) return
+  ledgerResize.lastX = event.clientX
+  if (ledgerResizeFrame) return
+  ledgerResizeFrame = requestAnimationFrame(() => {
+    ledgerResizeFrame = 0
+    if (!ledgerResize) return
+    ledgerWidth.value = clampLedgerWidth(ledgerResize.startWidth + (ledgerResize.startX - ledgerResize.lastX))
+  })
+}
+
+function finishLedgerResize() {
+  if (!ledgerResize) return
+  ledgerWidth.value = clampLedgerWidth(ledgerResize.startWidth + (ledgerResize.startX - ledgerResize.lastX))
+  ledgerResize = null
+  if (ledgerResizeFrame) cancelAnimationFrame(ledgerResizeFrame)
+  ledgerResizeFrame = 0
+  window.removeEventListener('pointermove', handleLedgerResize)
+  window.removeEventListener('pointerup', finishLedgerResize)
+  window.removeEventListener('pointercancel', finishLedgerResize)
+  document.body.classList.remove('drawer-resizing')
+  try {
+    localStorage.setItem(LEDGER_WIDTH_KEY, String(ledgerWidth.value))
+  } catch {
+    /* the width still applies for this session */
+  }
+}
 const workPanelRequested = ref(false)
 const workTab = ref('')
 const name = ref('')
@@ -1384,6 +1459,19 @@ function scrollToAttention() {
   document.querySelector('.room-attention-card')?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
 }
 
+let workflowFocusTimer = 0
+function focusWorkflowMessage(node) {
+  const id = node?.messageId
+  if (!id || typeof document === 'undefined') return
+  const target = document.getElementById(`room-message-${id}`)
+  if (!target) return
+  document.querySelectorAll('.room-message-focus').forEach(item => item.classList.remove('room-message-focus'))
+  target.classList.add('room-message-focus')
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  window.clearTimeout(workflowFocusTimer)
+  workflowFocusTimer = window.setTimeout(() => target.classList.remove('room-message-focus'), 1600)
+}
+
 function closeWorkspaceDialog() {
   if (workspaceBusy.value) return
   workspaceDialogOpen.value = false
@@ -1493,11 +1581,13 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleEscape)
+  finishLedgerResize()
   document.body.classList.remove('room-overlay-open')
 })
 </script>
 <style scoped>
 .room-workspace { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; padding: 0; gap: 0; background: var(--surface); color: var(--text); }
+.room-message-focus { border-radius: 12px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 70%, transparent); }
 .room-toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px clamp(16px, 3vw, 28px); border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 94%, var(--surface-raised)); }
 .room-heading { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .room-project-name { align-self: flex-start; display: inline-flex; align-items: center; color: var(--faint); font-size: var(--text-2xs); }
@@ -1647,7 +1737,7 @@ button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.
 .room-composer-send:disabled { opacity: 0.45; cursor: default; }
 .room-composer-send:not(:disabled) { background: var(--text); color: var(--surface); }
 .room-composer-send:hover:not(:disabled) { background: var(--text); }
-.room-ledger { display: flex; flex: 0 0 min(340px, 36%); flex-direction: column; min-height: 0; overflow: hidden; padding: 12px 12px 0; border-left: 1px solid var(--border); background: var(--surface-raised); }
+.room-ledger { position: relative; display: flex; flex: 0 0 var(--room-ledger-width, 340px); width: var(--room-ledger-width, 340px); flex-direction: column; min-height: 0; overflow: hidden; padding: 12px 12px 0; border-left: 1px solid var(--border); background: var(--surface-raised); }
 .room-ledger-header { display: flex; flex: 0 0 auto; gap: 10px; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
 .room-ledger-header h2 { margin: 0; }
 .room-work-tabs { display: flex; flex: 0 0 auto; gap: 2px; padding: 8px 0 0; border-bottom: 1px solid var(--border); }
@@ -1901,7 +1991,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   .room-collaboration { order: 3; flex-basis: 100%; }
   .room-header-actions { margin-left: auto; }
   .room-body { position: relative; }
-  .room-ledger { position: absolute; inset: 0 0 0 auto; z-index: 20; width: min(360px, 100%); box-shadow: -18px 0 50px rgb(0 0 0 / 0.18); }
+  .room-ledger { position: absolute; inset: 0 0 0 auto; z-index: 20; width: min(var(--room-ledger-width, 340px), 100%); box-shadow: -18px 0 50px rgb(0 0 0 / 0.18); }
   .room-timeline { padding: 20px 16px 12px; }
   .room-composer-wrap { padding: 8px 14px 14px; }
   .room-message-body, .room-message-user .room-message-body { max-width: calc(100% - 44px); }

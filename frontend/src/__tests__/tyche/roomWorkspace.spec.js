@@ -1,5 +1,6 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import RoomWorkflow from '../../components/RoomWorkflow.vue'
 import RoomWorkspace from '../../components/RoomWorkspace.vue'
 import { setLocale } from '../../i18n.js'
 
@@ -161,6 +162,73 @@ describe('team room workspace', () => {
 
     await wrapper.get('.room-usage-toggle').trigger('click')
     expect(wrapper.get('.room-work-tab.active').text()).toContain('Usage')
+  })
+
+  it('jumps the chat to the turn behind a workflow face', async () => {
+    const snapshot = data()
+    snapshot.tasks = [{
+      id: 'task-1', chat_id: 'chat-1', number: 1, title: 'Tell a joke', status: 'done',
+      assignee_role_id: 'worker', created_by_role_id: 'captain', created_at: '2026-11-15T10:00:30Z',
+    }]
+    snapshot.messages = [
+      {
+        id: 'reply-1', chat_id: 'chat-1', sequence: 2, author_type: 'agent', author_id: 'worker',
+        author_name: 'Writer', content: 'A short joke', status: 'done', mentions: [],
+        created_at: '2026-11-15T10:01:00Z',
+      },
+    ]
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+
+    const article = wrapper.get('#room-message-reply-1')
+    article.element.scrollIntoView = vi.fn()
+    const face = wrapper.findAll('.room-flow-node').find(node => node.text().includes('Writer'))
+    await face.trigger('click')
+
+    expect(article.element.scrollIntoView).toHaveBeenCalled()
+    expect(article.classes()).toContain('room-message-focus')
+  })
+
+  it('lets the workbench grow wider and wraps a long trace onto another row', async () => {
+    localStorage.removeItem('tyche.roomLedgerWidth')
+    const roles = [
+      { id: 'captain', display_name: 'Captain' },
+      { id: 'a', display_name: 'A' },
+      { id: 'b', display_name: 'B' },
+      { id: 'c', display_name: 'C' },
+      { id: 'd', display_name: 'D' },
+    ]
+    const nodes = [
+      { id: 'origin:captain', roleId: 'captain', messageId: 'm0', title: '', live: false },
+      ...['a', 'b', 'c', 'd'].map(id => ({ id, roleId: id, messageId: id, title: id, live: false })),
+    ]
+    const edges = ['a', 'b', 'c', 'd'].map(id => ({ id: `edge-${id}`, from: 'origin:captain', to: id, label: id }))
+    const flow = mount(RoomWorkflow, { props: { workflow: { nodes, edges, layers: [] }, roles } })
+    cleanup.push(() => flow.unmount())
+    const rows = flow.findAll('.room-flow-kids')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].findAll('.room-flow-node')).toHaveLength(3)
+    expect(rows[1].attributes('data-follow')).toBe('true')
+    expect(rows[1].findAll('.room-flow-node')).toHaveLength(1)
+
+    const snapshot = data()
+    snapshot.tasks = [{
+      id: 'task-1', chat_id: 'chat-1', number: 1, title: 'Write docs', status: 'done',
+      assignee_role_id: 'worker', created_at: '2026-11-15T10:01:00Z',
+    }]
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+    const handle = wrapper.get('.room-ledger-resize')
+    expect(handle.attributes('aria-label')).toBe('Resize workbench')
+    const point = (type, clientX, target = window) => {
+      target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX }))
+    }
+    point('pointerdown', 500, handle.element)
+    point('pointermove', 400)
+    point('pointerup', 400)
+    await flushPromises()
+    expect(wrapper.get('.room-ledger').attributes('style')).toContain('440px')
+    localStorage.removeItem('tyche.roomLedgerWidth')
   })
 
   it('defaults the workbench to trace when only assignments exist', async () => {

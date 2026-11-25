@@ -204,6 +204,29 @@ export function buildRoomWorkflow({
     }
   }
 
+  const spoken = messages
+    .filter(message => message && !message.deleted_at && message.author_type === 'agent' && message.author_id && message.kind !== 'mention')
+    .sort((left, right) => messageOrder(left) - messageOrder(right) || String(left.id).localeCompare(String(right.id)))
+  const byAuthor = messages
+    .filter(message => message && !message.deleted_at && message.author_type === 'agent' && message.author_id)
+    .sort((left, right) => messageOrder(left) - messageOrder(right) || String(left.id).localeCompare(String(right.id)))
+  function firstSpokenAfter(roleId, afterOrder) {
+    return spoken.find(message => message.author_id === roleId && messageOrder(message) > afterOrder) || null
+  }
+  function firstByAuthor(roleId) {
+    return byAuthor.find(message => message.author_id === roleId) || null
+  }
+  for (const node of nodes) {
+    if (node.messageId) continue
+    const handoffId = /^handoff:([^:]+):/.exec(String(node.id))?.[1] || ''
+    if (handoffId) {
+      const handoff = messages.find(message => message.id === handoffId)
+      node.messageId = (handoff && firstSpokenAfter(node.roleId, messageOrder(handoff))?.id) || handoffId
+      continue
+    }
+    node.messageId = firstByAuthor(node.roleId)?.id || ''
+  }
+
   const used = new Set(edges.flatMap(edge => [edge.from, edge.to]))
   const labelByTarget = new Map(edges.map(edge => [edge.to, edge.label]))
   const visible = nodes
