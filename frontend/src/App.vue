@@ -41,7 +41,7 @@
         :open-system-settings="openSystemSettings" :toggle-locale="toggleLocale" :toggle-theme="toggleTheme"
         :shortcut-definitions="shortcutDefinitions" />
 
-      <WorkspaceSidebar :controller="workspaceSidebarController" />
+      <WorkspaceSidebar ref="workspaceSidebar" :controller="workspaceSidebarController" />
 
       <section
         class="workspace-pane"
@@ -79,17 +79,15 @@
         <RoomWorkspace
           v-else-if="activeView === 'rooms' && api?.teamRoom"
           :api="api.teamRoom"
-          :pick-directory="() => workspace.pickDirectory()"
           :agents="readyAgents"
           :create-request="roomCreateRequest"
           :open-request="teamRoomOpenRequest"
           :files-open="roomDrawer === 'files'"
-          :usage-open="roomDrawer === 'usage'"
           @create-request-consumed="roomCreateRequest = false"
           @active-change="teamRoomNavigation.syncActive"
+          @configure-workspace="workspaceSidebar?.openWorkspaceEditor?.()"
           @toggle-files="toggleRoomDrawer('files')"
-          @toggle-usage="toggleRoomDrawer('usage')"
-          @usage-change="roomUsage = $event"
+          @open-files="roomDrawer = 'files'"
         />
 
         <section v-else class="conversation-pane">
@@ -127,10 +125,7 @@
           :api="api.teamRoom"
           :room-id="activeTeamRoomId"
           :width="roomFilesWidth"
-          :panel="roomDrawer"
-          :usage="roomUsage"
           @close="roomDrawer = null"
-          @switch="roomDrawer = $event"
           @resize="roomFilesWidth = $event"
         />
       </transition>
@@ -287,7 +282,7 @@ const installCatalog = ref({ platform: '', agents: [] })
 const installerState = ref({ taskId: '', kind: '', phase: 'idle', canCancel: false, errorCode: '' })
 const systemSettingsSection = ref('agents')
 const sidebarCollapsed = ref(false)
-const sidebarAgentsCollapsed = ref(false)
+const sidebarAgentsCollapsed = ref(true)
 const sidebarGroupsCollapsed = ref(false)
 const refreshing = ref(false)
 const agentDiscoveryPending = ref(true)
@@ -438,9 +433,10 @@ const {
   activeRoomId: activeTeamRoomId,
 } = teamRoomNavigation
 const roomCreateRequest = ref(false)
+
 const PROJECT_DRAWER_DEFAULT_WIDTH = 420
 const roomDrawer = ref(null)
-const roomUsage = ref([])
+const workspaceSidebar = ref(null)
 const roomFilesWidth = ref(PROJECT_DRAWER_DEFAULT_WIDTH)
 
 function toggleRoomDrawer(panel) {
@@ -950,6 +946,9 @@ const {
     addTeamChat: teamRoomNavigation.addChat,
     deleteTeamChat: teamRoomNavigation.deleteChat,
     deleteTeamRoom: teamRoomNavigation.deleteRoom,
+    renameTeamChat: teamRoomNavigation.renameChat,
+    setTeamWorkspace: teamRoomNavigation.setWorkspace,
+    pickTeamDirectory: () => workspace.value?.pickDirectory?.(),
     handleTeamRoomClick: teamRoomNavigation.handleRoomClick,
     isTeamChatSelected: teamRoomNavigation.isChatSelected,
     isTeamRoomExpanded: teamRoomNavigation.isExpanded,

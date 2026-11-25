@@ -129,6 +129,8 @@ if (isLocalDocument) Object.assign(desktopApi, {
     filesRead: input => ipcRenderer.invoke('team-room:files-read', input),
     importFiles: input => ipcRenderer.invoke('team-room:files-import', input),
     setWriteAuthorized: input => ipcRenderer.invoke('team-room:write-authorized', input),
+    setWorkspace: input => ipcRenderer.invoke('team-room:workspace-set', input),
+    confirmWorkspace: input => ipcRenderer.invoke('team-room:workspace-confirm', input),
     runtimeEvents: input => ipcRenderer.invoke('team-room:runtime-events', input),
     skillInventory: () => ipcRenderer.invoke('team-room:skill-inventory'),
     usageReport: input => ipcRenderer.invoke('team-room:usage-report', input),

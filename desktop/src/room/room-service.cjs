@@ -34,6 +34,7 @@ const { registerMentionTool } = require('./tools/mention.cjs')
 const { registerReadChatTool } = require('./tools/read.cjs')
 const { registerTaskTools } = require('./tools/tasks.cjs')
 const { createCaptainAssignment, registerCaptainTools } = require('./tools/captain.cjs')
+const { openAttention, unavailableRoleQuestion } = require('./open-attention.cjs')
 
 function createRoomService({
   roomDb,
@@ -55,6 +56,10 @@ function createRoomService({
   runtimeWrapperPath = null,
   runtimeStateDir = null,
   skillInventory = null,
+  // Returns the provider kinds the local machine can actually start right now.
+  // null/undefined means "not known yet"; only the runtime registry gate
+  // applies. The callback is read on demand so agent recovery is picked up.
+  availableProviders = null,
 } = {}) {
   if (!roomDb || !repository) throw new TypeError('ROOM_SERVICE_DEPENDENCIES_REQUIRED')
   const { database } = roomDb
@@ -87,6 +92,59 @@ function createRoomService({
   let livenessRun = null
   let unsubscribeCommit = null
 
+  function localProviderSet() {
+    if (typeof availableProviders !== 'function') return null
+    try {
+      const value = availableProviders()
+      if (value === null || value === undefined) return null
+      if (value instanceof Set) return value
+      return new Set(Array.isArray(value) ? value : [])
+    } catch {
+      return null
+    }
+  }
+
+  // A provider can speak only when its runtime launcher exists AND the local
+  // machine currently reports that Agent as available.
+  function providerCanSpeak(provider) {
+    if (typeof provider !== 'string' || provider.length === 0) return false
+    if (typeof runtimeAdapter?.hasLauncher === 'function') {
+      const known = runtimeAdapter.hasLauncher(provider)
+      if (known === false) return false
+    }
+    const local = localProviderSet()
+    return local ? local.has(provider) : true
+  }
+
+  function speakableProviderIds() {
+    if (typeof runtimeAdapter?.launchProviderIds !== 'function') return null
+    const ids = runtimeAdapter.launchProviderIds()
+    if (!Array.isArray(ids)) return ids
+    const local = localProviderSet()
+    return local ? ids.filter(id => local.has(id)) : ids
+  }
+
+  function unavailableAttention({ chatId, roles, requestedBy = 'system' }) {
+    const unique = []
+    for (const role of Array.isArray(roles) ? roles : []) {
+      if (!role) continue
+      const provider = role.provider || ''
+      const name = role.displayName || role.name || role.id || provider
+      const key = `${name}:${provider}`
+      if (unique.some(item => `${item.displayName}:${item.provider}` === key)) continue
+      unique.push({ id: role.id || '', displayName: name, provider })
+    }
+    if (unique.length === 0) return null
+    return openAttention({
+      roomDb,
+      chatId,
+      type: 'agent_unavailable',
+      question: unavailableRoleQuestion(unique),
+      requestedBy,
+      now,
+    })
+  }
+
   const requestTick = chatId => supervisor?.requestTick(chatId)
   const runtime = {
     start(input) {
@@ -104,10 +162,9 @@ function createRoomService({
     runtime,
     now,
     onEvent: recordRuntimeEvent,
-    launchProviders: () => {
-      if (typeof runtimeAdapter?.launchProviderIds !== 'function') return null
-      return runtimeAdapter.launchProviderIds()
-    },
+    launchProviders: speakableProviderIds,
+    canLaunch: providerCanSpeak,
+    onUnavailable: unavailableAttention,
     skillSource: skillInventory,
   })
   const queue = createTaskQueue({
@@ -130,6 +187,8 @@ function createRoomService({
     review,
     queueReply: input => engine.queueReply(input),
     requestTick,
+    canLaunch: providerCanSpeak,
+    onUnavailable: unavailableAttention,
   })
 
   registerMentionTool({
@@ -140,10 +199,10 @@ function createRoomService({
     queueReply: input => engine.queueReply(input),
     canLaunch(roleId) {
       const role = repository.getRole(roleId)
-      if (!role || typeof runtimeAdapter?.hasLauncher !== 'function') return true
-      const known = runtimeAdapter.hasLauncher(role.provider)
-      return known === null ? true : known
+      if (!role) return false
+      return providerCanSpeak(role.provider)
     },
+    onUnavailable: unavailableAttention,
   })
   registerReadChatTool({ dispatcher: toolDispatcher, timeline: timelineStore, repository })
   registerTaskTools({
@@ -160,11 +219,8 @@ function createRoomService({
     captainAssignment,
     timeline: timelineStore,
     roomDb,
-    canLaunch(provider) {
-      if (typeof runtimeAdapter?.hasLauncher !== 'function') return true
-      const known = runtimeAdapter.hasLauncher(provider)
-      return known === null ? true : known
-    },
+    canLaunch: providerCanSpeak,
+    onUnavailable: unavailableAttention,
     selectSkills: skillInventory
       ? (provider, ids) => skillInventory.assertSelectable(provider, ids)
       : null,
@@ -348,6 +404,8 @@ function createRoomService({
     sweepRuntimeProcesses: sweepRuntimeProcessesNow,
     recovery,
     submitUserMessage,
+    providerCanSpeak,
+    speakableProviderIds,
     startQueuedReplies,
     pump,
     stopReply: input => engine.stopReply(input),

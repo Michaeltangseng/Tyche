@@ -1,5 +1,5 @@
 <template>
-  <section class="room-workspace">
+  <section ref="workspaceRoot" class="room-workspace">
     <header class="room-toolbar room-header">
       <div class="room-heading">
         <div class="room-title-row">
@@ -35,59 +35,34 @@
         </div>
       </div>
 
-      <div v-if="snapshot" class="room-agent-strip" :aria-label="t('room.members', { count: roles.length })">
-        <button
-          v-for="role in roles"
-          :key="role.id"
-          class="room-agent-chip"
-          type="button"
-          :data-speaking="roleSpeaking(role) ? 'true' : undefined"
-          :data-quiet="role.provider && !canSpeak(role.provider) ? 'true' : undefined"
-          :style="chipStyle(role)"
-          :title="agentTitle(role)"
-          :aria-label="`${t('room.configureRole')}: ${roleLabel(role)}`"
-          @click="openRoleSettings(role.id)"
-        >
-          <span v-if="role.provider" class="room-chip-face">
-            <span class="room-chip-photo">
-              <img class="room-portrait" :src="faceSrc(role)" alt="" />
-            </span>
-            <span v-if="role.is_captain" class="room-captain-mark" :title="t('room.captain')">⚓</span>
-          </span>
-          <span class="room-chip-name">{{ roleLabel(role) }}</span>
-          <span v-if="role.provider && !canSpeak(role.provider)" class="room-agent-mute" aria-hidden="true">🔇</span>
-        </button>
-        <span v-if="!roles.length" class="room-agent-idle">{{ t('room.teamIdle') }}</span>
-        <button
-          class="room-agent-add"
-          type="button"
-          :title="t('room.addAgent')"
-          :aria-label="t('room.addAgent')"
-          :disabled="busy || !(snapshot.room.providers?.length)"
-          @click="openNewRole"
-        >
-          <AddOutline />
-        </button>
-      </div>
+      <RoomCollaborationRibbon
+        v-if="snapshot"
+        class="room-collaboration"
+        :state="collaboration"
+        :roles="castRoles"
+        :busy="busy"
+        :can-add="canAddRole"
+        @select-role="openRoleSettings"
+        @add-role="openNewRole"
+        @open-work="workPanelOpen = true"
+      />
 
       <div class="room-header-actions">
         <button v-if="attentions.length" class="room-notice-pill" type="button" @click="scrollToAttention">
           {{ t('room.attentions', { count: attentions.length }) }}
         </button>
-        <button v-if="snapshot" class="room-icon-button room-usage-toggle" type="button" :aria-pressed="usageOpen" :title="t('room.usagePanel')" :aria-label="t('room.usagePanel')" @click="emit('toggle-usage')">
+        <button v-if="snapshot" class="room-icon-button room-usage-toggle" type="button" :aria-pressed="showWorkPanel && activeWorkTab === 'usage'" :title="t('room.usagePanel')" :aria-label="t('room.usagePanel')" @click="openUsage">
           <PulseOutline />
         </button>
         <button v-if="snapshot" class="room-icon-button room-files-toggle" type="button" :aria-pressed="filesOpen" :title="t('room.files')" :aria-label="t('room.files')" @click="emit('toggle-files')">
           <FolderOutline />
         </button>
-        <button v-if="hasWork" class="secondary-button room-work-toggle" type="button" :aria-pressed="workPanelOpen" @click="workPanelOpen = !workPanelOpen">
-          {{ t('room.workPanel') }} · {{ workCount }}
-        </button>
         <button class="room-icon-button room-create-button" type="button" data-testid="room-create-open" :aria-label="t('room.create')" :disabled="busy" @click="startCreating">+</button>
       </div>
     </header>
 
-    <p v-if="error || pickerError" class="room-error room-banner" role="alert">
+    <p v-if="missingCaptain" class="room-error room-banner" role="alert">{{ t('room.noProviders') }}</p>
+    <p v-else-if="error || pickerError" class="room-error room-banner" role="alert">
       {{ t('room.error') }}
       <button class="secondary-button" type="button" @click="reload">{{ t('room.refresh') }}</button>
     </p>
@@ -96,7 +71,7 @@
       <div class="room-landing-inner">
         <h2>{{ rooms.length ? t('room.loading') : t('room.emptyProjects') }}</h2>
         <p v-if="!rooms.length" class="room-muted">{{ t('room.createHint') }}</p>
-        <button v-if="!rooms.length" class="primary-button" type="button" :disabled="busy" @click="startCreating">{{ t('room.create') }}</button>
+        <button v-if="!rooms.length" class="primary-button" type="button" :disabled="busy" @click="startCreating">{{ t('room.createChat') }}</button>
       </div>
     </div>
 
@@ -118,7 +93,7 @@
                   :aria-label="`${t('room.configureRole')}: ${roleLabel(role)}`"
                   @click="openRoleSettings(role.id)"
                 >
-                  <img class="room-portrait" :src="faceSrc(role)" alt="" />
+                  <RoomMascot :mascot="roleFace(role)" />
                   <span v-if="role.is_captain" class="room-welcome-wave">{{ t('room.welcomeWave') }}</span>
                 </button>
               </div>
@@ -133,6 +108,7 @@
             <template v-for="entry in entries" :key="entry.key">
               <article
                 v-if="entry.kind === 'message'"
+                :id="`room-message-${entry.message.id}`"
                 class="room-message"
                 :class="{
                   'room-message-user': entry.isUser,
@@ -148,11 +124,11 @@
                   :aria-label="`${t('room.configureRole')}: ${entry.author}`"
                   @click="openRoleSettings(entry.roleId)"
                 >
-                  <img v-if="entry.provider || entry.portrait" class="room-portrait" :src="rolePortrait(entry.portrait || entry.provider)" alt="" />
+                  <RoomMascot v-if="entry.roleId" :mascot="roleFace(rolesById.get(entry.roleId) || { id: entry.roleId })" />
                   <span v-else>{{ entry.author.slice(0, 1) }}</span>
                 </button>
                 <span v-else-if="!entry.isUser && !entry.isSystem" class="room-message-avatar">
-                  <img v-if="entry.provider || entry.portrait" class="room-portrait" :src="rolePortrait(entry.portrait || entry.provider)" alt="" />
+                  <RoomMascot v-if="entry.roleId" :mascot="roleFace(rolesById.get(entry.roleId) || { id: entry.roleId })" />
                   <span v-else>{{ entry.author.slice(0, 1) }}</span>
                 </span>
                 <div class="room-message-body">
@@ -161,13 +137,16 @@
                     <span v-if="entry.isCaptain" class="room-agent-badge">{{ t('room.captain') }}</span>
                     <span v-if="entry.isReviewReply" class="room-agent-badge">{{ t('room.reviewReply') }}</span>
                     <time>{{ formatTime(entry.createdAt) }}</time>
-                    <span class="room-message-status" :data-status="entry.message.status">{{ statusLabel(entry.message.status) }}</span>
+                    <span
+                      v-if="isTerminalMessage(entry.message)"
+                      class="room-message-stamp"
+                      role="img"
+                      :title="statusLabel(entry.message.status)"
+                      :aria-label="statusLabel(entry.message.status)"
+                    >✓</span>
+                    <span v-else-if="entry.message.status" class="room-message-status" :data-status="entry.message.status">{{ statusLabel(entry.message.status) }}</span>
                     <span v-if="turnUsage(entry.message)" class="room-turn-usage">{{ turnUsage(entry.message) }}</span>
                   </header>
-                  <details v-if="replyThinking(entry.message)" class="room-reasoning">
-                    <summary>{{ t('room.thinking') }}</summary>
-                    <p>{{ replyThinking(entry.message) }}</p>
-                  </details>
                   <MarkdownMessage
                     v-if="entry.message.content"
                     :content="entry.message.content"
@@ -183,29 +162,55 @@
                     aria-live="polite"
                   />
                   <p v-else-if="isWorking(entry.message) && !entry.handoffs.length" class="room-live-output" aria-live="polite">{{ t('room.liveOutput') }}</p>
-                  <MarkdownMessage
-                    v-for="handoff in entry.handoffs"
-                    :key="handoff.message.id"
-                    class="room-message-handoff"
-                    :content="handoff.message.content"
-                    :mention-profiles="mentionProfiles"
-                  />
-                  <div v-if="entry.mentions.length" class="room-mention-row">
+                  <div v-if="entry.handoffs.length" class="room-handoff-list">
+                    <div
+                      v-for="handoff in entry.handoffs"
+                      :key="handoff.message.id"
+                      :id="`room-message-${handoff.message.id}`"
+                      class="room-handoff"
+                      :data-live="handoffLive(handoff) ? 'true' : undefined"
+                    >
+                      <div v-if="handoffTargets(handoff).length" class="room-handoff-strip">
+                        <span class="room-handoff-face">
+                          <RoomMascot v-if="entry.roleId" :mascot="roleFace(rolesById.get(entry.roleId) || { id: entry.roleId })" />
+                          <span v-else>{{ entry.author.slice(0, 1) }}</span>
+                        </span>
+                        <span class="room-handoff-arrow" aria-hidden="true">→</span>
+                        <span
+                          v-for="target in handoffTargets(handoff)"
+                          :key="target.id"
+                          class="room-handoff-face"
+                          :title="roleLabel(target)"
+                        >
+                          <RoomMascot :mascot="roleFace(target)" />
+                        </span>
+                        <span class="room-handoff-label">
+                          {{ t('room.handoffTo', { names: handoffTargets(handoff).map(roleLabel).join(' · ') }) }}
+                        </span>
+                      </div>
+                      <MarkdownMessage
+                        class="room-message-handoff"
+                        :content="handoff.message.content"
+                        :mention-profiles="mentionProfiles"
+                      />
+                    </div>
+                  </div>
+                  <div v-if="entry.mentions.length && !entry.handoffs.length" class="room-mention-row">
                     <span v-for="name in entry.mentions" :key="name" class="room-mention-chip">@{{ name }}</span>
                   </div>
-                  <div v-if="rosterRoles(entry).length" class="room-roster" :aria-label="t('room.roster')">
-                    <button
-                      v-for="role in rosterRoles(entry)"
-                      :key="role.id"
-                      class="room-roster-card"
-                      type="button"
-                      :aria-label="`${t('room.configureRole')}: ${roleLabel(role)}`"
-                      @click="openRoleSettings(role.id)"
-                    >
-                      <img v-if="role.provider" class="room-portrait" :src="faceSrc(role)" alt="" />
-                      <span class="room-roster-name">{{ roleLabel(role) }}</span>
-                      <span v-if="role.responsibilities" class="room-roster-duty">{{ role.responsibilities }}</span>
-                    </button>
+                  <div v-if="rosterRoles(entry).length" class="room-roster" :data-roster="entry.message.id" :aria-label="t('room.roster')">
+                    <span v-for="role in rosterRoles(entry)" :key="role.id" class="room-roster-slot">
+                      <button
+                        class="room-roster-card"
+                        type="button"
+                        :aria-label="`${t('room.configureRole')}: ${roleLabel(role)}`"
+                        @click="openRoleSettings(role.id)"
+                      >
+                        <RoomMascot v-if="role.provider" :mascot="roleFace(role)" />
+                        <span class="room-roster-name">{{ roleLabel(role) }}</span>
+                        <span v-if="role.responsibilities" class="room-roster-duty">{{ role.responsibilities }}</span>
+                      </button>
+                    </span>
                   </div>
                   <RoomRunTrace
                     v-if="entry.message.author_type === 'agent'"
@@ -215,6 +220,7 @@
                     :run-id="entry.message.id"
                     :live="liveFor(entry.message)"
                     :steps="entry.message.data?.trace || null"
+                    :thinking="replyThinking(entry.message)"
                   />
                   <div v-if="entry.message.status === 'waiting_for_input'" class="room-actions">
                     <span class="room-muted">{{ t('room.waitingForInput') }}</span>
@@ -248,6 +254,14 @@
             </template>
 
             <article v-for="attention in attentions" :key="attention.id" class="room-attention-card">
+              <template v-if="attention.type === 'workspace_directory'">
+                <header><strong>{{ t('room.needsYou') }}</strong></header>
+                <p>{{ t('room.workspaceAsk') }}</p>
+                <div class="room-actions">
+                  <button class="primary-button" type="button" :disabled="busy" @click="emit('configure-workspace')">{{ t('room.switchWorkspace') }}</button>
+                </div>
+              </template>
+              <template v-else>
               <header><strong>{{ t('room.needsYou') }}</strong><span>{{ attention.type }}</span></header>
               <p>{{ attention.question }}</p>
               <form @submit.prevent="answer(attention)">
@@ -258,6 +272,7 @@
                 <input v-else v-model="answers[attention.id]" :aria-label="attention.question" :placeholder="t('room.answer')" required />
                 <button class="secondary-button" type="submit" :disabled="busy || !answers[attention.id]">{{ t('room.submit') }}</button>
               </form>
+              </template>
             </article>
           </div>
         </div>
@@ -320,127 +335,66 @@
         </div>
       </section>
 
-      <aside v-if="showWorkPanel" class="room-ledger" :aria-label="t('room.workPanel')">
+      <aside v-if="showWorkPanel" ref="ledger" class="room-ledger" :style="{ '--room-ledger-width': `${ledgerWidth}px` }" :aria-label="t('room.workPanel')">
+        <div
+          class="project-room-drawer-resize room-ledger-resize"
+          role="separator"
+          aria-orientation="vertical"
+          :aria-label="t('room.ledgerResize')"
+          @pointerdown.prevent="startLedgerResize"
+        />
         <header class="room-ledger-header">
           <h2>{{ t('room.workPanel') }}</h2>
-          <button class="secondary-button" type="button" @click="workPanelOpen = false">{{ t('common.close') }}</button>
+          <button class="secondary-button" type="button" @click="closeWorkPanel">{{ t('common.close') }}</button>
         </header>
 
-        <h2>{{ t('room.tasks') }}</h2>
-        <p v-if="!tasks.length" class="room-muted">{{ t('room.noTasks') }}</p>
-        <article v-for="task in tasks" :key="task.id" class="room-card">
-          <header>
-            <strong>{{ taskLabel(task) }}</strong>
-            <span>{{ statusLabel(task.status) }}</span>
-          </header>
-          <p v-if="task.description" class="room-muted">{{ task.description }}</p>
-          <p v-if="task.acceptance" class="room-muted">{{ t('room.acceptance') }}: {{ task.acceptance }}</p>
-          <div v-if="canAcceptTask(task)" class="room-actions">
-            <button class="primary-button" type="button" :disabled="busy" @click="acceptTask(task.id)">{{ t('room.acceptTask') }}</button>
-          </div>
-          <div class="room-runs">
-            <p class="room-runs-title">{{ t('room.runs') }}</p>
-            <p v-if="!taskRuns(task.id).length" class="room-muted">{{ t('room.noRuns') }}</p>
-            <div v-for="run in taskRuns(task.id)" :key="run.id" class="room-run-entry">
-              <p class="room-run-row">
-                <span>{{ roleName(run.role_id) }}</span>
-                <span>{{ run.lane_kind === 'mention' ? t('room.mentionLane') : t('room.executorLane') }}</span>
-                <span :data-status="run.status">{{ statusLabel(run.status) }}</span>
-                <span v-if="run.outcome !== 'pending'" class="room-muted">{{ run.outcome }}</span>
-              </p>
-              <RoomRunTrace :api="api" :room-id="roomId" :chat-id="chatId" :run-id="run.id" />
-            </div>
-          </div>
-          <div v-if="taskReports(task.id).length" class="room-reports">
-            <p v-for="report in taskReports(task.id)" :key="report.id" class="room-report-row">
-              <strong>{{ reportKindLabel(report.kind) }}</strong>
-              <span>{{ report.summary }}</span>
-            </p>
-          </div>
-        </article>
-
-        <template v-if="reviews.length">
-          <h2>{{ t('room.captainReviews') }}</h2>
-          <article v-for="review in reviews" :key="review.id" class="room-card room-review-card">
-            <header>
-              <strong>{{ reviewKindLabel(review.kind) }}</strong>
-              <span :data-status="review.status">{{ statusLabel(review.status) }}</span>
-            </header>
-            <time class="room-muted">{{ formatTime(review.created_at) }}</time>
-          </article>
-        </template>
-
-        <template v-if="captainAssignments.length">
-          <h2>{{ t('room.captainAssignments') }}</h2>
-          <article v-for="assignment in captainAssignments" :key="assignment.id" class="room-card">
-            <header>
-              <strong>{{ t('room.captainAssignment') }}</strong>
-              <span :data-status="assignment.status">{{ statusLabel(assignment.status) }}</span>
-            </header>
-            <p class="room-muted">{{ assignmentTargetNames(assignment) }}</p>
-            <time class="room-muted">{{ formatTime(assignment.created_at) }}</time>
-          </article>
-        </template>
-
-        <template v-if="artifacts.length">
-          <h2>{{ t('room.artifacts') }}</h2>
-          <article v-for="artifact in artifacts" :key="artifact.id" class="room-card room-artifact-entry">
-            <header>
-              <strong>{{ artifact.path }}</strong>
-              <span :data-status="artifact.status">{{ statusLabel(artifact.status) }}</span>
-            </header>
-            <p class="room-muted">{{ artifact.kind }} · {{ artifact.version }}</p>
-            <p v-if="tasksById.get(artifact.task_id)" class="room-muted">{{ taskLabel(tasksById.get(artifact.task_id)) }}</p>
-          </article>
-        </template>
-      </aside>
-    </div>
-
-    <div v-if="creating" class="room-modal-backdrop" @click.self="creating = false" @wheel.self.prevent>
-      <form class="room-create room-modal" role="dialog" aria-modal="true" aria-labelledby="room-create-title" @submit.prevent="create" @keydown.esc.stop="creating = false">
-        <header class="room-create-header">
-          <h2 id="room-create-title">{{ t('room.create') }}</h2>
-          <button class="room-icon-button" type="button" :aria-label="t('common.close')" @click="creating = false">
-            <CloseOutline />
+        <nav class="room-work-tabs" role="tablist" :aria-label="t('room.workPanel')">
+          <button
+            v-for="tab in workTabs"
+            :key="tab.id"
+            class="room-work-tab"
+            :class="{ active: activeWorkTab === tab.id }"
+            type="button"
+            role="tab"
+            :aria-selected="activeWorkTab === tab.id"
+            :data-work-tab="tab.id"
+            @click="workTab = tab.id"
+          >
+            {{ t(tab.label) }}<span v-if="tab.count" class="room-work-tab-count">{{ tab.count }}</span>
           </button>
-        </header>
-        <div class="room-create-body">
-          <p v-if="error || pickerError" class="room-error" role="alert">{{ t('room.error') }}</p>
-          <label class="room-create-field">
-            <span>{{ t('room.name') }}</span>
-            <input v-model="name" maxlength="120" required autofocus />
-          </label>
-          <div class="room-create-field">
-            <span>{{ t('room.directory') }}</span>
-            <div class="room-directory">
-              <input :value="directory" readonly :placeholder="t('room.noDirectory')" :aria-label="t('room.directory')" />
-              <button class="secondary-button" type="button" :disabled="busy || picking" @click="chooseDirectory">
-                <FolderOutline aria-hidden="true" />
-                {{ t('room.chooseDirectory') }}
-              </button>
+        </nav>
+
+        <div class="room-work-scroll">
+          <section v-if="activeWorkTab === 'trace'" class="room-work-panel" role="tabpanel">
+            <p v-if="!workflow.nodes.length" class="room-work-empty">{{ t('room.noTrace') }}</p>
+            <RoomWorkflow v-else :workflow="workflow" :roles="roles" @select="focusWorkflowMessage" />
+          </section>
+
+          <section v-else-if="activeWorkTab === 'usage'" class="room-work-panel" role="tabpanel">
+            <div class="room-usage-summary room-work-card">
+              <span>{{ t('room.usageTotal') }}</span>
+              <strong>{{ totalUsageLine }}</strong>
             </div>
-          </div>
-          <fieldset class="room-create-field">
-            <legend class="room-create-legend">
-              <span>{{ t('room.captain') }}</span>
-              <small>{{ t('room.captainOnlyHint') }}</small>
-            </legend>
-            <p v-if="!availableAgents.length" class="room-error">{{ t('room.noProviders') }}</p>
-            <div v-else class="room-provider-picker" role="radiogroup" :aria-label="t('room.captain')">
-              <label v-for="agent in availableAgents" :key="agent.kind" class="room-provider-option">
-                <input v-model="selectedCaptain" type="radio" name="room-captain" :value="agent.kind" />
-                <img :src="agentLogo(agent.kind)" alt="" />
-                <span>{{ agent.label || providerLabel(agent.kind) }}</span>
-                <CheckmarkCircleOutline class="room-provider-check" aria-hidden="true" />
-              </label>
-            </div>
-          </fieldset>
+            <ul class="room-usage-list">
+              <li v-for="row in agentUsage" :key="row.id">
+                <div class="room-usage-agent">
+                  <span class="room-usage-face">
+                    <RoomMascot :mascot="roleFace(rolesById.get(row.id) || { id: row.id })" />
+                  </span>
+                  <strong>{{ row.name }}</strong>
+                  <span :data-status="row.status">{{ row.status === 'working' ? t('room.usageWorking') : t('room.usageIdle') }}</span>
+                </div>
+                <p class="room-usage-model">{{ row.model }}</p>
+                <p class="room-usage-line">{{ formatUsageLine(row.usage) }}</p>
+                <p v-if="row.contextPercent != null" class="room-usage-context">
+                  {{ t('room.usageContext') }} {{ Math.round(row.contextPercent) }}%
+                  <span class="room-usage-bar" aria-hidden="true"><span :style="{ width: `${Math.max(0, Math.min(100, row.contextPercent))}%` }" /></span>
+                </p>
+              </li>
+            </ul>
+          </section>
         </div>
-        <div class="room-actions room-create-footer">
-          <button class="secondary-button" type="button" :disabled="busy" @click="creating = false">{{ t('common.cancel') }}</button>
-          <button class="primary-button" :disabled="busy || picking || !canCreate">{{ t('room.create') }}</button>
-        </div>
-      </form>
+      </aside>
     </div>
 
     <div v-if="roleSettingsOpen" class="room-modal-backdrop room-role-backdrop" @click.self="closeRoleSettings" @wheel.self.prevent>
@@ -466,7 +420,7 @@
           <aside class="room-role-v2-side">
             <div class="room-role-v2-profile">
               <div class="room-role-v2-avatar">
-                <img v-if="roleDraft.portrait || roleDraft.provider" class="room-portrait" :src="rolePortrait(roleDraft.portrait || roleDraft.provider)" alt="" />
+                <RoomMascot v-if="draftFace" :mascot="draftFace" />
                 <span v-else>{{ (roleDraft.displayName || '?').slice(0, 1) }}</span>
               </div>
               <h3 class="room-role-v2-heading">{{ t('room.rolePortrait') }}</h3>
@@ -476,18 +430,18 @@
                 </button>
                 <div class="room-role-v2-provider-icons" role="group" :aria-label="t('room.rolePortrait')">
                   <button
-                    v-for="portrait in visiblePortraits"
-                    :key="portrait.id"
+                    v-for="mascot in visiblePortraits"
+                    :key="mascot.id"
                     class="room-role-provider-choice"
-                    :class="{ active: roleDraft.portrait === portrait.id }"
+                    :class="{ active: roleDraft.portrait === mascot.id }"
                     type="button"
-                    :data-portrait="portrait.id"
-                    :aria-label="portrait.id"
-                    :aria-pressed="roleDraft.portrait === portrait.id"
-                    @click="roleDraft.portrait = portrait.id"
+                    :data-portrait="mascot.id"
+                    :aria-label="mascot.name"
+                    :aria-pressed="roleDraft.portrait === mascot.id"
+                    @click="roleDraft.portrait = mascot.id"
                   >
-                    <img class="room-portrait" :src="portrait.src" alt="" />
-                    <CheckmarkCircleOutline v-if="roleDraft.portrait === portrait.id" class="room-role-portrait-check" />
+                    <RoomMascot :mascot="mascot" />
+                    <CheckmarkCircleOutline v-if="roleDraft.portrait === mascot.id" class="room-role-portrait-check" />
                   </button>
                 </div>
                 <button class="room-portrait-arrow" type="button" :aria-label="t('room.portraitNext')" :disabled="portraitPage >= portraitPageCount - 1" @click="portraitPage += 1">
@@ -520,12 +474,18 @@
                 <span class="room-role-engine-field">
                   <img v-if="agentLogo(roleDraft.provider)" :src="agentLogo(roleDraft.provider)" alt="" />
                   <select :value="roleDraft.provider" :aria-label="t('room.roleEngine')" @change="changeRoleProvider($event.target.value)">
-                    <option v-for="provider in roleProviders" :key="provider" :value="provider">{{ providerLabel(provider) }}</option>
+                    <option
+                      v-for="provider in roleProviders"
+                      :key="provider"
+                      :value="provider"
+                      :disabled="!readyProviderKinds.has(provider)"
+                      :title="providerUnavailableLabel(provider)"
+                    >{{ providerOptionLabel(provider) }}</option>
                   </select>
                 </span>
               </label>
             </div>
-            <p v-if="roleDraft.provider && !canSpeak(roleDraft.provider)" class="room-agent-quiet">{{ t('room.cannotSpeak') }}</p>
+            <p v-if="roleDraft.provider && !canSpeak(roleDraft.provider)" class="room-agent-quiet">{{ providerUnavailableLabel(roleDraft.provider) }}</p>
             <section class="room-role-v2-section">
               <h3>{{ t('room.rolePrompt') }}</h3>
               <div class="room-role-prompt-wrap">
@@ -578,8 +538,8 @@
             <section class="room-role-preview" :aria-label="t('room.rolePreview')">
               <h3>{{ t('room.rolePreview') }}</h3>
               <div class="room-role-preview-card">
-                <span class="room-role-preview-face" :style="{ '--portrait-glow': portraitGlow(roleDraft.portrait || roleDraft.provider) }">
-                  <img :src="rolePortrait(roleDraft.portrait || roleDraft.provider)" alt="" />
+                <span class="room-role-preview-face">
+                  <RoomMascot v-if="draftFace" :mascot="draftFace" />
                 </span>
                 <div class="room-role-preview-copy">
                   <header>
@@ -610,7 +570,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
-  AddOutline,
   AtOutline,
   AttachOutline,
   CheckmarkCircleOutline,
@@ -627,24 +586,28 @@ import {
   TrashOutline,
 } from '@vicons/ionicons5'
 import { agentLogo } from '../catalog.js'
-import { portraitGlow, portraitId, rolePortrait, rolePortraits } from '../role-portraits.js'
+import { desktopApi } from '../desktop.js'
+import { roomMascot, roleFace, ROOM_MASCOTS, mascotById } from '../room-mascots.js'
+import RoomMascot from './RoomMascot.vue'
 import { t } from '../i18n.js'
 import { keptSkillIds, selectableSkills, skillTokenEstimate } from '../skillInventory.js'
 import { useRoomWorkspace } from '../composables/useRoomWorkspace.js'
 import { agentUsageRows, formatUsageLine } from '../room-usage.js'
+import { deriveRoomCollaboration } from '../roomCollaboration.js'
+import { buildRoomWorkflow } from '../roomWorkflow.js'
 import MarkdownMessage from './MarkdownMessage.vue'
+import RoomCollaborationRibbon from './RoomCollaborationRibbon.vue'
 import RoomRunTrace from './RoomRunTrace.vue'
+import RoomWorkflow from './RoomWorkflow.vue'
 
 const props = defineProps({
   api: { type: Object, required: true },
-  pickDirectory: { type: Function, required: true },
   agents: { type: Array, default: () => [] },
   createRequest: { type: Boolean, default: false },
   openRequest: { type: Object, default: null },
   filesOpen: { type: Boolean, default: false },
-  usageOpen: { type: Boolean, default: false },
 })
-const emit = defineEmits(['create-request-consumed', 'active-change', 'toggle-files', 'toggle-usage', 'usage-change'])
+const emit = defineEmits(['create-request-consumed', 'active-change', 'toggle-files', 'open-files', 'configure-workspace'])
 
 const {
   rooms,
@@ -659,7 +622,6 @@ const {
   reports,
   reviews,
   attentions,
-  artifacts,
   messages,
   liveRuns,
   usageByRun,
@@ -698,7 +660,6 @@ const FALLBACK_PERMISSION_MODES = {
   default: [{ id: 'default', label: 'Native Configuration', description: 'Use the provider native permissions.', risk: 'medium' }],
 }
 
-const creating = ref(false)
 const roleSettingsOpen = ref(false)
 const skillInventoryState = ref({ agents: [], skills: [], defaults: {} })
 const droppedSkillIds = ref([])
@@ -707,8 +668,75 @@ const roleDraft = ref(null)
 const roleSettingsWasCaptain = ref(false)
 const roleDeleteArmed = ref(false)
 const workPanelOpen = ref(true)
+const ledger = ref(null)
+const LEDGER_MIN = 280
+const LEDGER_MAX = 760
+const LEDGER_DEFAULT = 340
+const LEDGER_WIDTH_KEY = 'tyche.roomLedgerWidth'
+
+function clampLedgerWidth(value) {
+  const width = Number(value)
+  if (!Number.isFinite(width)) return LEDGER_DEFAULT
+  return Math.min(LEDGER_MAX, Math.max(LEDGER_MIN, Math.round(width)))
+}
+
+function readLedgerWidth() {
+  try {
+    const stored = localStorage.getItem(LEDGER_WIDTH_KEY)
+    if (stored == null || stored === '') return LEDGER_DEFAULT
+    return clampLedgerWidth(stored)
+  } catch {
+    return LEDGER_DEFAULT
+  }
+}
+
+const ledgerWidth = ref(readLedgerWidth())
+let ledgerResize = null
+let ledgerResizeFrame = 0
+
+function renderedLedgerWidth() {
+  const value = Number(ledger.value?.getBoundingClientRect?.().width)
+  return Number.isFinite(value) && value > 0 ? Math.round(value) : ledgerWidth.value
+}
+
+function startLedgerResize(event) {
+  ledgerResize = { startX: event.clientX, lastX: event.clientX, startWidth: renderedLedgerWidth() }
+  document.body.classList.add('drawer-resizing')
+  window.addEventListener('pointermove', handleLedgerResize)
+  window.addEventListener('pointerup', finishLedgerResize)
+  window.addEventListener('pointercancel', finishLedgerResize)
+}
+
+function handleLedgerResize(event) {
+  if (!ledgerResize) return
+  ledgerResize.lastX = event.clientX
+  if (ledgerResizeFrame) return
+  ledgerResizeFrame = requestAnimationFrame(() => {
+    ledgerResizeFrame = 0
+    if (!ledgerResize) return
+    ledgerWidth.value = clampLedgerWidth(ledgerResize.startWidth + (ledgerResize.startX - ledgerResize.lastX))
+  })
+}
+
+function finishLedgerResize() {
+  if (!ledgerResize) return
+  ledgerWidth.value = clampLedgerWidth(ledgerResize.startWidth + (ledgerResize.startX - ledgerResize.lastX))
+  ledgerResize = null
+  if (ledgerResizeFrame) cancelAnimationFrame(ledgerResizeFrame)
+  ledgerResizeFrame = 0
+  window.removeEventListener('pointermove', handleLedgerResize)
+  window.removeEventListener('pointerup', finishLedgerResize)
+  window.removeEventListener('pointercancel', finishLedgerResize)
+  document.body.classList.remove('drawer-resizing')
+  try {
+    localStorage.setItem(LEDGER_WIDTH_KEY, String(ledgerWidth.value))
+  } catch {
+    /* the width still applies for this session */
+  }
+}
+const workPanelRequested = ref(false)
+const workTab = ref('')
 const name = ref('')
-const directory = ref('')
 const titleEditing = ref(false)
 const titleOverflows = ref(false)
 const titleClip = ref(null)
@@ -717,11 +745,13 @@ let titleEditCancelled = false
 const draft = ref('')
 const composerInput = ref(null)
 const answers = ref({})
-const picking = ref(false)
 const pickerError = ref(false)
+const missingCaptain = ref(false)
 const timeline = ref(null)
+const workspaceRoot = ref(null)
 
 const availableAgents = computed(() => props.agents.filter(agent => agent && agent.kind))
+const readyProviderKinds = computed(() => new Set(availableAgents.value.map(agent => agent.kind)))
 const selectedCaptain = ref('')
 const projectLabel = computed(() => snapshot.value?.room?.name || rooms.value.find(room => room.id === roomId.value)?.name || t('room.title'))
 const activeChatLabel = computed(() => {
@@ -745,6 +775,23 @@ function isHandoff(message) {
   if (!message || message.author_type !== 'agent') return false
   if (message.kind === 'mention') return true
   return !message.reply_to && Array.isArray(message.mentions) && message.mentions.length > 0
+}
+
+const TERMINAL_MESSAGE_STATUSES = new Set(['done', 'completed', 'accepted'])
+
+function isTerminalMessage(message) {
+  return TERMINAL_MESSAGE_STATUSES.has(message?.status)
+}
+
+function handoffTargets(handoff) {
+  const ids = handoff?.message?.mentions || []
+  return ids.map(id => rolesById.value.get(id)).filter(Boolean)
+}
+
+function handoffLive(handoff) {
+  const activeRoleId = collaboration.value.activeRoleId
+  if (!activeRoleId || collaboration.value.mode === 'idle') return false
+  return handoffTargets(handoff).some(role => role.id === activeRoleId)
 }
 
 const entries = computed(() => {
@@ -813,23 +860,23 @@ const agentUsage = computed(() => agentUsageRows({
   liveRuns: liveRuns.value,
 }))
 
-watch(agentUsage, rows => emit('usage-change', rows), { immediate: true })
-
 function turnUsage(message) {
   if (message?.author_type !== 'agent') return ''
   return formatUsageLine(liveFor(message)?.usage || message?.data?.usage || usageByRun.value[message.id])
 }
 
-const workCount = computed(() => (
-  tasks.value.length
-  + reviews.value.length
-  + captainAssignments.value.length
-  + attentions.value.length
-  + artifacts.value.length
+const workflow = computed(() => buildRoomWorkflow({
+  tasks: tasks.value,
+  runs: runs.value,
+  assignments: captainAssignments.value,
+  messages: messages.value,
+  roles: roles.value,
+}))
+const hasWork = computed(() => workflow.value.nodes.length > 0)
+const showWorkPanel = computed(() => (
+  workPanelOpen.value && (hasWork.value || workPanelRequested.value)
 ))
-const hasWork = computed(() => workCount.value > 0)
-const showWorkPanel = computed(() => workPanelOpen.value && hasWork.value)
-const canCreate = computed(() => Boolean(name.value.trim() && directory.value && selectedCaptain.value))
+const canCreate = computed(() => Boolean(name.value.trim() && selectedCaptain.value))
 
 const roleProviders = computed(() => {
   const room = snapshot.value?.room
@@ -837,17 +884,23 @@ const roleProviders = computed(() => {
   const enabled = Array.isArray(room?.providers) ? room.providers : []
   const providers = []
   for (const provider of [...launch, ...enabled]) {
-    if (provider && !providers.includes(provider)) providers.push(provider)
+    if (provider && readyProviderKinds.value.has(provider) && !providers.includes(provider)) {
+      providers.push(provider)
+    }
   }
+  // Keep the role's current provider visible even when the Agent is no longer
+  // available, so the user can see why the role is quiet and switch providers.
+  const current = roleDraft.value?.provider
+  if (current && !providers.includes(current)) providers.push(current)
   return providers
 })
+const canAddRole = computed(() => readyProviderKinds.value.size > 0)
 const portraitPage = ref(0)
 const portraitPageSize = 4
-const portraitPageCount = computed(() => Math.max(1, Math.ceil(rolePortraits().length / portraitPageSize)))
-const visiblePortraits = computed(() => rolePortraits().slice(portraitPage.value * portraitPageSize, (portraitPage.value + 1) * portraitPageSize))
-const welcomeRoles = computed(() => [...roles.value]
-  .sort((a, b) => Number(b.is_captain) - Number(a.is_captain))
-  .slice(0, 4))
+const portraitPageCount = computed(() => Math.max(1, Math.ceil(ROOM_MASCOTS.length / portraitPageSize)))
+const visiblePortraits = computed(() => ROOM_MASCOTS.slice(portraitPage.value * portraitPageSize, (portraitPage.value + 1) * portraitPageSize))
+const draftFace = computed(() => (roleDraft.value ? roleFace(roleDraft.value) : null))
+const welcomeRoles = computed(() => roles.value)
 const welcomePrompts = computed(() => {
   const captain = roles.value.find(role => role.is_captain) || roles.value[0]
   const other = roles.value.find(role => role && role !== captain)
@@ -861,6 +914,7 @@ const canSaveRole = computed(() => Boolean(
   roleDraft.value
   && roleDraft.value.displayName.trim()
   && roleDraft.value.provider
+  && canSpeak(roleDraft.value.provider)
   && roleProviders.value.includes(roleDraft.value.provider),
 ))
 
@@ -884,24 +938,50 @@ function permissionModeDescription(mode) {
   return label === key ? (mode.description || '') : label
 }
 
-function faceSrc(role) {
-  return rolePortrait(role?.portrait || role?.provider)
-}
+const castRoles = computed(() => roles.value.map(role => {
+  const ready = readyProviderKinds.value.has(role.provider)
+  return {
+    ...role,
+    provider_label: providerLabel(role.provider),
+    can_speak: canSpeak(role.provider),
+    unavailable: !ready,
+    availability_note: ready ? '' : t('room.agentUnavailable'),
+  }
+}))
 
-function chipStyle(role) {
-  return { '--chip-tint': portraitGlow(role?.portrait || role?.provider) }
-}
+const collaboration = computed(() => deriveRoomCollaboration({
+  tasks: tasks.value,
+  runs: runs.value,
+  reports: reports.value,
+  messages: messages.value,
+  assignments: captainAssignments.value,
+  reviews: reviews.value,
+  liveRuns: liveRuns.value,
+}))
 
-function roleSpeaking(role) {
-  return messages.value.some(message => (
-    message.author_id === role?.id
-    && ['queued', 'working', 'starting'].includes(message.status)
-  ))
-}
+const workTabs = computed(() => [
+  { id: 'trace', label: 'room.workTab.trace', count: workflow.value.nodes.length },
+  { id: 'usage', label: 'room.workTab.usage', count: 0 },
+])
+const defaultWorkTab = computed(() => (workflow.value.nodes.length ? 'trace' : 'usage'))
+const activeWorkTab = computed(() => workTab.value || defaultWorkTab.value)
+const totalUsage = computed(() => agentUsage.value.reduce((total, row) => {
+  const usage = row.usage || {}
+  return {
+    inputTokens: total.inputTokens + (Number(usage.inputTokens) || 0),
+    outputTokens: total.outputTokens + (Number(usage.outputTokens) || 0),
+    cachedInputTokens: total.cachedInputTokens + (Number(usage.cachedInputTokens) || 0),
+  }
+}, { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 }))
+const totalUsageLine = computed(() => formatUsageLine(totalUsage.value))
 
 function showPortraitPage(id) {
-  const index = rolePortraits().findIndex(item => item.id === id)
+  const index = ROOM_MASCOTS.findIndex(item => item.id === id)
   portraitPage.value = index < 0 ? 0 : Math.floor(index / portraitPageSize)
+}
+
+function savedFaceId(role) {
+  return mascotById(role?.portrait)?.id || roleFace(role).id
 }
 
 function roleLabel(role) {
@@ -914,23 +994,199 @@ function rosterRoles(entry) {
   return ids.map(id => rolesById.value.get(id)).filter(Boolean)
 }
 
-function roleName(roleId) {
-  return rolesById.value.get(roleId)?.display_name || roleId || ''
+const rosterSeededChats = new Set()
+const rosterSeen = new Set()
+const rosterTimers = []
+const rosterQueue = []
+let rosterPlaying = false
+const ROSTER_FAN_MS = 1360
+const ROSTER_FAN_STAGGER_MS = 140
+const ROSTER_HOLD_MS = 1500
+const ROSTER_RETURN_STAGGER_MS = 500
+const ROSTER_RETURN_MS = 1400
+
+function prefersReducedMotion() {
+  return typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
-function assignmentTargetNames(assignment) {
-  return (assignment?.target_role_ids || []).map(roleName).filter(Boolean).join(' · ')
+function rosterMessageIds() {
+  return messages.value
+    .filter(message => Array.isArray(message?.data?.roleIds) && message.data.roleIds.length && message.id)
+    .map(message => message.id)
 }
+
+function clearRosterMotion(card) {
+  if (!card) return
+  card.getAnimations?.().forEach(animation => animation.cancel())
+  card.style.position = ''
+  card.style.left = ''
+  card.style.top = ''
+  card.style.width = ''
+  card.style.margin = ''
+  card.style.zIndex = ''
+  card.style.transform = ''
+  card.style.transformOrigin = ''
+  card.style.filter = ''
+  card.style.opacity = ''
+  delete card.dataset.intro
+}
+
+function finishRosterCard(card) {
+  if (!card || card._rosterSettled) return
+  card._rosterSettled = true
+  clearRosterMotion(card)
+}
+
+function settleRosterCard(card) {
+  if (!card?.isConnected || card._rosterSettled) return
+  card.dataset.intro = 'settle'
+  card._rosterPop?.commitStyles?.()
+  card._rosterPop?.cancel()
+  const slot = card.parentElement?.getBoundingClientRect?.()
+  const current = card.getBoundingClientRect()
+  if (!slot || slot.width < 2 || current.width < 2 || typeof card.animate !== 'function') {
+    finishRosterCard(card)
+    return
+  }
+  const angle = card._rosterAngle || 0
+  card.style.position = 'fixed'
+  card.style.margin = '0'
+  card.style.zIndex = card.style.zIndex || '80'
+  card.style.filter = 'none'
+  card.style.opacity = '1'
+  card.style.transform = 'none'
+  card.style.left = `${current.left}px`
+  card.style.top = `${current.top}px`
+  card.style.width = `${current.width}px`
+  const midLeft = current.left + (slot.left - current.left) * 0.45
+  const arcTop = Math.min(current.top, slot.top) - 36
+  const motion = card.animate([
+    { left: `${current.left}px`, top: `${current.top}px`, width: `${current.width}px`, transform: `rotate(${angle}deg)` },
+    { left: `${midLeft}px`, top: `${arcTop}px`, width: `${(current.width + slot.width) / 2}px`, transform: `rotate(${angle * 0.35}deg)`, offset: 0.45 },
+    { left: `${slot.left}px`, top: `${slot.top}px`, width: `${slot.width}px`, transform: 'rotate(0deg)' },
+  ], { duration: ROSTER_RETURN_MS, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'forwards' })
+  motion.finished?.then(() => finishRosterCard(card)).catch(() => finishRosterCard(card))
+  rosterTimers.push(window.setTimeout(() => finishRosterCard(card), ROSTER_RETURN_MS + 80))
+}
+
+function chatStageRect() {
+  const rect = workspaceRoot.value?.getBoundingClientRect?.()
+  if (rect && rect.width > 2 && rect.height > 2) return rect
+  return { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight }
+}
+
+function fanPlacement(count, index) {
+  const stage = chatStageRect()
+  const centerX = stage.left + stage.width / 2
+  const centerY = stage.top + stage.height / 2
+  const mid = (count - 1) / 2
+  if (count <= 1) return { x: centerX, y: centerY, angle: -4 }
+  const cardWidth = 220
+  const room = Math.max(cardWidth, stage.width - 48)
+  const step = Math.max(36, Math.min(184, (room - cardWidth) / (count - 1)))
+  const angleStep = Math.min(7, 32 / (count - 1))
+  return {
+    x: centerX + (index - mid) * step,
+    y: centerY + Math.abs(index - mid) * 10,
+    angle: (index - mid) * angleStep,
+  }
+}
+
+function playRosterIntro(messageId) {
+  const root = document.querySelector(`[data-roster="${messageId}"]`)
+  const cards = [...(root?.querySelectorAll('.room-roster-card') || [])]
+  if (!cards.length) return 0
+  const fanReady = (cards.length - 1) * ROSTER_FAN_STAGGER_MS + ROSTER_FAN_MS
+  cards.forEach((card, index) => {
+    const place = fanPlacement(cards.length, index)
+    const returnOrder = cards.length - 1 - index
+    card.dataset.intro = 'center'
+    card._rosterSettled = false
+    card._rosterAngle = place.angle
+    if (typeof card.animate !== 'function') return
+    card.style.position = 'fixed'
+    card.style.left = `${place.x}px`
+    card.style.top = `${place.y}px`
+    card.style.width = '220px'
+    card.style.margin = '0'
+    card.style.zIndex = String(80 + index)
+    card.style.transformOrigin = '50% 70%'
+    card.style.opacity = '0'
+    const fan = `translate(-50%, -50%) rotate(${place.angle}deg)`
+    card._rosterPop = card.animate([
+      { opacity: 0, filter: 'blur(9px)', transform: `${fan} scale(0.9)` },
+      { opacity: 0.55, filter: 'blur(2px)', transform: `${fan} scale(1.04)`, offset: 0.62 },
+      { opacity: 1, filter: 'blur(0px)', transform: `${fan} scale(1.08)` },
+    ], {
+      duration: ROSTER_FAN_MS,
+      delay: index * ROSTER_FAN_STAGGER_MS,
+      easing: 'cubic-bezier(0.16, 0.84, 0.3, 1)',
+      fill: 'forwards',
+    })
+    rosterTimers.push(window.setTimeout(
+      () => settleRosterCard(card),
+      fanReady + ROSTER_HOLD_MS + returnOrder * ROSTER_RETURN_STAGGER_MS,
+    ))
+  })
+  return fanReady + ROSTER_HOLD_MS + Math.max(0, cards.length - 1) * ROSTER_RETURN_STAGGER_MS + ROSTER_RETURN_MS + 80
+}
+
+function pumpRosterQueue() {
+  if (rosterPlaying || !rosterQueue.length) return
+  const messageId = rosterQueue.shift()
+  const duration = playRosterIntro(messageId)
+  if (!duration) {
+    pumpRosterQueue()
+    return
+  }
+  rosterPlaying = true
+  rosterTimers.push(window.setTimeout(() => {
+    rosterPlaying = false
+    pumpRosterQueue()
+  }, duration))
+}
+
+watch([chatId, messages], () => {
+  const chat = chatId.value
+  if (!chat || !snapshot.value) return
+  const ids = rosterMessageIds()
+  if (!rosterSeededChats.has(chat)) {
+    ids.forEach(id => rosterSeen.add(`${chat}:${id}`))
+    rosterSeededChats.add(chat)
+    return
+  }
+  if (prefersReducedMotion()) {
+    ids.forEach(id => rosterSeen.add(`${chat}:${id}`))
+    return
+  }
+  for (const id of ids) {
+    const key = `${chat}:${id}`
+    if (rosterSeen.has(key)) continue
+    rosterSeen.add(key)
+    nextTick(() => {
+      rosterQueue.push(id)
+      pumpRosterQueue()
+    })
+  }
+}, { flush: 'post' })
 
 function canSpeak(provider) {
+  if (!provider) return false
   const list = snapshot.value?.room?.launch_providers
-  if (!Array.isArray(list)) return true
-  return list.includes(provider)
+  if (Array.isArray(list) && !list.includes(provider)) return false
+  return readyProviderKinds.value.has(provider)
 }
 
-function agentTitle(role) {
-  const base = `${roleLabel(role)} · ${providerLabel(role.provider)}`
-  return role?.provider && !canSpeak(role.provider) ? `${base} · ${t('room.cannotSpeak')}` : base
+function providerUnavailableLabel(provider) {
+  if (!readyProviderKinds.value.has(provider)) return t('room.agentUnavailable')
+  if (!canSpeak(provider)) return t('room.cannotSpeak')
+  return ''
+}
+
+function providerOptionLabel(provider) {
+  const label = providerLabel(provider)
+  return readyProviderKinds.value.has(provider) ? label : `${label} · ${t('room.unavailable')}`
 }
 
 function providerChoiceTitle(provider) {
@@ -958,23 +1214,9 @@ function reportKindLabel(kind) {
   return label === key ? String(kind || '') : label
 }
 
-function reviewKindLabel(kind) {
-  const key = `room.reviewKind.${kind}`
-  const label = t(key)
-  return label === key ? String(kind || '') : label
-}
-
 function taskLabel(task) {
   if (!task) return ''
   return `#${task.number} ${task.title}`.trim()
-}
-
-function taskRuns(taskId) {
-  return runs.value.filter(run => run.task_id === taskId)
-}
-
-function taskReports(taskId) {
-  return reports.value.filter(report => report.task_id === taskId)
 }
 
 function taskForReport(report) {
@@ -1045,6 +1287,8 @@ async function uploadWorkspaceFiles() {
 watch(chatId, () => {
   uploadedFiles.value = []
   uploadError.value = false
+  workPanelRequested.value = false
+  workTab.value = ''
 })
 
 function focusComposer() {
@@ -1117,50 +1361,57 @@ async function answer(attention) {
   if (result) delete answers.value[attention.id]
 }
 
-function startCreating() {
+async function startCreating() {
   pickerError.value = false
-  directory.value = ''
-  name.value = ''
-  selectedCaptain.value = availableAgents.value[0]?.kind || ''
-  creating.value = true
+  missingCaptain.value = false
+  const agents = availableAgents.value
+  if (!agents.length) {
+    missingCaptain.value = true
+    return
+  }
+  const team = await startingTeam(agents)
+  selectedCaptain.value = team.find(role => role.isCaptain)?.provider || team[0].provider
+  name.value = t('room.newChatTitle')
+  await create(team)
 }
 
-async function chooseDirectory() {
-  if (picking.value) return
-  picking.value = true
-  pickerError.value = false
-  try {
-    const selected = await props.pickDirectory()
-    if (selected) directory.value = String(selected)
-  } catch {
-    pickerError.value = true
-  } finally {
-    picking.value = false
+function roleForAgent(agents, kind, isCaptain) {
+  return {
+    displayName: agents.find(agent => agent.kind === kind)?.label || kind,
+    provider: kind,
+    prompt: '',
+    isCaptain,
   }
 }
 
-async function create() {
-  if (!canCreate.value) return
-  const provider = selectedCaptain.value
-  const providers = [provider]
-  const roles = [{
-    displayName: availableAgents.value.find(agent => agent.kind === provider)?.label || provider,
-    provider,
-    prompt: '',
-    isCaptain: true,
-  }]
+async function startingTeam(agents) {
+  const fallback = agents[0].kind
+  let prefs = {}
+  try {
+    prefs = (await desktopApi()?.workPreferences?.get()) || {}
+  } catch { /* the first available agent stays the Captain */ }
+  const available = new Set(agents.map(agent => agent.kind))
+  const captain = available.has(prefs.defaultCaptainKind) ? prefs.defaultCaptainKind : fallback
+  if (prefs.chatStartMode !== 'multi') return [roleForAgent(agents, captain, true)]
+  const members = [...new Set((Array.isArray(prefs.defaultMemberKinds) ? prefs.defaultMemberKinds : []).filter(kind => available.has(kind)))]
+  const kinds = members.includes(captain) ? members : [captain, ...members]
+  const lead = kinds.includes(captain) ? captain : kinds[0]
+  return (kinds.length ? kinds : [fallback]).map(kind => roleForAgent(agents, kind, kind === lead))
+}
+
+async function create(team) {
+  const roles = Array.isArray(team) && team.length ? team : null
+  if (!roles && !canCreate.value) return
+  const provider = roles?.[0]?.provider || selectedCaptain.value
+  if (!provider) return
+  const resolved = roles || [roleForAgent(availableAgents.value, provider, true)]
   const result = await createRoom({
     name: name.value.trim(),
-    workspace: directory.value,
-    title: t('room.newChatTitle'),
-    providers,
-    roles,
+    title: name.value.trim(),
+    providers: [...new Set(resolved.map(role => role.provider))],
+    roles: resolved,
   })
-  if (result) {
-    creating.value = false
-    name.value = ''
-    directory.value = ''
-  }
+  if (result) name.value = ''
 }
 
 function measureTitle() {
@@ -1231,7 +1482,7 @@ function openNewRole() {
     id: '',
     displayName: '',
     provider: roleProviders.value[0] || '',
-    portrait: portraitId(roleProviders.value[0] || ''),
+    portrait: roomMascot({ id: roleProviders.value[0] || 'role' }).id,
     prompt: '',
     responsibilities: '',
     isCaptain: !roles.value.some(role => role.is_captain),
@@ -1258,7 +1509,7 @@ function openRoleSettings(roleId) {
     id: role.id,
     displayName: role.display_name || '',
     provider: role.provider || '',
-    portrait: role.portrait || portraitId(role.provider || ''),
+    portrait: savedFaceId(role),
     prompt: role.prompt || '',
     responsibilities: role.responsibilities || '',
     isCaptain: role.is_captain === true,
@@ -1350,8 +1601,32 @@ async function removeRole() {
   if (result) closeRoleSettings()
 }
 
+function openUsage() {
+  workPanelRequested.value = true
+  workPanelOpen.value = true
+  workTab.value = 'usage'
+}
+
+function closeWorkPanel() {
+  workPanelOpen.value = false
+  workPanelRequested.value = false
+}
+
 function scrollToAttention() {
   document.querySelector('.room-attention-card')?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+}
+
+let workflowFocusTimer = 0
+function focusWorkflowMessage(node) {
+  const id = node?.messageId
+  if (!id || typeof document === 'undefined') return
+  const target = document.getElementById(`room-message-${id}`)
+  if (!target) return
+  document.querySelectorAll('.room-message-focus').forEach(item => item.classList.remove('room-message-focus'))
+  target.classList.add('room-message-focus')
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  window.clearTimeout(workflowFocusTimer)
+  workflowFocusTimer = window.setTimeout(() => target.classList.remove('room-message-focus'), 1600)
 }
 
 function handleEscape(event) {
@@ -1362,23 +1637,20 @@ function handleEscape(event) {
   } else if (titleEditing.value) {
     event.preventDefault()
     cancelTitleEdit()
-  } else if (creating.value) {
-    event.preventDefault()
-    creating.value = false
   }
 }
-
-watch(creating, (open) => {
-  if (!open) return
-  const previous = document.activeElement
-  nextTick(() => {
-    if (previous?.blur) previous.blur()
-  })
-})
 
 watch([roomId, chatId], ([nextRoom, nextChat]) => {
   if (!nextRoom) return
   emit('active-change', { roomId: nextRoom, chatId: nextChat })
+})
+
+let promptedWorkspaceAttention = ''
+watch(attentions, (list) => {
+  const open = list.find(item => item.type === 'workspace_directory')
+  if (!open || open.id === promptedWorkspaceAttention) return
+  promptedWorkspaceAttention = open.id
+  emit('configure-workspace')
 })
 
 watch(() => props.createRequest, (requested) => {
@@ -1394,8 +1666,8 @@ watch(() => props.openRequest, (request) => {
 
 watch(activeChatLabel, () => nextTick(measureTitle))
 
-watch([creating, roleSettingsOpen], (values) => {
-  document.body.classList.toggle('room-overlay-open', values.some(Boolean))
+watch(roleSettingsOpen, (open) => {
+  document.body.classList.toggle('room-overlay-open', open)
 })
 
 onMounted(() => {
@@ -1405,11 +1677,16 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleEscape)
+  finishLedgerResize()
   document.body.classList.remove('room-overlay-open')
+  rosterTimers.splice(0).forEach(timer => window.clearTimeout(timer))
+  rosterQueue.splice(0)
+  rosterPlaying = false
 })
 </script>
 <style scoped>
 .room-workspace { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; padding: 0; gap: 0; background: var(--surface); color: var(--text); }
+.room-message-focus { border-radius: 12px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 70%, transparent); }
 .room-toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px clamp(16px, 3vw, 28px); border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 94%, var(--surface-raised)); }
 .room-heading { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .room-project-name { align-self: flex-start; display: inline-flex; align-items: center; color: var(--faint); font-size: var(--text-2xs); }
@@ -1428,30 +1705,47 @@ onBeforeUnmount(() => {
   .room-chat-title-clip.marquee:hover .room-chat-title-text { animation: none; }
 }
 .room-subtitle { max-width: 34ch; overflow: hidden; color: var(--faint); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
-.room-agent-strip { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: 12px; align-items: center; min-width: 0; }
+.room-collaboration { flex: 1 1 auto; min-width: 0; }
 .room-roster { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.room-roster-slot { width: 168px; max-width: 100%; }
 .room-roster-card { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 168px; max-width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .room-roster-card:hover { border-color: var(--border-strong); background: var(--surface-hover); }
-.room-roster-card img { width: 22px; height: 22px; object-fit: contain; }
+.room-roster-card[data-intro] { pointer-events: none; }
+.room-roster-card[data-intro="center"] { width: 220px; max-width: none; padding: 18px 16px 16px; gap: 8px; border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); box-shadow: 0 22px 48px rgb(0 0 0 / 0.38); }
+.room-roster-card[data-intro="center"]::before,
+.room-roster-card[data-intro="center"]::after { content: ""; position: absolute; inset: -28px; pointer-events: none; opacity: 0; background-repeat: no-repeat; animation: room-roster-glint 1360ms ease forwards; }
+.room-roster-card[data-intro="center"]::before {
+  background-image:
+    radial-gradient(circle, #fff 0 1.5px, transparent 2.4px),
+    radial-gradient(circle, #fff 0 1.2px, transparent 2px),
+    radial-gradient(circle, #fff 0 1.6px, transparent 2.6px),
+    radial-gradient(circle, #fff 0 1px, transparent 1.8px),
+    radial-gradient(circle, #fff 0 1.3px, transparent 2.2px);
+  background-size: 6px 6px, 5px 5px, 7px 7px, 4px 4px, 5px 5px;
+  background-position: 10% 16%, 84% 12%, 18% 78%, 78% 72%, 50% 0%;
+}
+.room-roster-card[data-intro="center"]::after {
+  background-image:
+    radial-gradient(circle, color-mix(in srgb, var(--accent) 70%, #fff) 0 1.4px, transparent 2.4px),
+    radial-gradient(circle, #fff 0 1.1px, transparent 2px),
+    radial-gradient(circle, color-mix(in srgb, var(--accent) 70%, #fff) 0 1.5px, transparent 2.5px);
+  background-size: 6px 6px, 4px 4px, 6px 6px;
+  background-position: 92% 42%, 6% 46%, 64% 90%;
+  animation-delay: 180ms;
+}
+@keyframes room-roster-glint {
+  0% { opacity: 0; transform: scale(1.4); }
+  32% { opacity: 1; }
+  100% { opacity: 0; transform: scale(0.78); }
+}
+.room-roster-card[data-intro="center"] :deep(.room-mascot-art),
+.room-roster-card[data-intro="center"] :deep(.room-mascot-art svg) { width: 84px; height: 84px; }
+.room-roster-card[data-intro="center"] .room-roster-name { font-size: var(--text-md, 16px); }
+.room-roster-card[data-intro="center"] .room-roster-duty { display: block; overflow: visible; -webkit-line-clamp: unset; }
+.room-roster-card img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; object-position: center 12%; }
 .room-roster-name { max-width: 100%; overflow: hidden; font-size: var(--text-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .room-roster-duty { display: -webkit-box; overflow: hidden; color: var(--text-soft); font-size: var(--text-2xs); line-height: 1.4; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-.room-agent-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 180px; padding: 2px 6px 2px 2px; border: 0; border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: var(--text-xs); cursor: pointer; }
-.room-agent-chip:hover { background: rgb(255 255 255 / 0.06); }
-.room-chip-face { position: relative; width: 22px; height: 22px; flex: 0 0 22px; display: grid; }
-.room-chip-photo { display: grid; overflow: hidden; width: 22px; height: 22px; border-radius: 50%; background: color-mix(in srgb, var(--chip-tint, var(--accent)) 15%, transparent); }
-.room-chip-photo img { width: 100%; height: 100%; border: 0; border-radius: 0; background: transparent; object-fit: cover; object-position: center 12%; transform: scale(1.55); }
-.room-agent-chip[data-speaking="true"] .room-chip-photo { box-shadow: 0 0 0 2px color-mix(in srgb, var(--chip-tint, var(--accent)) 75%, white); }
-.room-agent-chip[data-quiet="true"] .room-chip-photo { opacity: 0.5; }
-.room-captain-mark { position: absolute; right: -3px; bottom: -3px; width: 10px; height: 10px; display: grid; place-items: center; border-radius: 50%; background: #2a1c12; color: #ff8a3d; font-size: 8px; line-height: 1; }
-.room-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.room-agent-mute { flex: 0 0 auto; font-size: 11px; line-height: 1; opacity: 0.8; }
-.room-agent-quiet { color: var(--text-muted); font-size: var(--text-xs); }
 .room-agent-badge { flex: 0 0 auto; margin-left: 2px; padding: 1px 5px; border-radius: 999px; background: var(--surface-active); color: var(--text-soft); font-size: 10px; font-weight: 600; }
-.room-agent-idle { flex: 1 1 auto; color: var(--faint); font-size: var(--text-xs); }
-.room-agent-add { width: 28px; height: 28px; flex: 0 0 28px; display: inline-grid; place-items: center; padding: 0; border: 1px dashed var(--border); border-radius: 999px; background: transparent; color: var(--muted); cursor: pointer; }
-.room-agent-add svg { width: 15px; height: 15px; }
-.room-agent-add:hover, .room-agent-add:focus-visible { outline: none; border-color: var(--accent); color: var(--accent); }
-.room-agent-add:disabled { opacity: 0.45; cursor: not-allowed; }
 .room-header-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .room-notice-pill { padding: 5px 11px; border: 1px solid color-mix(in srgb, var(--accent) 62%, var(--border)); border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-size: var(--text-xs); font-weight: 600; cursor: pointer; }
 .room-icon-button { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); color: var(--text-soft); font-size: 20px; line-height: 1; cursor: pointer; }
@@ -1470,7 +1764,7 @@ onBeforeUnmount(() => {
 .room-welcome { max-width: 620px; margin: clamp(32px, 9vh, 96px) auto 0; text-align: center; }
 .room-welcome h2 { margin: 0 0 8px; font-size: var(--text-2xl); }
 .room-welcome p { margin: 0 0 8px; line-height: 1.65; }
-.room-welcome-team { display: flex; justify-content: center; align-items: flex-end; gap: 18px; margin-bottom: 18px; }
+.room-welcome-team { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; gap: 18px; margin-bottom: 18px; }
 .room-welcome-face { position: relative; display: block; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .room-welcome-face img { width: 48px; height: 48px; border: 1.5px solid #12161a; border-radius: 50%; object-fit: cover; background: #1b2124; box-shadow: 0 8px 20px rgb(0 0 0 / 0.28); transform-origin: 50% 85%; transition: transform 0.18s ease; }
 .room-welcome-face.captain img { width: 64px; height: 64px; }
@@ -1496,12 +1790,19 @@ onBeforeUnmount(() => {
 .room-message-avatar { display: grid; flex: 0 0 44px; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: var(--text-soft); font: inherit; font-size: var(--text-xs); font-weight: 600; }
 button.room-message-avatar { cursor: pointer; }
 button.room-message-avatar:focus-visible { outline: none; }
-.room-message-avatar img { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; background: #1b2124; transform-origin: 50% 85%; transition: transform 0.18s ease; }
+.room-message-avatar :deep(.room-mascot-art),
+.room-welcome-face :deep(.room-mascot-art) { width: 44px; height: 44px; }
+.room-handoff-face :deep(.room-mascot-art),
+.room-roster-card :deep(.room-mascot-art),
+.room-usage-face :deep(.room-mascot-art) { width: 100%; height: 100%; }
 button.room-message-avatar:hover img,
 button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.62s ease-in-out; transform: scale(1.5); }
 @media (prefers-reduced-motion: reduce) {
   button.room-message-avatar:hover img,
   button.room-message-avatar:focus-visible img { animation: none; transform: scale(1.5); }
+  .room-roster-card[data-intro] { position: static; left: auto; top: auto; width: 168px; transform: none; filter: none; box-shadow: none; }
+  .room-roster-card[data-intro="center"]::before,
+  .room-roster-card[data-intro="center"]::after { animation: none; opacity: 0; }
 }
 .room-user-avatar { border-radius: 50%; background: var(--surface-active); }
 .room-user-avatar svg { width: 22px; height: 22px; }
@@ -1563,11 +1864,66 @@ button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.
 .room-composer-send:disabled { opacity: 0.45; cursor: default; }
 .room-composer-send:not(:disabled) { background: var(--text); color: var(--surface); }
 .room-composer-send:hover:not(:disabled) { background: var(--text); }
-.room-ledger { display: flex; flex: 0 0 min(340px, 36%); flex-direction: column; min-height: 0; overflow: auto; padding: 14px; border-left: 1px solid var(--border); background: var(--surface-raised); }
-.room-ledger-header { display: flex; gap: 10px; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.room-ledger { position: relative; display: flex; flex: 0 0 var(--room-ledger-width, 340px); width: var(--room-ledger-width, 340px); flex-direction: column; min-height: 0; overflow: hidden; padding: 12px 12px 0; border-left: 1px solid var(--border); background: var(--surface-raised); }
+.room-ledger-header { display: flex; flex: 0 0 auto; gap: 10px; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
 .room-ledger-header h2 { margin: 0; }
-.room-ledger > h2 { margin-top: 16px; }
+.room-work-tabs { display: flex; flex: 0 0 auto; gap: 2px; padding: 8px 0 0; border-bottom: 1px solid var(--border); }
+.room-work-tab { flex: 1 1 0; min-width: 0; padding: 7px 2px 8px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--faint); font: inherit; font-size: var(--text-2xs); font-weight: 600; text-align: center; white-space: nowrap; cursor: pointer; }
+.room-work-tab:hover { color: var(--text-soft); }
+.room-work-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.room-work-tab-count { margin-left: 3px; color: var(--faint); font-size: 9px; font-variant-numeric: tabular-nums; }
+.room-work-scroll { flex: 1; min-height: 0; overflow: auto; padding: 12px 0 14px; }
+.room-work-panel { display: flex; flex-direction: column; gap: 10px; }
+.room-work-empty { margin: 8px 0; color: var(--faint); font-size: var(--text-xs); line-height: 1.55; text-align: center; }
+.room-work-card { margin: 0; }
+.room-work-group { display: flex; flex-direction: column; gap: 8px; }
+.room-work-group + .room-work-group { margin-top: 4px; }
+.room-work-group-title { margin: 0 0 2px; color: var(--faint); font-size: 10px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; }
+.room-work-meta { display: flex; gap: 8px; align-items: baseline; margin-top: 8px; color: var(--faint); font-size: var(--text-2xs); }
+.room-work-link { padding: 0; border: 0; background: transparent; color: var(--accent-text); font: inherit; font-size: var(--text-2xs); cursor: pointer; }
+.room-work-link:hover, .room-work-link:focus-visible { outline: none; text-decoration: underline; }
+.room-trace-item { position: relative; padding: 10px 11px 10px 14px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--surface) 70%, var(--surface-raised)); }
+.room-trace-item::before { content: ""; position: absolute; top: 12px; bottom: 12px; left: 5px; width: 2px; border-radius: 2px; background: color-mix(in srgb, var(--border-strong) 65%, transparent); }
+.room-trace-item[data-live="true"] { border-color: color-mix(in srgb, var(--accent) 42%, var(--border)); }
+.room-trace-item[data-live="true"]::before { background: var(--accent); box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 55%, transparent); }
+.room-trace-item header { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; }
+.room-trace-item header strong { overflow-wrap: anywhere; font-size: var(--text-xs); }
+.room-trace-item header span { flex: 0 0 auto; color: var(--faint); font-size: 10px; }
+.room-trace-item header span[data-status="running"],
+.room-trace-item header span[data-status="starting"],
+.room-trace-item header span[data-status="queued"],
+.room-trace-item header span[data-status="active"] { color: var(--accent-text); }
+.room-trace-item header span[data-status="blocked"],
+.room-trace-item header span[data-status="failed"],
+.room-trace-item header span[data-status="interrupted"] { color: var(--warning); }
+.room-trace-targets { margin: 4px 0 0; color: var(--text-soft); font-size: var(--text-2xs); line-height: 1.45; }
+.room-trace-outcome { margin: 4px 0 0; color: var(--faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
+.room-trace-item time { display: block; margin-top: 4px; color: var(--faint); font-size: 10px; }
+.room-artifact-card { margin: 0; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--surface) 70%, var(--surface-raised)); }
+.room-artifact-head { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; }
+.room-artifact-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-artifact-head span { flex: 0 0 auto; color: var(--faint); font-size: 10px; }
+.room-artifact-meta { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 4px; color: var(--faint); font-size: var(--text-2xs); }
+.room-artifact-maker { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--text-soft); font-size: var(--text-2xs); }
+.room-artifact-face { width: 22px; height: 22px; display: grid; overflow: hidden; border-radius: 50%; background: #1b2124; }
+.room-artifact-face img { width: 100%; height: 100%; object-fit: cover; object-position: center 12%; }
+.room-artifact-open { align-self: flex-start; margin-top: 8px; }
+.room-usage-summary { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; }
+.room-usage-summary span { color: var(--faint); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
+.room-usage-summary strong { color: var(--text-soft); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.room-usage-list { display: flex; flex-direction: column; gap: 14px; margin: 0; padding: 2px 2px 8px; list-style: none; }
+.room-usage-agent { display: flex; align-items: center; gap: 6px; }
+.room-usage-face { width: 22px; height: 22px; flex: 0 0 22px; display: grid; overflow: hidden; border-radius: 50%; background: #1b2124; }
+.room-usage-face img { width: 100%; height: 100%; object-fit: cover; object-position: center 12%; }
+.room-usage-agent strong { font-size: var(--text-sm); }
+.room-usage-agent > span:last-child { margin-left: auto; color: var(--faint); font-size: var(--text-2xs); }
+.room-usage-agent > span[data-status="working"] { color: var(--accent-text); }
+.room-usage-model, .room-usage-line, .room-usage-context { margin: 2px 0 0; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-variant-numeric: tabular-nums; }
+.room-usage-context { display: flex; gap: 8px; align-items: center; }
+.room-usage-bar { flex: 1; height: 3px; border-radius: 999px; background: var(--surface-active); overflow: hidden; }
+.room-usage-bar span { display: block; height: 100%; background: var(--accent); }
 .room-card { padding: 12px; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 10px; overflow-wrap: anywhere; }
+.room-card.room-work-card { margin-bottom: 0; }
 .room-card header { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; }
 .room-card p { margin: 4px 0; }
 .room-card form { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -1581,7 +1937,24 @@ button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.
 .room-message .markdown-body th, .room-message .markdown-body td { padding: 6px 8px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
 .room-message .markdown-body th { color: var(--text-soft); font-weight: 600; }
 .room-message-streaming::after { content: ""; display: inline-block; width: 7px; height: 0.95em; margin-left: 3px; background: var(--accent); vertical-align: text-bottom; animation: room-caret 1s steps(1) infinite; }
-.room-message-handoff { margin-top: 10px; }
+.room-message-stamp { align-self: center; display: inline-grid; flex: 0 0 auto; place-items: center; width: 14px; height: 14px; border-radius: 50%; background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text-soft); font-size: 9px; font-weight: 700; line-height: 1; }
+.room-handoff-list { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.room-handoff { position: relative; padding-left: 12px; border-left: 2px solid color-mix(in srgb, var(--border-strong) 65%, transparent); }
+.room-handoff[data-live="true"] { border-left-color: color-mix(in srgb, var(--accent) 65%, transparent); }
+.room-handoff-strip { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; color: var(--faint); font-size: var(--text-2xs); }
+.room-handoff-face { display: grid; flex: 0 0 18px; place-items: center; width: 18px; height: 18px; overflow: hidden; border-radius: 50%; background: #1b2124; color: var(--text-soft); font-size: 9px; font-weight: 600; }
+.room-handoff-face img { width: 100%; height: 100%; object-fit: cover; object-position: center 12%; }
+.room-handoff-arrow { color: var(--faint); font-size: 11px; line-height: 1; }
+.room-handoff[data-live="true"] .room-handoff-arrow { color: var(--accent-text); animation: room-handoff-flow 1.6s ease-in-out infinite; }
+.room-handoff-label { overflow: hidden; color: var(--text-soft); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
+.room-message-handoff { margin-top: 0; }
+@keyframes room-handoff-flow {
+  0%, 100% { opacity: 0.65; transform: translateX(0); }
+  50% { opacity: 1; transform: translateX(2px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .room-handoff[data-live="true"] .room-handoff-arrow { animation: none; }
+}
 @keyframes room-caret { 50% { opacity: 0; } }
 .room-trace-list { padding-left: 18px; }
 .room-trace-list li { margin-bottom: 8px; }
@@ -1627,7 +2000,8 @@ button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.
 .room-role-v2-side { overflow: auto; padding: 18px; border-right: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 72%, var(--surface-raised)); }
 .room-role-v2-profile { display: flex; flex-direction: column; gap: 10px; padding: 18px 16px; border: 1px solid var(--border); border-radius: 16px; background: color-mix(in srgb, var(--surface-raised) 70%, transparent); }
 .room-role-v2-avatar { display: grid; place-items: center; width: 208px; height: 208px; margin: 0 auto 4px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--border-strong) 78%, transparent); border-radius: 50%; background: #1b2124; box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04); }
-.room-role-v2-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.room-role-v2-avatar :deep(.room-mascot-art) { width: 168px; height: 168px; }
+.room-role-v2-avatar :deep(.room-mascot-art svg) { width: 168px; height: 168px; }
 .room-role-v2-avatar span { color: var(--text-soft); font-size: var(--text-3xl); font-weight: 600; }
 .room-role-v2-heading { margin: 4px 0 0; color: var(--text-soft); font-size: var(--text-xs); font-weight: 600; text-align: left; }
 .room-role-engine { display: inline-flex; align-items: center; gap: 6px; align-self: center; padding: 3px 8px 3px 4px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text-soft); font-size: var(--text-2xs); }
@@ -1640,6 +2014,8 @@ button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.
 .room-portrait-arrow:disabled { opacity: 0.28; cursor: default; background: transparent; }
 .room-role-v2-provider-icons { display: grid; grid-template-columns: repeat(4, 40px); justify-content: start; gap: 6px; width: 100%; margin: 0; }
 .room-portrait-pager .room-role-provider-choice { width: 40px; height: 40px; }
+.room-portrait-pager .room-role-provider-choice :deep(.room-mascot-art),
+.room-portrait-pager .room-role-provider-choice :deep(.room-mascot-art svg) { width: 32px; height: 32px; }
 .room-role-provider-choice { position: relative; width: 44px; height: 44px; display: inline-grid; place-items: center; padding: 0; overflow: visible; border: 2px solid transparent; border-radius: 50%; background: #1b2124; cursor: pointer; }
 .room-role-provider-choice img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .room-role-provider-choice:hover, .room-role-provider-choice:focus-visible { outline: none; border-color: var(--border-strong); }
@@ -1689,9 +2065,9 @@ button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.
 .room-permission-warning { margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--warning-soft); color: var(--warning); font-size: var(--text-2xs); line-height: 1.45; }
 .room-role-preview h3 { margin: 0 0 4px; color: var(--text-soft); font-size: var(--text-xs); font-weight: 600; text-align: left; }
 .room-role-preview-card { display: flex; align-items: center; justify-content: flex-start; gap: 18px; margin: 0; padding: 10px 4px 4px; border: 0; background: transparent; text-align: left; }
-.room-role-preview-face { position: relative; width: 88px; height: 88px; flex: 0 0 88px; }
-.room-role-preview-face::before { content: ""; position: absolute; z-index: 0; inset: -8px; background: radial-gradient(circle, color-mix(in srgb, var(--portrait-glow) 34%, transparent) 0%, transparent 72%); pointer-events: none; }
-.room-role-preview-face img { position: relative; z-index: 1; width: 88px; height: 88px; border-radius: 50%; object-fit: cover; background: transparent; }
+.room-role-preview-face { position: relative; width: 88px; height: 88px; flex: 0 0 88px; display: grid; place-items: center; }
+.room-role-preview-face :deep(.room-mascot-art),
+.room-role-preview-face :deep(.room-mascot-art svg) { width: 72px; height: 72px; }
 .room-role-preview-copy { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .room-role-preview-card header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .room-role-preview-card strong { font-size: var(--text-md); }
@@ -1742,10 +2118,10 @@ input:not([type=checkbox]), select, textarea { max-width: 100%; padding: 8px 10p
 textarea { line-height: 1.5; }
 button:disabled { cursor: not-allowed; opacity: 0.55; }
 @media (max-width: 950px) {
-  .room-agent-strip { order: 3; flex-basis: 100%; }
+  .room-collaboration { order: 3; flex-basis: 100%; }
   .room-header-actions { margin-left: auto; }
   .room-body { position: relative; }
-  .room-ledger { position: absolute; inset: 0 0 0 auto; z-index: 20; width: min(360px, 100%); box-shadow: -18px 0 50px rgb(0 0 0 / 0.18); }
+  .room-ledger { position: absolute; inset: 0 0 0 auto; z-index: 20; width: min(var(--room-ledger-width, 340px), 100%); box-shadow: -18px 0 50px rgb(0 0 0 / 0.18); }
   .room-timeline { padding: 20px 16px 12px; }
   .room-composer-wrap { padding: 8px 14px 14px; }
   .room-message-body, .room-message-user .room-message-body { max-width: calc(100% - 44px); }
@@ -1803,7 +2179,9 @@ body.room-overlay-open { overflow: hidden; }
 </style>
 
 <style scoped>
-.room-turn-usage { margin-left: auto; color: var(--faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.room-turn-usage { margin-left: auto; color: var(--faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-variant-numeric: tabular-nums; opacity: 0.55; white-space: nowrap; transition: opacity 0.16s ease; }
+.room-message:hover .room-turn-usage,
+.room-message:focus-within .room-turn-usage { opacity: 1; }
 .room-run-trace { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); font-size: var(--text-xs); }
 .room-run-trace > summary { display: flex; gap: 8px; align-items: center; color: var(--text-soft); cursor: pointer; }
 .room-run-trace-count { padding: 1px 6px; border-radius: 999px; background: var(--surface-active); color: var(--faint); font-size: 10px; }

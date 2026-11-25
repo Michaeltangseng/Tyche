@@ -127,3 +127,50 @@ test('room service builds the runtime adapter through the factory', async t => {
   assert.equal(typeof received.onTaskSettled, 'function')
   assert.equal(service.adapter, adapter)
 })
+
+test('room service gates providers by local availability', async t => {
+  const { roomDb, repo } = setup(t)
+  const adapter = {
+    ...createFakeAdapter(),
+    hasLauncher: provider => ['claude', 'kimi'].includes(provider),
+    launchProviderIds: () => ['claude', 'kimi'],
+  }
+  const service = createRoomService({
+    roomDb,
+    repository: repo,
+    adapter,
+    liveness: false,
+    availableProviders: () => new Set(['claude']),
+  })
+  t.after(async () => {
+    await service.close()
+    roomDb.close()
+  })
+
+  assert.equal(service.providerCanSpeak('claude'), true)
+  assert.equal(service.providerCanSpeak('kimi'), false)
+  assert.deepEqual(service.speakableProviderIds(), ['claude'])
+})
+
+test('a user turn aimed at an unavailable agent opens an attention instead of a silent reply', async t => {
+  const { roomDb, repo, chatId } = setup(t)
+  const service = createRoomService({
+    roomDb,
+    repository: repo,
+    adapter: createFakeAdapter(),
+    liveness: false,
+    availableProviders: () => new Set(),
+  })
+  t.after(async () => {
+    await service.close()
+    roomDb.close()
+  })
+
+  const result = service.submitUserMessage({ chatId, content: 'hi' })
+  assert.equal(result.replies.length, 0)
+  const attention = roomDb.database.prepare(
+    "SELECT * FROM attentions WHERE chat_id = ? AND status = 'open'",
+  ).get(chatId)
+  assert.equal(attention?.type, 'agent_unavailable')
+  assert.match(attention.question, /A \(claude\)/)
+})

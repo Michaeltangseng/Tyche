@@ -91,6 +91,7 @@ test('snapshot is display-safe and public by default', t => {
   const snapshot = model.snapshot({ roomId: context.roomId, messageLimit: 10 })
 
   assert.equal(snapshot.room.workspace, undefined)
+  assert.equal(snapshot.room.workspace_path, context.directory)
   assert.equal(snapshot.room.workspace_label, path.basename(context.directory))
   assert.equal(snapshot.room.primary_chat_id, context.chatId)
   assert.equal(snapshot.chats[0].id, context.chatId)
@@ -154,6 +155,7 @@ test('listRooms exposes a label and chats, not the absolute workspace', t => {
   assert.equal(rooms.length, 1)
   assert.equal(rooms[0].id, context.roomId)
   assert.equal(rooms[0].workspace, undefined)
+  assert.equal(rooms[0].workspace_path, context.directory)
   assert.equal(typeof rooms[0].workspace_label, 'string')
   assert.equal(rooms[0].chat_count, 1)
   assert.equal(rooms[0].chats[0].id, context.chatId)

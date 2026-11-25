@@ -223,6 +223,26 @@ class LocalWorkspaceAgentCatalog {
         state.agentRuntime[agent.kind] = runtime
         recoveredRuntimeCredential = true
       }
+      // A native "no provider configured" result outranks an old successful
+      // run, and must be persisted so the next run cannot mistake the Agent
+      // for ready. A later successful native probe clears this marker.
+      if (nativeState === 'missing' && native?.source === 'hermes-provider-unconfigured'
+          && runtime && runtime.credentialState !== 'missing') {
+        runtime = {
+          ...runtime,
+          credentialState: 'missing',
+          availabilitySource: native.source,
+          checkedAt: this.now(),
+        }
+        state.agentRuntime[agent.kind] = runtime
+        recoveredRuntimeCredential = true
+      }
+      if (nativeState === 'ready' && runtime?.credentialState === 'missing'
+          && runtime.availabilitySource === 'hermes-provider-unconfigured') {
+        delete state.agentRuntime[agent.kind]
+        runtime = undefined
+        recoveredRuntimeCredential = true
+      }
       const runtimeMissing = runtime?.credentialState === 'missing'
       const verifiedReady = matchesRecentVerification(runtime, agent, this.now(), state.agentPreferences)
       const nativeReadySource = nativeState === 'ready'
@@ -273,8 +293,8 @@ class LocalWorkspaceAgentCatalog {
       })
       let availabilitySource = 'unverified'
       if (!compatible) availabilitySource = 'incompatible'
-      else if (runtimeMissing) availabilitySource = 'runtime-auth-failure'
       else if (nativeState === 'missing') availabilitySource = native.source || 'none'
+      else if (runtimeMissing) availabilitySource = 'runtime-auth-failure'
       else if (native?.source === 'native-probe-failed') availabilitySource = 'native-probe-failed'
       else if (native?.source === 'native-runtime-unavailable') availabilitySource = 'native-runtime-unavailable'
       else if (native?.source === 'native-secret-unresolved') availabilitySource = 'native-secret-unresolved'

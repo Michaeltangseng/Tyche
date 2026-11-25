@@ -85,7 +85,7 @@
                   <img :src="agent.logo" :alt="agent.label" />
                   <strong>{{ agent.label }}</strong>
                 </span>
-                <span class="agent-state" :class="displayedState(agent).tone">
+                <span class="agent-state" :class="displayedState(agent).tone" :title="displayedState(agent).description || ''">
                   <i class="status-dot" aria-hidden="true" />
                   {{ displayedState(agent).label }}
                 </span>
@@ -125,6 +125,7 @@
           :theme-preference="themePreference"
           :skill-api="skillApi"
           :installed-agent-kinds="installedAgentKinds"
+          :open-agent-detail="openAgentDetail"
         />
       </div>
     </div>
@@ -168,6 +169,7 @@ const {
   installerBusy,
   installerPhaseLabel,
   installerState,
+  openAgentDetail,
   refreshAgents,
   refreshing,
   requestInstall,
@@ -234,7 +236,7 @@ const cloudAgents = computed(() => sortAgents((agentCatalogGroups.value || [])
   .filter(group => group.id === 'cloud')
   .flatMap(group => group.agents || [])))
 const installedAgentKinds = computed(() => localAgents.value
-  .filter(agent => agent.installed && !agent.custom)
+  .filter(agent => agent.installed && agent.ready && !agent.custom)
   .map(agent => agent.kind))
 
 function versionOf(agent) {
@@ -244,8 +246,10 @@ function versionOf(agent) {
 
 function authOf(agent) {
   if (!agent?.installed) return '—'
-  const tested = testResults.value[agent.kind]?.credentialState
-  const state = tested || agent.credentialState
+  const test = testResults.value[agent.kind]
+  const source = test?.availabilitySource || agent.availabilitySource
+  if (source === 'hermes-provider-unconfigured') return t('systemSettings.authNeedsProvider')
+  const state = test?.credentialState || agent.credentialState
   if (state === 'ready') return t('systemSettings.authReady')
   if (state === 'missing') return t('systemSettings.authMissing')
   return t('systemSettings.authUnknown')
@@ -255,6 +259,9 @@ function displayedState(agent) {
   const test = testResults.value[agent.kind]
   if (!test) return agentState(agent)
   if (test.available) return { label: t('agent.ready'), tone: 'ready' }
+  if (test.availabilitySource === 'hermes-provider-unconfigured') {
+    return { label: t('agent.needsProvider'), tone: 'warning' }
+  }
   if (test.credentialState === 'missing') return { label: t('agent.needsLogin'), tone: 'warning' }
   return { label: t('agent.unavailable'), tone: 'warning' }
 }
@@ -281,6 +288,9 @@ async function testAgent(agent) {
 function testResultText(result) {
   if (result?.error) return t('systemSettings.testError')
   if (result?.available) return t('systemSettings.testPassed')
+  if (result?.availabilitySource === 'hermes-provider-unconfigured') {
+    return t('systemSettings.testNeedsProvider')
+  }
   if (result?.credentialState === 'missing') return t('systemSettings.testNeedsLogin')
   return t('systemSettings.testFailed')
 }

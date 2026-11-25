@@ -202,6 +202,8 @@ test('team-room preload forwards only validated domain requests', async () => {
   await api.teamRoom.filesRead({ roomId: 'room', relPath: 'docs/README.md' })
   await api.teamRoom.importFiles({ roomId: 'room' })
   await api.teamRoom.setWriteAuthorized({ roomId: 'room', authorized: true })
+  await api.teamRoom.setWorkspace({ roomId: 'room', workspace: '/tmp/work' })
+  await api.teamRoom.confirmWorkspace({ roomId: 'room' })
   await api.teamRoom.runtimeEvents({ roomId: 'room', chatId: 'chat', limit: 10 })
   assert.deepEqual(invocations.map(item => item.channel), [
     'team-room:list', 'team-room:bootstrap', 'team-room:snapshot', 'team-room:chat-messages',
@@ -210,7 +212,8 @@ test('team-room preload forwards only validated domain requests', async () => {
     'team-room:role-delete',
     'team-room:attention-answer', 'team-room:message-submit', 'team-room:accept-task',
     'team-room:stop-reply', 'team-room:files-list', 'team-room:files-read', 'team-room:files-import',
-    'team-room:write-authorized', 'team-room:runtime-events',
+    'team-room:write-authorized', 'team-room:workspace-set', 'team-room:workspace-confirm',
+    'team-room:runtime-events',
   ])
 })
 

@@ -31,7 +31,10 @@ const MAX_MESSAGE_LENGTH = 100_000
 const MAX_FILES_READ_BYTES = 512 * 1024
 const ROOM_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/
 const PROVIDER = /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/
-const PORTRAIT_IDS = new Set(['claude', 'codex', 'pi', 'gemini', 'hermes', 'deepseek', 'kimi', 'qwen'])
+const PORTRAIT_IDS = new Set([
+  'claude', 'codex', 'pi', 'gemini', 'hermes', 'deepseek', 'kimi', 'qwen',
+  '01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12',
+])
 const PREVIOUS_CAPTAIN_PROMPT = [
   'You are the Captain of this chat.',
   'When the current members cannot cover the request, call create_roles with a name, provider, responsibilities, and prompt for each new member.',
@@ -49,6 +52,7 @@ const CAPTAIN_PROMPT_BEFORE_SKILLS = [
   'Reply directly for normal answers; use post_in_chat only for a separate public notice, without duplicating your reply.',
   'Do not create tasks yourself; the assigned role owns its task.',
   'When the user states a request, call rename_chat once with one short sentence that names this chat. Skip it when rename_chat says the title is locked or already fits.',
+  'If file changes are refused because the chat is still on the Tyche scratch directory, ask the user to set a project directory and wait.',
   'Keep replies short and quote task numbers when useful.',
 ].join(' ')
 const DEFAULT_CAPTAIN_PROMPT = [
@@ -58,6 +62,7 @@ const DEFAULT_CAPTAIN_PROMPT = [
 const DEFAULT_WORKER_PROMPT = [
   'You execute tasks assigned to you in this chat.',
   'For work that changes files or needs several steps, create a task with create_task before doing it.',
+  'If create_task says the workspace is still the Tyche scratch directory, ask the user to set a project directory and do not write files until they do.',
   'When the task is complete, call finish_task with status ready and a short summary.',
   'Use comment_task for short comments on an existing task.',
   'Keep replies short.',
@@ -192,6 +197,7 @@ function createRoomHost({
   onChanged = () => {},
   onRuntimeEvent = () => {},
   skillInventory = null,
+  availableProviders = null,
 } = {}) {
   if (typeof privateRoot !== 'string' || !path.isAbsolute(privateRoot)) {
     throw new TypeError('ROOM_HOST_PRIVATE_ROOT_REQUIRED')
@@ -215,6 +221,7 @@ function createRoomHost({
       try { onRuntimeEvent(view) } catch { /* event observers are best-effort */ }
     },
     skillInventory,
+    availableProviders,
     adapterFactory: adapterFactory || (deps => createOarRuntimeAdapter({
       ...deps,
       env,
@@ -255,8 +262,8 @@ function createRoomHost({
       messageLimit: input.messageLimit,
       includeCaptain: input.includeCaptain === true,
     })
-    if (data?.room && typeof service.adapter?.launchProviderIds === 'function') {
-      data.room.launch_providers = service.adapter.launchProviderIds()
+    if (data?.room && typeof service.speakableProviderIds === 'function') {
+      data.room.launch_providers = service.speakableProviderIds()
     }
     return data
   }
@@ -271,15 +278,63 @@ function createRoomHost({
     })
   }
 
+  function allocateScratch(chatId) {
+    const directory = path.join(privateRoot, 'chats', chatId)
+    fs.mkdirSync(directory, { recursive: true })
+    return fs.realpathSync.native(directory)
+  }
+
+  function scratchHasFiles(directory) {
+    try {
+      return fs.readdirSync(directory).some(name => name !== '.DS_Store')
+    } catch {
+      return false
+    }
+  }
+
+  function moveScratchFiles(from, to) {
+    const sourceRoot = fs.realpathSync.native(from)
+    const targetRoot = fs.realpathSync.native(to)
+    if (sourceRoot === targetRoot
+      || targetRoot.startsWith(sourceRoot + path.sep)
+      || sourceRoot.startsWith(targetRoot + path.sep)) {
+      throw hostError('TEAM_ROOM_WORKSPACE_INVALID')
+    }
+    for (const name of fs.readdirSync(sourceRoot)) {
+      if (name === '.DS_Store') continue
+      const source = path.join(sourceRoot, name)
+      const target = path.join(targetRoot, name)
+      if (fs.existsSync(target)) throw hostError('TEAM_ROOM_WORKSPACE_MOVE_CONFLICT')
+      fs.cpSync(source, target, { recursive: true })
+      fs.rmSync(source, { recursive: true, force: true })
+    }
+  }
+
+  function closeWorkspaceAttentions(roomId) {
+    const at = new Date().toISOString()
+    roomDb.database.prepare(`
+      UPDATE attentions
+      SET status = 'answered', answered_by = 'user', resolution_json = ?, answered_at = ?
+      WHERE status = 'open' AND type = 'workspace_directory'
+        AND chat_id IN (SELECT id FROM chats WHERE room_id = ?)
+    `).run(JSON.stringify({ confirmed: true }), at, roomId)
+  }
+
   function bootstrap(input = {}) {
     const name = cleanText(input.name, 120, 'name')
-    const workspace = workspacePath(input.workspace)
-    const providers = providerList(input.providers)
+    const explicitWorkspace = input.workspace ? workspacePath(input.workspace) : ''
+    const requested = providerList(input.providers)
+    const providers = requested.filter(provider => providerCanSpeak(provider))
+    if (!providers.length) throw hostError('TEAM_ROOM_PROVIDER_NOT_AVAILABLE')
     const allowedCapabilities = stringList(input.allowedCapabilities, 32, 'allowedCapabilities')
     const title = optionalText(input.title, 120, 'title') || name
-    const rawRoles = Array.isArray(input.roles) && input.roles.length > 0
+    let rawRoles = Array.isArray(input.roles) && input.roles.length > 0
       ? input.roles
       : [{ displayName: 'Captain', provider: providers[0], prompt: DEFAULT_CAPTAIN_PROMPT, isCaptain: true }]
+    rawRoles = rawRoles.filter(role => providers.includes(typeof role?.provider === 'string' ? role.provider : ''))
+    if (!rawRoles.length) {
+      rawRoles = [{ displayName: 'Captain', provider: providers[0], prompt: DEFAULT_CAPTAIN_PROMPT, isCaptain: true }]
+    }
     if (MAX_ROOM_ROLES != null && rawRoles.length > MAX_ROOM_ROLES) {
       throw hostError('TEAM_ROOM_INPUT_INVALID', 'too many roles')
     }
@@ -291,14 +346,21 @@ function createRoomHost({
       if (role.prompt) continue
       role.prompt = role.isCaptain ? DEFAULT_CAPTAIN_PROMPT : DEFAULT_WORKER_PROMPT
     }
+    const chatId = crypto.randomUUID()
+    const roomId = crypto.randomUUID()
+    const workspace = explicitWorkspace || allocateScratch(chatId)
+    const workspaceOrigin = explicitWorkspace ? 'user' : 'default'
     return roomDb.withTransaction(() => {
-      const roomId = repository.createRoom({
+      repository.createRoom({
+        id: roomId,
         name,
         workspace,
         providers,
         allowedCapabilities,
+        workspaceOrigin,
+        workspaceConfirmed: Boolean(explicitWorkspace),
       })
-      const chatId = repository.createChat({ roomId, title })
+      repository.createChat({ id: chatId, roomId, title })
       for (const role of roles) {
         const roleId = repository.createRole({ chatId, ...role })
         repository.addParticipant({ chatId, roleId })
@@ -453,6 +515,7 @@ function createRoomHost({
 
   function providerCanSpeak(provider) {
     if (typeof provider !== 'string' || !PROVIDER.test(provider)) return false
+    if (typeof service.providerCanSpeak === 'function') return service.providerCanSpeak(provider)
     if (typeof service.adapter?.hasLauncher !== 'function') return true
     const known = service.adapter.hasLauncher(provider)
     return known === null ? true : known === true
@@ -467,10 +530,10 @@ function createRoomHost({
   }
 
   function selectedSkills(provider, skills) {
-    if (skills === undefined) return []
+    if (skills === undefined || skills === null) return []
     if (!Array.isArray(skills)) throw hostError('ROOM_ROLE_SKILLS_INVALID')
+    if (skills.length === 0) return []
     if (!skillInventory) {
-      if (skills.length === 0) return []
       throw hostError('ROOM_ROLE_SKILL_NOT_AVAILABLE')
     }
     try {
@@ -1014,6 +1077,49 @@ function createRoomHost({
     return usageReport.updateSettings(input)
   }
 
+  function setWorkspace(input = {}) {
+    const room = requireRoom(input.roomId)
+    const next = workspacePath(input.workspace)
+    const result = roomDb.withTransaction(() => {
+      if (next === room.workspace) {
+        roomDb.database.prepare(`
+          UPDATE rooms SET workspace_confirmed = 1, updated_at = ? WHERE id = ?
+        `).run(new Date().toISOString(), room.id)
+        closeWorkspaceAttentions(room.id)
+        return { roomId: room.id, moved: false }
+      }
+      const pendingMove = room.workspaceOrigin === 'default' && scratchHasFiles(room.workspace)
+      if (pendingMove && input.move !== true && input.move !== false) {
+        return { roomId: room.id, needsMove: true }
+      }
+      if (pendingMove && input.move === true) moveScratchFiles(room.workspace, next)
+      const at = new Date().toISOString()
+      roomDb.database.prepare(`
+        UPDATE rooms
+        SET workspace = ?, workspace_origin = 'user', workspace_confirmed = 1,
+            write_authorized_root = CASE
+              WHEN write_authorized_root IS NULL OR write_authorized_root = '' OR write_authorized_root = ?
+              THEN ?
+              ELSE write_authorized_root
+            END,
+            updated_at = ?
+        WHERE id = ?
+      `).run(next, room.workspace, next, at, room.id)
+      closeWorkspaceAttentions(room.id)
+      return { roomId: room.id, moved: input.move === true }
+    })
+    return result
+  }
+
+  function confirmWorkspace(input = {}) {
+    const room = requireRoom(input.roomId)
+    roomDb.database.prepare(`
+      UPDATE rooms SET workspace_confirmed = 1, updated_at = ? WHERE id = ?
+    `).run(new Date().toISOString(), room.id)
+    closeWorkspaceAttentions(room.id)
+    return { roomId: room.id, confirmed: true }
+  }
+
   function rememberSkillDefault(input = {}) {
     const agent = cleanText(input.agent, 40, 'agent')
     if (!Array.isArray(input.skillIds)) throw hostError('TEAM_ROOM_INPUT_INVALID')
@@ -1046,6 +1152,8 @@ function createRoomHost({
     submitMessage,
     acceptTask,
     stopReply,
+    setWorkspace,
+    confirmWorkspace,
     skillInventoryList,
     usageReport: usageReportFor,
     usageSettings,

@@ -46,6 +46,38 @@ test('the production host assembles the OAR adapter by default', async (t) => {
   await host.start()
 })
 
+test('bootstrap without a workspace uses a private scratch directory', async (t) => {
+  const { root, host } = createHost(t)
+  const created = host.bootstrap({
+    name: 'Scratch chat',
+    providers: ['codex'],
+  })
+  const scratch = path.join(root, 'private', 'chats', created.chatId)
+  assert.equal(fs.existsSync(scratch), true)
+  const rooms = host.listRooms()
+  assert.equal(rooms[0].workspace_default, true)
+  assert.equal(rooms[0].workspace_confirmed, false)
+  assert.equal(rooms[0].workspace_label, '')
+  assert.equal(rooms[0].workspace_path, fs.realpathSync(scratch))
+
+  fs.writeFileSync(path.join(scratch, 'note.txt'), 'draft')
+  const pending = host.setWorkspace({ roomId: created.roomId, workspace: path.join(root, 'workspace') })
+  assert.equal(pending.needsMove, true)
+  assert.equal(host.listRooms()[0].workspace_default, true)
+
+  const moved = host.setWorkspace({
+    roomId: created.roomId,
+    workspace: path.join(root, 'workspace'),
+    move: true,
+  })
+  assert.equal(moved.moved, true)
+  assert.equal(fs.existsSync(path.join(root, 'workspace', 'note.txt')), true)
+  const bound = host.listRooms()[0]
+  assert.equal(bound.workspace_default, false)
+  assert.equal(bound.workspace_confirmed, true)
+  assert.equal(bound.workspace_label, 'workspace')
+})
+
 test('bootstrap creates a display-safe room with a default captain', async (t) => {
   const { root, workspace, host } = createHost(t)
   const created = host.bootstrap({
@@ -63,8 +95,10 @@ test('bootstrap creates a display-safe room with a default captain', async (t) =
   assert.equal(rooms[0].name, 'Alpha room')
   assert.equal(rooms[0].workspace_label, 'workspace')
   assert.equal(rooms[0].primary_chat_id, created.chatId)
-  assert.equal(rooms[0].write_authorized, true)
-  assert.equal(JSON.stringify(rooms).includes(root), false)
+  assert.equal(rooms[0].workspace_path, fs.realpathSync(workspace))
+  const { workspace_path: roomPath, ...roomRest } = rooms[0]
+  assert.equal(roomPath.endsWith(`${path.sep}workspace`), true)
+  assert.equal(JSON.stringify(roomRest).includes(root), false)
 
   const snapshot = host.snapshot({ roomId: created.roomId })
   assert.equal(snapshot.chats.length, 1)
@@ -73,7 +107,10 @@ test('bootstrap creates a display-safe room with a default captain', async (t) =
   assert.equal(snapshot.roles[0].is_captain, true)
   assert.equal(snapshot.roles[0].native_permission, 'danger-full-access')
   assert.match(snapshot.roles[0].prompt, /create_roles/)
-  assert.equal(JSON.stringify(snapshot).includes(workspace), false)
+  assert.equal(snapshot.room.workspace_path, fs.realpathSync(workspace))
+  const { workspace_path: snapshotPath, ...snapshotRoom } = snapshot.room
+  assert.equal(snapshotPath.endsWith(`${path.sep}workspace`), true)
+  assert.equal(JSON.stringify({ ...snapshot, room: snapshotRoom }).includes(workspace), false)
 
   await host.start()
 })
@@ -221,6 +258,37 @@ test('files are read from the room workspace without renderer paths', async (t) 
     roomId: created.roomId,
     authorized: false,
   })
+})
+
+test('an empty skill list can create a role without a catalog match', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-host-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const workspace = path.join(root, 'workspace')
+  fs.mkdirSync(workspace, { recursive: true })
+  const host = createRoomHost({
+    privateRoot: path.join(root, 'private'),
+    adapterFactory: () => fakeAdapter(),
+    liveness: false,
+    skillInventory: {
+      assertSelectable() {
+        throw new Error('SKILL_AGENT_INVALID')
+      },
+      projectSources() {
+        return []
+      },
+    },
+  })
+  t.after(() => host.close())
+  const created = host.bootstrap({ name: 'Skills', workspace, providers: ['codex'] })
+  const role = host.createRole({
+    roomId: created.roomId,
+    chatId: created.chatId,
+    displayName: 'Extra',
+    provider: 'codex',
+    skills: [],
+  })
+  assert.equal(typeof role.roleId, 'string')
+  assert.deepEqual(host.snapshot({ roomId: created.roomId }).roles.find(item => item.id === role.roleId).skills, [])
 })
 
 test('roles can be created, updated, and deleted while unused', (t) => {
@@ -466,4 +534,47 @@ test('Captain swaps atomically and chat roles stay independent', (t) => {
   assert.equal(roles.find(role => role.id === claude.id).is_captain, true)
   assert.match(roles.find(role => role.id === codex.id).prompt, /create_task/)
   assert.match(roles.find(role => role.id === claude.id).prompt, /Do not create tasks yourself/)
+})
+
+test('host gates new rooms and roles by locally available providers', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-host-available-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const workspace = path.join(root, 'workspace')
+  fs.mkdirSync(workspace, { recursive: true })
+  const host = createRoomHost({
+    privateRoot: path.join(root, 'private'),
+    adapterFactory: () => fakeAdapter(),
+    liveness: false,
+    availableProviders: () => new Set(['codex']),
+  })
+  t.after(() => host.close())
+
+  assert.throws(
+    () => host.bootstrap({ name: 'Claude only', workspace, providers: ['claude'] }),
+    /TEAM_ROOM_PROVIDER_NOT_AVAILABLE/,
+  )
+  const created = host.bootstrap({ name: 'Codex room', workspace, providers: ['codex'] })
+  assert.equal(created.roomId.length > 0, true)
+  const mixed = host.bootstrap({
+    name: 'Mixed room',
+    workspace,
+    providers: ['kimi', 'codex'],
+    roles: [
+      { displayName: 'Kimi', provider: 'kimi', prompt: 'aside', isCaptain: false },
+      { displayName: 'Codex', provider: 'codex', prompt: 'lead', isCaptain: true },
+    ],
+  })
+  const mixedRoles = host.snapshot({ roomId: mixed.roomId }).roles
+  assert.deepEqual(mixedRoles.map(role => role.display_name), ['Codex'])
+  assert.deepEqual(mixedRoles.map(role => role.is_captain), [true])
+  assert.throws(
+    () => host.createRole({
+      roomId: created.roomId,
+      chatId: created.chatId,
+      displayName: 'Claude',
+      provider: 'claude',
+      prompt: 'p',
+    }),
+    /ROOM_ROLE_PROVIDER_NOT_LAUNCHABLE/,
+  )
 })

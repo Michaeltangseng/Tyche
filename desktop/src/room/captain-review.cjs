@@ -40,6 +40,10 @@ function assignmentView(row) {
 }
 
 const BUSY_REPLY = new Set(['queued', 'working', 'stopping'])
+const FAILED_REPLY = new Set(['failed', 'interrupted', 'stopped', 'unknown', 'waiting_for_input'])
+const TERMINAL_REPLY = new Set([
+  'done', 'completed', 'failed', 'interrupted', 'stopped', 'unknown', 'waiting_for_input',
+])
 const OPEN_RUN = new Set(['queued', 'starting', 'running', 'in_progress'])
 
 function createCaptainReview({ roomDb, repository, timeline, now = () => Date.now(), outbox = null }) {
@@ -104,6 +108,16 @@ function createCaptainReview({ roomDb, repository, timeline, now = () => Date.no
             `).all(...targetReplyIds)
         if (replies.some(reply => BUSY_REPLY.has(reply.status))) continue
         const waiting = replies.some(reply => reply.status === 'waiting_for_input')
+        const failed = replies.some(reply => FAILED_REPLY.has(reply.status))
+        const terminal = targetReplyIds.length > 0
+          && replies.length === targetReplyIds.length
+          && replies.every(reply => TERMINAL_REPLY.has(reply.status))
+
+        function settleAssignment(status) {
+          database.prepare(
+            "UPDATE captain_assignments SET status = ? WHERE id = ? AND status = 'active'",
+          ).run(status, assignment.id)
+        }
 
         let tasks = []
         if (targetRoleIds.length > 0) {
@@ -125,15 +139,23 @@ function createCaptainReview({ roomDb, repository, timeline, now = () => Date.no
         }
 
         const baseline = Math.max(checkpoint, assignmentBaseline)
-        const blocked = waiting || tasks.some(task => task.status === 'blocked')
+        const blocked = waiting || failed || tasks.some(task => task.status === 'blocked')
         const hasNew = chat.activity_seq > baseline
-        if (!hasNew && !blocked) continue
+        if (!hasNew && !blocked) {
+          // The work is finished; settle the assignment even when there is no
+          // new review traffic to show the Captain.
+          if (terminal) settleAssignment('settled')
+          continue
+        }
 
         const kind = blocked ? 'assignment_blocked' : 'assignment_settled'
         const dedupeKey = `${chatId}:${kind}:${chat.activity_seq}`
         const existing = database.prepare('SELECT id FROM captain_reviews WHERE chat_id = ? AND dedupe_key = ?')
           .get(chatId, dedupeKey)
-        if (existing) continue
+        if (existing) {
+          if (terminal) settleAssignment(blocked ? 'blocked' : 'settled')
+          continue
+        }
 
         const id = crypto.randomUUID()
         const body = [
@@ -149,6 +171,7 @@ function createCaptainReview({ roomDb, repository, timeline, now = () => Date.no
           targetReplyIds,
           taskIds: tasks.map(task => task.id),
           waiting,
+          failed,
         }
         const createdAt = at()
         database.prepare(`
@@ -159,6 +182,7 @@ function createCaptainReview({ roomDb, repository, timeline, now = () => Date.no
           id, chatId, assignment.id, kind, dedupeKey, chat.activity_seq,
           body, JSON.stringify(data), createdAt, createdAt,
         )
+        if (terminal) settleAssignment(blocked ? 'blocked' : 'settled')
         created.push(reviewView(database.prepare('SELECT * FROM captain_reviews WHERE id = ?').get(id)))
       }
       return created

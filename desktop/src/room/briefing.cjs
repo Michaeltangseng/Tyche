@@ -20,16 +20,19 @@ function rosterProviders(roomProviders, launchIds) {
 
 function rosterLines(members, launchProviders) {
   const lines = []
+  const speakable = Array.isArray(launchProviders) ? new Set(launchProviders) : null
   if (Array.isArray(members) && members.length > 0) {
     lines.push('Members:')
     for (const member of members) {
       const provider = member?.provider || 'unknown'
       const mark = member?.isCaptain === true ? ', captain' : ''
-      lines.push(`- ${member?.displayName ?? 'member'} (${provider}${mark})`)
+      const available = speakable && !speakable.has(provider) ? ', unavailable' : ''
+      lines.push(`- ${member?.displayName ?? 'member'} (${provider}${mark}${available})`)
     }
   }
   if (Array.isArray(launchProviders)) {
-    lines.push(`Providers that can speak: ${launchProviders.join(', ')}`)
+    lines.push(`Providers that can speak: ${launchProviders.length ? launchProviders.join(', ') : 'none'}`)
+    lines.push('Only assign work to members whose provider can speak. If a teammate is unavailable or its last reply failed, reassign the work to an available member or ask the user; do not silently stall.')
   }
   return lines
 }

@@ -3,7 +3,6 @@ import {
   CheckmarkCircleOutline,
   DownloadOutline,
   WarningOutline,
-  TerminalOutline,
 } from '@vicons/ionicons5'
 import { AGENTS, agentLogo } from '../catalog.js'
 import { MAX_ATTACHMENTS } from './useComposerAttachments.js'
@@ -146,11 +145,16 @@ export function useAgentCatalog({
     if (['workbuddy-desktop-locked', 'workbuddy-model-unavailable'].includes(agent.availabilitySource)) {
       return { label: t('workbuddy.configure'), tone: 'warning', icon: WarningOutline }
     }
-    if (agent.ready && !agent.recentlyVerified
-        && ['local-cli', 'native-credential', 'native-shell'].includes(agent.availabilitySource)) {
-      return { label: t('agent.availableUnverified'), tone: 'neutral', icon: TerminalOutline, description: t('agent.availableUnverifiedHint') }
+    if (agent.ready) {
+      const unverified = !agent.recentlyVerified
+        && ['local-cli', 'native-credential', 'native-shell'].includes(agent.availabilitySource)
+      return {
+        label: t('agent.ready'),
+        tone: 'ready',
+        icon: CheckmarkCircleOutline,
+        ...(unverified ? { description: t('agent.availableUnverifiedHint') } : {}),
+      }
     }
-    if (agent.ready) return { label: t('agent.ready'), tone: 'ready', icon: CheckmarkCircleOutline }
     if (agent.custom) return { label: t('customAgent.executableUnavailable'), tone: 'warning', icon: WarningOutline }
     if (!agent.installed) return { label: t('agent.notInstalled'), tone: 'off', icon: DownloadOutline }
     if (agent.incompatibilityReason === 'LOCAL_AGENT_CAPABILITY_PROBE_TIMEOUT') {
@@ -167,6 +171,9 @@ export function useAgentCatalog({
       })[agent.incompatibilityReason] || 'agent.incompatible'
       return { label: t(reasonKey), tone: 'warning', icon: WarningOutline }
     }
+    if (agent.availabilitySource === 'hermes-provider-unconfigured') {
+      return { label: t('agent.needsProvider'), tone: 'warning', icon: WarningOutline }
+    }
     if (agent.credentialState === 'missing' || agent.incompatibilityReason === 'LOCAL_AGENT_AUTH_REQUIRED') {
       return { label: t('agent.needsLogin'), tone: 'warning', icon: WarningOutline }
     }
@@ -176,8 +183,14 @@ export function useAgentCatalog({
   // One plain sentence on why an installed Agent cannot be used and what to do
   // next. Empty when there is nothing to explain (ready, or not installed).
   function agentStateNote(agent) {
-    if (!agent || agent.ready || agent.custom || !agent.installed) return ''
+    if (!agent || agent.custom || !agent.installed) return ''
+    if (agent.ready) {
+      const unverified = !agent.recentlyVerified
+        && ['local-cli', 'native-credential', 'native-shell'].includes(agent.availabilitySource)
+      return unverified ? t('agent.availableUnverifiedHint') : ''
+    }
     if (agent.availabilitySource === 'cloud-bridge-unsupported') return t('agent.note.cloudBridgeUnsupported')
+    if (agent.availabilitySource === 'hermes-provider-unconfigured') return t('agent.note.needsProvider')
     if (agent.availabilitySource === 'native-runtime-unavailable') return t('agent.note.nativeRuntimeUnavailable')
     if (agent.availabilitySource === 'native-secret-unresolved') return t('agent.note.nativeSecretUnresolved')
     if (agent.availabilitySource === 'workbuddy-desktop-locked') return t('workbuddy.desktopLocked')

@@ -30,7 +30,10 @@ function cleanResponsibilities(value) {
   return value
 }
 
-function createCaptainAssignment({ roomDb, repository, timeline, review, queueReply, requestTick }) {
+function createCaptainAssignment({
+  roomDb, repository, timeline, review, queueReply, requestTick,
+  canLaunch = null, onUnavailable = null,
+}) {
   const { database } = roomDb
 
   function requireCaptain(chatId, captainRoleId) {
@@ -48,10 +51,20 @@ function createCaptainAssignment({ roomDb, repository, timeline, review, queueRe
       if (candidates.length !== 1) throw new Error('ROOM_CAPTAIN_TARGET_REQUIRED')
       targets = [candidates[0].roleId]
     }
+    const unavailable = []
     for (const roleId of targets) {
       const role = repository.getRole(roleId)
       if (!role || role.chatId !== chatId || role.status !== 'active') throw new Error('ROOM_CAPTAIN_TARGET_INVALID')
       if (role.isCaptain) throw new Error('ROOM_CAPTAIN_SELF_TARGET')
+      if (typeof canLaunch === 'function' && canLaunch(role.provider) === false) {
+        unavailable.push(role)
+      }
+    }
+    if (unavailable.length > 0) {
+      if (typeof onUnavailable === 'function') {
+        onUnavailable({ chatId, roles: unavailable, requestedBy: captainRoleId })
+      }
+      throw new Error(`ROOM_CAPTAIN_TARGET_UNAVAILABLE: ${unavailable.map(role => role.displayName || role.id).join(', ')}`)
     }
     return targets
   }
@@ -121,6 +134,7 @@ function chosenSkills(selectSkills, provider, skills) {
 
 function registerCaptainTools({
   dispatcher, repository, captainAssignment, timeline, roomDb, canLaunch = () => true,
+  onUnavailable = null,
   selectSkills = null,
 }) {
   if (!roomDb) throw new TypeError('ROOM_CAPTAIN_TOOLS_DATABASE_REQUIRED')
@@ -145,7 +159,22 @@ function registerCaptainTools({
       if (!role || typeof role !== 'object' || Array.isArray(role)) throw new Error('ROOM_ROSTER_INVALID')
       const provider = typeof role.provider === 'string' ? role.provider.trim() : ''
       if (!PROVIDER.test(provider)) throw new Error('ROOM_ROLE_PROVIDER_NOT_ALLOWED')
-      if (canLaunch(provider) === false) throw new Error('ROOM_ROLE_PROVIDER_NOT_LAUNCHABLE')
+      if (canLaunch(provider) === false) {
+        if (typeof onUnavailable === 'function') {
+          onUnavailable({
+            chatId,
+            roles: [{
+              id: '',
+              displayName: typeof role.displayName === 'string' && role.displayName.trim()
+                ? role.displayName.trim()
+                : provider,
+              provider,
+            }],
+            requestedBy: captainRoleId,
+          })
+        }
+        throw new Error('ROOM_ROLE_PROVIDER_NOT_LAUNCHABLE')
+      }
       return {
         displayName: cleanName(role.displayName),
         provider,

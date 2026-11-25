@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AGENTS } from '../../catalog.js'
 import RunTracePanel from '../../components/RunTracePanel.vue'
 import { setLocale, t } from '../../i18n.js'
-import { deferred, imageAttachment, mountApp } from './app-test-harness.js'
+import { deferred, expandAgentSection, imageAttachment, mountApp } from './app-test-harness.js'
 import { readStylesSource } from './style-test-helpers.js'
 
 function readFileSync(filename, encoding) {
@@ -1904,6 +1904,7 @@ describe('Tyche workbench', () => {
     emitRunFinished({ groupId: 'direct-hermes', status: 'completed' })
     initialSnapshot.resolve(structuredClone(state))
     await flushPromises()
+    await expandAgentSection(wrapper)
 
     expect(wrapper.findAll('.run-finished-mark')).toHaveLength(1)
     wrapper.unmount()

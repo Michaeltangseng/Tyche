@@ -16,6 +16,8 @@ function roomView(row) {
     name: row.name,
     workspace: row.workspace,
     writeAuthorizedRoot: row.write_authorized_root,
+    workspaceOrigin: row.workspace_origin || 'user',
+    workspaceConfirmed: row.workspace_confirmed == null ? true : row.workspace_confirmed === 1,
     providers: parseJson(row.providers_json, []),
     allowedCapabilities: parseJson(row.allowed_capabilities_json, []),
     createdAt: row.created_at,
@@ -102,15 +104,25 @@ function createRoomRepository(roomDb) {
   }
 
   return {
-    createRoom({ name, workspace, providers = [], allowedCapabilities = [] }) {
+    createRoom({
+      id = crypto.randomUUID(), name, workspace, providers = [], allowedCapabilities = [],
+      workspaceOrigin = 'user', workspaceConfirmed = true,
+    }) {
       if (typeof name !== 'string' || name.length === 0) throw new TypeError('ROOM_NAME_REQUIRED')
       if (typeof workspace !== 'string' || workspace.length === 0) throw new TypeError('ROOM_WORKSPACE_REQUIRED')
-      const id = crypto.randomUUID()
+      const origin = workspaceOrigin === 'default' ? 'default' : 'user'
+      const confirmed = workspaceConfirmed === false ? 0 : 1
       const at = timestamp()
       database.prepare(`
-        INSERT INTO rooms (id, name, workspace, write_authorized_root, providers_json, allowed_capabilities_json, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(id, name, workspace, workspace, JSON.stringify(providers), JSON.stringify(allowedCapabilities), at, at)
+        INSERT INTO rooms (
+          id, name, workspace, write_authorized_root, providers_json, allowed_capabilities_json,
+          workspace_origin, workspace_confirmed, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id, name, workspace, workspace, JSON.stringify(providers), JSON.stringify(allowedCapabilities),
+        origin, confirmed, at, at,
+      )
       return id
     },
 
@@ -118,10 +130,9 @@ function createRoomRepository(roomDb) {
       return roomView(database.prepare('SELECT * FROM rooms WHERE id = ?').get(roomId))
     },
 
-    createChat({ roomId, title, status = 'active' }) {
+    createChat({ id = crypto.randomUUID(), roomId, title, status = 'active' }) {
       if (typeof title !== 'string' || title.length === 0) throw new TypeError('ROOM_CHAT_TITLE_REQUIRED')
       requireRoom(roomId)
-      const id = crypto.randomUUID()
       const at = timestamp()
       database.prepare(`
         INSERT INTO chats (id, room_id, title, status, created_at, updated_at)

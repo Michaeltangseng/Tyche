@@ -93,7 +93,8 @@ async function save() {
   error.value = ''
   saved.value = false
   try {
-    const value = { preferredAgentKinds: [...form.preferredAgentKinds], instructions: form.instructions }
+    const current = typeof bridge.get === 'function' ? await bridge.get() : {}
+    const value = { ...current, preferredAgentKinds: [...form.preferredAgentKinds], instructions: form.instructions }
     for (const field of fields) value[field.id] = form[field.id]
     apply(await bridge.save(value))
     saved.value = true

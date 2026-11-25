@@ -536,11 +536,21 @@ function codexDeclaredCredentialKeys(options = {}) {
   return nativeSecretEnvKeys([codexProviderCredentialKey(options)])
 }
 
+function hermesEndpointRequiresCredential(value) {
+  const url = String(value || '').trim().toLowerCase()
+  if (!url) return true
+  if (/^(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::|\/|$)/.test(url)) return false
+  return !/lmstudio|ollama/.test(url)
+}
+
 function hermesSelectedProvider(root, env, home) {
   try {
     const content = readCredentialFile(path.join(root, 'config.yaml'))
     const config = content ? yaml.load(content) : {}
     if (!config || typeof config !== 'object' || Array.isArray(config)) return null
+    const model = config.model && typeof config.model === 'object' && !Array.isArray(config.model) ? config.model : {}
+    const baseUrl = typeof model.base_url === 'string' ? model.base_url : ''
+    const requiresCredential = hermesEndpointRequiresCredential(baseUrl)
     const fallbacks = [config.fallback_providers, config.fallback_model]
       .flatMap(value => Array.isArray(value) ? value : [value])
       .filter(value => value && typeof value === 'object' && !Array.isArray(value) && value.provider && value.model)
@@ -551,9 +561,8 @@ function hermesSelectedProvider(root, env, home) {
         .map(value => value.trim().toLowerCase())
         .filter(value => ['openai', 'openrouter', 'anthropic'].includes(value))
       return { provider: '', authProviders: [...new Set(providers)], fallbackEntries: fallbacks, config,
-        keys: hermesDeclaredCredentialKeys({ home, env: { ...env, HERMES_HOME: root } }) }
+        keys: hermesDeclaredCredentialKeys({ home, env: { ...env, HERMES_HOME: root } }), requiresCredential }
     }
-    const model = config.model && typeof config.model === 'object' && !Array.isArray(config.model) ? config.model : {}
     const provider = hermesProviderFromConfig(config, hermesProviderEnvironment(root, env)).toLowerCase()
     const canonical = { openai: 'OPENAI_API_KEY', openrouter: 'OPENROUTER_API_KEY', anthropic: 'ANTHROPIC_API_KEY' }
     if (provider.startsWith('custom:')) {
@@ -578,7 +587,7 @@ function hermesSelectedProvider(root, env, home) {
       if (selected && typeof selected === 'object' && !Array.isArray(selected)) {
         return { provider: providerKey || suffix, selected, config, keys: nativeSecretEnvKeys([
           selected.key_env, selected.api_key_env,
-        ]) }
+        ]), requiresCredential: hermesEndpointRequiresCredential(selected.api || selected.url || selected.base_url) }
       }
       return { unavailable: true }
     }
@@ -587,9 +596,37 @@ function hermesSelectedProvider(root, env, home) {
     if (provider && provider !== 'auto' && provider !== 'custom' && !Object.hasOwn(canonical, provider)) {
       return { unavailable: true }
     }
-    if (!Object.hasOwn(canonical, provider)) return null
+    if (!Object.hasOwn(canonical, provider)) {
+      if (provider === 'custom') return null
+      const inferred = /openrouter\.ai/.test(baseUrl) ? 'openrouter'
+        : /anthropic\.com/.test(baseUrl) ? 'anthropic'
+          : /openai\.com/.test(baseUrl) ? 'openai' : ''
+      if (inferred) {
+        return {
+          provider: inferred,
+          authProviders: [inferred],
+          inferredAuto: true,
+          config,
+          keys: nativeSecretEnvKeys([
+            canonical[inferred], model.key_env, model.api_key_env,
+            config.providers?.[inferred]?.key_env, config.providers?.[inferred]?.api_key_env,
+          ]),
+          requiresCredential,
+        }
+      }
+      // Hermes' "auto" provider resolves at run time from the available keys.
+      // Keep the broad credential scan, but a machine with no provider key is
+      // not a working Agent.
+      return {
+        provider: 'auto',
+        authProviders: ['openai', 'openrouter', 'anthropic'],
+        config,
+        keys: null,
+        requiresCredential,
+      }
+    }
     return { provider, config, keys: nativeSecretEnvKeys([canonical[provider], model.key_env, model.api_key_env,
-      config.providers?.[provider]?.key_env, config.providers?.[provider]?.api_key_env]) }
+      config.providers?.[provider]?.key_env, config.providers?.[provider]?.api_key_env]), requiresCredential }
   } catch { return null }
 }
 
@@ -604,7 +641,9 @@ function hermesAuthContainsCredential(filename, provider) {
 
 function hermesConfigContainsCredential(selection) {
   const { config, provider, selected } = selection
-  return containsCredential(config.model) || containsCredential(selected || config.providers?.[provider])
+  const wholeConfig = !provider || provider === 'auto'
+  return (wholeConfig && containsCredential(config)) || containsCredential(config.model)
+    || containsCredential(selected || config.providers?.[provider])
     || (selection.fallbackEntries || []).some(entry => credentialLiteral(entry.api_key))
 }
 
@@ -913,8 +952,11 @@ function nativeCredentialState(kind, options = {}) {
     opencodereview: [path.join(effectiveUserHome, '.opencodereview', 'config.json')],
   }[kind] || []
   if (jsonFiles.some(filename => kind === 'pi' ? !piCloudflare && piAuthContainsCredential(filename, piProvider)
-    : hermesSelection ? path.basename(filename) === 'auth.json'
-      && (hermesSelection.authProviders || [hermesSelection.provider]).some(provider => hermesAuthContainsCredential(filename, provider))
+    : hermesSelection
+      ? hermesSelection.provider === 'auto'
+        ? jsonContainsCredential(filename)
+        : path.basename(filename) === 'auth.json'
+          && (hermesSelection.authProviders || [hermesSelection.provider]).some(provider => hermesAuthContainsCredential(filename, provider))
       : jsonContainsCredential(filename))
       || (kind === 'pi' && piModelsContainCredential(piHome, env, piProvider))
       || (kind === 'opencode' && openCodeAuthContainsCredential(openCodeAuth))) {
@@ -953,6 +995,13 @@ function nativeCredentialState(kind, options = {}) {
     : textContainsCredential(filename,
       kind === 'hermes' && filename === path.join(hermesHome, '.env') ? hermesKeys : null))) {
     return { state: 'ready', source: 'native-credential' }
+  }
+
+  // Hermes can be installed and healthy while it has no inference provider or
+  // API key. That is a configuration failure, not an unknown probe.
+  if (kind === 'hermes' && hermesSelection?.inferredAuto === true
+      && hermesSelection?.requiresCredential === true) {
+    return { state: 'missing', source: 'hermes-provider-unconfigured' }
   }
 
   return { state: 'unknown', source: 'unverified' }

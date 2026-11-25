@@ -47,6 +47,8 @@ function mentionNames(content) {
 function createEngine({
   roomDb, repository, timeline, sessions, outbox, runtime, now = () => Date.now(), onEvent = () => {},
   launchProviders = null,
+  canLaunch = null,
+  onUnavailable = null,
   skillSource = null,
 }) {
   const { database } = roomDb
@@ -109,8 +111,17 @@ function createEngine({
           status: 'done',
         })
         const replies = []
+        const unavailable = []
         for (const roleId of route.targets) {
+          const role = participants.find(participant => participant.roleId === roleId)
+          if (role && typeof canLaunch === 'function' && canLaunch(role.provider) === false) {
+            unavailable.push(role)
+            continue
+          }
           replies.push(engine.queueReply({ chatId, roleId, trigger: message, rootMessageId: message.id }))
+        }
+        if (unavailable.length > 0 && typeof onUnavailable === 'function') {
+          onUnavailable({ chatId, roles: unavailable, requestedBy: 'user' })
         }
         return { message, replies }
       })
@@ -169,7 +180,9 @@ function createEngine({
             roleId: role.id,
             provider: role.provider,
             promptRevision,
-            permissionMode: role.nativePermission || 'read-only',
+            permissionMode: room?.workspaceOrigin === 'default' && room?.workspaceConfirmed !== true
+              ? 'read-only'
+              : (role.nativePermission || 'read-only'),
             workspaceRef: room.workspace,
             skillBindings,
             model: role.model,

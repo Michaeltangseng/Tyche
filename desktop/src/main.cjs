@@ -1273,6 +1273,21 @@ if (!hasSingleInstanceLock) {
           privateRoot,
           env: roomEnv,
           skillInventory: skillLibrary,
+          // Team formation must use Agents this machine can actually start,
+          // not every provider that exists in OAR's runtime registry.
+          availableProviders: () => {
+            try {
+              const snapshot = workspace?.snapshot()
+              if (!snapshot || !Array.isArray(snapshot.agents)) return null
+              return new Set(
+                snapshot.agents
+                  .filter(agent => agent.installed === true && agent.available === true)
+                  .map(agent => agent.kind),
+              )
+            } catch {
+              return null
+            }
+          },
           onChanged: () => {
             if (mainWindow && !mainWindow.isDestroyed()
                 && isTrustedLocalWebContents(mainWindow.webContents)) {

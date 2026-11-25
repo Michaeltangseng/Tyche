@@ -77,9 +77,11 @@ test('mention records a member with no room launcher and does not queue a reply'
   const timeline = createTimeline({ roomDb, repository: repo })
   const dispatcher = createToolDispatcher({ roomDb, repository: repo })
   const queued = []
+  const reports = []
   registerMentionTool({ dispatcher, roomDb, repository: repo, timeline,
     queueReply: input => { queued.push(input); return input.trigger },
-    canLaunch: roleId => roleId !== hermes })
+    canLaunch: roleId => roleId !== hermes,
+    onUnavailable: payload => reports.push(payload) })
   dispatcher.bindRun('run1', { chatId, roleId: a, allowedTools: ['mention'] })
   const result = await dispatcher.invoke({ runId: 'run1', callId: 'mention-3', name: 'mention',
     args: { names: ['Hermes'], text: 'please review' } })
@@ -88,5 +90,10 @@ test('mention records a member with no room launcher and does not queue a reply'
   assert.deepEqual(result.unlaunchable, [{ id: hermes, name: 'Hermes', provider: 'hermes' }])
   assert.equal(queued.length, 0)
   assert.equal(timeline.latest(chatId).kind, 'mention')
+  assert.deepEqual(reports, [{
+    chatId,
+    roles: [{ id: hermes, displayName: 'Hermes', provider: 'hermes' }],
+    requestedBy: a,
+  }])
   roomDb.close()
 })

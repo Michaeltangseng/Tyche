@@ -374,6 +374,7 @@ function ensureRoomSchema(database) {
   ensurePortraitColumn(database)
   ensureRoleSkillsColumn(database)
   ensureChatTitleLock(database)
+  ensureWorkspaceOrigin(database)
 }
 
 function ensureRoleSkillsColumn(database) {
@@ -390,6 +391,18 @@ function ensureChatTitleLock(database) {
   const columns = database.prepare('PRAGMA table_info(chats)').all()
   if (columns.some(column => column.name === 'title_locked')) return
   database.exec('ALTER TABLE chats ADD COLUMN title_locked INTEGER NOT NULL DEFAULT 0')
+}
+
+function ensureWorkspaceOrigin(database) {
+  const table = database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'rooms'").get()
+  if (!table) return
+  const columns = database.prepare('PRAGMA table_info(rooms)').all()
+  if (!columns.some(column => column.name === 'workspace_origin')) {
+    database.exec("ALTER TABLE rooms ADD COLUMN workspace_origin TEXT NOT NULL DEFAULT 'user'")
+  }
+  if (!columns.some(column => column.name === 'workspace_confirmed')) {
+    database.exec('ALTER TABLE rooms ADD COLUMN workspace_confirmed INTEGER NOT NULL DEFAULT 1')
+  }
 }
 
 module.exports = { ROOM_SCHEMA_VERSION, ensureRoomSchema }

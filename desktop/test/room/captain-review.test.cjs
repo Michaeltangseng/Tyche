@@ -58,6 +58,10 @@ test('captain review waits for settlement and review traffic does not advance ac
   const pending = review.review({ chatId })
   assert.equal(pending.length, 1)
   assert.equal(pending[0].kind, 'assignment_settled')
+  assert.equal(
+    roomDb.database.prepare('SELECT status FROM captain_assignments LIMIT 1').get().status,
+    'settled',
+  )
   const activityBefore = timeline.activitySeq(chatId)
   const delivered = review.deliver({ chatId })
   assert.equal(timeline.activitySeq(chatId), activityBefore)
@@ -122,5 +126,42 @@ test('assign_in_group writes one message, one assignment, and target queued repl
   assert.equal(queued.length, 1)
   assert.equal(roomDb.database.prepare('SELECT COUNT(*) AS n FROM captain_assignments').get().n, 1)
   assert.throws(() => assign.assign({ chatId, captainRoleId, text: 'self', roleIds: [captainRoleId] }), /ROOM_CAPTAIN_SELF_TARGET/)
+  roomDb.close()
+})
+
+test('captain review treats a failed target reply as blocked', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+  const roomDb = openRoomDatabase({ directory })
+  const repo = createRoomRepository(roomDb)
+  const roomId = repo.createRoom({ name: 'R', workspace: directory })
+  const chatId = repo.createChat({ roomId, title: 'C' })
+  const captainRoleId = repo.createRole({ chatId, displayName: 'Captain', provider: 'claude', prompt: 'route', isCaptain: true })
+  const a = repo.createRole({ chatId, displayName: 'A', provider: 'claude', prompt: 'work' })
+  repo.addParticipant({ chatId, roleId: captainRoleId })
+  repo.addParticipant({ chatId, roleId: a })
+  const timeline = createTimeline({ roomDb, repository: repo })
+  const assignmentMessage = timeline.append({
+    chatId, authorType: 'agent', authorId: captainRoleId, content: '@A do it', mentions: [a], status: 'done',
+  })
+  const reply = timeline.append({
+    chatId, authorType: 'agent', authorId: a, content: 'boom', status: 'failed',
+  })
+  const review = createCaptainReview({ roomDb, repository: repo, timeline })
+  review.recordAssignment({
+    chatId,
+    messageId: assignmentMessage.id,
+    rootMessageId: assignmentMessage.id,
+    targetRoleIds: [a],
+    targetReplyIds: [reply.id],
+  })
+  const pending = review.review({ chatId })
+  assert.equal(pending.length, 1)
+  assert.equal(pending[0].kind, 'assignment_blocked')
+  assert.equal(pending[0].data.failed, true)
+  assert.equal(
+    roomDb.database.prepare('SELECT status FROM captain_assignments LIMIT 1').get().status,
+    'blocked',
+  )
   roomDb.close()
 })

@@ -80,3 +80,24 @@ test('captain briefing lists equippable skills and a member briefing includes on
   assert.match(worker.text, /Equipped skills[\s\S]*Use a clear hierarchy\./)
   assert.equal(worker.text.includes('Skills available to equip'), false)
 })
+
+test('captain briefing marks members whose provider cannot speak and tells the captain to reassign', () => {
+  const trigger = row(1, { authorType: 'user', authorId: 'user', content: '开始' })
+  const result = briefing({
+    chatTitle: 'C',
+    me: 'captain',
+    lastSeq: 0,
+    trigger,
+    nameOf: message => message.authorId,
+    viewerIsCaptain: true,
+    members: [
+      { displayName: '笑匠甲', provider: 'claude', isCaptain: false },
+      { displayName: '笑匠丙', provider: 'kimi', isCaptain: false },
+    ],
+    launchProviders: ['claude'],
+    rows: [trigger],
+  })
+  assert.match(result.text, /- 笑匠甲 \(claude\)\n- 笑匠丙 \(kimi, unavailable\)/)
+  assert.match(result.text, /Providers that can speak: claude/)
+  assert.match(result.text, /Only assign work to members whose provider can speak/)
+})

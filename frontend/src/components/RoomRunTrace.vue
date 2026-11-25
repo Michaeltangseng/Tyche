@@ -2,9 +2,11 @@
   <details class="room-run-trace" @toggle="onToggle">
     <summary>
       <span>{{ t('room.trace') }}</span>
+      <span v-if="thinking" class="room-run-trace-count">{{ t('room.thinking') }}</span>
       <span v-if="toolCount" class="room-run-trace-count">{{ t('room.traceSteps', { count: toolCount }) }}</span>
       <span v-if="activityLabel" class="room-run-trace-activity">{{ activityLabel }}</span>
     </summary>
+    <p v-if="thinking" class="room-run-thinking">{{ thinking }}</p>
     <p v-if="loading" class="room-muted">{{ t('room.loadingTrace') }}</p>
     <p v-else-if="loadError" class="room-error" role="alert">
       {{ t('room.traceError') }}
@@ -47,6 +49,7 @@ const props = defineProps({
   runId: { type: String, required: true },
   live: { type: Object, default: null },
   steps: { type: Array, default: null },
+  thinking: { type: String, default: '' },
 })
 
 const events = ref([])
@@ -133,3 +136,18 @@ function onToggle(event) {
   void load()
 }
 </script>
+
+<style scoped>
+.room-run-trace { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); font-size: var(--text-xs); }
+.room-run-trace > summary { display: flex; gap: 8px; align-items: center; color: var(--text-soft); cursor: pointer; }
+.room-run-trace-count { padding: 1px 6px; border-radius: 999px; background: var(--surface-active); color: var(--faint); font-size: 10px; }
+.room-run-trace-activity { overflow: hidden; color: var(--accent-text); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
+.room-run-thinking { max-height: 16rem; overflow: auto; margin: 4px 0 8px; padding: 7px 8px; border-radius: 6px; background: var(--surface); color: var(--text-soft); font-size: var(--text-2xs); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.room-tool-card { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: color-mix(in srgb, var(--surface) 82%, var(--surface-raised)); }
+.room-tool-card[data-status="failed"] { border-color: color-mix(in srgb, var(--danger, #b94c4c) 45%, var(--border)); }
+.room-tool-card header { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.room-tool-card header span { color: var(--faint); font-size: var(--text-2xs); }
+.room-tool-card details { margin-top: 4px; }
+.room-tool-card summary { color: var(--text-soft); cursor: pointer; }
+.room-tool-card pre { max-height: 16rem; overflow: auto; margin: 4px 0 0; padding: 7px 8px; border-radius: 6px; background: var(--surface); font-size: var(--text-2xs); white-space: pre-wrap; overflow-wrap: anywhere; }
+</style>

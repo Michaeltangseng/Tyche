@@ -49,36 +49,45 @@
     <div v-if="sidebarCollapsed" class="sidebar-rail">
       <div class="sidebar-rail-scroll">
         <section
-          v-if="railAgents.length"
+          v-if="recentRailChats.length"
           class="sidebar-rail-section"
-          :aria-label="t('nav.sidebarAgents')"
+          :aria-label="t('room.chatList')"
+          @pointerleave="leaveRailChat"
+          @focusout="leaveRailChat"
         >
+          <span
+            v-if="railHover"
+            class="rail-chat-stick"
+            :data-traveling="railHover.traveling ? 'true' : 'false'"
+            :style="{ '--stick-y': `${railHover.offset}px` }"
+          />
           <button
-            v-for="agent in railAgents"
-            :key="agent.kind"
-            class="sidebar-rail-item"
-            :class="{ active: isRailAgentActive(agent), unavailable: !agent.ready }"
+            v-for="row in recentRailChats"
+            :key="row.chat.id"
+            class="sidebar-rail-item sidebar-rail-chat"
+            :class="{ active: isTeamChatSelected(row.room.id, row.chat.id) }"
             type="button"
-            :title="`${agent.label} · ${agentState(agent).label}`"
-            :aria-label="agent.label"
-            :disabled="isDirectCreationPending(agent.kind)"
-            @click="handleSidebarAgentMain(agent)"
+            :aria-label="teamChatLabel(row.room, row.chat)"
+            :aria-current="isTeamChatSelected(row.room.id, row.chat.id) ? 'page' : undefined"
+            @pointerenter="hoverRailChat($event, row)"
+            @focus="hoverRailChat($event, row)"
+            @click="openTeamChat(row.room, row.chat)"
           >
-            <span class="agent-logo-cloud" :class="{ cloud: agent.cloud }">
-              <img :src="agent.logo" :alt="agent.label" />
-              <CloudOutline v-if="agent.cloud" aria-hidden="true" />
-              <span
-                v-if="agentAwaitingDecision(agent.kind)"
-                class="attention-dot agent-attention-dot"
-                :title="t('humanGate.waiting')"
-              />
+            <span class="rail-chat-stack" :data-count="String(chatMemberMascots(row.chat).length)">
+              <span v-for="member in chatMemberMascots(row.chat)" :key="member.key" class="rail-chat-face">
+                <RoomMascot :mascot="member.mascot" />
+              </span>
             </span>
           </button>
         </section>
 
-        <button v-if="roomWorkspaceAvailable" class="sidebar-rail-item" type="button" :title="t('room.title')" :aria-label="t('room.title')" :aria-current="activeView === 'rooms' ? 'page' : undefined" @click="openRoomWorkspace"><PeopleOutline /></button>
-        <button v-if="roomWorkspaceAvailable" class="sidebar-rail-item sidebar-rail-add" type="button" :title="t('room.createTeamRoom')" :aria-label="t('room.createTeamRoom')" @click="openTeamRoomCreate"><AddOutline /></button>
+        <button v-if="roomWorkspaceAvailable" class="sidebar-rail-item sidebar-rail-add" type="button" :title="t('room.createChat')" :aria-label="t('room.createChat')" @click="openTeamRoomCreate"><AddOutline /></button>
       </div>
+      <div
+        v-if="railHover"
+        class="rail-chat-label"
+        :style="{ top: `${railHover.labelTop}px`, left: `${railHover.labelLeft}px` }"
+      >{{ railHover.label }}</div>
     </div>
 
     <nav v-else class="conversation-nav" :aria-label="t('nav.conversations')">
@@ -87,14 +96,54 @@
           class="nav-heading"
           type="button"
           :title="sidebarAgentsCollapsed ? t('nav.expandAgents') : t('nav.collapseAgents')"
-          :aria-expanded="String(!sidebarAgentsCollapsed)"
+          :aria-expanded="String(!sidebarAgentsCollapsed || searching)"
           aria-controls="sidebar-agent-list"
           @click="sidebarAgentsCollapsed = !sidebarAgentsCollapsed"
         >
           <span>{{ t('nav.sidebarAgents') }}</span>
-          <small v-if="sidebarAgentsCollapsed" class="nav-heading-count">{{ sidebarAgentCount }}</small>
+          <small v-if="sidebarAgentsCollapsed" class="nav-heading-count">{{ castAgents.length }}</small>
+          <ChevronForwardOutline class="nav-heading-chevron" :class="{ open: !sidebarAgentsCollapsed || searching }" aria-hidden="true" />
         </button>
-        <div v-if="!sidebarAgentsCollapsed" id="sidebar-agent-list">
+        <div
+          v-if="sidebarAgentsCollapsed && !searching && castAgents.length"
+          class="agent-cast"
+          :aria-label="t('nav.sidebarAgents')"
+        >
+          <button
+            v-for="agent in castAgents"
+            :key="agent.kind"
+            class="agent-cast-item"
+            :class="{ active: isRailAgentActive(agent), unavailable: !agent.ready }"
+            :data-tone="memberPresence(agent)"
+            :style="{ '--agent-glow': portraitGlow(agent.kind) }"
+            type="button"
+            :title="castAgentTitle(agent)"
+            :aria-label="castAgentTitle(agent)"
+            :disabled="isDirectCreationPending(agent.kind)"
+            @click="handleSidebarAgentMain(agent)"
+          >
+            <span class="agent-cast-face">
+              <img :src="agent.logo" :alt="agent.label" />
+              <CloudOutline v-if="agent.cloud" class="agent-cast-cloud" aria-hidden="true" />
+              <span
+                v-if="agentAwaitingDecision(agent.kind)"
+                class="attention-dot agent-attention-dot"
+                :title="t('humanGate.waiting')"
+              />
+            </span>
+            <span class="agent-cast-status" :data-tone="memberPresence(agent)" aria-hidden="true" />
+          </button>
+          <button
+            class="agent-cast-add"
+            type="button"
+            :title="t('nav.manageAgents')"
+            :aria-label="t('nav.manageAgents')"
+            @click="openAgentManager"
+          >
+            <AddOutline />
+          </button>
+        </div>
+        <div v-if="!sidebarAgentsCollapsed || searching" id="sidebar-agent-list">
           <div v-if="discoveringAgents && !sidebarAgentGroups.length" class="sidebar-discovery" role="status">
             <span v-for="index in 3" :key="index" class="sidebar-discovery-row" aria-hidden="true"><i /><b /></span>
             <p>{{ t('onboarding.detecting') }}</p>
@@ -235,98 +284,82 @@
 
       <section v-if="roomWorkspaceAvailable" class="nav-section team-room-nav-section">
         <div class="nav-heading project-room-heading team-room-heading" role="heading" aria-level="2">
-          <span>{{ t('room.title') }}</span>
-          <button class="project-room-add team-room-add" type="button" :title="t('room.createTeamRoom')" :aria-label="t('room.createTeamRoom')" @click="openTeamRoomCreate">
+          <span>{{ t('room.chatList') }}</span>
+          <button class="project-room-add team-room-add" type="button" :title="t('room.createChat')" :aria-label="t('room.createChat')" @click="openTeamRoomCreate">
             <AddOutline />
           </button>
         </div>
-        <div v-if="filteredTeamRooms.length" class="project-room-list team-room-list">
-          <div v-for="room in filteredTeamRooms" :key="room.id" class="project-room-entry team-room-entry">
-            <div class="project-room-row team-room-row" :class="{ active: isTeamRoomSelected(room.id) }">
+        <div v-if="flatTeamChats.length" class="project-room-list team-room-list">
+          <div v-for="row in flatTeamChats" :key="row.chat.id" class="project-room-entry team-room-entry team-chat-row">
+            <div
+              class="project-room-row team-room-row"
+              :class="{
+                active: isTeamChatSelected(row.room.id, row.chat.id),
+                'menu-open': isChatMenuOpen(row.room, row.chat),
+                renaming: isChatRenaming(row.room, row.chat),
+              }"
+            >
+              <form
+                v-if="isChatRenaming(row.room, row.chat)"
+                class="project-room-open team-chat-rename"
+                @submit.prevent="commitTeamRename"
+              >
+                <span class="team-member-mascots" aria-hidden="true">
+                  <span v-for="member in chatMemberMascots(row.chat)" :key="member.key" class="team-member-mascot">
+                    <RoomMascot :mascot="member.mascot" />
+                  </span>
+                </span>
+                <input
+                  ref="teamRenameInput"
+                  v-model="teamRenameDraft"
+                  type="text"
+                  maxlength="80"
+                  :aria-label="t('room.renameChat')"
+                  @blur="commitTeamRename"
+                  @keydown.enter.prevent="commitTeamRename"
+                  @keydown.esc.prevent="cancelTeamRename"
+                />
+              </form>
               <button
+                v-else
                 class="project-room-open"
                 type="button"
-                :title="t(isTeamRoomExpanded(room.id) ? 'room.collapseChats' : 'room.expandChats', { name: room.name })"
-                :aria-current="isTeamRoomSelected(room.id) ? 'page' : undefined"
-                :aria-expanded="String(searching || isTeamRoomExpanded(room.id))"
-                :aria-controls="`team-room-chats-${room.id}`"
-                @click="handleTeamRoomClick(room)"
+                :title="chatRowTitle(row.room, row.chat)"
+                :aria-current="isTeamChatSelected(row.room.id, row.chat.id) ? 'page' : undefined"
+                @click="openTeamChat(row.room, row.chat)"
               >
+                <span class="team-member-mascots" aria-hidden="true">
+                  <span v-for="member in chatMemberMascots(row.chat)" :key="member.key" class="team-member-mascot">
+                    <RoomMascot :mascot="member.mascot" />
+                  </span>
+                  <span v-if="isChatRunning(row.chat)" class="team-room-live" :title="t('room.chatRunning')" />
+                </span>
                 <span class="project-room-copy">
-                  <strong>{{ room.name }}</strong>
-                  <small>{{ roomSummary(room) }}</small>
+                  <strong>{{ teamChatLabel(row.room, row.chat) }}</strong>
+                  <small v-if="chatSubtitle(row.room, row.chat)">{{ chatSubtitle(row.room, row.chat) }}</small>
                 </span>
               </button>
               <button
-                class="project-room-delete team-room-delete"
+                class="team-chat-menu"
                 type="button"
-                :title="t('room.deleteRoom', { name: room.name })"
-                :aria-label="t('room.deleteRoom', { name: room.name })"
-                @click.stop="openTeamDelete({ type: 'room', roomId: room.id, name: room.name }, $event)"
+                :title="t('room.chatActions', { name: teamChatLabel(row.room, row.chat) })"
+                :aria-label="t('room.chatActions', { name: teamChatLabel(row.room, row.chat) })"
+                :aria-expanded="isChatMenuOpen(row.room, row.chat) ? 'true' : 'false'"
+                :data-chat-menu="row.chat.id"
+                aria-haspopup="menu"
+                @click.stop="toggleChatMenu(row.room, row.chat, $event)"
               >
-                <TrashOutline />
-              </button>
-              <ChevronForwardOutline class="team-room-chevron" :class="{ open: searching || isTeamRoomExpanded(room.id) }" />
-            </div>
-            <div
-              v-if="searching || isTeamRoomExpanded(room.id)"
-              :id="`team-room-chats-${room.id}`"
-              class="project-room-groups team-room-chats"
-            >
-              <p v-if="!room.chats?.length" class="team-room-chat-empty">
-                {{ t('room.noChats') }}
-              </p>
-              <div v-for="chat in room.chats" :key="chat.id" class="project-room-group-row">
-                <button
-                  class="project-room-group"
-                  :class="{ active: isTeamChatSelected(room.id, chat.id) }"
-                  type="button"
-                  :title="t('room.openChat', { name: chat.title })"
-                  :aria-current="isTeamChatSelected(room.id, chat.id) ? 'page' : undefined"
-                  @click="selectTeamChat(room.id, chat.id)"
-                >
-                  <span class="team-face-stack team-face-stack-chat" aria-hidden="true">
-                    <img v-for="(member, index) in stackedMembers(chat.members).faces" :key="`${member.provider}-${member.name}-${index}`" :src="rolePortrait(member.portrait || member.provider)" alt="" />
-                    <span v-if="stackedMembers(chat.members).extra" class="team-face-more">+{{ stackedMembers(chat.members).extra }}</span>
-                  </span>
-                  <span class="team-chat-copy">
-                    <span class="team-chat-title">
-                      <span class="project-room-group-name">{{ teamChatLabel(room, chat) }}</span>
-                      <span
-                        v-if="chatHasFreshReply(room, chat)"
-                        class="team-chat-dot"
-                        role="img"
-                        :title="t('room.freshReply')"
-                        :aria-label="t('room.freshReply')"
-                      />
-                      <time v-if="chatTime(chat)">{{ chatTime(chat) }}</time>
-                    </span>
-                    <small :data-empty="chat.activity?.text ? undefined : 'true'">{{ chatActivityLabel(chat) }}</small>
-                  </span>
-                </button>
-                <button
-                  class="project-room-group-delete team-room-delete-chat"
-                  type="button"
-                  :title="t('room.deleteChat', { name: teamChatLabel(room, chat) })"
-                  :aria-label="t('room.deleteChat', { name: teamChatLabel(room, chat) })"
-                  @click.stop="openTeamDelete({ type: 'chat', roomId: room.id, chatId: chat.id, name: teamChatLabel(room, chat) }, $event)"
-                >
-                  <TrashOutline />
-                </button>
-              </div>
-              <button class="team-room-new-chat" type="button" @click="addTeamChat(room.id)">
-                <AddOutline aria-hidden="true" />
-                <span>{{ t('room.newChatAction') }}</span>
+                <EllipsisHorizontal />
               </button>
             </div>
           </div>
         </div>
       </section>
 
-      <p v-if="searching && !filteredAgentGroups.length && !filteredTeamRooms.length" class="nav-empty">{{ t('nav.searchEmpty') }}</p>
+      <p v-if="searching && !filteredAgentGroups.length && !flatTeamChats.length" class="nav-empty">{{ t('nav.searchEmpty') }}</p>
     </nav>
 
-    <footer v-if="!sidebarCollapsed" class="sidebar-footer">
+    <footer class="sidebar-footer">
       <button class="sidebar-user" type="button" :title="t('nav.you')" :aria-label="t('nav.you')" @click="openSidebarSettings">
         <span class="sidebar-user-mark" aria-hidden="true">{{ youMark }}</span>
         <span>{{ t('nav.you') }}</span>
@@ -360,6 +393,58 @@
         </button>
       </span>
     </span>
+    <span
+      v-if="teamChatMenu"
+      class="team-chat-menu-popover"
+      role="menu"
+      :style="teamChatMenuStyle"
+      :aria-label="t('room.chatActions', { name: teamChatLabel(teamChatMenu.room, teamChatMenu.chat) })"
+    >
+      <button class="team-chat-menu-item team-chat-menu-rename" type="button" role="menuitem" @click="beginTeamRename">
+        <PencilOutline />
+        <span>{{ t('room.renameChatAction') }}</span>
+      </button>
+      <button class="team-chat-menu-item danger team-chat-menu-delete" type="button" role="menuitem" @click="chooseTeamDelete">
+        <TrashOutline />
+        <span>{{ t('room.deleteConfirm') }}</span>
+      </button>
+      <button class="team-chat-menu-item team-chat-menu-workspace" type="button" role="menuitem" @click="beginWorkspaceEdit">
+        <FolderOutline />
+        <span>{{ t('room.switchWorkspace') }}</span>
+      </button>
+    </span>
+    <span v-if="workspaceTarget" class="team-delete-backdrop" aria-hidden="true" @click="cancelWorkspacePath" />
+    <section
+      v-if="workspaceTarget"
+      class="team-workspace-dialog"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="t('room.switchWorkspace')"
+    >
+      <strong>{{ t('room.switchWorkspace') }}</strong>
+      <form class="team-chat-workspace" @submit.prevent="confirmWorkspacePath">
+        <label>
+          <span>{{ t('room.workspacePath') }}</span>
+          <span class="team-chat-workspace-field">
+            <input
+              v-model="workspaceDraft"
+              type="text"
+              spellcheck="false"
+              :aria-label="t('room.workspacePath')"
+              :disabled="workspaceSaving"
+            />
+            <button class="team-chat-workspace-browse" type="button" :disabled="workspaceSaving" :title="t('room.browseWorkspace')" :aria-label="t('room.browseWorkspace')" @click="browseWorkspace">
+              <FolderOpenOutline />
+            </button>
+          </span>
+        </label>
+        <p v-if="workspaceMovePending">{{ t('room.moveScratchTitle') }}</p>
+        <span class="team-chat-workspace-actions">
+          <button class="secondary-button compact" type="button" :disabled="workspaceSaving" @click="cancelWorkspacePath">{{ t('common.cancel') }}</button>
+          <button class="primary-button compact" type="submit" :disabled="workspaceSaving || !workspaceDraft.trim()">{{ t('common.confirm') }}</button>
+        </span>
+      </form>
+    </section>
     <span v-if="teamDeleteTarget" class="team-delete-backdrop" aria-hidden="true" @click="dismissTeamDelete" />
     <span
       v-if="teamDeleteTarget"
@@ -389,19 +474,23 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, unref, watch } from 'vue'
 import {
   AddOutline,
-  ChatbubblesOutline,
   CheckmarkCircleOutline,
   ChevronBackOutline,
   ChevronForwardOutline,
   CloudOutline,
+  EllipsisHorizontal,
+  FolderOpenOutline,
+  FolderOutline,
   PencilOutline,
-  PeopleOutline,
   SearchOutline,
   SettingsOutline,
   TrashOutline,
 } from '@vicons/ionicons5'
 
-import { rolePortrait } from '../role-portraits.js'
+import { portraitGlow } from '../role-portraits.js'
+import { loadRoomChatSeen, saveRoomChatSeen } from '../room-chat-read-state.js'
+import { roleFace } from '../room-mascots.js'
+import RoomMascot from './RoomMascot.vue'
 
 const props = defineProps({
   controller: { type: Object, required: true },
@@ -420,6 +509,9 @@ const {
   deleteSidebarConversation,
   deleteTeamChat,
   deleteTeamRoom,
+  renameTeamChat,
+  setTeamWorkspace,
+  pickTeamDirectory,
   directGroupsFor,
   discoveringAgents,
   dismissSidebarDeleteConfirmation,
@@ -473,65 +565,28 @@ const {
   visibleGroupGroups,
 } = props.controller
 
+const storedChatSeen = loadRoomChatSeen()
+const seenChatActivity = ref(storedChatSeen || {})
+let seenChatActivityInitialized = storedChatSeen !== null
+
 function isSelectedConversation(group) {
   return unref(activeView) === 'conversation' && unref(selectedGroupId) === group.id
 }
 
-function memberList(chat) {
-  return Array.isArray(chat?.members) ? chat.members : []
-}
+const RUNNING_CHAT_STATUSES = new Set(['working', 'queued', 'starting', 'running'])
 
-function orderedMembers(members) {
-  return [...(Array.isArray(members) ? members : [])]
-    .sort((a, b) => (Number(b?.last_seq) || 0) - (Number(a?.last_seq) || 0))
-}
-
-function stackedMembers(members, limit = 3) {
-  const list = orderedMembers(members)
-  const spoken = list.filter(member => Number(member?.last_seq) > 0)
-  const source = spoken.length
-    ? spoken
-    : list.filter(member => member?.is_captain).slice(0, 1)
-  const visible = source.length ? source : list.slice(0, 1)
-  return { faces: visible.slice(0, limit), extra: Math.max(0, visible.length - limit) }
-}
-
-function roomFaces(room) {
-  const best = new Map()
-  for (const chat of room.chats || []) {
-    for (const member of orderedMembers(memberList(chat))) {
-      const key = member.provider || member.name
-      if (!key) continue
-      const rank = Number(member.last_seq) || 0
-      const existing = best.get(key)
-      if (!existing || rank > existing.rank) best.set(key, { member, rank })
-    }
-  }
-  const faces = [...best.values()].sort((a, b) => b.rank - a.rank).map(item => item.member)
-  return stackedMembers(faces, 3)
-}
-
-function roomSummary(room) {
-  const faces = roomFaces(room)
-  const members = faces.faces.length + faces.extra
-  const chats = room.chatTotal ?? room.chats?.length ?? 0
-  if (!members) return t('room.chatCount', { count: chats })
-  return t('room.roomFaces', { members, chats })
-}
-
-function chatHasFreshReply(room, chat) {
-  if (isTeamChatSelected(room.id, chat.id)) return false
-  return chat?.activity?.author === 'agent' && Boolean(chat?.activity?.text)
+function isChatRunning(chat) {
+  return RUNNING_CHAT_STATUSES.has(chat?.activity?.status)
 }
 
 function chatActivityLabel(chat) {
   const activity = chat?.activity
-  if (!activity?.text) return t('room.noMessages')
-  if (['working', 'queued', 'starting', 'running'].includes(activity.status) && activity.name) {
-    return t('room.memberWorking', { name: activity.name })
+  if (activity?.text) {
+    const name = activity.author === 'user' ? t('room.you') : activity.name
+    return name ? t('room.activityLine', { name, text: activity.text }) : activity.text
   }
-  const name = activity.author === 'user' ? t('room.you') : activity.name
-  return name ? t('room.activityLine', { name, text: activity.text }) : activity.text
+  if (isChatRunning(chat) && activity?.name) return t('room.memberWorking', { name: activity.name })
+  return t('room.noMessages')
 }
 
 function chatTime(chat) {
@@ -541,6 +596,36 @@ function chatTime(chat) {
   return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
 
+function chatRowTitle(room, chat) {
+  const label = t('room.openChat', { name: teamChatLabel(room, chat) })
+  const time = chatTime(chat)
+  return time ? `${label} · ${time}` : label
+}
+
+function chatMemberMascots(chat) {
+  const members = Array.isArray(chat?.members) ? chat.members : []
+  const captain = members.find(member => member.is_captain)
+  const rest = members.filter(member => member !== captain)
+    .sort((a, b) => (Number(b?.last_seq) || 0) - (Number(a?.last_seq) || 0))
+  const visible = (captain ? [captain, ...rest] : rest).slice(0, 3)
+  const faces = visible.length ? visible : [{ id: chat?.id || 'chat' }]
+  return faces.map(member => {
+    const key = member.id || `${member.provider || ''}:${member.name || ''}`
+    return { key, mascot: roleFace(member.id ? member : { id: key }) }
+  })
+}
+
+function chatSubtitle(_room, chat) {
+  return chatActivityLabel(chat)
+}
+
+function chatDeleteTarget(room, chat) {
+  const name = teamChatLabel(room, chat)
+  const onlyChat = (room?.chats || []).length <= 1
+  if (onlyChat) return { type: 'room', roomId: room.id, name }
+  return { type: 'chat', roomId: room.id, chatId: chat.id, name }
+}
+
 function teamChatLabel(room, chat) {
   if (chat?.is_primary && (chat.title === room?.name || chat.title === t('room.lobby'))) return t('room.lobby')
   return chat?.title
@@ -548,9 +633,157 @@ function teamChatLabel(room, chat) {
 
 const teamDeleteTarget = ref(null)
 const teamDeletePopoverStyle = ref({})
+const teamChatMenu = ref(null)
+const teamChatMenuStyle = ref({})
+const teamChatMenuButton = ref(null)
+const workspaceDraft = ref('')
+const workspaceMovePending = ref(false)
+const workspaceSaving = ref(false)
+const workspaceTarget = ref(null)
+const teamRenameTarget = ref(null)
+const teamRenameDraft = ref('')
+const teamRenameInput = ref(null)
+let teamRenameSettled = false
 
-function openTeamDelete(target, event) {
-  const rect = event?.currentTarget?.getBoundingClientRect?.()
+function chatMenuKey(room, chat) {
+  return `${room?.id || ''}:${chat?.id || ''}`
+}
+
+function isChatMenuOpen(room, chat) {
+  return teamChatMenu.value?.key === chatMenuKey(room, chat)
+}
+
+function isChatRenaming(room, chat) {
+  const target = teamRenameTarget.value
+  return Boolean(target && target.roomId === room?.id && target.chatId === chat?.id)
+}
+
+function dismissChatMenu(restoreFocus = false) {
+  const button = teamChatMenuButton.value
+  teamChatMenu.value = null
+  teamChatMenuButton.value = null
+  if (restoreFocus) void nextTick(() => button?.focus?.())
+}
+
+function toggleChatMenu(room, chat, event) {
+  if (isChatMenuOpen(room, chat)) {
+    dismissChatMenu()
+    return
+  }
+  dismissTeamDelete()
+  const button = event?.currentTarget
+  const rect = button?.getBoundingClientRect?.()
+  teamChatMenuButton.value = button || null
+  if (rect && typeof window !== 'undefined') {
+    const width = 168
+    const gap = 6
+    const left = Math.min(rect.right + gap, Math.max(8, window.innerWidth - width - 8))
+    const top = Math.min(Math.max(8, rect.top), Math.max(8, window.innerHeight - 96))
+    teamChatMenuStyle.value = { top: `${top}px`, left: `${left}px` }
+  }
+  teamChatMenu.value = { room, chat, key: chatMenuKey(room, chat) }
+}
+
+function openWorkspaceDialog(room) {
+  workspaceTarget.value = { roomId: room.id }
+  workspaceDraft.value = room?.workspace_path || ''
+  workspaceMovePending.value = false
+}
+
+function beginWorkspaceEdit() {
+  const current = teamChatMenu.value
+  if (!current) return
+  openWorkspaceDialog(current.room)
+  dismissChatMenu()
+}
+
+async function browseWorkspace() {
+  if (workspaceSaving.value || typeof pickTeamDirectory !== 'function') return
+  const selected = await pickTeamDirectory()
+  if (selected) workspaceDraft.value = String(selected)
+}
+
+function cancelWorkspacePath() {
+  if (workspaceSaving.value) return
+  workspaceTarget.value = null
+  workspaceMovePending.value = false
+}
+
+async function confirmWorkspacePath() {
+  const current = workspaceTarget.value
+  const path = workspaceDraft.value.trim()
+  if (!current || workspaceSaving.value || !path || typeof setTeamWorkspace !== 'function') return
+  workspaceSaving.value = true
+  try {
+    const result = await setTeamWorkspace(current.roomId, path, workspaceMovePending.value ? true : undefined)
+    if (!result) return
+    if (result.needsMove) {
+      workspaceMovePending.value = true
+      return
+    }
+    workspaceTarget.value = null
+    workspaceMovePending.value = false
+  } finally {
+    workspaceSaving.value = false
+  }
+}
+
+function openWorkspaceEditor() {
+  const row = flatTeamChats.value.find(item => isTeamChatSelected(item.room.id, item.chat.id)) || flatTeamChats.value[0]
+  if (!row) return
+  if (unref(sidebarCollapsed)) sidebarCollapsed.value = false
+  nextTick(() => openWorkspaceDialog(row.room))
+}
+
+defineExpose({ openWorkspaceEditor })
+
+function handleChatMenuPointer(event) {
+  const target = event.target
+  if (target instanceof Element && target.closest('.team-chat-menu, .team-chat-menu-popover')) return
+  dismissChatMenu()
+}
+
+function beginTeamRename() {
+  const current = teamChatMenu.value
+  if (!current) return
+  const title = teamChatLabel(current.room, current.chat) || ''
+  teamRenameSettled = false
+  teamRenameDraft.value = title
+  teamRenameTarget.value = { roomId: current.room.id, chatId: current.chat.id, title }
+  dismissChatMenu()
+  void nextTick(() => {
+    const input = Array.isArray(teamRenameInput.value) ? teamRenameInput.value[0] : teamRenameInput.value
+    input?.focus?.()
+    input?.select?.()
+  })
+}
+
+function cancelTeamRename() {
+  teamRenameSettled = true
+  teamRenameTarget.value = null
+}
+
+function commitTeamRename() {
+  if (teamRenameSettled) return
+  const target = teamRenameTarget.value
+  if (!target) return
+  teamRenameSettled = true
+  const title = teamRenameDraft.value.replace(/\s+/g, ' ').trim().slice(0, 80)
+  teamRenameTarget.value = null
+  if (!title || title === target.title) return
+  void renameTeamChat(target.roomId, target.chatId, title)
+}
+
+function chooseTeamDelete() {
+  const current = teamChatMenu.value
+  const anchor = teamChatMenuButton.value
+  dismissChatMenu()
+  if (!current) return
+  openTeamDelete(chatDeleteTarget(current.room, current.chat), anchor)
+}
+
+function openTeamDelete(target, anchor) {
+  const rect = anchor?.getBoundingClientRect?.()
   teamDeleteTarget.value = target
   if (!rect || typeof window === 'undefined') return
   const width = 278
@@ -564,10 +797,15 @@ function dismissTeamDelete() {
 }
 
 function handleTeamDeleteKey(event) {
-  if (event.key === 'Escape') {
+  if (event.key !== 'Escape') return
+  if (teamChatMenu.value) {
     event.preventDefault()
-    dismissTeamDelete()
+    dismissChatMenu(true)
+    return
   }
+  if (!teamDeleteTarget.value) return
+  event.preventDefault()
+  dismissTeamDelete()
 }
 
 function confirmTeamDelete() {
@@ -578,14 +816,18 @@ function confirmTeamDelete() {
   else void deleteTeamChat(target.roomId, target.chatId)
 }
 
-watch(teamDeleteTarget, (target) => {
+watch([teamDeleteTarget, teamChatMenu], ([deleteTarget, menu]) => {
   if (typeof document === 'undefined') return
   document.removeEventListener('keydown', handleTeamDeleteKey)
-  if (target) document.addEventListener('keydown', handleTeamDeleteKey)
+  document.removeEventListener('pointerdown', handleChatMenuPointer, true)
+  if (deleteTarget || menu) document.addEventListener('keydown', handleTeamDeleteKey)
+  if (menu) document.addEventListener('pointerdown', handleChatMenuPointer, true)
 })
 
 onBeforeUnmount(() => {
-  if (typeof document !== 'undefined') document.removeEventListener('keydown', handleTeamDeleteKey)
+  if (typeof document === 'undefined') return
+  document.removeEventListener('keydown', handleTeamDeleteKey)
+  document.removeEventListener('pointerdown', handleChatMenuPointer, true)
 })
 
 const sidebarAgentCount = computed(() => (
@@ -628,6 +870,10 @@ function memberStatus(agent) {
   return agentState(agent).label
 }
 
+function castAgentTitle(agent) {
+  return agent.ready ? `${agent.label} · ${memberStatus(agent)}` : `${agent.label}: ${agentState(agent).label}`
+}
+
 function matchingSessions(agent) {
   const sessions = agentSessions(agent)
   if (!searching.value) return visibleDirectGroupsFor(agent.kind) || []
@@ -653,14 +899,99 @@ const teamRoomList = computed(() => {
   return Array.isArray(value) ? value : []
 })
 
-const filteredTeamRooms = computed(() => teamRoomList.value.flatMap(room => {
-  const chats = Array.isArray(room.chats) ? room.chats : []
-  if (!searching.value) return [{ ...room, chatTotal: chats.length }]
-  const roomHit = queryMatches(room.name)
-  const matchedChats = chats.filter(chat => queryMatches(teamChatLabel(room, chat), chat.title))
-  if (!roomHit && !matchedChats.length) return []
-  return [{ ...room, chats: matchedChats.length ? matchedChats : chats, chatTotal: chats.length }]
-}))
+watch(teamRoomList, (rooms) => {
+  if (!seenChatActivityInitialized) {
+    if (!rooms.length) return
+    const seen = {}
+    for (const room of rooms) {
+      for (const chat of room.chats || []) seen[chat.id] = Number(chat.activity_seq) || 0
+    }
+    seenChatActivity.value = seen
+    seenChatActivityInitialized = true
+    saveRoomChatSeen(seen)
+    return
+  }
+  const next = { ...seenChatActivity.value }
+  let changed = false
+  for (const room of rooms) {
+    for (const chat of room.chats || []) {
+      if (!isTeamChatSelected(room.id, chat.id)) continue
+      const seq = Number(chat.activity_seq) || 0
+      if (next[chat.id] !== seq) {
+        next[chat.id] = seq
+        changed = true
+      }
+    }
+  }
+  if (changed) {
+    seenChatActivity.value = next
+    saveRoomChatSeen(next)
+  }
+}, { immediate: true, deep: true })
+
+function markChatSeen(chat) {
+  const seq = Number(chat?.activity_seq) || 0
+  if (!chat?.id || Number(seenChatActivity.value[chat.id]) === seq) return
+  const next = { ...seenChatActivity.value, [chat.id]: seq }
+  seenChatActivity.value = next
+  saveRoomChatSeen(next)
+}
+
+function openTeamChat(room, chat) {
+  markChatSeen(chat)
+  selectTeamChat(room.id, chat.id)
+}
+
+function chatActivityTime(chat) {
+  const value = Date.parse(chat?.activity?.created_at || chat?.updated_at || chat?.created_at || '')
+  return Number.isFinite(value) ? value : 0
+}
+
+const flatTeamChats = computed(() => {
+  const rows = teamRoomList.value.flatMap(room => (
+    [...(Array.isArray(room.chats) ? room.chats : [])]
+      .sort((a, b) => chatActivityTime(b) - chatActivityTime(a))
+      .map(chat => ({ room, chat }))
+  ))
+  const visible = searching.value
+    ? rows.filter(row => queryMatches(teamChatLabel(row.room, row.chat), row.chat.title, row.room.name, row.room.workspace_label))
+    : rows
+  return visible.sort((a, b) => chatActivityTime(b.chat) - chatActivityTime(a.chat))
+})
+
+const recentRailChats = computed(() => flatTeamChats.value.slice(0, 8))
+const railHover = ref(null)
+let railHoverTimer = 0
+
+function hoverRailChat(event, row) {
+  const button = event.currentTarget
+  if (!(button instanceof HTMLElement)) return
+  const rect = button.getBoundingClientRect()
+  const previous = railHover.value
+  const traveling = Boolean(previous && previous.id !== row.chat.id)
+  railHover.value = {
+    id: row.chat.id,
+    label: teamChatLabel(row.room, row.chat),
+    offset: button.offsetTop,
+    traveling,
+    labelTop: rect.top + rect.height / 2,
+    labelLeft: rect.right + 10,
+  }
+  window.clearTimeout(railHoverTimer)
+  if (!traveling) return
+  railHoverTimer = window.setTimeout(() => {
+    if (railHover.value?.id === row.chat.id) {
+      railHover.value = { ...railHover.value, traveling: false }
+    }
+  }, 140)
+}
+
+function leaveRailChat(event) {
+  const next = event.relatedTarget
+  if (next instanceof Element && next.closest('.sidebar-rail-chat')) return
+  window.clearTimeout(railHoverTimer)
+  railHover.value = null
+}
 
 function focusSidebarSearch() {
   if (unref(sidebarCollapsed)) sidebarCollapsed.value = false
@@ -668,6 +999,10 @@ function focusSidebarSearch() {
 }
 
 function openSidebarSettings() {
+  openSystemSettings?.('agents')
+}
+
+function openAgentManager() {
   openSystemSettings?.('agents')
 }
 
@@ -684,11 +1019,13 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleSidebarSearchKey)
+  window.clearTimeout(railHoverTimer)
 })
 
 const railAgents = computed(() => (
   unref(sidebarAgentGroups).flatMap(group => group.agents)
 ))
+const castAgents = computed(() => railAgents.value.filter(agent => agent.ready === true))
 
 function isRailAgentActive(agent) {
   return directGroupsFor(agent.kind).some(group => isSelectedConversation(group))

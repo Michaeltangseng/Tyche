@@ -1,5 +1,6 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import RoomWorkflow from '../../components/RoomWorkflow.vue'
 import RoomWorkspace from '../../components/RoomWorkspace.vue'
 import { setLocale } from '../../i18n.js'
 
@@ -76,6 +77,7 @@ function api(snapshot = data()) {
 const cleanup = []
 afterEach(() => {
   cleanup.splice(0).forEach(dispose => dispose())
+  delete window.tycheDesktop
   vi.useRealTimers()
 })
 
@@ -85,7 +87,6 @@ function mountRoom(bridge, options = {}) {
     attachTo: document.body,
     props: {
       api: bridge,
-      pickDirectory: vi.fn(async () => '/tmp/demo'),
       agents: [
         { kind: 'codex', label: 'Codex' },
         { kind: 'claude', label: 'Claude Code' },
@@ -129,6 +130,17 @@ describe('team room workspace', () => {
       id: 'assignment-1', chat_id: 'chat-1', target_role_ids: ['worker'],
       status: 'settled', created_at: '2026-11-15T10:00:30Z',
     }]
+    snapshot.artifacts = [{
+      id: 'artifact-1',
+      room_id: 'room-1',
+      task_id: 'task-1',
+      run_id: 'run-1',
+      path: 'docs/room.md',
+      kind: 'document',
+      version: '1',
+      status: 'ready',
+      created_at: '2026-11-15T10:02:00Z',
+    }]
     const bridge = api(snapshot)
     const wrapper = mountRoom(bridge)
     await flushPromises()
@@ -141,11 +153,144 @@ describe('team room workspace', () => {
     expect(wrapper.get('.room-report-card').text()).toContain('Docs are ready')
     expect(wrapper.get('.room-report-card').text()).toContain('#1 Write docs')
 
+    expect(wrapper.find('.room-work-toggle').exists()).toBe(false)
+    expect(wrapper.find('[data-work-tab="artifacts"]').exists()).toBe(false)
+    expect(wrapper.find('[data-work-tab="tasks"]').exists()).toBe(false)
     expect(wrapper.get('.room-ledger').text()).toContain('Write docs')
-    expect(wrapper.get('.room-ledger').text()).toContain('Captain reviews')
-    expect(wrapper.get('.room-ledger').text()).toContain('Assignment settled')
-    expect(wrapper.get('.room-ledger').text()).toContain('Captain assignments')
-    expect(wrapper.get('.room-ledger').text()).toContain('Writer')
+    expect(wrapper.get('.room-flow-node').text()).toContain('Writer')
+    expect(wrapper.find('.room-flow-node[data-live="true"]').exists()).toBe(false)
+
+    await wrapper.get('.room-usage-toggle').trigger('click')
+    expect(wrapper.get('.room-work-tab.active').text()).toContain('Usage')
+  })
+
+  it('jumps the chat to the turn behind a workflow face', async () => {
+    const snapshot = data()
+    snapshot.tasks = [{
+      id: 'task-1', chat_id: 'chat-1', number: 1, title: 'Tell a joke', status: 'done',
+      assignee_role_id: 'worker', created_by_role_id: 'captain', created_at: '2026-11-15T10:00:30Z',
+    }]
+    snapshot.messages = [
+      {
+        id: 'reply-1', chat_id: 'chat-1', sequence: 2, author_type: 'agent', author_id: 'worker',
+        author_name: 'Writer', content: 'A short joke', status: 'done', mentions: [],
+        created_at: '2026-11-15T10:01:00Z',
+      },
+    ]
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+
+    const article = wrapper.get('#room-message-reply-1')
+    article.element.scrollIntoView = vi.fn()
+    const face = wrapper.findAll('.room-flow-node').find(node => node.text().includes('Writer'))
+    await face.trigger('click')
+
+    expect(article.element.scrollIntoView).toHaveBeenCalled()
+    expect(article.classes()).toContain('room-message-focus')
+  })
+
+  it('lets the workbench grow wider and wraps a long trace onto another row', async () => {
+    localStorage.removeItem('tyche.roomLedgerWidth')
+    const roles = [
+      { id: 'captain', display_name: 'Captain' },
+      { id: 'a', display_name: 'A' },
+      { id: 'b', display_name: 'B' },
+      { id: 'c', display_name: 'C' },
+      { id: 'd', display_name: 'D' },
+    ]
+    const nodes = [
+      { id: 'origin:captain', roleId: 'captain', messageId: 'm0', title: '', live: false },
+      ...['a', 'b', 'c', 'd'].map(id => ({ id, roleId: id, messageId: id, title: id, live: false })),
+    ]
+    const edges = ['a', 'b', 'c', 'd'].map(id => ({ id: `edge-${id}`, from: 'origin:captain', to: id, label: id }))
+    const flow = mount(RoomWorkflow, { props: { workflow: { nodes, edges, layers: [] }, roles } })
+    cleanup.push(() => flow.unmount())
+    const rows = flow.findAll('.room-flow-kids')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].findAll('.room-flow-node')).toHaveLength(3)
+    expect(rows[1].attributes('data-follow')).toBe('true')
+    expect(rows[1].findAll('.room-flow-node')).toHaveLength(1)
+
+    const snapshot = data()
+    snapshot.tasks = [{
+      id: 'task-1', chat_id: 'chat-1', number: 1, title: 'Write docs', status: 'done',
+      assignee_role_id: 'worker', created_at: '2026-11-15T10:01:00Z',
+    }]
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+    const handle = wrapper.get('.room-ledger-resize')
+    expect(handle.attributes('aria-label')).toBe('Resize workbench')
+    const point = (type, clientX, target = window) => {
+      target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX }))
+    }
+    point('pointerdown', 500, handle.element)
+    point('pointermove', 400)
+    point('pointerup', 400)
+    await flushPromises()
+    expect(wrapper.get('.room-ledger').attributes('style')).toContain('440px')
+    localStorage.removeItem('tyche.roomLedgerWidth')
+  })
+
+  it('defaults the workbench to trace when only assignments exist', async () => {
+    const snapshot = data()
+    snapshot.assignments = [{
+      id: 'assignment-1',
+      chat_id: 'chat-1',
+      target_role_ids: ['worker'],
+      status: 'settled',
+      created_at: '2026-11-15T10:00:30Z',
+    }]
+    snapshot.reviews = [{
+      id: 'review-1',
+      chat_id: 'chat-1',
+      kind: 'assignment_settled',
+      status: 'completed',
+      created_at: '2026-11-15T10:01:00Z',
+    }]
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+
+    const ledger = wrapper.get('.room-ledger')
+    expect(ledger.get('.room-work-tab.active').text()).toContain('Trace')
+    expect(ledger.text()).toContain('Writer')
+    expect(ledger.text()).toContain('Captain')
+    expect(ledger.find('[data-work-tab="tasks"]').exists()).toBe(false)
+  })
+
+  it('shows per-role usage in the workbench usage tab', async () => {
+    const snapshot = data()
+    snapshot.tasks = [{
+      id: 'task-1',
+      chat_id: 'chat-1',
+      number: 1,
+      title: 'Usage task',
+      status: 'in_progress',
+      assignee_role_id: 'worker',
+      created_at: '2026-11-15T10:00:00Z',
+    }]
+    snapshot.messages = [{
+      id: 'reply-1',
+      chat_id: 'chat-1',
+      sequence: 2,
+      author_type: 'agent',
+      author_id: 'worker',
+      author_name: 'Writer',
+      content: 'Done',
+      status: 'done',
+      created_at: '2026-11-15T10:01:00Z',
+      data: {
+        usage: { inputTokens: 1200, outputTokens: 340, cachedInputTokens: 8100, context: { percent: 42 } },
+      },
+    }]
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+
+    await wrapper.get('[data-work-tab="usage"]').trigger('click')
+    const ledger = wrapper.get('.room-ledger')
+    expect(ledger.text()).toContain('Total')
+    expect(ledger.text()).toContain('Writer')
+    expect(ledger.text()).toContain('in 1.2k · out 340 · cache 8.1k')
+    expect(ledger.text()).toContain('42%')
   })
 
   it('creates a room with one captain and no extra members', async () => {
@@ -153,25 +298,44 @@ describe('team room workspace', () => {
     bridge.listRooms.mockResolvedValueOnce([])
     const wrapper = mountRoom(bridge)
     await flushPromises()
-    expect(wrapper.get('.room-landing').text()).toContain('New project')
+    expect(wrapper.get('.room-landing').text()).toContain('New chat')
+    expect(wrapper.find('.room-create').exists()).toBe(false)
 
     await wrapper.get('[data-testid="room-create-open"]').trigger('click')
-    await wrapper.get('.room-create input').setValue('Alpha')
-    await wrapper.get('.room-directory button').trigger('click')
-    await flushPromises()
-    expect(wrapper.get('.room-create-legend').text()).toContain('Captain')
-    const providers = wrapper.findAll('.room-provider-option input')
-    expect(providers.every(input => input.element.type === 'radio')).toBe(true)
-    await providers[1].setValue(true)
-    await wrapper.get('.room-create form, form.room-create').trigger('submit')
     await flushPromises()
 
     expect(bridge.bootstrap).toHaveBeenCalledWith({
-      name: 'Alpha',
-      workspace: '/tmp/demo',
+      name: 'New chat',
       title: 'New chat',
-      providers: ['claude'],
+      providers: ['codex'],
       roles: [
+        { displayName: 'Codex', provider: 'codex', prompt: '', isCaptain: true },
+      ],
+    })
+  })
+
+  it('starts a chat with every preferred member and the chosen Captain', async () => {
+    window.tycheDesktop = {
+      workPreferences: {
+        get: async () => ({
+          chatStartMode: 'multi',
+          defaultCaptainKind: 'claude',
+          defaultMemberKinds: ['codex', 'claude'],
+        }),
+      },
+    }
+    const bridge = api()
+    bridge.listRooms.mockResolvedValueOnce([])
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    await wrapper.get('[data-testid="room-create-open"]').trigger('click')
+    await flushPromises()
+    expect(bridge.bootstrap).toHaveBeenCalledWith({
+      name: 'New chat',
+      title: 'New chat',
+      providers: ['codex', 'claude'],
+      roles: [
+        { displayName: 'Codex', provider: 'codex', prompt: '', isCaptain: false },
         { displayName: 'Claude Code', provider: 'claude', prompt: '', isCaptain: true },
       ],
     })
@@ -213,6 +377,13 @@ describe('team room workspace', () => {
     }))
   })
 
+  it('keeps directory setup out of the chat header', async () => {
+    const wrapper = mountRoom(api())
+    await flushPromises()
+    expect(wrapper.find('.room-workspace-switch').exists()).toBe(false)
+    expect(wrapper.find('.room-workspace-dialog').exists()).toBe(false)
+  })
+
   it('folds a mention handoff into the same author bubble', async () => {
     const snapshot = data()
     snapshot.messages = [
@@ -238,7 +409,7 @@ describe('team room workspace', () => {
     expect(rows).toHaveLength(2)
     expect(rows[0].text()).toContain('A joke')
     expect(rows[0].text()).toContain('Please score it')
-    expect(rows[0].text()).toContain('@Writer')
+    expect(rows[0].text()).toContain('Handoff to Writer')
     expect(rows[1].text()).toContain('Seven')
     expect(rows[1].text()).not.toContain('Please score it')
   })
@@ -297,10 +468,12 @@ describe('team room workspace', () => {
     await flushPromises()
     expect(wrapper.get('.room-turn-usage').text()).toBe('in 1.2k · out 340 · cache 8.1k')
     expect(wrapper.find('.room-usage-chip').exists()).toBe(false)
-    const rows = wrapper.emitted('usage-change').at(-1)[0]
-    expect(rows.find(row => row.id === 'worker')).toMatchObject({ contextPercent: 42, status: 'working' })
     await wrapper.get('.room-usage-toggle').trigger('click')
-    expect(wrapper.emitted('toggle-usage')).toHaveLength(1)
+    const ledger = wrapper.get('.room-ledger')
+    expect(ledger.get('.room-work-tab.active').text()).toContain('Usage')
+    expect(ledger.text()).toContain('Writer')
+    expect(ledger.text()).toContain('in 1.2k · out 340 · cache 8.1k')
+    expect(ledger.text()).toContain('42%')
   })
 
   it('shows stored thinking and the settled tool trace without loading runtime events', async () => {
@@ -317,9 +490,9 @@ describe('team room workspace', () => {
     const wrapper = mountRoom(bridge)
     await flushPromises()
     const body = wrapper.get('.room-message-body')
-    expect(body.get('.room-reasoning').text()).toContain('Checking the table')
-    expect(body.html().indexOf('room-reasoning')).toBeLessThan(body.html().indexOf('markdown-body'))
-    const trace = wrapper.get('.room-run-trace')
+    const trace = body.get('.room-run-trace')
+    expect(trace.text()).toContain('Checking the table')
+    expect(body.html().indexOf('markdown-body')).toBeLessThan(body.html().indexOf('room-run-trace'))
     expect(trace.text()).toContain('1 steps')
     trace.element.open = true
     await trace.trigger('toggle')
@@ -367,7 +540,7 @@ describe('team room workspace', () => {
     expect(trace.text()).toContain('1 steps')
   })
 
-  it('renders a reply as markdown with thinking above the answer', async () => {
+  it('renders a reply as markdown and keeps live reasoning inside the run block', async () => {
     const snapshot = data()
     snapshot.messages = [{
       id: 'reply-1', chat_id: 'chat-1', sequence: 2, author_type: 'agent', author_id: 'worker',
@@ -385,7 +558,7 @@ describe('team room workspace', () => {
     const body = wrapper.get('.room-message-body')
     expect(body.get('.markdown-body strong').text()).toBe('Done')
     expect(body.get('table').text()).toContain('A')
-    expect(body.html().indexOf('room-reasoning')).toBeLessThan(body.html().indexOf('markdown-body'))
+    expect(body.get('.room-run-trace').text()).toContain('Checking the table')
   })
 
   it('accepts settled tasks and answers open attentions', async () => {
@@ -435,8 +608,12 @@ describe('team room workspace', () => {
     await flushPromises()
     expect(wrapper.get('.room-role-engine-field select').findAll('option').map(node => node.element.value))
       .toEqual(['claude', 'codex'])
-    expect(wrapper.findAll('.room-role-provider-choice').map(node => node.attributes('data-portrait')))
-      .toEqual(['claude', 'codex', 'pi', 'gemini'])
+    const portraits = wrapper.findAll('.room-role-provider-choice').map(node => node.attributes('data-portrait'))
+    expect(portraits).toHaveLength(4)
+    expect(portraits.every(id => /^\d{2}$/.test(id))).toBe(true)
+    expect(wrapper.find('.room-role-provider-choice.active').attributes('data-portrait')).toMatch(/^\d{2}$/)
+    expect(wrapper.find('.room-role-v2-avatar .room-mascot-art').exists()).toBe(true)
+    expect(wrapper.find('.room-portrait').exists()).toBe(false)
   })
 
   it('opens the role dialog from a roster card', async () => {
@@ -460,10 +637,41 @@ describe('team room workspace', () => {
     const card = wrapper.get('.room-roster-card')
     expect(card.text()).toContain('Writer')
     expect(card.text()).toContain('Write the draft')
+    expect(card.attributes('data-intro')).toBeUndefined()
     await card.trigger('click')
     await flushPromises()
     expect(wrapper.get('.room-role-modal').text()).toContain('Writer')
     expect(wrapper.get('.room-role-prompt').element.value).toBe('write')
+  })
+
+  it('raises a newly arrived roster from the center before it settles', async () => {
+    const snapshot = data()
+    const bridge = api(snapshot)
+    const wrapper = mountRoom(bridge)
+    await flushPromises()
+    expect(wrapper.find('.room-roster-card').exists()).toBe(false)
+
+    snapshot.roles[1].responsibilities = 'Write the draft'
+    snapshot.messages = [{
+      id: 'roster-live',
+      chat_id: 'chat-1',
+      sequence: 2,
+      author_type: 'agent',
+      author_id: 'captain',
+      author_name: 'Captain',
+      content: 'Added Writer.',
+      status: 'done',
+      data: { roleIds: ['worker'] },
+      created_at: '2026-11-15T10:05:00Z',
+    }]
+    bridge.emitChanged()
+    await new Promise(resolve => setTimeout(resolve, 160))
+    await flushPromises()
+
+    const card = document.body.querySelector('.room-roster-card')
+    expect(card?.textContent).toContain('Writer')
+    expect(card?.dataset.intro).toBe('center')
+    wrapper.unmount()
   })
 
   it('updates role prompts, creates roles, and deletes unused roles', async () => {
@@ -495,6 +703,7 @@ describe('team room workspace', () => {
       provider: 'codex',
       prompt: 'Review the work.',
     }))
+    expect(() => structuredClone(bridge.createRole.mock.calls.at(-1)[0])).not.toThrow()
 
     await wrapper.findAll('.room-agent-chip')[1].trigger('click')
     await flushPromises()
@@ -569,7 +778,13 @@ describe('team room workspace', () => {
       prompt: 'watch',
       prompt_revision: 1,
     })
-    const wrapper = mountRoom(api(snapshot))
+    const wrapper = mountRoom(api(snapshot), {
+      agents: [
+        { kind: 'codex', label: 'Codex' },
+        { kind: 'claude', label: 'Claude Code' },
+        { kind: 'hermes', label: 'Hermes' },
+      ],
+    })
     await flushPromises()
     const chip = wrapper.findAll('.room-agent-chip').find(node => node.text().includes('Hermes'))
     const writer = wrapper.findAll('.room-agent-chip').find(node => node.text().includes('Writer'))
@@ -577,6 +792,37 @@ describe('team room workspace', () => {
     expect(chip.text()).toContain('🔇')
     expect(chip.attributes('data-quiet')).toBe('true')
     expect(writer.attributes('title') || '').not.toContain('Cannot speak')
+  })
+
+  it('marks a role whose Agent is not available on this machine', async () => {
+    const snapshot = data()
+    snapshot.room.launch_providers = ['claude', 'codex', 'kimi']
+    snapshot.roles.push({
+      id: 'kimi',
+      chat_id: 'chat-1',
+      display_name: '笑匠丙',
+      provider: 'kimi',
+      is_captain: false,
+      native_permission: 'default',
+      prompt: 'close',
+      prompt_revision: 1,
+    })
+    const wrapper = mountRoom(api(snapshot))
+    await flushPromises()
+
+    const chip = wrapper.findAll('.room-agent-chip').find(node => node.text().includes('笑匠丙'))
+    expect(chip.attributes('data-quiet')).toBe('true')
+    expect(chip.text()).toContain('⚠')
+    expect(chip.attributes('title')).toContain('not available on this machine')
+    expect(wrapper.get('.room-cast-warning').text()).toContain('Agents unavailable: 1')
+
+    await chip.trigger('click')
+    await flushPromises()
+    const option = wrapper.findAll('.room-role-engine-field option')
+      .find(node => node.attributes('value') === 'kimi')
+    expect(option.attributes('disabled')).toBeDefined()
+    expect(wrapper.get('.room-role-v2-footer .primary-button').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('not available on this machine')
   })
 
   it('opens the room and chat requested by the sidebar', async () => {

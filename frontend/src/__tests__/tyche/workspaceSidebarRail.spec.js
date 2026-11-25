@@ -1,6 +1,6 @@
 import { nextTick, ref } from 'vue'
-import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceSidebar from '../../components/WorkspaceSidebar.vue'
 
 function controller() {
@@ -14,6 +14,9 @@ function controller() {
     deleteSidebarConversation: vi.fn(),
     deleteTeamChat: vi.fn(),
     deleteTeamRoom: vi.fn(),
+    renameTeamChat: vi.fn(),
+    setTeamWorkspace: vi.fn(async () => ({ roomId: 'team-1', moved: false })),
+    pickTeamDirectory: vi.fn(async () => '/tmp/picked'),
     directGroupsFor: () => [],
     discoveringAgents: ref(false),
     dismissSidebarDeleteConfirmation: vi.fn(),
@@ -66,6 +69,8 @@ function controller() {
 }
 
 describe('workspace sidebar rail', () => {
+  beforeEach(() => localStorage.clear())
+
   it('offers team-room creation in the expanded sidebar', async () => {
     const fixture = controller()
     fixture.roomWorkspaceAvailable = ref(true)
@@ -87,6 +92,105 @@ describe('workspace sidebar rail', () => {
     fixture.teamRooms = ref([{
       id: 'team-1',
       name: 'Team Alpha',
+      workspace_path: '/tmp/tyche-demo',
+      primary_chat_id: 'chat-1',
+      chats: [
+        {
+          id: 'chat-2',
+          title: 'Research',
+          is_primary: false,
+          activity_seq: 2,
+          activity: { name: 'Claude', author: 'agent', status: 'done', text: 'The date is December 25.', created_at: '2026-11-20T09:00:00Z' },
+        },
+        {
+          id: 'chat-1',
+          title: 'Team chat',
+          is_primary: true,
+          activity_seq: 4,
+          members: [
+            { name: 'Claude', provider: 'claude', last_seq: 1 },
+            { name: 'Codex', provider: 'codex', last_seq: 4 },
+            { name: 'Pi', provider: 'pi', last_seq: 3 },
+            { name: 'Gemini', provider: 'gemini', last_seq: 2 },
+          ],
+          activity: { name: 'Pi', author: 'agent', status: 'done', text: 'snake.html', created_at: '2026-11-20T10:00:00Z' },
+        },
+      ],
+    }])
+    fixture.isTeamRoomExpanded = () => true
+    fixture.isTeamChatSelected = (roomId, chatId) => chatId === 'chat-1'
+    const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })
+    const rows = wrapper.findAll('.team-chat-row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].text()).toContain('Team chat')
+    expect(rows[0].text()).toContain('room.activityLine')
+    expect(rows[1].text()).toContain('Research')
+    expect(rows[1].text()).toContain('room.activityLine')
+    expect(wrapper.text()).not.toContain('room.scratchLabel')
+    expect(wrapper.find('.team-room-chats').exists()).toBe(false)
+    expect(wrapper.find('.team-face-stack-chat').exists()).toBe(false)
+    const mascots = wrapper.findAll('.team-chat-row .team-member-mascot .room-mascot-art svg')
+    expect(mascots).toHaveLength(4)
+    expect(mascots[0].element.getAttribute('viewBox')).toBe('0 0 64 64')
+    expect(wrapper.get('.room-mascot-art').html()).not.toContain('<style')
+
+    await rows[1].get('.project-room-open').trigger('click')
+    expect(fixture.selectTeamChat).toHaveBeenCalledWith('team-1', 'chat-2')
+
+    await wrapper.get('.team-room-add').trigger('click')
+    expect(fixture.openTeamRoomCreate).toHaveBeenCalled()
+
+    const menuButton = rows[1].get('.team-chat-menu')
+    menuButton.element.getBoundingClientRect = () => ({ top: 40, right: 204, bottom: 64, left: 180, width: 24, height: 24 })
+    await menuButton.trigger('click')
+    await nextTick()
+    const menu = document.body.querySelector('.team-chat-menu-popover')
+    expect(menu?.textContent).toContain('room.renameChatAction')
+    expect(menu?.textContent).toContain('room.deleteConfirm')
+    expect(menu?.textContent).toContain('room.switchWorkspace')
+    expect(menu.querySelector('.team-chat-workspace')).toBeNull()
+    expect(menu?.style.left).toBe('210px')
+    expect(menu?.style.top).toBe('40px')
+    menu.querySelector('.team-chat-menu-delete')?.click()
+    await nextTick()
+    document.body.querySelector('.sidebar-delete-popover .danger-button')?.click()
+    await nextTick()
+    expect(fixture.deleteTeamChat).toHaveBeenCalledWith('team-1', 'chat-2')
+
+    await menuButton.trigger('click')
+    await nextTick()
+    document.body.querySelector('.team-chat-menu-workspace')?.click()
+    await nextTick()
+    const directoryDialog = document.body.querySelector('.team-workspace-dialog')
+    const pathInput = directoryDialog.querySelector('.team-chat-workspace input')
+    expect(pathInput?.value).toBe('/tmp/tyche-demo')
+    document.body.querySelector('.team-chat-workspace-browse')?.click()
+    await flushPromises()
+    expect(pathInput.value).toBe('/tmp/picked')
+    pathInput.value = '/tmp/project'
+    pathInput.dispatchEvent(new Event('input', { bubbles: true }))
+    directoryDialog.querySelector('.team-chat-workspace').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    await nextTick()
+    expect(fixture.setTeamWorkspace).toHaveBeenCalledWith('team-1', '/tmp/project', undefined)
+
+    await rows[0].get('.team-chat-menu').trigger('click')
+    await nextTick()
+    document.body.querySelector('.team-chat-menu-rename')?.click()
+    await nextTick()
+    const input = wrapper.get('.team-chat-rename input')
+    await input.setValue('Relay jokes')
+    await input.trigger('keydown', { key: 'Enter' })
+    expect(fixture.renameTeamChat).toHaveBeenCalledWith('team-1', 'chat-1', 'Relay jokes')
+    wrapper.unmount()
+  })
+
+  it('shows member faces on unselected chats and only uses the chat icon for empty ones', async () => {
+    const fixture = controller()
+    fixture.roomWorkspaceAvailable = ref(true)
+    fixture.sidebarCollapsed.value = false
+    fixture.teamRooms = ref([{
+      id: 'team-1',
+      name: 'Team Alpha',
       primary_chat_id: 'chat-1',
       chats: [
         {
@@ -96,53 +200,18 @@ describe('workspace sidebar rail', () => {
           members: [
             { name: 'Claude', provider: 'claude', last_seq: 1 },
             { name: 'Codex', provider: 'codex', last_seq: 4 },
-            { name: 'Pi', provider: 'pi', last_seq: 3 },
-            { name: 'Gemini', provider: 'gemini', last_seq: 2 },
           ],
-          activity: { name: 'Pi', author: 'agent', status: 'done', text: 'snake.html', created_at: '2026-11-20T10:00:00Z' },
         },
-        { id: 'chat-2', title: 'Research', is_primary: false },
+        { id: 'chat-2', title: 'Empty', is_primary: false, members: [] },
       ],
     }])
     fixture.isTeamRoomExpanded = () => true
     const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })
 
-    expect(wrapper.get('.team-room-nav-section').text()).toContain('Team Alpha')
-    const chats = wrapper.findAll('.team-room-chats .project-room-group')
-    expect(chats).toHaveLength(2)
-    expect(chats[0].text()).toContain('Team chat')
-    expect(chats[0].text()).toContain('room.activityLine')
-    expect(chats[0].findAll('.team-face-stack img')).toHaveLength(3)
-    expect(chats[0].get('.team-face-stack img').attributes('src')).toContain('codex')
-    expect(chats[0].get('.team-face-more').text()).toBe('+1')
-    expect(chats[0].find('.team-chat-dot').exists()).toBe(true)
-    expect(chats[1].find('.team-chat-dot').exists()).toBe(false)
-    expect(chats[1].get('small').attributes('data-empty')).toBe('true')
-    expect(chats[1].text()).toContain('room.noMessages')
-    expect(wrapper.get('.team-room-new-chat').text()).toContain('room.newChatAction')
-    expect(wrapper.text()).toContain('room.roomFaces')
-
-    await chats[1].trigger('click')
-    expect(fixture.selectTeamChat).toHaveBeenCalledWith('team-1', 'chat-2')
-
-    await wrapper.get('.team-room-row .project-room-open').trigger('click')
-    expect(fixture.handleTeamRoomClick).toHaveBeenCalledWith(expect.objectContaining({ id: 'team-1' }))
-
-    await wrapper.get('.team-room-new-chat').trigger('click')
-    expect(fixture.addTeamChat).toHaveBeenCalledWith('team-1')
-
-    await wrapper.get('.team-room-delete').trigger('click')
-    await nextTick()
-    expect(document.body.querySelector('.team-delete-backdrop')).not.toBeNull()
-    document.body.querySelector('.sidebar-delete-popover .danger-button')?.click()
-    await nextTick()
-    expect(fixture.deleteTeamRoom).toHaveBeenCalledWith('team-1')
-
-    await wrapper.findAll('.team-room-delete-chat').at(-1).trigger('click')
-    await nextTick()
-    document.body.querySelector('.sidebar-delete-popover .danger-button')?.click()
-    await nextTick()
-    expect(fixture.deleteTeamChat).toHaveBeenCalledWith('team-1', 'chat-2')
+    const chats = wrapper.findAll('.team-chat-row')
+    expect(chats[0].find('.room-mascot-art svg').exists()).toBe(true)
+    expect(chats[1].find('.room-mascot-art svg').exists()).toBe(true)
+    expect(chats[0].find('.team-face-stack-chat').exists()).toBe(false)
     wrapper.unmount()
   })
 
@@ -161,7 +230,7 @@ describe('workspace sidebar rail', () => {
     expect(wrapper.get('.sidebar-agent-main').attributes('title')).toContain('nav.agentIdle')
     await wrapper.get('.sidebar-search input').setValue('beta')
     expect(wrapper.findAll('.team-room-entry')).toHaveLength(1)
-    expect(wrapper.text()).toContain('Beta')
+    expect(wrapper.text()).toContain('Notes')
     expect(wrapper.text()).not.toContain('Codex')
 
     await wrapper.get('.sidebar-footer .icon-button').trigger('click')
@@ -169,20 +238,56 @@ describe('workspace sidebar rail', () => {
     wrapper.unmount()
   })
 
-  it('keeps agent entries in the collapsed rail', async () => {
+  it('hides local agents in the collapsed rail', async () => {
     const fixture = controller()
     const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })
 
     expect(wrapper.find('.conversation-nav').exists()).toBe(false)
     expect(wrapper.find('.sidebar-rail').exists()).toBe(true)
+    expect(wrapper.find('.sidebar-rail [aria-label="Codex"]').exists()).toBe(false)
+    expect(wrapper.find('.sidebar-footer .sidebar-user-mark').exists()).toBe(true)
+    expect(wrapper.find('.sidebar-footer .icon-button').exists()).toBe(true)
+    wrapper.unmount()
+  })
 
-    const [agentButton] = wrapper.findAll('.sidebar-rail-item')
-    expect(agentButton.attributes('aria-label')).toBe('Codex')
+  it('stacks the latest chats in the collapsed rail', async () => {
+    const fixture = controller()
+    fixture.roomWorkspaceAvailable = ref(true)
+    const chats = Array.from({ length: 9 }, (_, index) => ({
+      id: `chat-${index + 1}`,
+      title: `Chat ${index + 1}`,
+      updated_at: `2026-11-${String(index + 1).padStart(2, '0')}T10:00:00Z`,
+      members: index === 8
+        ? [
+          { id: 'a', name: 'A', is_captain: true, last_seq: 1 },
+          { id: 'b', name: 'B', last_seq: 3 },
+          { id: 'c', name: 'C', last_seq: 2 },
+          { id: 'd', name: 'D', last_seq: 0 },
+        ]
+        : [{ id: `solo-${index}`, name: 'Solo' }],
+    }))
+    fixture.teamRooms = ref([{ id: 'team-1', name: 'Team', primary_chat_id: 'chat-1', chats }])
+    const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })
 
-    await agentButton.trigger('click')
-    expect(fixture.handleSidebarAgentMain).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'codex' }),
-    )
+    expect(wrapper.find('.sidebar-rail [aria-label="Codex"]').exists()).toBe(false)
+    const railChats = wrapper.findAll('.sidebar-rail-chat')
+    expect(railChats).toHaveLength(8)
+    expect(railChats[0].attributes('aria-label')).toBe('Chat 9')
+    expect(railChats[0].get('.rail-chat-stack').attributes('data-count')).toBe('3')
+    expect(railChats[0].findAll('.rail-chat-face')).toHaveLength(3)
+    expect(railChats.at(-1).attributes('aria-label')).toBe('Chat 2')
+
+    await railChats[0].trigger('pointerenter')
+    expect(wrapper.get('.rail-chat-label').text()).toBe('Chat 9')
+    expect(wrapper.get('.rail-chat-stick').attributes('data-traveling')).toBe('false')
+
+    await railChats[1].trigger('pointerenter')
+    expect(wrapper.get('.rail-chat-label').text()).toBe('Chat 8')
+    expect(wrapper.get('.rail-chat-stick').attributes('data-traveling')).toBe('true')
+
+    await railChats[0].trigger('click')
+    expect(fixture.selectTeamChat).toHaveBeenCalledWith('team-1', 'chat-9')
+    wrapper.unmount()
   })
 
   it('renders agents before team rooms when the sidebar expands', async () => {
@@ -201,5 +306,38 @@ describe('workspace sidebar rail', () => {
       agentSection.element.compareDocumentPosition(teamSection.element)
         & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
+  })
+
+  it('renders only usable Agents with their logos in the collapsed cast', async () => {
+    const fixture = controller()
+    fixture.sidebarCollapsed.value = false
+    fixture.sidebarAgentsCollapsed.value = true
+    const localGroup = fixture.sidebarAgentGroups.value[0]
+    fixture.sidebarAgentGroups.value = [{
+      ...localGroup,
+      agents: [
+        ...localGroup.agents,
+        { kind: 'hermes', label: 'Hermes', logo: './hermes.svg', ready: false },
+      ],
+    }]
+    fixture.openSystemSettings = vi.fn()
+    const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })
+
+    const cast = wrapper.findAll('.agent-cast-item')
+    expect(cast).toHaveLength(1)
+    expect(cast[0].attributes('title')).toContain('Codex')
+    expect(cast[0].find('.agent-cast-face img').attributes('src')).toBe('./codex.svg')
+    expect(cast[0].find('.agent-cast-status').attributes('data-tone')).toBe('ready')
+    expect(wrapper.find('.agent-cast-item[title*="Hermes"]').exists()).toBe(false)
+    expect(wrapper.get('.agent-nav-section .nav-heading-count').text()).toBe('1')
+    expect(wrapper.find('.sidebar-agent-main').exists()).toBe(false)
+
+    await cast[0].trigger('click')
+    expect(fixture.handleSidebarAgentMain).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'codex' }),
+    )
+    await wrapper.get('.agent-cast-add').trigger('click')
+    expect(fixture.openSystemSettings).toHaveBeenCalledWith('agents')
+    wrapper.unmount()
   })
 })

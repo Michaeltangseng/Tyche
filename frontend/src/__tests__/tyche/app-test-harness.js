@@ -230,11 +230,23 @@ export function createBridge() {
   }
 }
 
-export async function mountApp(configure = () => {}) {
+export async function expandAgentSection(wrapper) {
+  const heading = wrapper.find('.agent-nav-section .nav-heading')
+  if (!heading.exists() || heading.attributes('aria-expanded') !== 'false') return
+  await heading.trigger('click')
+  await flushPromises()
+}
+
+export async function mountApp(configure = () => {}, options = {}) {
   const fixture = createBridge()
   configure(fixture)
   window.tycheDesktop = fixture.bridge
   const wrapper = mount(App, { attachTo: document.body })
   await flushPromises()
+  // Most App specs drive direct chats through the detailed local-agent list.
+  // The shipped sidebar starts with the compact agent cast, so expand it here
+  // to keep those integration tests on the same controls. The compact
+  // presentation is covered directly in workspaceSidebarRail.spec.js.
+  if (options.agentsCollapsed !== true) await expandAgentSection(wrapper)
   return { wrapper, ...fixture }
 }

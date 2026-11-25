@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="苜蓿">
+  <defs>
+    <linearGradient id="blob-08-grad" gradientUnits="userSpaceOnUse" x1="0" y1="8" x2="0" y2="58">
+      <stop offset="0" stop-color="#BFE5A0"/>
+      <stop offset="1" stop-color="#E6ECA0"/>
+    </linearGradient>
+    <style>
+      .eye { transform-box: fill-box; transform-origin: center; animation: tyche-blink 4.12s ease-in-out infinite; animation-delay: 2.4s; }
+      @keyframes tyche-blink { 0%, 92%, 100% { transform: scaleY(1); } 94%, 97% { transform: scaleY(0.03); } }
+      @media (prefers-reduced-motion: reduce) { .eye { animation: none; } }
+    </style>
+  </defs>
+  <path class="body" fill="url(#blob-08-grad)" d="M18 22a14 14 0 1 0 28 0a14 14 0 1 0-28 0ZM6 40a14 14 0 1 0 28 0a14 14 0 1 0-28 0ZM30 40a14 14 0 1 0 28 0a14 14 0 1 0-28 0Z"/>
+  <g class="eyes"><ellipse class="eye" cx="26" cy="38" rx="3.4" ry="4.9" fill="#1F2D3D"/><ellipse class="eye" cx="38" cy="38" rx="3.4" ry="4.9" fill="#1F2D3D"/></g>
+  <circle class="dot" cx="46" cy="43" r="2.2" fill="#2EC4B6"/>
+</svg>
