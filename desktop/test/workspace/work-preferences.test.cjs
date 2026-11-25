@@ -6,7 +6,10 @@ const { LocalWorkspace } = require('../../src/workspace/local-workspace.cjs')
 const { registerDesktopIpc } = require('../../src/shell/main-ipc.cjs')
 const { fixture } = require('../support/local-workspace-test-helpers.cjs')
 
-const preference = { detail: 37, initiative: 82, evidence: 91, preferredAgentKinds: ['codex'], instructions: 'Use a comparison table.' }
+const preference = {
+  detail: 37, initiative: 82, evidence: 91, preferredAgentKinds: ['codex'],
+  instructions: 'Use a comparison table.', defaultCaptainKind: '',
+}
 
 test('legacy preferences migrate while continuous scores retain their exact values', () => {
   assert.deepEqual(parseWorkPreferences({ ...preference, detail: 'concise', initiative: 'balanced', evidence: 'strict' }), { ...preference, detail: 0, initiative: 50, evidence: 100 })

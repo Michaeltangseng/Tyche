@@ -146,10 +146,22 @@
         </article>
       </div>
       <article class="settings-card">
-        <h2>{{ t('settingsUi.collaborators') }}</h2>
+        <h2>{{ t('settingsUi.defaultCaptain') }}</h2>
+        <p class="settings-note">{{ t('settingsUi.defaultCaptainHint') }}</p>
         <div class="settings-actions">
-          <button v-for="name in collaborators" :key="name" class="chip" :class="{ active: picked.has(name) }" type="button" @click="toggleCollaborator(name)">{{ name }}</button>
-          <span class="settings-note">{{ t('settingsUi.defaultOnNewRoom') }}</span>
+          <button
+            v-for="agent in captainChoices"
+            :key="agent.kind"
+            class="chip"
+            :class="{ active: captainKind === agent.kind }"
+            type="button"
+            :disabled="savingCaptain"
+            @click="chooseCaptain(agent.kind)"
+          >
+            <img :src="agent.logo" alt="" />
+            {{ agent.label }}
+          </button>
+          <span v-if="!captainChoices.length" class="settings-note">{{ t('room.noProviders') }}</span>
         </div>
       </article>
     </template>
@@ -215,8 +227,9 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, unref } from 'vue'
-import { publicAsset } from '../catalog.js'
+import { computed, onMounted, reactive, ref, unref, watch } from 'vue'
+import { agentLabel, agentLogo, publicAsset } from '../catalog.js'
+import { desktopApi } from '../desktop.js'
 import { locale as currentLocale, setLocale, t } from '../i18n.js'
 import SkillsPage from './skills/SkillsPage.vue'
 import UsageSettingsPanel from './UsageSettingsPanel.vue'
@@ -289,12 +302,46 @@ const shortcuts = [
   { id: 'mention', keys: '⌘ K' },
   { id: 'send', keys: '⏎' },
 ]
-const collaborators = ['Codex', 'Claude Code', 'Pi Agent', 'Gemini CLI']
-const picked = reactive(new Set(['Codex', 'Claude Code']))
-function toggleCollaborator(name) {
-  if (picked.has(name)) picked.delete(name)
-  else picked.add(name)
+const captainKind = ref('')
+const savingCaptain = ref(false)
+const captainChoices = computed(() => (props.installedAgentKinds || []).map(kind => ({
+  kind,
+  label: agentLabel(kind),
+  logo: agentLogo(kind),
+})))
+
+async function loadCaptainPreference() {
+  const bridge = desktopApi()?.workPreferences
+  if (!bridge?.get) return
+  try {
+    const value = await bridge.get()
+    const saved = value?.defaultCaptainKind || ''
+    captainKind.value = captainChoices.value.some(agent => agent.kind === saved)
+      ? saved
+      : (captainChoices.value[0]?.kind || '')
+  } catch { /* keep the current selection */ }
 }
+
+async function chooseCaptain(kind) {
+  const bridge = desktopApi()?.workPreferences
+  if (!bridge?.get || !bridge?.save || savingCaptain.value) return
+  savingCaptain.value = true
+  const previous = captainKind.value
+  captainKind.value = kind
+  try {
+    const current = await bridge.get()
+    await bridge.save({ ...current, defaultCaptainKind: kind })
+  } catch {
+    captainKind.value = previous
+  } finally {
+    savingCaptain.value = false
+  }
+}
+
+onMounted(() => { if (props.section === 'preferences') void loadCaptainPreference() })
+watch(() => props.section, (section) => {
+  if (section === 'preferences') void loadCaptainPreference()
+})
 </script>
 
 <style scoped>
@@ -305,7 +352,8 @@ function toggleCollaborator(name) {
 .mock-line img { width: 22px; height: 22px; }
 .mock-line .narrow { width: 64px; }
 .ends { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; }
-.chip { height: 28px; padding: 0 10px; border: 1px solid var(--border); border-radius: 99px; background: transparent; color: var(--text-soft); font: inherit; font-size: 12px; cursor: pointer; }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--border); border-radius: 99px; background: transparent; color: var(--text-soft); font: inherit; font-size: 12px; cursor: pointer; }
+.chip img { width: 16px; height: 16px; object-fit: contain; }
 .chip.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
 .chip.warn { border-color: #f5a524; color: #f5a524; }
 .mock-filters { flex-wrap: wrap; margin-bottom: 8px; }

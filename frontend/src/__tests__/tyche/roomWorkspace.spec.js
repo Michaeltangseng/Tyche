@@ -235,26 +235,18 @@ describe('team room workspace', () => {
     bridge.listRooms.mockResolvedValueOnce([])
     const wrapper = mountRoom(bridge)
     await flushPromises()
-    expect(wrapper.get('.room-landing').text()).toContain('New project')
+    expect(wrapper.get('.room-landing').text()).toContain('New chat')
+    expect(wrapper.find('.room-create').exists()).toBe(false)
 
     await wrapper.get('[data-testid="room-create-open"]').trigger('click')
-    await wrapper.get('.room-create input').setValue('Alpha')
-    await wrapper.get('.room-directory button').trigger('click')
-    await flushPromises()
-    expect(wrapper.get('.room-create-legend').text()).toContain('Captain')
-    const providers = wrapper.findAll('.room-provider-option input')
-    expect(providers.every(input => input.element.type === 'radio')).toBe(true)
-    await providers[1].setValue(true)
-    await wrapper.get('.room-create form, form.room-create').trigger('submit')
     await flushPromises()
 
     expect(bridge.bootstrap).toHaveBeenCalledWith({
-      name: 'Alpha',
-      workspace: '/tmp/demo',
+      name: 'New chat',
       title: 'New chat',
-      providers: ['claude'],
+      providers: ['codex'],
       roles: [
-        { displayName: 'Claude Code', provider: 'claude', prompt: '', isCaptain: true },
+        { displayName: 'Codex', provider: 'codex', prompt: '', isCaptain: true },
       ],
     })
   })

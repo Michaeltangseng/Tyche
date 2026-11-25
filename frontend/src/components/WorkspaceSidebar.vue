@@ -293,8 +293,10 @@
                 :aria-current="isTeamChatSelected(row.room.id, row.chat.id) ? 'page' : undefined"
                 @click="openTeamChat(row.room, row.chat)"
               >
-                <span class="room-mascot" aria-hidden="true">
-                  <RoomMascot :mascot="roomMascot(row.chat)" />
+                <span class="team-member-mascots" aria-hidden="true">
+                  <span v-for="member in chatMemberMascots(row.chat)" :key="member.key" class="team-member-mascot">
+                    <RoomMascot :mascot="member.mascot" />
+                  </span>
                   <span v-if="isChatRunning(row.chat)" class="team-room-live" :title="t('room.chatRunning')" />
                 </span>
                 <span class="project-room-copy">
@@ -512,6 +514,19 @@ function chatRowTitle(room, chat) {
   const label = t('room.openChat', { name: teamChatLabel(room, chat) })
   const time = chatTime(chat)
   return time ? `${label} · ${time}` : label
+}
+
+function chatMemberMascots(chat) {
+  const members = Array.isArray(chat?.members) ? chat.members : []
+  const captain = members.find(member => member.is_captain)
+  const rest = members.filter(member => member !== captain)
+    .sort((a, b) => (Number(b?.last_seq) || 0) - (Number(a?.last_seq) || 0))
+  const visible = (captain ? [captain, ...rest] : rest).slice(0, 3)
+  const faces = visible.length ? visible : [{ id: chat?.id || 'chat' }]
+  return faces.map(member => {
+    const key = member.id || `${member.provider || ''}:${member.name || ''}`
+    return { key, mascot: roomMascot({ id: key }) }
+  })
 }
 
 function chatSubtitle(room, chat) {

@@ -361,6 +361,7 @@ function createRoomReadModel({ roomDb } = {}) {
       WHERE chat_id = ? AND status = 'active'
       ORDER BY is_captain DESC, created_at ASC, rowid ASC
     `).all(chatId).map(role => ({
+      id: role.id,
       name: role.display_name,
       provider: role.provider,
       portrait: role.portrait || '',

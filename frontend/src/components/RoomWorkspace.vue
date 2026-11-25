@@ -64,7 +64,8 @@
       </div>
     </header>
 
-    <p v-if="error || pickerError" class="room-error room-banner" role="alert">
+    <p v-if="missingCaptain" class="room-error room-banner" role="alert">{{ t('room.noProviders') }}</p>
+    <p v-else-if="error || pickerError" class="room-error room-banner" role="alert">
       {{ t('room.error') }}
       <button class="secondary-button" type="button" @click="reload">{{ t('room.refresh') }}</button>
     </p>
@@ -489,42 +490,6 @@
       </aside>
     </div>
 
-    <div v-if="creating" class="room-modal-backdrop" @click.self="creating = false" @wheel.self.prevent>
-      <form class="room-create room-modal" role="dialog" aria-modal="true" aria-labelledby="room-create-title" @submit.prevent="create" @keydown.esc.stop="creating = false">
-        <header class="room-create-header">
-          <h2 id="room-create-title">{{ t('room.createChat') }}</h2>
-          <button class="room-icon-button" type="button" :aria-label="t('common.close')" @click="creating = false">
-            <CloseOutline />
-          </button>
-        </header>
-        <div class="room-create-body">
-          <p v-if="error || pickerError" class="room-error" role="alert">{{ t('room.error') }}</p>
-          <label class="room-create-field">
-            <span>{{ t('room.name') }}</span>
-            <input v-model="name" maxlength="120" required autofocus />
-          </label>
-          <fieldset class="room-create-field">
-            <legend class="room-create-legend">
-              <span>{{ t('room.captain') }}</span>
-              <small>{{ t('room.captainOnlyHint') }}</small>
-            </legend>
-            <p v-if="!availableAgents.length" class="room-error">{{ t('room.noProviders') }}</p>
-            <div v-else class="room-provider-picker" role="radiogroup" :aria-label="t('room.captain')">
-              <label v-for="agent in availableAgents" :key="agent.kind" class="room-provider-option">
-                <input v-model="selectedCaptain" type="radio" name="room-captain" :value="agent.kind" />
-                <img :src="agentLogo(agent.kind)" alt="" />
-                <span>{{ agent.label || providerLabel(agent.kind) }}</span>
-                <CheckmarkCircleOutline class="room-provider-check" aria-hidden="true" />
-              </label>
-            </div>
-          </fieldset>
-        </div>
-        <div class="room-actions room-create-footer">
-          <button class="secondary-button" type="button" :disabled="busy" @click="creating = false">{{ t('common.cancel') }}</button>
-          <button class="primary-button" :disabled="busy || !canCreate">{{ t('room.createChat') }}</button>
-        </div>
-      </form>
-    </div>
 
     <div v-if="roleSettingsOpen" class="room-modal-backdrop room-role-backdrop" @click.self="closeRoleSettings" @wheel.self.prevent>
       <section ref="roleSettingsRef" class="room-role-modal room-role-modal-v2" role="dialog" aria-modal="true" :aria-label="t('room.roleSettings')" tabindex="-1" @keydown.esc.stop="closeRoleSettings">
@@ -715,6 +680,7 @@ import {
   TrashOutline,
 } from '@vicons/ionicons5'
 import { agentLogo } from '../catalog.js'
+import { desktopApi } from '../desktop.js'
 import { portraitGlow, portraitId, rolePortrait, rolePortraits } from '../role-portraits.js'
 import { roomMascot } from '../room-mascots.js'
 import RoomMascot from './RoomMascot.vue'
@@ -789,7 +755,6 @@ const FALLBACK_PERMISSION_MODES = {
   default: [{ id: 'default', label: 'Native Configuration', description: 'Use the provider native permissions.', risk: 'medium' }],
 }
 
-const creating = ref(false)
 const roleSettingsOpen = ref(false)
 const skillInventoryState = ref({ agents: [], skills: [], defaults: {} })
 const droppedSkillIds = ref([])
@@ -810,6 +775,7 @@ const draft = ref('')
 const composerInput = ref(null)
 const answers = ref({})
 const pickerError = ref(false)
+const missingCaptain = ref(false)
 const timeline = ref(null)
 
 const availableAgents = computed(() => props.agents.filter(agent => agent && agent.kind))
@@ -1303,15 +1269,22 @@ async function answer(attention) {
   if (result) delete answers.value[attention.id]
 }
 
-function startCreating() {
+async function startCreating() {
   pickerError.value = false
-  name.value = t('room.newChatTitle')
-  selectedCaptain.value = availableAgents.value[0]?.kind || ''
-  if (availableAgents.value.length === 1) {
-    void create()
+  missingCaptain.value = false
+  const agents = availableAgents.value
+  if (!agents.length) {
+    missingCaptain.value = true
     return
   }
-  creating.value = true
+  let kind = agents[0].kind
+  try {
+    const saved = (await desktopApi()?.workPreferences?.get())?.defaultCaptainKind
+    if (saved && agents.some(agent => agent.kind === saved)) kind = saved
+  } catch { /* the first available agent stays the Captain */ }
+  selectedCaptain.value = kind
+  name.value = t('room.newChatTitle')
+  await create()
 }
 
 async function create() {
@@ -1330,10 +1303,7 @@ async function create() {
     providers,
     roles,
   })
-  if (result) {
-    creating.value = false
-    name.value = ''
-  }
+  if (result) name.value = ''
 }
 
 function measureTitle() {
@@ -1554,19 +1524,8 @@ function handleEscape(event) {
   } else if (titleEditing.value) {
     event.preventDefault()
     cancelTitleEdit()
-  } else if (creating.value) {
-    event.preventDefault()
-    creating.value = false
   }
 }
-
-watch(creating, (open) => {
-  if (!open) return
-  const previous = document.activeElement
-  nextTick(() => {
-    if (previous?.blur) previous.blur()
-  })
-})
 
 watch([roomId, chatId], ([nextRoom, nextChat]) => {
   if (!nextRoom) return
@@ -1594,8 +1553,8 @@ watch(() => props.openRequest, (request) => {
 
 watch(activeChatLabel, () => nextTick(measureTitle))
 
-watch([creating, roleSettingsOpen], (values) => {
-  document.body.classList.toggle('room-overlay-open', values.some(Boolean))
+watch(roleSettingsOpen, (open) => {
+  document.body.classList.toggle('room-overlay-open', open)
 })
 
 onMounted(() => {

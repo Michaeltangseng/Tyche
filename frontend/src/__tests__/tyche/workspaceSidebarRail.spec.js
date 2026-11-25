@@ -122,8 +122,8 @@ describe('workspace sidebar rail', () => {
     expect(rows[1].text()).toContain('Research')
     expect(wrapper.find('.team-room-chats').exists()).toBe(false)
     expect(wrapper.find('.team-face-stack-chat').exists()).toBe(false)
-    const mascots = wrapper.findAll('.team-chat-row .room-mascot .room-mascot-art svg')
-    expect(mascots).toHaveLength(2)
+    const mascots = wrapper.findAll('.team-chat-row .team-member-mascot .room-mascot-art svg')
+    expect(mascots).toHaveLength(4)
     expect(mascots[0].element.getAttribute('viewBox')).toBe('0 0 64 64')
     expect(wrapper.get('.room-mascot-art').html()).not.toContain('<style')
 

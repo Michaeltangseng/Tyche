@@ -1626,7 +1626,7 @@ export default {
     'settingsUi.range.week': 'This week',
     'settingsUi.range.month': 'This month',
     'settingsUi.defaultCaptain': 'Default Captain',
-    'settingsUi.defaultCaptainHint': 'A new project still picks its Captain separately.',
+    'settingsUi.defaultCaptainHint': 'New chats use this Captain. You can change it later in the chat.',
     'settingsUi.handoffRules': 'Handoff rules',
     'settingsUi.maxWake': 'Wake at most',
     'settingsUi.maxWakeHint': 'When one message names several people, only the first N are woken.',

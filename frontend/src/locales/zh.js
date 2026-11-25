@@ -1626,7 +1626,7 @@ export default {
     'settingsUi.range.week': '本周',
     'settingsUi.range.month': '本月',
     'settingsUi.defaultCaptain': '默认 Captain',
-    'settingsUi.defaultCaptainHint': '新建项目时仍会单独选择 Captain。',
+    'settingsUi.defaultCaptainHint': '新建聊天使用这个 Captain。之后仍可以在聊天里更换。',
     'settingsUi.handoffRules': '交接规则',
     'settingsUi.maxWake': '每次最多唤醒',
     'settingsUi.maxWakeHint': '一条消息里点了多个人时，只唤醒前 N 个。',

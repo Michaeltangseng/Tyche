@@ -10,8 +10,14 @@ const schema = z.strictObject({
   evidence: score(['practical', 'balanced', 'strict']),
   preferredAgentKinds: z.array(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/)).max(8),
   instructions: z.string().max(800),
+  defaultCaptainKind: z.union([
+    z.literal(''),
+    z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/),
+  ]).default(''),
 })
-const DEFAULTS = { detail: 50, initiative: 50, evidence: 50, preferredAgentKinds: [], instructions: '' }
+const DEFAULTS = {
+  detail: 50, initiative: 50, evidence: 50, preferredAgentKinds: [], instructions: '', defaultCaptainKind: '',
+}
 
 function parseWorkPreferences(input) {
   const result = schema.safeParse(input)
