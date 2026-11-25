@@ -22,22 +22,6 @@
           <CloseOutline />
         </button>
       </header>
-      <div class="room-workspace-bar">
-        <div class="room-workspace-copy">
-          <strong>{{ workspaceDefault ? t('room.scratchLabel') : (workspaceLabel || t('room.scratchLabel')) }}</strong>
-          <small>{{ t('room.workspaceHint') }}</small>
-        </div>
-        <div class="room-workspace-actions">
-          <button class="secondary-button" type="button" :disabled="busy" @click="chooseWorkspace">{{ t('room.setWorkspace') }}</button>
-          <button v-if="workspaceDefault && !workspaceConfirmed" class="secondary-button" type="button" :disabled="busy" @click="$emit('keep')">{{ t('room.keepScratch') }}</button>
-        </div>
-        <p v-if="needsMove" class="room-workspace-move">
-          <span>{{ t('room.moveScratchTitle') }}</span>
-          <button class="primary-button" type="button" :disabled="busy" @click="confirmMove(true)">{{ t('room.moveScratchConfirm') }}</button>
-          <button class="secondary-button" type="button" :disabled="busy" @click="confirmMove(false)">{{ t('room.moveScratchSkip') }}</button>
-        </p>
-      </div>
-
       <section
         ref="filesPanel"
         class="project-room-drawer-body project-room-drawer-files"
@@ -91,58 +75,8 @@ const props = defineProps({
   api: { type: Object, required: true },
   roomId: { type: String, required: true },
   width: { type: Number, default: 420 },
-  workspaceLabel: { type: String, default: '' },
-  workspaceDefault: { type: Boolean, default: false },
-  workspaceConfirmed: { type: Boolean, default: true },
-  pickDirectory: { type: Function, default: null },
 })
-const emit = defineEmits(['close', 'resize', 'keep', 'changed'])
-
-const busy = ref(false)
-const needsMove = ref(false)
-const pendingWorkspace = ref('')
-
-async function applyWorkspace(workspace, move) {
-  if (!props.api?.setWorkspace || !workspace) return null
-  const input = { roomId: props.roomId, workspace }
-  if (move !== undefined) input.move = move
-  return props.api.setWorkspace(input)
-}
-
-async function chooseWorkspace() {
-  if (busy.value || typeof props.pickDirectory !== 'function') return
-  busy.value = true
-  needsMove.value = false
-  try {
-    const selected = await props.pickDirectory()
-    if (!selected) return
-    const result = await applyWorkspace(String(selected))
-    if (result?.needsMove) {
-      pendingWorkspace.value = String(selected)
-      needsMove.value = true
-      return
-    }
-    pendingWorkspace.value = ''
-    emit('changed')
-    void tree.loadDirectory('')
-  } finally {
-    busy.value = false
-  }
-}
-
-async function confirmMove(move) {
-  if (busy.value || !pendingWorkspace.value) return
-  busy.value = true
-  try {
-    await applyWorkspace(pendingWorkspace.value, move)
-    pendingWorkspace.value = ''
-    needsMove.value = false
-    emit('changed')
-    void tree.loadDirectory('')
-  } finally {
-    busy.value = false
-  }
-}
+const emit = defineEmits(['close', 'resize'])
 
 const panelElement = ref(null)
 const filesPanel = ref(null)
@@ -314,10 +248,4 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .project-room-drawer-title { color: var(--text-soft); font-size: var(--text-sm); font-weight: 650; }
-.room-workspace-bar { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
-.room-workspace-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.room-workspace-copy strong { font-size: var(--text-sm); }
-.room-workspace-copy small { color: var(--text-soft); font-size: var(--text-2xs); }
-.room-workspace-actions, .room-workspace-move { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.room-workspace-move { margin: 0; color: var(--text-soft); font-size: var(--text-xs); }
 </style>

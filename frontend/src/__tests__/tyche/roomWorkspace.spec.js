@@ -152,19 +152,12 @@ describe('team room workspace', () => {
     expect(wrapper.get('.room-report-card').text()).toContain('Docs are ready')
     expect(wrapper.get('.room-report-card').text()).toContain('#1 Write docs')
 
+    expect(wrapper.find('.room-work-toggle').exists()).toBe(false)
+    expect(wrapper.find('[data-work-tab="artifacts"]').exists()).toBe(false)
+    expect(wrapper.find('[data-work-tab="tasks"]').exists()).toBe(false)
     expect(wrapper.get('.room-ledger').text()).toContain('Write docs')
-
-    await wrapper.get('[data-work-tab="trace"]').trigger('click')
-    expect(wrapper.get('.room-ledger').text()).toContain('Captain reviews')
-    expect(wrapper.get('.room-ledger').text()).toContain('Assignment settled')
-    expect(wrapper.get('.room-ledger').text()).toContain('Captain assignments')
-    expect(wrapper.get('.room-ledger').text()).toContain('Writer')
-
-    await wrapper.get('[data-work-tab="artifacts"]').trigger('click')
-    expect(wrapper.get('.room-ledger').text()).toContain('room.md')
-    expect(wrapper.get('.room-artifact-head strong').attributes('title')).toBe('docs/room.md')
-    expect(wrapper.get('.room-ledger').text()).toContain('Writer')
-    expect(wrapper.get('.room-ledger').text()).toContain('Open files')
+    expect(wrapper.get('.room-flow-node').text()).toContain('Writer')
+    expect(wrapper.find('.room-flow-node[data-live="true"]').exists()).toBe(false)
 
     await wrapper.get('.room-usage-toggle').trigger('click')
     expect(wrapper.get('.room-work-tab.active').text()).toContain('Usage')
@@ -191,7 +184,9 @@ describe('team room workspace', () => {
 
     const ledger = wrapper.get('.room-ledger')
     expect(ledger.get('.room-work-tab.active').text()).toContain('Trace')
-    expect(ledger.text()).toContain('Captain assignments')
+    expect(ledger.text()).toContain('Writer')
+    expect(ledger.text()).toContain('Captain')
+    expect(ledger.find('[data-work-tab="tasks"]').exists()).toBe(false)
   })
 
   it('shows per-role usage in the workbench usage tab', async () => {
@@ -285,6 +280,17 @@ describe('team room workspace', () => {
       content: 'Another message',
       clientId: expect.any(String),
     }))
+  })
+
+  it('opens directory settings from the header instead of the files drawer', async () => {
+    const wrapper = mountRoom(api())
+    await flushPromises()
+    expect(wrapper.find('.room-workspace-dialog').exists()).toBe(false)
+    await wrapper.get('.room-workspace-switch').trigger('click')
+    const dialog = wrapper.get('.room-workspace-dialog')
+    expect(dialog.text()).toContain('Switch directory')
+    expect(dialog.text()).toContain('Set working directory')
+    expect(dialog.text()).toContain('demo')
   })
 
   it('folds a mention handoff into the same author bubble', async () => {

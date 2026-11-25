@@ -57,8 +57,8 @@
         <button v-if="snapshot" class="room-icon-button room-files-toggle" type="button" :aria-pressed="filesOpen" :title="t('room.files')" :aria-label="t('room.files')" @click="emit('toggle-files')">
           <FolderOutline />
         </button>
-        <button v-if="hasWork" class="secondary-button room-work-toggle" type="button" :aria-pressed="workPanelOpen" @click="toggleWorkPanel">
-          {{ t('room.workPanel') }} · {{ workCount }}
+        <button v-if="snapshot" class="secondary-button room-workspace-switch" type="button" @click="workspaceDialogOpen = true">
+          {{ t('room.switchWorkspace') }}
         </button>
         <button class="room-icon-button room-create-button" type="button" data-testid="room-create-open" :aria-label="t('room.create')" :disabled="busy" @click="startCreating">+</button>
       </div>
@@ -259,7 +259,7 @@
                 <header><strong>{{ t('room.needsYou') }}</strong></header>
                 <p>{{ t('room.workspaceAsk') }}</p>
                 <div class="room-actions">
-                  <button class="primary-button" type="button" :disabled="busy" @click="emit('open-files')">{{ t('room.setWorkspace') }}</button>
+                  <button class="primary-button" type="button" :disabled="busy" @click="workspaceDialogOpen = true">{{ t('room.switchWorkspace') }}</button>
                 </div>
               </template>
               <template v-else>
@@ -359,83 +359,9 @@
         </nav>
 
         <div class="room-work-scroll">
-          <section v-if="activeWorkTab === 'artifacts'" class="room-work-panel" role="tabpanel">
-            <p v-if="!workArtifacts.length" class="room-work-empty">{{ t('room.noArtifacts') }}</p>
-            <article v-for="artifact in workArtifacts" :key="artifact.id" class="room-artifact-card room-work-card">
-              <header class="room-artifact-head">
-                <strong :title="artifact.path">{{ artifactFileName(artifact.path) }}</strong>
-                <span :data-status="artifact.status">{{ statusLabel(artifact.status) }}</span>
-              </header>
-              <div class="room-artifact-meta">
-                <span>{{ artifact.kind }} · {{ artifact.version }}</span>
-                <span v-if="artifactTask(artifact)">{{ taskLabel(artifactTask(artifact)) }}</span>
-              </div>
-              <div class="room-artifact-maker">
-                <span v-if="artifactRole(artifact)" class="room-artifact-face">
-                  <img :src="faceSrc(artifactRole(artifact))" alt="" />
-                </span>
-                <span>{{ artifactRole(artifact) ? roleLabel(artifactRole(artifact)) : t('room.system') }}</span>
-              </div>
-              <button class="secondary-button room-artifact-open" type="button" @click="emit('toggle-files')">
-                {{ t('room.openFiles') }}
-              </button>
-            </article>
-          </section>
-
-          <section v-else-if="activeWorkTab === 'trace'" class="room-work-panel" role="tabpanel">
-            <p v-if="!captainAssignments.length && !runs.length && !reviews.length" class="room-work-empty">{{ t('room.noTrace') }}</p>
-
-            <div v-if="captainAssignments.length" class="room-work-group">
-              <h3 class="room-work-group-title">{{ t('room.captainAssignments') }}</h3>
-              <article
-                v-for="assignment in captainAssignments"
-                :key="`assignment-${assignment.id}`"
-                class="room-trace-item room-work-card"
-                :data-status="assignment.status"
-              >
-                <header>
-                  <strong>{{ t('room.captainAssignment') }}</strong>
-                  <span :data-status="assignment.status">{{ statusLabel(assignment.status) }}</span>
-                </header>
-                <p class="room-trace-targets">{{ assignmentTargetNames(assignment) }}</p>
-                <time>{{ formatTime(assignment.created_at) }}</time>
-              </article>
-            </div>
-
-            <div v-if="runs.length" class="room-work-group">
-              <h3 class="room-work-group-title">{{ t('room.runs') }}</h3>
-              <article
-                v-for="run in runs"
-                :key="`run-${run.id}`"
-                class="room-trace-item room-work-card"
-                :data-status="run.status"
-                :data-live="isRunLive(run) ? 'true' : undefined"
-              >
-                <header>
-                  <strong>{{ roleName(run.role_id) }} · {{ run.lane_kind === 'mention' ? t('room.mentionLane') : t('room.executorLane') }}</strong>
-                  <span :data-status="run.status">{{ statusLabel(run.status) }}</span>
-                </header>
-                <p class="room-trace-targets">{{ taskLabel(tasksById.get(run.task_id)) }}</p>
-                <p v-if="run.outcome && run.outcome !== 'pending'" class="room-trace-outcome">{{ run.outcome }}</p>
-                <RoomRunTrace :api="api" :room-id="roomId" :chat-id="chatId" :run-id="run.id" />
-              </article>
-            </div>
-
-            <div v-if="reviews.length" class="room-work-group">
-              <h3 class="room-work-group-title">{{ t('room.captainReviews') }}</h3>
-              <article
-                v-for="review in reviews"
-                :key="`review-${review.id}`"
-                class="room-trace-item room-work-card"
-                :data-status="review.status"
-              >
-                <header>
-                  <strong>{{ reviewKindLabel(review.kind) }}</strong>
-                  <span :data-status="review.status">{{ statusLabel(review.status) }}</span>
-                </header>
-                <time>{{ formatTime(review.created_at) }}</time>
-              </article>
-            </div>
+          <section v-if="activeWorkTab === 'trace'" class="room-work-panel" role="tabpanel">
+            <p v-if="!workflow.nodes.length" class="room-work-empty">{{ t('room.noTrace') }}</p>
+            <RoomWorkflow v-else :workflow="workflow" :roles="roles" />
           </section>
 
           <section v-else-if="activeWorkTab === 'usage'" class="room-work-panel" role="tabpanel">
@@ -461,35 +387,34 @@
               </li>
             </ul>
           </section>
-
-          <section v-else class="room-work-panel" role="tabpanel">
-            <p v-if="!tasks.length" class="room-work-empty">{{ t('room.noTasks') }}</p>
-            <article v-for="task in tasks" :key="task.id" class="room-card room-work-card">
-              <header>
-                <strong>{{ taskLabel(task) }}</strong>
-                <span :data-status="task.status">{{ statusLabel(task.status) }}</span>
-              </header>
-              <p v-if="task.description" class="room-muted">{{ task.description }}</p>
-              <p v-if="task.acceptance" class="room-muted">{{ t('room.acceptance') }}: {{ task.acceptance }}</p>
-              <div v-if="canAcceptTask(task)" class="room-actions">
-                <button class="primary-button" type="button" :disabled="busy" @click="acceptTask(task.id)">{{ t('room.acceptTask') }}</button>
-              </div>
-              <div v-if="taskRuns(task.id).length" class="room-work-meta">
-                <span>{{ t('room.runs') }} · {{ taskRuns(task.id).length }}</span>
-                <button class="room-work-link" type="button" @click="workTab = 'trace'">{{ t('room.viewTrace') }}</button>
-              </div>
-              <div v-if="taskReports(task.id).length" class="room-reports">
-                <p v-for="report in taskReports(task.id)" :key="report.id" class="room-report-row">
-                  <strong>{{ reportKindLabel(report.kind) }}</strong>
-                  <span>{{ report.summary }}</span>
-                </p>
-              </div>
-            </article>
-          </section>
         </div>
       </aside>
     </div>
 
+
+    <div v-if="workspaceDialogOpen" class="room-modal-backdrop" @click.self="closeWorkspaceDialog">
+      <section class="room-workspace-dialog" role="dialog" aria-modal="true" :aria-label="t('room.switchWorkspace')" @keydown.esc.stop="closeWorkspaceDialog">
+        <header>
+          <strong>{{ t('room.switchWorkspace') }}</strong>
+          <button class="room-icon-button" type="button" :aria-label="t('common.close')" @click="closeWorkspaceDialog">
+            <CloseOutline />
+          </button>
+        </header>
+        <div class="room-workspace-copy">
+          <strong>{{ workspaceName }}</strong>
+          <small>{{ t('room.workspaceHint') }}</small>
+        </div>
+        <div class="room-workspace-actions">
+          <button class="secondary-button" type="button" :disabled="workspaceBusy" @click="chooseWorkspace">{{ t('room.setWorkspace') }}</button>
+          <button v-if="workspaceDefault && !workspaceConfirmed" class="secondary-button" type="button" :disabled="workspaceBusy" @click="keepWorkspace">{{ t('room.keepScratch') }}</button>
+        </div>
+        <p v-if="workspaceNeedsMove" class="room-workspace-move">
+          <span>{{ t('room.moveScratchTitle') }}</span>
+          <button class="primary-button" type="button" :disabled="workspaceBusy" @click="confirmWorkspaceMove(true)">{{ t('room.moveScratchConfirm') }}</button>
+          <button class="secondary-button" type="button" :disabled="workspaceBusy" @click="confirmWorkspaceMove(false)">{{ t('room.moveScratchSkip') }}</button>
+        </p>
+      </section>
+    </div>
 
     <div v-if="roleSettingsOpen" class="room-modal-backdrop room-role-backdrop" @click.self="closeRoleSettings" @wheel.self.prevent>
       <section ref="roleSettingsRef" class="room-role-modal room-role-modal-v2" role="dialog" aria-modal="true" :aria-label="t('room.roleSettings')" tabindex="-1" @keydown.esc.stop="closeRoleSettings">
@@ -689,9 +614,11 @@ import { keptSkillIds, selectableSkills, skillTokenEstimate } from '../skillInve
 import { useRoomWorkspace } from '../composables/useRoomWorkspace.js'
 import { agentUsageRows, formatUsageLine } from '../room-usage.js'
 import { deriveRoomCollaboration } from '../roomCollaboration.js'
+import { buildRoomWorkflow } from '../roomWorkflow.js'
 import MarkdownMessage from './MarkdownMessage.vue'
 import RoomCollaborationRibbon from './RoomCollaborationRibbon.vue'
 import RoomRunTrace from './RoomRunTrace.vue'
+import RoomWorkflow from './RoomWorkflow.vue'
 
 const props = defineProps({
   api: { type: Object, required: true },
@@ -716,7 +643,6 @@ const {
   reports,
   reviews,
   attentions,
-  artifacts,
   messages,
   liveRuns,
   usageByRun,
@@ -762,6 +688,16 @@ const roleSettingsRef = ref(null)
 const roleDraft = ref(null)
 const roleSettingsWasCaptain = ref(false)
 const roleDeleteArmed = ref(false)
+const workspaceDialogOpen = ref(false)
+const workspaceBusy = ref(false)
+const workspaceNeedsMove = ref(false)
+const pendingWorkspace = ref('')
+const roomRecord = computed(() => snapshot.value?.room || null)
+const workspaceDefault = computed(() => roomRecord.value?.workspace_default === true)
+const workspaceConfirmed = computed(() => roomRecord.value?.workspace_confirmed !== false)
+const workspaceName = computed(() => (
+  workspaceDefault.value ? t('room.scratchLabel') : (roomRecord.value?.workspace_label || t('room.scratchLabel'))
+))
 const workPanelOpen = ref(true)
 const workPanelRequested = ref(false)
 const workTab = ref('')
@@ -893,14 +829,14 @@ function turnUsage(message) {
   return formatUsageLine(liveFor(message)?.usage || message?.data?.usage || usageByRun.value[message.id])
 }
 
-const workCount = computed(() => (
-  tasks.value.length
-  + reviews.value.length
-  + captainAssignments.value.length
-  + attentions.value.length
-  + artifacts.value.length
-))
-const hasWork = computed(() => workCount.value > 0)
+const workflow = computed(() => buildRoomWorkflow({
+  tasks: tasks.value,
+  runs: runs.value,
+  assignments: captainAssignments.value,
+  messages: messages.value,
+  roles: roles.value,
+}))
+const hasWork = computed(() => workflow.value.nodes.length > 0)
 const showWorkPanel = computed(() => (
   workPanelOpen.value && (hasWork.value || workPanelRequested.value)
 ))
@@ -967,10 +903,6 @@ function permissionModeDescription(mode) {
   return label === key ? (mode.description || '') : label
 }
 
-function faceSrc(role) {
-  return rolePortrait(role?.portrait || role?.provider)
-}
-
 const castRoles = computed(() => roles.value.map(role => {
   const ready = readyProviderKinds.value.has(role.provider)
   return {
@@ -992,26 +924,11 @@ const collaboration = computed(() => deriveRoomCollaboration({
   liveRuns: liveRuns.value,
 }))
 
-const workArtifacts = computed(() => artifacts.value.filter(artifact => (
-  !artifact.task_id || tasksById.value.has(artifact.task_id)
-)))
 const workTabs = computed(() => [
-  { id: 'artifacts', label: 'room.workTab.artifacts', count: workArtifacts.value.length },
-  {
-    id: 'trace',
-    label: 'room.workTab.trace',
-    count: runs.value.length + captainAssignments.value.length + reviews.value.length,
-  },
+  { id: 'trace', label: 'room.workTab.trace', count: workflow.value.nodes.length },
   { id: 'usage', label: 'room.workTab.usage', count: 0 },
-  { id: 'tasks', label: 'room.workTab.tasks', count: tasks.value.length },
 ])
-const defaultWorkTab = computed(() => {
-  if (collaboration.value.mode === 'running') return 'trace'
-  if (workArtifacts.value.length) return 'artifacts'
-  if (tasks.value.length) return 'tasks'
-  if (captainAssignments.value.length || reviews.value.length || runs.value.length) return 'trace'
-  return 'usage'
-})
+const defaultWorkTab = computed(() => (workflow.value.nodes.length ? 'trace' : 'usage'))
 const activeWorkTab = computed(() => workTab.value || defaultWorkTab.value)
 const totalUsage = computed(() => agentUsage.value.reduce((total, row) => {
   const usage = row.usage || {}
@@ -1036,14 +953,6 @@ function rosterRoles(entry) {
   const ids = entry?.message?.data?.roleIds
   if (!Array.isArray(ids)) return []
   return ids.map(id => rolesById.value.get(id)).filter(Boolean)
-}
-
-function roleName(roleId) {
-  return rolesById.value.get(roleId)?.display_name || roleId || ''
-}
-
-function assignmentTargetNames(assignment) {
-  return (assignment?.target_role_ids || []).map(roleName).filter(Boolean).join(' · ')
 }
 
 function canSpeak(provider) {
@@ -1089,46 +998,13 @@ function reportKindLabel(kind) {
   return label === key ? String(kind || '') : label
 }
 
-function reviewKindLabel(kind) {
-  const key = `room.reviewKind.${kind}`
-  const label = t(key)
-  return label === key ? String(kind || '') : label
-}
-
 function taskLabel(task) {
   if (!task) return ''
   return `#${task.number} ${task.title}`.trim()
 }
 
-function taskRuns(taskId) {
-  return runs.value.filter(run => run.task_id === taskId)
-}
-
-function taskReports(taskId) {
-  return reports.value.filter(report => report.task_id === taskId)
-}
-
 function taskForReport(report) {
   return tasksById.value.get(report?.task_id) || null
-}
-
-function artifactTask(artifact) {
-  return tasksById.value.get(artifact?.task_id) || null
-}
-
-function artifactRole(artifact) {
-  const run = runs.value.find(item => item.id === artifact?.run_id)
-  if (run) return rolesById.value.get(run.role_id) || null
-  const task = artifactTask(artifact)
-  return task ? rolesById.value.get(task.assignee_role_id) || null : null
-}
-
-function artifactFileName(path) {
-  return String(path || '').split(/[\\/]/).pop() || path || ''
-}
-
-function isRunLive(run) {
-  return ['queued', 'starting', 'running', 'in_progress'].includes(run?.status)
 }
 
 function canAcceptTask(task) {
@@ -1504,21 +1380,74 @@ function closeWorkPanel() {
   workPanelRequested.value = false
 }
 
-function toggleWorkPanel() {
-  if (workPanelOpen.value) {
-    closeWorkPanel()
-    return
-  }
-  workPanelOpen.value = true
-}
-
 function scrollToAttention() {
   document.querySelector('.room-attention-card')?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
 }
 
+function closeWorkspaceDialog() {
+  if (workspaceBusy.value) return
+  workspaceDialogOpen.value = false
+  workspaceNeedsMove.value = false
+  pendingWorkspace.value = ''
+}
+
+async function applyWorkspace(workspace, move) {
+  if (!props.api?.setWorkspace || !roomId.value || !workspace) return null
+  const input = { roomId: roomId.value, workspace }
+  if (move !== undefined) input.move = move
+  return props.api.setWorkspace(input)
+}
+
+async function chooseWorkspace() {
+  if (workspaceBusy.value || typeof props.pickDirectory !== 'function') return
+  workspaceBusy.value = true
+  workspaceNeedsMove.value = false
+  try {
+    const selected = await props.pickDirectory()
+    if (!selected) return
+    const result = await applyWorkspace(String(selected))
+    if (result?.needsMove) {
+      pendingWorkspace.value = String(selected)
+      workspaceNeedsMove.value = true
+      return
+    }
+    pendingWorkspace.value = ''
+    workspaceDialogOpen.value = false
+  } finally {
+    workspaceBusy.value = false
+  }
+}
+
+async function confirmWorkspaceMove(move) {
+  if (workspaceBusy.value || !pendingWorkspace.value) return
+  workspaceBusy.value = true
+  try {
+    await applyWorkspace(pendingWorkspace.value, move)
+    pendingWorkspace.value = ''
+    workspaceNeedsMove.value = false
+    workspaceDialogOpen.value = false
+  } finally {
+    workspaceBusy.value = false
+  }
+}
+
+async function keepWorkspace() {
+  if (workspaceBusy.value || !props.api?.confirmWorkspace || !roomId.value) return
+  workspaceBusy.value = true
+  try {
+    await props.api.confirmWorkspace({ roomId: roomId.value })
+    workspaceDialogOpen.value = false
+  } finally {
+    workspaceBusy.value = false
+  }
+}
+
 function handleEscape(event) {
   if (event.key !== 'Escape') return
-  if (roleSettingsOpen.value) {
+  if (workspaceDialogOpen.value) {
+    event.preventDefault()
+    closeWorkspaceDialog()
+  } else if (roleSettingsOpen.value) {
     event.preventDefault()
     closeRoleSettings()
   } else if (titleEditing.value) {
@@ -1537,7 +1466,7 @@ watch(attentions, (list) => {
   const open = list.find(item => item.type === 'workspace_directory')
   if (!open || open.id === promptedWorkspaceAttention) return
   promptedWorkspaceAttention = open.id
-  emit('open-files')
+  workspaceDialogOpen.value = true
 })
 
 watch(() => props.createRequest, (requested) => {
@@ -1596,6 +1525,14 @@ onBeforeUnmount(() => {
 .room-roster-duty { display: -webkit-box; overflow: hidden; color: var(--text-soft); font-size: var(--text-2xs); line-height: 1.4; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 .room-agent-badge { flex: 0 0 auto; margin-left: 2px; padding: 1px 5px; border-radius: 999px; background: var(--surface-active); color: var(--text-soft); font-size: 10px; font-weight: 600; }
 .room-header-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.room-workspace-switch { height: 32px; padding: 0 10px; font-size: var(--text-xs); }
+.room-workspace-dialog { width: min(420px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-raised); box-shadow: var(--shadow); }
+.room-workspace-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.room-workspace-dialog header strong { font-size: var(--text-sm); }
+.room-workspace-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.room-workspace-copy small { color: var(--text-soft); font-size: var(--text-xs); line-height: 1.45; }
+.room-workspace-actions, .room-workspace-move { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.room-workspace-move { margin: 0; color: var(--text-soft); font-size: var(--text-xs); }
 .room-notice-pill { padding: 5px 11px; border: 1px solid color-mix(in srgb, var(--accent) 62%, var(--border)); border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-size: var(--text-xs); font-weight: 600; cursor: pointer; }
 .room-icon-button { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); color: var(--text-soft); font-size: 20px; line-height: 1; cursor: pointer; }
 .room-icon-button:hover { border-color: var(--border-strong); color: var(--text); }

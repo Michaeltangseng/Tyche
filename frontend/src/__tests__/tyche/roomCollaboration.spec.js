@@ -88,6 +88,32 @@ describe('room collaboration derivation', () => {
     ])
   })
 
+  it('drops the running relay after replies are stopped, even if live events remain', () => {
+    const state = deriveRoomCollaboration({
+      tasks: [task({ status: 'in_progress' })],
+      runs: [run({ status: 'interrupted', ended_at: '2026-11-15T10:04:00Z' })],
+      messages: [
+        { id: 'user-1', author_type: 'user', created_at: '2026-11-15T10:00:00Z' },
+        agentMessage({ id: 'reply-1', author_id: 'worker', status: 'stopped', created_at: '2026-11-15T10:03:00Z' }),
+        agentMessage({ id: 'reply-2', author_id: 'captain', status: 'done', created_at: '2026-11-15T10:03:30Z' }),
+      ],
+      assignments: [{
+        id: 'assignment-1',
+        status: 'active',
+        target_role_ids: ['worker', 'captain'],
+        target_reply_ids: ['reply-1', 'reply-2'],
+        created_at: '2026-11-15T10:00:30Z',
+      }],
+      liveRuns: {
+        'reply-1': { status: 'running' },
+        'reply-2': { status: 'completed' },
+      },
+    })
+
+    expect(state.mode).not.toBe('running')
+    expect(state.nodes.every(node => node.state !== 'active')).toBe(true)
+  })
+
   it('builds the relay from task runs and marks the live node active', () => {
     const state = deriveRoomCollaboration({
       tasks: [task()],

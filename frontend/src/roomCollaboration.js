@@ -18,8 +18,12 @@ const DONE_RUN_STATUSES = new Set(['completed'])
 const ATTENTION_RUN_STATUSES = new Set(['failed', 'interrupted'])
 const ACTIVE_MESSAGE_STATUSES = new Set(['queued', 'starting', 'working'])
 const BUSY_MESSAGE_STATUSES = new Set(['queued', 'starting', 'working', 'stopping'])
-const DONE_MESSAGE_STATUSES = new Set(['done', 'completed', 'accepted'])
-const ATTENTION_MESSAGE_STATUSES = new Set(['failed', 'interrupted', 'stopped', 'waiting_for_input'])
+const DONE_MESSAGE_STATUSES = new Set(['done', 'completed', 'accepted', 'stopped'])
+const ATTENTION_MESSAGE_STATUSES = new Set(['failed', 'interrupted', 'waiting_for_input'])
+const TERMINAL_MESSAGE_STATUSES = new Set([
+  ...DONE_MESSAGE_STATUSES,
+  ...ATTENTION_MESSAGE_STATUSES,
+])
 
 function timestamp(value) {
   const parsed = new Date(value || '').getTime()
@@ -365,9 +369,14 @@ export function deriveRoomCollaboration({
     runsByTask.get(run.task_id).push(run)
   }
 
-  const liveMessageIds = new Set(Object.keys(liveRuns || {}))
+  const liveMessageIds = new Set(
+    Object.entries(liveRuns || {})
+      .filter(([, state]) => !state || state.status === 'running')
+      .map(([id]) => id),
+  )
   const activeMessages = messages.filter(message => (
     message.author_type === 'agent'
+    && !TERMINAL_MESSAGE_STATUSES.has(message.status)
     && (ACTIVE_MESSAGE_STATUSES.has(message.status) || liveMessageIds.has(message.id))
   ))
   const latestActiveMessage = latestByCreatedAt(activeMessages)
@@ -434,10 +443,16 @@ export function deriveRoomCollaboration({
 
   const activeRuns = runs.filter(run => LIVE_RUN_STATUSES.has(run.status))
   const queuedRuns = runs.filter(run => run.status === 'queued')
-  const inProgressTasks = tasks.filter(task => task.status === 'in_progress')
-  const activeTaskIds = new Set([
+  const liveTaskIds = new Set([
     ...activeRuns.map(run => run.task_id),
     ...queuedRuns.map(run => run.task_id),
+  ])
+  const inProgressTasks = tasks.filter(task => (
+    task.status === 'in_progress'
+    && (liveTaskIds.has(task.id) || !(runsByTask.get(task.id) || []).length)
+  ))
+  const activeTaskIds = new Set([
+    ...liveTaskIds,
     ...inProgressTasks.map(task => task.id),
   ])
 

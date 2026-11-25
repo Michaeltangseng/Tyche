@@ -125,14 +125,8 @@
           :api="api.teamRoom"
           :room-id="activeTeamRoomId"
           :width="roomFilesWidth"
-          :workspace-label="activeTeamRoom?.workspace_label || ''"
-          :workspace-default="activeTeamRoom?.workspace_default === true"
-          :workspace-confirmed="activeTeamRoom?.workspace_confirmed !== false"
-          :pick-directory="() => workspace.pickDirectory()"
           @close="roomDrawer = null"
           @resize="roomFilesWidth = $event"
-          @keep="keepTeamWorkspace"
-          @changed="teamRoomNavigation.load"
         />
       </transition>
 
@@ -439,16 +433,7 @@ const {
   activeRoomId: activeTeamRoomId,
 } = teamRoomNavigation
 const roomCreateRequest = ref(false)
-const activeTeamRoom = computed(() => (
-  teamRooms.value.find(room => room.id === activeTeamRoomId.value) || null
-))
 
-async function keepTeamWorkspace() {
-  const roomId = activeTeamRoomId.value
-  if (!roomId || typeof api.value?.teamRoom?.confirmWorkspace !== 'function') return
-  await api.value.teamRoom.confirmWorkspace({ roomId })
-  await teamRoomNavigation.load()
-}
 const PROJECT_DRAWER_DEFAULT_WIDTH = 420
 const roomDrawer = ref(null)
 const roomFilesWidth = ref(PROJECT_DRAWER_DEFAULT_WIDTH)
