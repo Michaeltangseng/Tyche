@@ -1645,6 +1645,8 @@ export default {
     'settingsUi.openWorkbenchHint': '聊天的初始任务开始执行时，打开工作台并切到轨迹。',
     'settingsUi.waitForInstruction': '添加成员后等待指令',
     'settingsUi.waitForInstructionHint': '开启后，Captain 添加成员后要等你再发一条指令才开始执行。关闭后，添加完成就接着执行。',
+    'settingsUi.userPortrait': '我的头像',
+    'settingsUi.userPortraitHint': '显示在你发出的消息右侧。再点一次已选头像可恢复默认。',
     'settingsUi.chatStart': '新建聊天的起始成员',
     'settingsUi.chatStartHint': '单成员只带一位 Captain。多成员带上选出的几位，其中一位是 Captain。之后仍可以在聊天里调整。',
     'settingsUi.chatStartSingle': '单成员',

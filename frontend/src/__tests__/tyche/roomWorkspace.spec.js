@@ -79,7 +79,7 @@ const cleanup = []
 afterEach(() => {
   cleanup.splice(0).forEach(dispose => dispose())
   delete window.tycheDesktop
-  applyRoomRunPreferences({ openWorkbenchOnStart: true, rosterWaitsForInstruction: true })
+  applyRoomRunPreferences({ openWorkbenchOnStart: true, rosterWaitsForInstruction: true, userPortrait: '' })
   vi.useRealTimers()
 })
 

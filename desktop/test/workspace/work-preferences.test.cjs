@@ -9,7 +9,7 @@ const { fixture } = require('../support/local-workspace-test-helpers.cjs')
 const preference = {
   detail: 37, initiative: 82, evidence: 91, preferredAgentKinds: ['codex'],
   instructions: 'Use a comparison table.', chatStartMode: 'single', defaultCaptainKind: '', defaultMemberKinds: [],
-  openWorkbenchOnStart: true, rosterWaitsForInstruction: true,
+  openWorkbenchOnStart: true, rosterWaitsForInstruction: true, userPortrait: '',
 }
 
 test('legacy preferences migrate while continuous scores retain their exact values', () => {

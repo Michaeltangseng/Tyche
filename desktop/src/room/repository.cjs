@@ -51,6 +51,7 @@ function roleView(row) {
     model: row.model,
     capabilities: parseJson(row.capabilities_json, []),
     nativePermission: row.native_permission,
+    portrait: row.portrait || '',
     skills: parseJson(row.skills_json, []),
     isCaptain: row.is_captain === 1,
     status: row.status,

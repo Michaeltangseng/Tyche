@@ -194,6 +194,27 @@
             @click="setRosterWaits(!rosterWaitsForInstruction)"
           ><i /></button>
         </div>
+        <div class="mock-line column">
+          <div>
+            <strong>{{ t('settingsUi.userPortrait') }}</strong>
+            <small>{{ t('settingsUi.userPortraitHint') }}</small>
+          </div>
+          <div class="pref-portraits" role="radiogroup" :aria-label="t('settingsUi.userPortrait')">
+            <button
+              v-for="mascot in userPortraits"
+              :key="mascot.id"
+              type="button"
+              role="radio"
+              :aria-checked="userPortrait === mascot.id ? 'true' : 'false'"
+              :aria-label="mascot.name"
+              :class="{ active: userPortrait === mascot.id }"
+              :disabled="savingRunPreference"
+              @click="setUserPortrait(userPortrait === mascot.id ? '' : mascot.id)"
+            >
+              <img :src="mascot.src" alt="" />
+            </button>
+          </div>
+        </div>
       </article>
       <article class="settings-card">
         <h2>{{ t('settingsUi.chatStart') }}</h2>
@@ -301,7 +322,8 @@ import { computed, onMounted, reactive, ref, unref, watch } from 'vue'
 import { agentLabel, agentLogo, publicAsset } from '../catalog.js'
 import { desktopApi } from '../desktop.js'
 import { locale as currentLocale, setLocale, t } from '../i18n.js'
-import { applyRoomRunPreferences, openWorkbenchOnStart, rosterWaitsForInstruction } from '../room-run-preferences.js'
+import { ROOM_MASCOTS } from '../room-mascots.js'
+import { applyRoomRunPreferences, openWorkbenchOnStart, rosterWaitsForInstruction, userPortrait } from '../room-run-preferences.js'
 import { setTitleMarqueeEnabled, titleMarqueeEnabled } from '../title-marquee.js'
 import SkillsPage from './skills/SkillsPage.vue'
 import UsageSettingsPanel from './UsageSettingsPanel.vue'
@@ -436,6 +458,12 @@ function setRosterWaits(enabled) {
   void saveRunPreference({ rosterWaitsForInstruction: Boolean(enabled) })
 }
 
+const userPortraits = ROOM_MASCOTS
+
+function setUserPortrait(id) {
+  void saveRunPreference({ userPortrait: id })
+}
+
 function memberSelected(kind) {
   return chatStartMode.value === 'single' ? captainKind.value === kind : memberKinds.value.includes(kind)
 }
@@ -524,6 +552,11 @@ watch(() => props.section, (section) => {
 .pref-member-logo img { width: 22px; height: 22px; object-fit: contain; }
 .pref-member-logo:hover, .pref-member-logo:focus-visible { outline: none; background: var(--surface-hover); }
 .pref-member-name { flex: 1; min-width: 0; padding: 0; text-align: left; font-size: 13px; }
+.pref-portraits { display: flex; flex-wrap: wrap; gap: 8px; }
+.pref-portraits button { width: 40px; height: 40px; display: grid; place-items: center; padding: 2px; border: 1px solid var(--border); border-radius: 12px; background: transparent; cursor: pointer; }
+.pref-portraits button img { width: 32px; height: 32px; }
+.pref-portraits button.active, .pref-portraits button[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.pref-portraits button:hover, .pref-portraits button:focus-visible { outline: none; background: var(--surface-hover); }
 .pref-member-captain, .pref-member-badge { flex: 0 0 auto; color: var(--accent-text); font-size: 12px; }
 .pref-member-captain { padding: 4px 8px; border-radius: 999px; }
 .pref-member-captain:hover, .pref-member-captain:focus-visible { outline: none; background: var(--surface-hover); }

@@ -1645,6 +1645,8 @@ export default {
     'settingsUi.openWorkbenchHint': 'When a chat’s first task starts, open the workbench on Trace.',
     'settingsUi.waitForInstruction': 'Wait for an instruction after adding members',
     'settingsUi.waitForInstructionHint': 'On: after the Captain adds members, execution waits for your next message. Off: work starts in that same turn.',
+    'settingsUi.userPortrait': 'My portrait',
+    'settingsUi.userPortraitHint': 'Shown to the right of your messages. Click the selected portrait again to use the default.',
     'settingsUi.chatStart': 'Starting members for a new chat',
     'settingsUi.chatStartHint': 'Single starts with one Captain. Multiple starts with the agents you pick, and one of them is Captain. You can still change the chat later.',
     'settingsUi.chatStartSingle': 'Single',

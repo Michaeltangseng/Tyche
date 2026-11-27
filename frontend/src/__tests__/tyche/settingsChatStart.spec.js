@@ -6,7 +6,7 @@ import { applyRoomRunPreferences } from '../../room-run-preferences.js'
 
 afterEach(() => {
   delete window.tycheDesktop
-  applyRoomRunPreferences({ openWorkbenchOnStart: true, rosterWaitsForInstruction: true })
+  applyRoomRunPreferences({ openWorkbenchOnStart: true, rosterWaitsForInstruction: true, userPortrait: '' })
 })
 
 describe('chat start preferences', () => {

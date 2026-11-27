@@ -18,11 +18,12 @@ const schema = z.strictObject({
   defaultMemberKinds: z.array(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/)).max(8).default([]),
   openWorkbenchOnStart: z.boolean().default(true),
   rosterWaitsForInstruction: z.boolean().default(true),
+  userPortrait: z.union([z.literal(''), z.string().regex(/^(0[1-9]|1[0-2])$/)]).default(''),
 })
 const DEFAULTS = {
   detail: 50, initiative: 50, evidence: 50, preferredAgentKinds: [], instructions: '',
   chatStartMode: 'single', defaultCaptainKind: '', defaultMemberKinds: [],
-  openWorkbenchOnStart: true, rosterWaitsForInstruction: true,
+  openWorkbenchOnStart: true, rosterWaitsForInstruction: true, userPortrait: '',
 }
 
 function parseWorkPreferences(input) {

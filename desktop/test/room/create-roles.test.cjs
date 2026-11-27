@@ -94,6 +94,9 @@ test('create_roles writes the same role record the dialog writes, at max permiss
   assert.deepEqual(roles.map(role => role.nativePermission), ['bypassPermissions', 'danger-full-access'])
   assert.deepEqual(roles.map(role => role.responsibilities), ['查资料', '改代码'])
   assert.equal(roles.every(role => role.isCaptain === false), true)
+  assert.notEqual(roles[0].portrait, roles[1].portrait)
+  assert.match(roles[0].portrait, /^(0[1-9]|1[0-2])$/)
+  assert.match(roles[1].portrait, /^(0[1-9]|1[0-2])$/)
   assert.equal(promptOf(roomDb, roles[0].id).prompt, '研究问题并给出出处。')
   assert.equal(promptOf(roomDb, roles[0].id).created_by, captain)
   assert.deepEqual(
@@ -119,6 +122,24 @@ test('create_roles writes the same role record the dialog writes, at max permiss
     /ROOM_ROSTER_ASSIGN_WAIT/,
   )
   assert.equal(timeline.latest(chatId).id, message.id)
+})
+
+test('create_roles repeats a portrait only after every mascot is already in use', async t => {
+  const { chatId, captain, dispatcher, repo } = setup(t)
+  for (const portrait of ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']) {
+    const roleId = repo.createRole({
+      chatId, displayName: `已有${portrait}`, provider: 'codex', prompt: '已有', portrait,
+    })
+    repo.addParticipant({ chatId, roleId })
+  }
+  dispatcher.bindRun('run-full', { chatId, roleId: captain, allowedTools: ['create_roles'] })
+  const created = await dispatcher.invoke({
+    runId: 'run-full',
+    callId: 'roster-full',
+    name: 'create_roles',
+    args: { roles: [{ displayName: '后来者', provider: 'claude', prompt: '继续' }] },
+  })
+  assert.match(repo.getRole(created.roleIds[0]).portrait, /^(0[1-9]|1[0-2])$/)
 })
 
 test('create_roles can assign in the same turn when the preference does not wait', async t => {
