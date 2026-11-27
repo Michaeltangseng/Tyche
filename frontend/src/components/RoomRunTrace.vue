@@ -138,7 +138,7 @@ function onToggle(event) {
 </script>
 
 <style scoped>
-.room-run-trace { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); font-size: var(--text-xs); }
+.room-run-trace { margin-top: 8px; padding-top: 6px; font-size: var(--text-xs); }
 .room-run-trace > summary { display: flex; gap: 8px; align-items: center; color: var(--text-soft); cursor: pointer; }
 .room-run-trace-count { padding: 1px 6px; border-radius: 999px; background: var(--surface-active); color: var(--faint); font-size: 10px; }
 .room-run-trace-activity { overflow: hidden; color: var(--accent-text); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
