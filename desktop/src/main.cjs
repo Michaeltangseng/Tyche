@@ -1095,6 +1095,7 @@ function registerIpc() {
     getHost: () => teamRoomHost,
     dialog,
     getMainWindow: () => mainWindow,
+    shell,
   })
   registerSkillLibraryIpc({
     registerTrustedHandle,

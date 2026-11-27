@@ -60,13 +60,16 @@
           :discovering="agentDiscoveryPending"
           :groups="snapshot.groups"
           :installed-count="installedCount"
+          :local-agents="homeLocalAgents"
           :onboarding-completed="onboardingCompleted"
           :ready-agents="readyAgents"
           :refreshing="refreshing"
           :team-rooms="teamRooms"
           :theme="theme"
+          @create-chat="startHomeChat"
           @open-agent-manager="openAgentManager"
           @refresh-agents="refreshAgents"
+          @reveal-workspace="revealHomeWorkspace"
           @select-chat="(roomId, chatId) => teamRoomNavigation.selectChat(roomId, chatId)"
           @select-group="selectGroup"
         />
@@ -462,12 +465,20 @@ const agentCatalog = useAgentCatalog({
 })
 const {
   agentDescription,
+  agentState,
   installedCount,
   mergedCatalog,
   readyAgentKinds,
   readyAgentSignature,
   readyAgents,
+  sidebarAgents,
 } = agentCatalog
+const homeLocalAgents = computed(() => sidebarAgents.value
+  .filter(agent => agent.cloud !== true)
+  .map(agent => {
+    const state = agentState(agent)
+    return { kind: agent.kind, label: agent.label, tone: state.tone, status: state.label }
+  }))
 const agentSkills = useAgentSkills({
   installer,
   mergedCatalog,
@@ -562,6 +573,23 @@ const {
   tracePanelOpen,
   tracePanelRunId,
 } = conversationTimeline
+
+function startHomeChat() {
+  closeTracePanel()
+  teamRoomNavigation.openCreate()
+  roomCreateRequest.value = true
+}
+
+async function revealHomeWorkspace(roomId) {
+  const reveal = api.value?.teamRoom?.revealWorkspace
+  if (typeof reveal !== 'function' || !roomId) return
+  try {
+    await reveal({ roomId })
+  } catch {
+    // The recorded folder could not be opened. The button stays available.
+  }
+}
+
 const pendingHumanGates = computed(() => (
   snapshot.value.humanGates.filter(gate => gate.status === 'pending')
 ))

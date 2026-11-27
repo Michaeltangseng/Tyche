@@ -86,10 +86,10 @@ test('local preload exposes the local-only Tyche API', async () => {
   assert.equal('cancelConfigure' in api.localWorkspace, false)
   assert.equal(Object.isFrozen(api.teamRoom), true)
   assert.deepEqual(Object.keys(api.teamRoom).sort(), [
-    'acceptTask', 'answerAttention', 'bootstrap', 'chatMessages', 'createChat', 'createRole',
+    'acceptTask', 'answerAttention', 'bootstrap', 'chatMessages', 'confirmWorkspace', 'createChat', 'createRole',
     'deleteChat', 'deleteRole', 'deleteRoom', 'filesList', 'filesRead',
     'importFiles', 'listRooms', 'onChanged', 'onRuntimeEvents', 'rememberSkillDefault', 'renameChat',
-    'runtimeEvents', 'setCaptain', 'setWriteAuthorized',
+    'revealWorkspace', 'runtimeEvents', 'setCaptain', 'setWorkspace', 'setWriteAuthorized',
     'skillInventory', 'snapshot', 'stopReply', 'submitMessage', 'updateRole',
     'updateUsageSettings', 'usageReport', 'usageSettings',
   ].sort())
@@ -204,6 +204,7 @@ test('team-room preload forwards only validated domain requests', async () => {
   await api.teamRoom.setWriteAuthorized({ roomId: 'room', authorized: true })
   await api.teamRoom.setWorkspace({ roomId: 'room', workspace: '/tmp/work' })
   await api.teamRoom.confirmWorkspace({ roomId: 'room' })
+  await api.teamRoom.revealWorkspace({ roomId: 'room' })
   await api.teamRoom.runtimeEvents({ roomId: 'room', chatId: 'chat', limit: 10 })
   assert.deepEqual(invocations.map(item => item.channel), [
     'team-room:list', 'team-room:bootstrap', 'team-room:snapshot', 'team-room:chat-messages',
@@ -213,7 +214,7 @@ test('team-room preload forwards only validated domain requests', async () => {
     'team-room:attention-answer', 'team-room:message-submit', 'team-room:accept-task',
     'team-room:stop-reply', 'team-room:files-list', 'team-room:files-read', 'team-room:files-import',
     'team-room:write-authorized', 'team-room:workspace-set', 'team-room:workspace-confirm',
-    'team-room:runtime-events',
+    'team-room:reveal-workspace', 'team-room:runtime-events',
   ])
 })
 

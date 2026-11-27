@@ -28,6 +28,7 @@ const CHANNELS = Object.freeze({
   writeAuthorized: 'team-room:write-authorized',
   setWorkspace: 'team-room:workspace-set',
   confirmWorkspace: 'team-room:workspace-confirm',
+  revealWorkspace: 'team-room:reveal-workspace',
   runtimeEvents: 'team-room:runtime-events',
   skillInventory: 'team-room:skill-inventory',
   usageReport: 'team-room:usage-report',
@@ -73,7 +74,7 @@ function optionalInteger(value, { min = 0, max = Number.MAX_SAFE_INTEGER } = {})
   return value
 }
 
-function registerTeamRoomIpc({ registerTrustedHandle, getHost, dialog, getMainWindow }) {
+function registerTeamRoomIpc({ registerTrustedHandle, getHost, dialog, getMainWindow, shell }) {
   if (typeof registerTrustedHandle !== 'function') throw new TypeError('TEAM_ROOM_IPC_DEPENDENCIES_REQUIRED')
   const host = () => {
     const value = getHost?.()
@@ -309,6 +310,19 @@ function registerTeamRoomIpc({ registerTrustedHandle, getHost, dialog, getMainWi
     const parsed = assertInput(input, ['roomId'])
     text(parsed.roomId)
     return host().confirmWorkspace(parsed)
+  })
+
+  registerTrustedHandle(CHANNELS.revealWorkspace, async input => {
+    const parsed = assertInput(input, ['roomId'])
+    text(parsed.roomId)
+    const rooms = host().listRooms()
+    const room = (Array.isArray(rooms) ? rooms : []).find(item => item?.id === parsed.roomId)
+    const target = typeof room?.workspace_path === 'string' ? room.workspace_path : ''
+    if (!target) throw ipcError('TEAM_ROOM_WORKSPACE_MISSING')
+    if (typeof shell?.openPath !== 'function') throw ipcError('TEAM_ROOM_UNAVAILABLE')
+    const error = await shell.openPath(target)
+    if (error) throw ipcError('TEAM_ROOM_WORKSPACE_UNAVAILABLE')
+    return { opened: true }
   })
 
   registerTrustedHandle(CHANNELS.skillInventory, () => host().skillInventoryList())

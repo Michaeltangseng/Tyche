@@ -73,6 +73,23 @@ test('rejects unknown fields, missing ids, and invalid cursors', () => {
   }), /TEAM_ROOM_INPUT_INVALID/)
 })
 
+test('opens the room folder recorded by the host', async () => {
+  const opened = []
+  const handlers = new Map()
+  registerTeamRoomIpc({
+    registerTrustedHandle(channel, handler) { handlers.set(channel, handler) },
+    getHost: () => ({
+      listRooms: () => [{ id: 'room-1', workspace_path: '/tmp/project' }, { id: 'room-2', workspace_path: '' }],
+    }),
+    shell: { openPath: async target => { opened.push(target); return '' } },
+  })
+  assert.deepEqual(await handlers.get(CHANNELS.revealWorkspace)({ roomId: 'room-1' }), { opened: true })
+  assert.deepEqual(opened, ['/tmp/project'])
+  await assert.rejects(handlers.get(CHANNELS.revealWorkspace)({ roomId: 'room-1', workspace: '/etc' }), /TEAM_ROOM_INPUT_INVALID/)
+  await assert.rejects(handlers.get(CHANNELS.revealWorkspace)({ roomId: 'room-2' }), /TEAM_ROOM_WORKSPACE_MISSING/)
+  await assert.rejects(handlers.get(CHANNELS.revealWorkspace)({ roomId: 'missing' }), /TEAM_ROOM_WORKSPACE_MISSING/)
+})
+
 test('reports an unavailable host instead of throwing a raw TypeError', () => {
   const handlers = new Map()
   registerTeamRoomIpc({

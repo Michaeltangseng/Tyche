@@ -120,7 +120,7 @@ describe('Tyche workbench', () => {
     expect(wrapper.get('.home-dashboard').attributes('data-home-mode')).toBe('first-task')
     expect(wrapper.get('.home-dashboard-header h1').text()).toBe('Tyche workspace')
     expect(wrapper.get('.home-workspace-state').text()).toContain('2 Agents ready')
-    expect(wrapper.get('.home-panel-header h2').text()).toBe('Continue working')
+    expect(wrapper.get('.home-panel-header h2').text()).toContain('Recent chats')
     expect(wrapper.find('.home-agent-panel').exists()).toBe(false)
     expect(wrapper.find('.home-recent-panel .primary-button').exists()).toBe(false)
     expect(wrapper.find('.home-overview-grid').exists()).toBe(false)
