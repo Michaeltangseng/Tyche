@@ -1011,7 +1011,9 @@ onBeforeUnmount(() => {
 const railAgents = computed(() => (
   unref(sidebarAgentGroups).flatMap(group => group.agents)
 ))
-const castAgents = computed(() => railAgents.value.filter(agent => agent.ready === true))
+const castAgents = computed(() => railAgents.value.filter(agent => (
+  agent.cloud !== true || agent.ready === true
+)))
 
 function isRailAgentActive(agent) {
   return directGroupsFor(agent.kind).some(group => isSelectedConversation(group))

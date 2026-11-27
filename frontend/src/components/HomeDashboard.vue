@@ -99,7 +99,7 @@
         <section class="home-panel home-recent-panel">
           <header class="home-panel-header">
             <h2><TimeOutline />{{ t('home.recentTitle') }}</h2>
-            <button v-if="recentChats.length > 5" class="home-text-button" type="button" @click="recentExpanded = !recentExpanded">
+            <button v-if="recentChats.length > 8" class="home-text-button" type="button" @click="recentExpanded = !recentExpanded">
               {{ t(recentExpanded ? 'home.showLess' : 'home.viewAll') }}
               <ChevronForwardOutline />
             </button>
@@ -147,10 +147,20 @@
             <small :data-tone="agentsNeedCare ? 'warn' : 'ready'">{{ agentsNeedCare ? t('home.agentsNeedCare', { count: agentsNeedCare }) : t('home.agentsReady') }}</small>
           </header>
           <ul v-if="localAgents.length" class="home-agent-status">
-            <li v-for="agent in localAgents" :key="agent.kind">
+            <li
+              v-for="agent in localAgents"
+              :key="agent.kind"
+              :role="agent.tone === 'ready' ? undefined : 'button'"
+              :tabindex="agent.tone === 'ready' ? undefined : 0"
+              @click="agent.tone === 'ready' ? undefined : emit('open-agent-manager', agent.kind)"
+              @keydown.enter.prevent="emit('open-agent-manager', agent.kind)"
+            >
               <i :data-tone="agent.tone" />
               <span>{{ agent.label }}</span>
-              <em :data-tone="agent.tone">{{ agent.status }}</em>
+              <em v-if="agent.tone === 'ready'" data-tone="ready">{{ agent.status }}</em>
+              <button v-else class="home-configure" type="button" @click.stop="emit('open-agent-manager', agent.kind)">
+                {{ t('home.configureAgent') }}
+              </button>
             </li>
           </ul>
           <button class="home-text-button" type="button" @click="$emit('open-agent-manager')">
@@ -166,7 +176,7 @@
           <div class="home-activity-head">
             <p class="home-activity-count">{{ activityHeadline }}</p>
             <p v-if="activity.delta !== null" class="home-activity-delta" :data-up="activity.delta >= 0 ? 'true' : 'false'">
-              {{ activity.delta > 0 ? `+${activity.delta}%` : `${activity.delta}%` }}
+              {{ t('home.activityVersus', { percent: `${activity.delta > 0 ? '+' : ''}${activity.delta}%` }) }}
             </p>
           </div>
           <svg class="home-activity-chart" viewBox="0 0 100 36" preserveAspectRatio="none" role="img" :aria-label="t('home.activityTitle')">
@@ -179,6 +189,9 @@
             <path :d="areaPath" fill="url(#home-activity-fill)" />
             <path :d="linePath" fill="none" stroke="#9ec4ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
           </svg>
+          <div class="home-axis" aria-hidden="true">
+            <small v-for="day in activity.days" :key="day.key">{{ t(`home.weekday.${day.weekday}`) }}</small>
+          </div>
         </section>
 
         <section class="home-panel home-side-panel home-token-panel">
@@ -186,8 +199,26 @@
             <h2>{{ t('home.tokenTitle') }}</h2>
           </header>
           <p class="home-activity-count">{{ tokenHeadline }}</p>
-          <div v-if="tokenDays.length" class="home-token-bars" role="img" :aria-label="t('home.tokenTitle')">
-            <span v-for="day in tokenDays" :key="day.date" :style="{ height: tokenHeight(day) }" :title="day.date" />
+          <div v-if="tokenDays.length" class="home-token-chart">
+            <div class="home-token-bars" role="img" :aria-label="t('home.tokenTitle')">
+              <span
+                v-for="day in tokenDays"
+                :key="day.date"
+                class="home-token-col"
+                :data-today="day.today ? 'true' : undefined"
+                :style="{ height: tokenHeight(day) }"
+                :title="tokenTip(day)"
+              >
+                <i
+                  v-for="part in day.parts"
+                  :key="part.provider"
+                  :style="{ flexGrow: part.tokens, background: usageColor(part.provider) }"
+                />
+              </span>
+            </div>
+            <div class="home-axis" aria-hidden="true">
+              <small v-for="day in tokenDays" :key="`${day.date}-label`">{{ t(`home.weekday.${day.weekday}`) }}</small>
+            </div>
           </div>
           <button class="home-text-button" type="button" @click="$emit('open-usage')">
             {{ t('home.viewUsage') }}
@@ -253,7 +284,7 @@ import {
 import { agentLabel, agentLogo } from '../catalog.js'
 import { recentRoomChats } from '../chat-faces.js'
 import { desktopApi } from '../desktop.js'
-import { relativeTime, weeklyActivity } from '../home-activity.js'
+import { localDayKey, relativeTime, usageColor, weekdayOf, weeklyActivity } from '../home-activity.js'
 import { t } from '../i18n.js'
 import { formatTokenCount } from '../room-usage.js'
 
@@ -293,7 +324,7 @@ watch(recentChats, (rows) => {
   if (!rows.some(row => row.chat.id === selectedKey.value)) selectedKey.value = rows[0]?.chat.id || ''
 }, { immediate: true })
 const selectedRow = computed(() => recentChats.value.find(row => row.chat.id === selectedKey.value) || null)
-const visibleChats = computed(() => (recentExpanded.value ? recentChats.value : recentChats.value.slice(0, 5)))
+const visibleChats = computed(() => (recentExpanded.value ? recentChats.value : recentChats.value.slice(0, 8)))
 const workspacePath = computed(() => selectedRow.value?.room?.workspace_path || '')
 const agentsNeedCare = computed(() => props.localAgents.filter(agent => agent.tone !== 'ready').length)
 const activity = computed(() => weeklyActivity(recentChats.value.map(row => ({
@@ -333,7 +364,7 @@ const linePath = computed(() => curve(chartPoints()))
 const areaPath = computed(() => (linePath.value ? `${linePath.value} L 100 36 L 0 36 Z` : ''))
 const tokenDays = ref([])
 const tokenPeak = computed(() => Math.max(1, ...tokenDays.value.map(day => day.tokens)))
-const tokenToday = computed(() => tokenDays.value.at(-1)?.tokens || 0)
+const tokenToday = computed(() => tokenDays.value.find(day => day.today)?.tokens || 0)
 const tokenWeek = computed(() => tokenDays.value.reduce((sum, day) => sum + day.tokens, 0))
 const tokenHeadline = computed(() => {
   if (tokenToday.value) return t('home.tokenToday', { count: formatTokenCount(tokenToday.value) })
@@ -342,7 +373,15 @@ const tokenHeadline = computed(() => {
 })
 
 function tokenHeight(day) {
-  return `${Math.max(4, (day.tokens / tokenPeak.value) * 100)}%`
+  if (!day.tokens) return '4%'
+  return `${Math.max(8, (day.tokens / tokenPeak.value) * 100)}%`
+}
+
+function tokenTip(day) {
+  const parts = day.parts
+    .filter(part => part.tokens > 0)
+    .map(part => `${part.provider} ${formatTokenCount(part.tokens)}`)
+  return [day.date, formatTokenCount(day.tokens), ...parts].join(' · ')
 }
 
 onMounted(async () => {
@@ -350,10 +389,19 @@ onMounted(async () => {
   if (typeof report !== 'function') return
   try {
     const next = await report({ range: 'week' })
-    tokenDays.value = (Array.isArray(next?.series) ? next.series : []).slice(-7).map(point => ({
-      date: point.date,
-      tokens: Object.values(point.providerTokens || {}).reduce((sum, value) => sum + (Number(value) || 0), 0),
-    }))
+    const today = localDayKey()
+    tokenDays.value = (Array.isArray(next?.series) ? next.series : []).slice(-7).map(point => {
+      const parts = Object.entries(point.providerTokens || {})
+        .map(([provider, tokens]) => ({ provider, tokens: Number(tokens) || 0 }))
+        .filter(part => part.tokens > 0)
+      return {
+        date: point.date,
+        weekday: weekdayOf(point.date) ?? 0,
+        today: point.date === today,
+        tokens: parts.reduce((sum, part) => sum + part.tokens, 0),
+        parts,
+      }
+    })
   } catch {
     tokenDays.value = []
   }
@@ -404,6 +452,11 @@ const homeWorkspaceSummary = computed(() => (
     ? t('onboarding.detecting')
     : homeNeedsAttention.value
     ? t('home.setupNeeded')
+    : agentsNeedCare.value
+    ? t('home.workspaceSummaryCare', {
+        ready: readyCount.value,
+        care: agentsNeedCare.value,
+      })
     : t('home.workspaceSummary', {
         agents: readyCount.value,
         conversations: visibleGroups.value.length,

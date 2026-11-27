@@ -62,6 +62,9 @@ describe('home dashboard', () => {
     expect(wrapper.text()).toContain('Codex')
     expect(wrapper.text()).not.toContain('快捷任务')
     expect(wrapper.text()).toContain('1 个需要处理')
+    expect(wrapper.text()).toContain('去配置')
+    await wrapper.get('.home-configure').trigger('click')
+    expect(wrapper.emitted('open-agent-manager')?.[0]).toEqual(['codex'])
 
     await items[1].trigger('click')
     expect(wrapper.emitted('select-chat')).toBeUndefined()
@@ -74,7 +77,8 @@ describe('home dashboard', () => {
     expect(wrapper.emitted('reveal-workspace')?.[0]).toEqual(['room-1'])
 
     await wrapper.get('.home-action[data-tone="agents"]').trigger('click')
-    expect(wrapper.emitted('open-agent-manager')).toHaveLength(1)
+    expect(wrapper.emitted('open-agent-manager')).toHaveLength(2)
+    expect(wrapper.emitted('open-agent-manager')[1]).toEqual([])
     wrapper.unmount()
   })
 
@@ -121,6 +125,14 @@ describe('home dashboard', () => {
     expect(series.days).toHaveLength(7)
     expect(series.today).toBe(2)
     expect(series.previous).toBe(1)
-    expect(series.delta).toBe(100)
+    expect(series.delta).toBeNull()
+    const withBaseline = weeklyActivity([
+      { id: 'a', at: '2026-11-27T01:00:00' },
+      { id: 'p1', at: '2026-11-20T03:00:00' },
+      { id: 'p2', at: '2026-11-19T03:00:00' },
+      { id: 'p3', at: '2026-11-18T03:00:00' },
+    ], now)
+    expect(withBaseline.previous).toBe(3)
+    expect(withBaseline.delta).toBe(-67)
   })
 })

@@ -8,7 +8,11 @@ function controller() {
   return {
     addTeamChat: vi.fn(),
     activeView: ref('home'),
-    agentState: () => ({ label: 'Ready' }),
+    agentState: (agent) => (
+      agent?.ready === false
+        ? { label: 'Needs a model', tone: 'warning' }
+        : { label: 'Ready', tone: 'ready' }
+    ),
     contentInteractionBlocked: ref(false),
     createDirectSession: vi.fn(),
     deleteSidebarConversation: vi.fn(),
@@ -308,7 +312,7 @@ describe('workspace sidebar rail', () => {
     ).toBeTruthy()
   })
 
-  it('renders only usable Agents with their logos in the collapsed cast', async () => {
+  it('keeps an unready local Agent in the collapsed cast with a warning dot', async () => {
     const fixture = controller()
     fixture.sidebarCollapsed.value = false
     fixture.sidebarAgentsCollapsed.value = true
@@ -324,12 +328,14 @@ describe('workspace sidebar rail', () => {
     const wrapper = mount(WorkspaceSidebar, { props: { controller: fixture } })
 
     const cast = wrapper.findAll('.agent-cast-item')
-    expect(cast).toHaveLength(1)
+    expect(cast).toHaveLength(2)
     expect(cast[0].attributes('title')).toContain('Codex')
     expect(cast[0].find('.agent-cast-face img').attributes('src')).toBe('./codex.svg')
     expect(cast[0].find('.agent-cast-status').attributes('data-tone')).toBe('ready')
-    expect(wrapper.find('.agent-cast-item[title*="Hermes"]').exists()).toBe(false)
-    expect(wrapper.get('.agent-nav-section .nav-heading-count').text()).toBe('1')
+    const hermes = wrapper.get('.agent-cast-item[title*="Hermes"]')
+    expect(hermes.attributes('title')).toContain('Needs a model')
+    expect(hermes.find('.agent-cast-status').attributes('data-tone')).toBe('warning')
+    expect(wrapper.get('.agent-nav-section .nav-heading-count').text()).toBe('2')
     expect(wrapper.find('.sidebar-agent-main').exists()).toBe(false)
 
     await cast[0].trigger('click')
