@@ -469,6 +469,10 @@ describe('team room workspace', () => {
     const bridge = api(snapshot)
     const wrapper = mountRoom(bridge)
     await flushPromises()
+    expect(wrapper.get('.room-thinking').text()).toBe('Thinking...')
+    expect(wrapper.get('header .room-stop').text()).toBe('Stop task')
+    expect(wrapper.get('.room-message-avatar').attributes('data-speaking')).toBe('true')
+    expect(wrapper.find('.room-message-body .room-actions').exists()).toBe(false)
 
     bridge.emitRuntimeEvent({
       runId: 'reply-1', chatId: 'chat-1', roleId: 'worker', mode: 'chat',

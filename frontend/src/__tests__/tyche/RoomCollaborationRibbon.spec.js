@@ -107,6 +107,28 @@ describe('room collaboration ribbon', () => {
     expect(chips[0].attributes('data-speaking')).toBe('true')
     expect(chips[1].attributes('data-speaking')).toBeUndefined()
     expect(chips[0].get('.room-chip-live').text()).toBe('2:00')
+    expect(chips[0].attributes('style')).toContain('--chip-tint')
+    expect(chips[1].attributes('style')).toBeFalsy()
+    wrapper.unmount()
+  })
+
+  it('gives concurrent speakers different glow colors', () => {
+    const wrapper = mountRibbon({
+      mode: 'running',
+      nodes: [],
+      replies: [
+        { roleId: 'claude', since: '2026-11-15T10:04:00Z', messageId: 'message-claude' },
+        { roleId: 'codex', since: '2026-11-15T10:04:10Z', messageId: 'message-codex' },
+      ],
+    })
+    const chips = wrapper.findAll('.room-agent-chip')
+    const claude = chips[0].attributes('style')
+    const codex = chips[1].attributes('style')
+    expect(chips[0].attributes('data-speaking')).toBe('true')
+    expect(chips[1].attributes('data-speaking')).toBe('true')
+    expect(claude).toContain('--chip-tint')
+    expect(codex).toContain('--chip-tint')
+    expect(claude).not.toBe(codex)
     wrapper.unmount()
   })
 

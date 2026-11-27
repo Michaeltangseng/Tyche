@@ -103,7 +103,7 @@ import {
   MEMBER_STRIP_RATIO,
   fitMemberCount,
 } from '../memberStrip.js'
-import { portraitGlow } from '../role-portraits.js'
+import { distinctGlows } from '../role-portraits.js'
 import { roleFace } from '../room-mascots.js'
 import RoomMascot from './RoomMascot.vue'
 
@@ -242,12 +242,14 @@ function labelFor(role) {
   return role?.display_name || role?.id || ''
 }
 
-function glowFor(role) {
-  return portraitGlow(role?.portrait || role?.provider)
-}
+const speakingGlow = computed(() => distinctGlows(
+  props.roles.filter(role => replyFor(role)).map(role => role.id),
+))
 
 function chipStyle(role) {
-  return { '--chip-tint': glowFor(role) }
+  const glow = speakingGlow.value.get(role?.id)
+  if (!glow) return undefined
+  return { '--chip-tint': glow.color, '--breath-delay': glow.delay }
 }
 
 function chipTitle(role) {
@@ -352,10 +354,9 @@ function elapsed(value) {
 }
 
 .room-agent-chip[data-speaking="true"] .room-chip-photo {
-  box-shadow:
-    0 0 0 1.5px color-mix(in srgb, var(--chip-tint, var(--accent)) 82%, white),
-    0 0 14px color-mix(in srgb, var(--chip-tint, var(--accent)) 42%, transparent);
-  animation: room-chip-breathe 2.4s ease-in-out infinite;
+  transform-origin: center;
+  animation: room-chip-breathe 2.2s ease-in-out infinite;
+  animation-delay: var(--breath-delay, 0s);
 }
 
 .room-agent-chip[data-quiet="true"] .room-chip-photo {
@@ -540,14 +541,16 @@ function elapsed(value) {
 
 @keyframes room-chip-breathe {
   0%, 100% {
-    box-shadow:
-      0 0 0 1.5px color-mix(in srgb, var(--chip-tint, var(--accent)) 82%, white),
-      0 0 12px color-mix(in srgb, var(--chip-tint, var(--accent)) 32%, transparent);
+    filter:
+      drop-shadow(0 0 2px var(--chip-tint, var(--accent)))
+      drop-shadow(0 0 7px color-mix(in srgb, var(--chip-tint, var(--accent)) 55%, transparent));
+    transform: scale(1);
   }
   50% {
-    box-shadow:
-      0 0 0 1.5px color-mix(in srgb, var(--chip-tint, var(--accent)) 92%, white),
-      0 0 20px color-mix(in srgb, var(--chip-tint, var(--accent)) 52%, transparent);
+    filter:
+      drop-shadow(0 0 6px var(--chip-tint, var(--accent)))
+      drop-shadow(0 0 16px color-mix(in srgb, var(--chip-tint, var(--accent)) 75%, transparent));
+    transform: scale(1.14);
   }
 }
 
@@ -560,6 +563,10 @@ function elapsed(value) {
   .room-agent-chip[data-speaking="true"] .room-chip-photo,
   .room-chip-live-dot {
     animation: none;
+  }
+  .room-agent-chip[data-speaking="true"] .room-chip-photo {
+    filter: drop-shadow(0 0 6px var(--chip-tint, var(--accent)));
+    transform: none;
   }
 }
 

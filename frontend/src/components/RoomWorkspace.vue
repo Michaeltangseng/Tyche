@@ -128,13 +128,20 @@
                   v-if="!entry.isUser && !entry.isSystem && entry.roleId"
                   class="room-message-avatar"
                   type="button"
+                  :data-speaking="isWorking(entry.message) ? 'true' : undefined"
+                  :style="avatarGlowStyle(entry)"
                   :aria-label="`${t('room.configureRole')}: ${entry.author}`"
                   @click="openRoleSettings(entry.roleId)"
                 >
                   <RoomMascot v-if="entry.roleId" :mascot="roleFace(rolesById.get(entry.roleId) || { id: entry.roleId })" />
                   <span v-else>{{ entry.author.slice(0, 1) }}</span>
                 </button>
-                <span v-else-if="!entry.isUser && !entry.isSystem" class="room-message-avatar">
+                <span
+                  v-else-if="!entry.isUser && !entry.isSystem"
+                  class="room-message-avatar"
+                  :data-speaking="isWorking(entry.message) ? 'true' : undefined"
+                  :style="avatarGlowStyle(entry)"
+                >
                   <RoomMascot v-if="entry.roleId" :mascot="roleFace(rolesById.get(entry.roleId) || { id: entry.roleId })" />
                   <span v-else>{{ entry.author.slice(0, 1) }}</span>
                 </span>
@@ -152,6 +159,13 @@
                       :aria-label="statusLabel(entry.message.status)"
                     >✓</span>
                     <span v-else-if="entry.message.status" class="room-message-status" :data-status="entry.message.status">{{ statusLabel(entry.message.status) }}</span>
+                    <button
+                      v-if="canStop(entry.message)"
+                      class="room-stop"
+                      type="button"
+                      :disabled="busy"
+                      @click="stopReply(entry.message.id)"
+                    >{{ t('room.stop') }}</button>
                     <span v-if="turnUsage(entry.message)" class="room-turn-usage">{{ turnUsage(entry.message) }}</span>
                   </header>
                   <MarkdownMessage
@@ -168,7 +182,7 @@
                     :mention-profiles="mentionProfiles"
                     aria-live="polite"
                   />
-                  <p v-else-if="isWorking(entry.message) && !entry.handoffs.length" class="room-live-output" aria-live="polite">{{ t('room.liveOutput') }}</p>
+                  <p v-else-if="isWorking(entry.message) && !entry.handoffs.length" class="room-thinking" aria-live="polite">{{ t('room.thinkingNow') }}</p>
                   <div v-if="entry.handoffs.length" class="room-handoff-list">
                     <div
                       v-for="handoff in entry.handoffs"
@@ -231,9 +245,6 @@
                   />
                   <div v-if="entry.message.status === 'waiting_for_input'" class="room-actions">
                     <span class="room-muted">{{ t('room.waitingForInput') }}</span>
-                  </div>
-                  <div v-if="canStop(entry.message)" class="room-actions">
-                    <button class="secondary-button" type="button" :disabled="busy" @click="stopReply(entry.message.id)">{{ t('room.stop') }}</button>
                   </div>
                 </div>
                 <span v-if="entry.isUser" class="room-message-avatar room-user-avatar" :aria-label="t('room.you')">
@@ -597,6 +608,7 @@ import {
 } from '@vicons/ionicons5'
 import { agentLogo } from '../catalog.js'
 import { desktopApi } from '../desktop.js'
+import { distinctGlows } from '../role-portraits.js'
 import { roomMascot, roleFace, ROOM_MASCOTS, mascotById } from '../room-mascots.js'
 import RoomMascot from './RoomMascot.vue'
 import { t } from '../i18n.js'
@@ -866,6 +878,18 @@ const entries = computed(() => {
   }
   return folded
 })
+
+const workingGlow = computed(() => distinctGlows(
+  entries.value
+    .filter(entry => entry.kind === 'message' && isWorking(entry.message) && entry.roleId)
+    .map(entry => entry.roleId),
+))
+
+function avatarGlowStyle(entry) {
+  const glow = workingGlow.value.get(entry.roleId)
+  if (!glow) return undefined
+  return { '--chip-tint': glow.color, '--breath-delay': glow.delay }
+}
 
 const agentUsage = computed(() => agentUsageRows({
   roles: roles.value,
@@ -1871,6 +1895,25 @@ button.room-message-avatar { cursor: pointer; }
 button.room-message-avatar:focus-visible { outline: none; }
 .room-message-avatar :deep(.room-mascot-art),
 .room-welcome-face :deep(.room-mascot-art) { width: 44px; height: 44px; }
+.room-message-avatar[data-speaking="true"] :deep(.room-mascot-art) {
+  transform-origin: center;
+  animation: room-avatar-breathe 2.2s ease-in-out infinite;
+  animation-delay: var(--breath-delay, 0s);
+}
+@keyframes room-avatar-breathe {
+  0%, 100% {
+    filter:
+      drop-shadow(0 0 3px var(--chip-tint, var(--accent)))
+      drop-shadow(0 0 10px color-mix(in srgb, var(--chip-tint, var(--accent)) 50%, transparent));
+    transform: scale(1);
+  }
+  50% {
+    filter:
+      drop-shadow(0 0 8px var(--chip-tint, var(--accent)))
+      drop-shadow(0 0 18px color-mix(in srgb, var(--chip-tint, var(--accent)) 72%, transparent));
+    transform: scale(1.08);
+  }
+}
 .room-handoff-face :deep(.room-mascot-art),
 .room-roster-card :deep(.room-mascot-art),
 .room-usage-face :deep(.room-mascot-art) { width: 100%; height: 100%; }
@@ -1879,6 +1922,12 @@ button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.
 @media (prefers-reduced-motion: reduce) {
   button.room-message-avatar:hover img,
   button.room-message-avatar:focus-visible img { animation: none; transform: scale(1.5); }
+  .room-message-avatar[data-speaking="true"] :deep(.room-mascot-art) {
+    animation: none;
+    filter: drop-shadow(0 0 8px var(--chip-tint, var(--accent)));
+    transform: none;
+  }
+  .room-thinking { animation: none; }
   .room-roster-card[data-intro] { position: static; left: auto; top: auto; width: 168px; transform: none; filter: none; box-shadow: none; }
   .room-roster-card[data-intro="center"]::before,
   .room-roster-card[data-intro="center"]::after { animation: none; opacity: 0; }
@@ -1887,8 +1936,12 @@ button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.
 .room-user-avatar svg { width: 22px; height: 22px; }
 .room-message-body { min-width: 0; flex: 1 1 auto; max-width: none; padding: 4px 2px; }
 .room-message-user .room-message-body { flex: 0 1 auto; max-width: min(720px, calc(100% - 56px)); padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--surface-active) 72%, transparent); }
-.room-message header { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: baseline; margin-bottom: 4px; }
+.room-message header { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; margin-bottom: 4px; }
 .room-message header strong { font-size: var(--text-sm); }
+.room-stop { margin: 0; padding: 1px 8px; border: 1px solid color-mix(in srgb, var(--danger, #c45c5c) 50%, var(--border)); border-radius: 999px; background: transparent; color: var(--danger, #e07a7a); font: inherit; font-size: var(--text-2xs); line-height: 1.5; cursor: pointer; }
+.room-stop:hover, .room-stop:focus-visible { outline: none; background: color-mix(in srgb, var(--danger, #c45c5c) 16%, transparent); }
+.room-thinking { margin: 2px 0 0; color: var(--text-soft); font-size: var(--text-sm); animation: room-thinking-fade 1.6s ease-in-out infinite; }
+@keyframes room-thinking-fade { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
 .room-message time { color: var(--faint); font-size: var(--text-2xs); }
 .room-message p { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.65; }
 .room-message ul { margin: 8px 0 0; padding-left: 18px; color: var(--text-soft); font-size: var(--text-xs); line-height: 1.55; }

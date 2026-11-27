@@ -310,6 +310,7 @@ export default {
     "room.staleWarning": "{count} execution(s) have had no platform heartbeat for two minutes. Check the process or its artifacts.",
     "room.attemptEnded": "This attempt ended or was interrupted. Inspect existing output before retrying.",
     "room.liveOutput": "Live output:",
+    "room.thinkingNow": "Thinking...",
     "room.retry": "Retry",
     "room.handoffTo": "Handoff to {names}",
     "room.handoff": "Hand off",

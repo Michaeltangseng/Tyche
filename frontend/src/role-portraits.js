@@ -64,3 +64,36 @@ export function rolePortrait(provider) {
 export function portraitGlow(provider) {
   return PORTRAIT_GLOW[portraitId(provider)] || '#3ec4d0'
 }
+
+const SPEAKING_GLOWS = Object.freeze([
+  '#ff8a3d',
+  '#4c93ff',
+  '#3ecf8e',
+  '#b388ff',
+  '#f0b429',
+  '#ff6b9d',
+  '#67d4ff',
+  '#ff5d5d',
+])
+
+export function distinctGlows(ids) {
+  const used = new Set()
+  const map = new Map()
+  let index = 0
+  for (const id of ids) {
+    const key = String(id || '')
+    if (!key || map.has(key)) continue
+    let hash = 0
+    for (const char of key) hash = (hash * 33 + char.charCodeAt(0)) >>> 0
+    let slot = hash % SPEAKING_GLOWS.length
+    let guard = 0
+    while (used.has(slot) && guard < SPEAKING_GLOWS.length) {
+      slot = (slot + 1) % SPEAKING_GLOWS.length
+      guard += 1
+    }
+    used.add(slot)
+    map.set(key, { color: SPEAKING_GLOWS[slot], delay: `${index * 0.35}s` })
+    index += 1
+  }
+  return map
+}
