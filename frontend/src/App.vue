@@ -68,6 +68,7 @@
           :theme="theme"
           @create-chat="startHomeChat"
           @open-agent-manager="openAgentManager"
+          @open-usage="openSystemSettings('usage')"
           @refresh-agents="refreshAgents"
           @reveal-workspace="revealHomeWorkspace"
           @select-chat="(roomId, chatId) => teamRoomNavigation.selectChat(roomId, chatId)"

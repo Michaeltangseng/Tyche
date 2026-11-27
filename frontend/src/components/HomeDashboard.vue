@@ -115,11 +115,6 @@
               @click="selectedKey = row.chat.id"
               @keydown.enter.prevent="selectedKey = row.chat.id"
             >
-              <span class="home-chat-stack" :data-count="String(facesFor(row.chat).length)" aria-hidden="true">
-                <span v-for="member in facesFor(row.chat)" :key="member.key" class="home-chat-face">
-                  <RoomMascot :mascot="member.mascot" />
-                </span>
-              </span>
               <span class="home-recent-copy">
                 <strong>{{ chatTitle(row) }}</strong>
                 <small>{{ chatMeta(row) }}</small>
@@ -185,6 +180,20 @@
             <path :d="linePath" fill="none" stroke="#9ec4ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
           </svg>
         </section>
+
+        <section class="home-panel home-side-panel home-token-panel">
+          <header class="home-panel-header">
+            <h2>{{ t('home.tokenTitle') }}</h2>
+          </header>
+          <p class="home-activity-count">{{ tokenHeadline }}</p>
+          <div v-if="tokenDays.length" class="home-token-bars" role="img" :aria-label="t('home.tokenTitle')">
+            <span v-for="day in tokenDays" :key="day.date" :style="{ height: tokenHeight(day) }" :title="day.date" />
+          </div>
+          <button class="home-text-button" type="button" @click="$emit('open-usage')">
+            {{ t('home.viewUsage') }}
+            <ChevronForwardOutline />
+          </button>
+        </section>
       </aside>
     </div>
 
@@ -228,7 +237,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
   ChatbubblesOutline,
   CheckmarkCircleOutline,
@@ -242,10 +251,11 @@ import {
   WarningOutline,
 } from '@vicons/ionicons5'
 import { agentLabel, agentLogo } from '../catalog.js'
-import { chatMemberFaces, recentRoomChats } from '../chat-faces.js'
+import { recentRoomChats } from '../chat-faces.js'
+import { desktopApi } from '../desktop.js'
 import { relativeTime, weeklyActivity } from '../home-activity.js'
 import { t } from '../i18n.js'
-import RoomMascot from './RoomMascot.vue'
+import { formatTokenCount } from '../room-usage.js'
 
 const props = defineProps({
   awaitingDecisionGates: { type: Array, default: () => [] },
@@ -263,6 +273,7 @@ const props = defineProps({
 const emit = defineEmits([
   'create-chat',
   'open-agent-manager',
+  'open-usage',
   'refresh-agents',
   'reveal-workspace',
   'select-chat',
@@ -320,10 +331,33 @@ function curve(points) {
 
 const linePath = computed(() => curve(chartPoints()))
 const areaPath = computed(() => (linePath.value ? `${linePath.value} L 100 36 L 0 36 Z` : ''))
+const tokenDays = ref([])
+const tokenPeak = computed(() => Math.max(1, ...tokenDays.value.map(day => day.tokens)))
+const tokenToday = computed(() => tokenDays.value.at(-1)?.tokens || 0)
+const tokenWeek = computed(() => tokenDays.value.reduce((sum, day) => sum + day.tokens, 0))
+const tokenHeadline = computed(() => {
+  if (tokenToday.value) return t('home.tokenToday', { count: formatTokenCount(tokenToday.value) })
+  if (tokenWeek.value) return t('home.tokenWeek', { count: formatTokenCount(tokenWeek.value) })
+  return t('home.tokenEmpty')
+})
 
-function facesFor(chat) {
-  return chatMemberFaces(chat)
+function tokenHeight(day) {
+  return `${Math.max(4, (day.tokens / tokenPeak.value) * 100)}%`
 }
+
+onMounted(async () => {
+  const report = desktopApi()?.teamRoom?.usageReport
+  if (typeof report !== 'function') return
+  try {
+    const next = await report({ range: 'week' })
+    tokenDays.value = (Array.isArray(next?.series) ? next.series : []).slice(-7).map(point => ({
+      date: point.date,
+      tokens: Object.values(point.providerTokens || {}).reduce((sum, value) => sum + (Number(value) || 0), 0),
+    }))
+  } catch {
+    tokenDays.value = []
+  }
+})
 
 function openChat(row) {
   emit('select-chat', row.room.id, row.chat.id)

@@ -94,7 +94,7 @@
 
 @media (max-width: 920px) {
   .home-dashboard-header:not(.home-hero) { align-items: flex-start; flex-direction: column; gap: 10px; }
-  .home-hero.home-dashboard-header { min-height: 148px; padding-left: 148px; }
+  .home-hero.home-dashboard-header { min-height: 148px; }
   .home-workspace-state { white-space: normal; }
 }
 
@@ -125,7 +125,6 @@
   .brand-row { -webkit-app-region: no-drag; }
   .agent-home { padding: 22px 18px 32px; }
   .home-actions { grid-template-columns: 1fr; }
-  .home-hero.home-dashboard-header { padding-left: 112px; }
   .home-recovery-notice { grid-template-columns: 24px minmax(0, 1fr); }
   .home-recovery-notice .secondary-button { grid-column: 2; justify-self: start; }
   .home-header { flex-direction: column; }

@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import HomeDashboard from '../../components/HomeDashboard.vue'
 import { weeklyActivity } from '../../home-activity.js'
@@ -57,7 +57,7 @@ describe('home dashboard', () => {
     const items = wrapper.findAll('.home-recent-item')
     expect(items[0].attributes('data-selected')).toBe('true')
     expect(items[0].text()).toContain('两人按顺序讲笑话')
-    expect(items[0].findAll('.home-chat-face')).toHaveLength(3)
+    expect(items[0].find('.home-chat-face').exists()).toBe(false)
     expect(wrapper.text()).toContain('Claude Code')
     expect(wrapper.text()).toContain('Codex')
     expect(wrapper.text()).not.toContain('快捷任务')
@@ -86,6 +86,27 @@ describe('home dashboard', () => {
     expect(button.attributes('disabled')).toBeDefined()
     await button.trigger('click')
     expect(wrapper.emitted('reveal-workspace')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('shows seven days of token use and opens usage settings', async () => {
+    window.tycheDesktop = {
+      teamRoom: {
+        usageReport: async () => ({
+          series: [
+            { date: '2026-11-21', providerTokens: { claude: 0 } },
+            { date: '2026-11-27', providerTokens: { claude: 1200, codex: 300 } },
+          ],
+        }),
+      },
+    }
+    const wrapper = mountHome()
+    await flushPromises()
+    expect(wrapper.findAll('.home-token-bars span')).toHaveLength(2)
+    expect(wrapper.text()).toContain('1.5k')
+    await wrapper.get('.home-token-panel .home-text-button').trigger('click')
+    expect(wrapper.emitted('open-usage')).toHaveLength(1)
+    delete window.tycheDesktop
     wrapper.unmount()
   })
 
