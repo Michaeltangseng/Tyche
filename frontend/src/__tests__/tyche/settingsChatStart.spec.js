@@ -57,7 +57,7 @@ describe('chat start preferences', () => {
       defaultCaptainKind: 'claude',
       defaultMemberKinds: ['claude', 'codex'],
     }))
-    const wait = wrapper.findAll('[role="switch"]').find(button => button.attributes('aria-label') === 'Wait for an instruction after adding members')
+    const wait = wrapper.findAll('[role="switch"]').find(button => button.attributes('aria-label') === 'Wait for an instruction when someone joins')
     expect(wait.attributes('aria-checked')).toBe('true')
     await wait.trigger('click')
     await flushPromises()

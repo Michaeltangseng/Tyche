@@ -1,5 +1,5 @@
 <template>
-  <section class="settings-page mock" :aria-label="t(titleKey)">
+  <section class="settings-page mock" :class="{ 'pref-page': section === 'preferences' }" :aria-label="t(titleKey)">
     <header v-if="section !== 'skills' && section !== 'usage'" class="settings-page-title">
       <div>
         <h1>
@@ -110,8 +110,33 @@
 
     <template v-else-if="section === 'preferences'">
       <article class="settings-card">
-        <h2>{{ t('settingsUi.interface') }}</h2>
-        <div class="mock-line">
+        <h2>{{ t('settingsUi.profileGroup') }}</h2>
+        <div class="setting-row">
+          <div>
+            <strong>{{ t('settingsUi.userPortrait') }}</strong>
+            <small>{{ t('settingsUi.userPortraitHint') }}</small>
+          </div>
+          <button class="agent-config-link" type="button" :disabled="!userPortrait || savingRunPreference" @click="setUserPortrait('')">{{ t('settingsUi.restoreDefault') }}</button>
+        </div>
+        <div class="pref-portraits" role="radiogroup" :aria-label="t('settingsUi.userPortrait')">
+          <button
+            v-for="mascot in userPortraits"
+            :key="mascot.id"
+            type="button"
+            role="radio"
+            :aria-checked="userPortrait === mascot.id ? 'true' : 'false'"
+            :aria-label="mascot.name"
+            :class="{ active: userPortrait === mascot.id }"
+            :disabled="savingRunPreference"
+            @click="setUserPortrait(mascot.id)"
+          >
+            <img :src="mascot.src" alt="" />
+          </button>
+        </div>
+      </article>
+      <article class="settings-card">
+        <h2>{{ t('settingsUi.displayGroup') }}</h2>
+        <div class="setting-row">
           <div>
             <strong>{{ t('settingsUi.titleMarquee') }}</strong>
             <small>{{ t('settingsUi.titleMarqueeHint') }}</small>
@@ -126,7 +151,7 @@
             @click="setTitleMarqueeEnabled(!titleMarqueeEnabled)"
           ><i /></button>
         </div>
-        <div class="mock-line">
+        <div class="setting-row">
           <div>
             <strong>{{ t('settingsUi.openWorkbench') }}</strong>
             <small>{{ t('settingsUi.openWorkbenchHint') }}</small>
@@ -142,7 +167,63 @@
             @click="setOpenWorkbench(!openWorkbenchOnStart)"
           ><i /></button>
         </div>
-        <div class="mock-line">
+      </article>
+      <article class="settings-card">
+        <div class="setting-row setting-row-head">
+          <div>
+            <h2>
+              {{ t('settingsUi.chatStart') }}
+              <button class="pref-info" type="button" :title="t('settingsUi.captainHint')" :aria-label="t('settingsUi.captainHint')">i</button>
+            </h2>
+            <small>{{ t('settingsUi.chatStartHint') }}</small>
+          </div>
+          <div class="settings-seg chat-start-mode" role="radiogroup" :aria-label="t('settingsUi.chatStart')">
+            <button type="button" role="radio" :aria-checked="chatStartMode === 'single'" :class="{ active: chatStartMode === 'single' }" :disabled="savingCaptain" @click="setChatStartMode('single')">{{ t('settingsUi.chatStartSingle') }}</button>
+            <button type="button" role="radio" :aria-checked="chatStartMode === 'multi'" :class="{ active: chatStartMode === 'multi' }" :disabled="savingCaptain" @click="setChatStartMode('multi')">{{ t('settingsUi.chatStartMulti') }}</button>
+          </div>
+        </div>
+        <div class="pref-members" :role="chatStartMode === 'multi' ? 'group' : 'radiogroup'" :aria-label="t('settingsUi.chatStart')">
+          <div
+            v-for="agent in captainChoices"
+            :key="agent.kind"
+            class="pref-member"
+            :data-selected="agent.ready && memberSelected(agent.kind) ? 'true' : undefined"
+            :data-unavailable="agent.ready ? undefined : 'true'"
+          >
+            <span class="pref-mark" :data-mode="chatStartMode" aria-hidden="true" />
+            <button
+              class="pref-member-logo"
+              type="button"
+              :aria-label="t('systemSettings.openAgentDetail', { agent: agent.label })"
+              @click="openAgentDetail?.({ kind: agent.kind, label: agent.label })"
+            >
+              <img :src="agent.logo" alt="" />
+            </button>
+            <button class="pref-member-name" type="button" :role="chatStartMode === 'multi' ? 'checkbox' : 'radio'" :aria-checked="agent.ready && memberSelected(agent.kind) ? 'true' : 'false'" :disabled="savingCaptain || !agent.ready" @click="toggleStartMember(agent.kind)">
+              {{ agent.label }}
+            </button>
+            <button
+              v-if="!agent.ready"
+              class="pref-member-captain"
+              type="button"
+              @click="openAgentDetail?.({ kind: agent.kind, label: agent.label })"
+            >
+              {{ agent.status || t('settingsUi.needsSetup') }} · {{ t('home.configureAgent') }}
+            </button>
+            <button
+              v-else-if="chatStartMode === 'multi' && memberSelected(agent.kind) && captainKind !== agent.kind"
+              class="pref-member-captain"
+              type="button"
+              :disabled="savingCaptain"
+              @click="makeStartCaptain(agent.kind)"
+            >
+              {{ t('settingsUi.makeCaptain') }}
+            </button>
+            <span v-else-if="captainKind === agent.kind && memberSelected(agent.kind)" class="pref-member-badge">{{ t('settingsUi.defaultCaptain') }}</span>
+          </div>
+          <span v-if="!captainChoices.length" class="settings-note">{{ t('room.noProviders') }}</span>
+        </div>
+        <div class="setting-row">
           <div>
             <strong>{{ t('settingsUi.waitForInstruction') }}</strong>
             <small>{{ t('settingsUi.waitForInstructionHint') }}</small>
@@ -157,66 +238,6 @@
             :disabled="savingRunPreference"
             @click="setRosterWaits(!rosterWaitsForInstruction)"
           ><i /></button>
-        </div>
-        <div class="mock-line column">
-          <div>
-            <strong>{{ t('settingsUi.userPortrait') }}</strong>
-            <small>{{ t('settingsUi.userPortraitHint') }}</small>
-          </div>
-          <div class="pref-portraits" role="radiogroup" :aria-label="t('settingsUi.userPortrait')">
-            <button
-              v-for="mascot in userPortraits"
-              :key="mascot.id"
-              type="button"
-              role="radio"
-              :aria-checked="userPortrait === mascot.id ? 'true' : 'false'"
-              :aria-label="mascot.name"
-              :class="{ active: userPortrait === mascot.id }"
-              :disabled="savingRunPreference"
-              @click="setUserPortrait(userPortrait === mascot.id ? '' : mascot.id)"
-            >
-              <img :src="mascot.src" alt="" />
-            </button>
-          </div>
-        </div>
-      </article>
-      <article class="settings-card">
-        <h2>{{ t('settingsUi.chatStart') }}</h2>
-        <p class="settings-note">{{ t('settingsUi.chatStartHint') }}</p>
-        <div class="settings-seg chat-start-mode" role="radiogroup" :aria-label="t('settingsUi.chatStart')">
-          <button type="button" role="radio" :aria-checked="chatStartMode === 'single'" :class="{ active: chatStartMode === 'single' }" :disabled="savingCaptain" @click="setChatStartMode('single')">{{ t('settingsUi.chatStartSingle') }}</button>
-          <button type="button" role="radio" :aria-checked="chatStartMode === 'multi'" :class="{ active: chatStartMode === 'multi' }" :disabled="savingCaptain" @click="setChatStartMode('multi')">{{ t('settingsUi.chatStartMulti') }}</button>
-        </div>
-        <div class="pref-members" :role="chatStartMode === 'multi' ? 'group' : 'radiogroup'" :aria-label="t('settingsUi.chatStart')">
-          <div
-            v-for="agent in captainChoices"
-            :key="agent.kind"
-            class="pref-member"
-            :data-selected="memberSelected(agent.kind) ? 'true' : undefined"
-          >
-            <button
-              class="pref-member-logo"
-              type="button"
-              :aria-label="t('systemSettings.openAgentDetail', { agent: agent.label })"
-              @click="openAgentDetail?.({ kind: agent.kind, label: agent.label })"
-            >
-              <img :src="agent.logo" alt="" />
-            </button>
-            <button class="pref-member-name" type="button" :role="chatStartMode === 'multi' ? 'checkbox' : 'radio'" :aria-checked="memberSelected(agent.kind)" :disabled="savingCaptain" @click="toggleStartMember(agent.kind)">
-              {{ agent.label }}
-            </button>
-            <button
-              v-if="chatStartMode === 'multi' && memberSelected(agent.kind) && captainKind !== agent.kind"
-              class="pref-member-captain"
-              type="button"
-              :disabled="savingCaptain"
-              @click="makeStartCaptain(agent.kind)"
-            >
-              {{ t('settingsUi.makeCaptain') }}
-            </button>
-            <span v-else-if="captainKind === agent.kind && memberSelected(agent.kind)" class="pref-member-badge">{{ t('settingsUi.defaultCaptain') }}</span>
-          </div>
-          <span v-if="!captainChoices.length" class="settings-note">{{ t('room.noProviders') }}</span>
         </div>
       </article>
     </template>
@@ -320,18 +341,24 @@ const captainKind = ref('')
 const chatStartMode = ref('single')
 const memberKinds = ref([])
 const savingCaptain = ref(false)
-const captainChoices = computed(() => (props.installedAgentKinds || []).map(kind => ({
-  kind,
-  label: agentLabel(kind),
-  logo: agentLogo(kind),
-})))
+const captainChoices = computed(() => (props.installedAgentKinds || []).map(item => {
+  const kind = typeof item === 'string' ? item : item?.kind
+  return {
+    kind,
+    label: (typeof item === 'object' && item?.label) || agentLabel(kind),
+    logo: (typeof item === 'object' && item?.logo) || agentLogo(kind),
+    ready: typeof item === 'object' ? item?.ready !== false : true,
+    status: typeof item === 'object' ? item?.status || '' : '',
+  }
+}).filter(agent => agent.kind))
+const readyChoices = computed(() => captainChoices.value.filter(agent => agent.ready))
 
 async function loadCaptainPreference() {
   const bridge = desktopApi()?.workPreferences
   if (!bridge?.get) return
   try {
     const value = await bridge.get()
-    const choices = captainChoices.value
+    const choices = readyChoices.value
     const known = kind => choices.some(agent => agent.kind === kind)
     const savedCaptain = known(value?.defaultCaptainKind) ? value.defaultCaptainKind : (choices[0]?.kind || '')
     const savedMembers = (Array.isArray(value?.defaultMemberKinds) ? value.defaultMemberKinds : []).filter(known)
@@ -413,7 +440,7 @@ async function saveStartTeam({ mode, captain, members }) {
 }
 
 function setChatStartMode(mode) {
-  const captain = captainKind.value || captainChoices.value[0]?.kind || ''
+  const captain = captainKind.value || readyChoices.value[0]?.kind || ''
   if (!captain) return
   if (mode === 'single') {
     void saveStartTeam({ mode, captain, members: [captain] })
@@ -424,6 +451,7 @@ function setChatStartMode(mode) {
 }
 
 function toggleStartMember(kind) {
+  if (!readyChoices.value.some(agent => agent.kind === kind)) return
   const captain = captainKind.value || kind
   if (chatStartMode.value !== 'multi') {
     void saveStartTeam({ mode: 'single', captain: kind, members: [kind] })
@@ -461,20 +489,34 @@ watch(() => props.section, (section) => {
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--border); border-radius: 99px; background: transparent; color: var(--text-soft); font: inherit; font-size: 12px; cursor: pointer; }
 .chip img { width: 16px; height: 16px; object-fit: contain; }
 .chip.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
-.pref-members { display: grid; gap: 8px; margin-top: 12px; }
+.pref-page { max-width: 680px; gap: 24px; }
+.pref-page .settings-card { display: grid; gap: 0; padding: 8px 20px 16px; }
+.pref-page .settings-card > h2, .setting-row-head h2 { margin: 16px 0 8px; font-size: 13px; font-weight: 650; }
+.setting-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; min-height: 64px; padding: 16px 0; border-top: 1px solid var(--border); }
+.setting-row:first-of-type { border-top: 0; }
+.setting-row-head { min-height: 0; padding-top: 8px; border-top: 0; }
+.setting-row strong, .setting-row-head h2 { display: block; font-size: 14px; font-weight: 640; }
+.setting-row small, .setting-row-head small { display: block; max-width: 52ch; margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.pref-info { width: 16px; height: 16px; margin-left: 6px; padding: 0; border: 1px solid var(--border-strong); border-radius: 50%; background: transparent; color: var(--muted); font: inherit; font-size: 11px; line-height: 14px; cursor: help; vertical-align: 1px; }
+.pref-members { display: grid; gap: 0; margin-top: 8px; }
 .chat-start-mode button[aria-checked="false"] { background: transparent; color: var(--muted); }
 .chat-start-mode button[aria-checked="true"] { background: var(--accent); color: var(--accent-contrast, #041416); }
-.pref-member { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 12px; }
-.pref-member[data-selected="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.pref-member { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 4px; border: 0; border-radius: 8px; }
+.pref-member[data-selected="true"] { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.pref-member[data-unavailable="true"] { opacity: 0.72; }
+.pref-mark { width: 14px; height: 14px; flex: 0 0 14px; box-sizing: border-box; border: 1.5px solid var(--border-strong); border-radius: 50%; }
+.pref-mark[data-mode="multi"] { border-radius: 4px; }
+.pref-member[data-selected="true"] .pref-mark { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 3px var(--surface); }
 .pref-member-logo, .pref-member-name, .pref-member-captain { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .pref-member-logo { width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border-radius: 10px; }
 .pref-member-logo img { width: 22px; height: 22px; object-fit: contain; }
 .pref-member-logo:hover, .pref-member-logo:focus-visible { outline: none; background: var(--surface-hover); }
 .pref-member-name { flex: 1; min-width: 0; padding: 0; text-align: left; font-size: 13px; }
-.pref-portraits { display: flex; flex-wrap: wrap; gap: 8px; }
-.pref-portraits button { width: 40px; height: 40px; display: grid; place-items: center; padding: 2px; border: 1px solid var(--border); border-radius: 12px; background: transparent; cursor: pointer; }
+.pref-portraits { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 0 8px; }
+.pref-portraits button { position: relative; width: 40px; height: 40px; display: grid; place-items: center; padding: 2px; border: 1px solid var(--border); border-radius: 12px; background: transparent; cursor: pointer; }
 .pref-portraits button img { width: 32px; height: 32px; }
-.pref-portraits button.active, .pref-portraits button[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.pref-portraits button.active, .pref-portraits button[aria-checked="true"] { border: 2px solid var(--accent); background: var(--accent-soft); }
+.pref-portraits button[aria-checked="true"]::after { content: ''; position: absolute; right: -3px; bottom: -3px; width: 8px; height: 8px; border: 2px solid var(--surface); border-radius: 50%; background: var(--accent); }
 .pref-portraits button:hover, .pref-portraits button:focus-visible { outline: none; background: var(--surface-hover); }
 .pref-member-captain, .pref-member-badge { flex: 0 0 auto; color: var(--accent-text); font-size: 12px; }
 .pref-member-captain { padding: 4px 8px; border-radius: 999px; }

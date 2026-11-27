@@ -200,6 +200,7 @@ const groups = [
     labelKey: 'systemSettings.groupApp',
     items: [
       { id: 'general', labelKey: 'systemSettings.general', icon: OptionsOutline },
+      { id: 'preferences', labelKey: 'systemSettings.preferences', icon: PersonOutline },
       { id: 'usage', labelKey: 'systemSettings.usage', icon: BarChartOutline },
     ],
   },
@@ -207,7 +208,6 @@ const groups = [
     id: 'other',
     labelKey: 'systemSettings.groupOther',
     items: [
-      { id: 'preferences', labelKey: 'systemSettings.preferences', icon: PersonOutline },
       { id: 'about', labelKey: 'systemSettings.about', icon: InformationCircleOutline },
     ],
   },
@@ -239,8 +239,14 @@ const cloudAgents = computed(() => sortAgents((agentCatalogGroups.value || [])
   .filter(group => group.id === 'cloud')
   .flatMap(group => group.agents || [])))
 const installedAgentKinds = computed(() => localAgents.value
-  .filter(agent => agent.installed && agent.ready && !agent.custom)
-  .map(agent => agent.kind))
+  .filter(agent => agent.installed && !agent.custom)
+  .map(agent => ({
+    kind: agent.kind,
+    label: agent.label,
+    logo: agent.logo,
+    ready: agent.ready === true,
+    status: agent.ready ? '' : agentState(agent).label,
+  })))
 
 function versionOf(agent) {
   const value = String(agent?.resolvedVersion || agent?.version || '').trim()
