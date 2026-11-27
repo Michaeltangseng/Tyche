@@ -2068,7 +2068,7 @@ export default {
     'settingsUi.roomDaily': 'Daily cap per room',
     'settingsUi.chainCap': 'Max tokens per handoff chain',
     'settingsUi.chainHint': 'Stops Agents from waking each other until the budget is gone',
-    'settingsUi.prefsLead': 'Instructions for every Agent. The sliders only draft text. The instruction box is what would apply.',
+    'settingsUi.prefsLead': 'Interface habits, and how a new chat starts.',
     'settingsUi.generatedBy': 'From the sliders',
     'settingsUi.detailEnds': 'Just the point',
     'settingsUi.detailFull': 'Spell it out',

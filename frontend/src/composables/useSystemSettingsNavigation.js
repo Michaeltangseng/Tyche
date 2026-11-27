@@ -1,6 +1,6 @@
 const SETTINGS_SECTIONS = new Set([
   'agents', 'skills', 'orchestration', 'permissions', 'general',
-  'usage', 'preferences', 'diagnostics', 'about',
+  'usage', 'preferences', 'about',
 ])
 
 function normalizedSection(section) {

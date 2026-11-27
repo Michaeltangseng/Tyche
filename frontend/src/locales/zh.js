@@ -2068,7 +2068,7 @@ export default {
     'settingsUi.roomDaily': '单个 Room 单日上限',
     'settingsUi.chainCap': '单次接力链最大 Token',
     'settingsUi.chainHint': '防止 Agent 互相叫醒烧钱',
-    'settingsUi.prefsLead': '写给所有 Agent 的全局指令。滑杆只是快速生成文字的辅助，最终生效的是下方的指令文本。',
+    'settingsUi.prefsLead': '界面习惯，以及新聊天默认怎么开始。',
     'settingsUi.generatedBy': '由滑杆生成',
     'settingsUi.detailEnds': '只要要点',
     'settingsUi.detailFull': '充分说明',

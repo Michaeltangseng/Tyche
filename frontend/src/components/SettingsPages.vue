@@ -91,16 +91,6 @@
         <h2>{{ t('settingsUi.languageAppearance') }}</h2>
         <div class="mock-line"><div><strong>{{ t('generalSettings.languageTitle') }}</strong><small>{{ t('settingsUi.languageLead') }}</small></div><div class="settings-seg"><button type="button" :class="{ active: locale === 'zh' }" @click="setLocale('zh')">中文</button><button type="button" :class="{ active: locale === 'en' }" @click="setLocale('en')">English</button></div></div>
         <div class="mock-line"><div><strong>{{ t('generalSettings.themeTitle') }}</strong><small>{{ t('settingsUi.themeLead') }}</small></div><div class="settings-seg"><button v-for="item in themes" :key="item" type="button" :class="{ active: theme === item }" @click="setThemePreference(item)">{{ t(`generalSettings.theme${item[0].toUpperCase()}${item.slice(1)}`) }}</button></div></div>
-        <div class="mock-line"><div><strong>{{ t('settingsUi.zoom') }}</strong><small>{{ t('settingsUi.zoomLead') }}</small></div><input v-model.number="zoom" type="range" min="80" max="150" step="10" /><b>{{ zoom }}%</b></div>
-      </article>
-      <article class="settings-card">
-        <h2>{{ t('settingsUi.notifications') }}</h2>
-        <div class="notice-head"><span /><span>{{ t('settingsUi.noticeCol.desktop') }}</span><span>{{ t('settingsUi.noticeCol.sound') }}</span><span>{{ t('settingsUi.noticeCol.badge') }}</span></div>
-        <div v-for="row in notices" :key="row.id" class="notice-head">
-          <div><strong>{{ t(`settingsUi.notice.${row.id}`) }}</strong><small>{{ t(row.lead) }}</small></div>
-          <button v-for="channel in ['desktop', 'sound', 'badge']" :key="channel" class="settings-switch" :class="{ on: noticeState[`${row.id}-${channel}`] }" type="button" @click="noticeState[`${row.id}-${channel}`] = !noticeState[`${row.id}-${channel}`]"><i /></button>
-        </div>
-        <div class="mock-line"><div><strong>{{ t('settingsUi.unfocused') }}</strong><small>{{ t('settingsUi.unfocusedLead') }}</small></div><button class="settings-switch on" type="button"><i /></button></div>
       </article>
       <article class="settings-card">
         <h2>{{ t('settingsUi.shortcuts') }}</h2>
@@ -113,38 +103,12 @@
         <div class="mock-line"><div><strong>{{ t('settingsUi.launchAtLogin') }}</strong><small>{{ t('settingsUi.launchHint') }}</small></div><button class="settings-switch" :class="{ on: launchAtLogin }" type="button" @click="launchAtLogin = !launchAtLogin"><i /></button></div>
         <div class="mock-line"><div><strong>{{ t('settingsUi.launchMinimized') }}</strong><small>{{ t('settingsUi.launchMinimizedHint') }}</small></div><button class="settings-switch" :class="{ on: minimized }" type="button" @click="minimized = !minimized"><i /></button></div>
         <div class="mock-line"><div><strong>{{ t('settingsUi.autoUpdate') }}</strong><small>{{ t('settingsUi.currentBuild') }}</small></div><button class="settings-switch on" type="button"><i /></button><button class="secondary-button" type="button">{{ t('settingsUi.checkUpdate') }}</button></div>
-        <div class="mock-line"><div><strong>{{ t('settingsUi.updateChannel') }}</strong></div><select><option>{{ t('settingsUi.stable') }}</option></select></div>
       </article>
     </template>
 
     <UsageSettingsPanel v-else-if="section === 'usage'" />
 
     <template v-else-if="section === 'preferences'">
-      <div class="settings-split">
-        <article class="settings-card">
-          <h2>{{ t('settingsUi.quickAdjust') }}</h2>
-          <div class="settings-seg wrap">
-            <button v-for="item in presets" :key="item" type="button" :class="{ active: preset === item }" @click="preset = item">{{ t(`settingsUi.preset.${item}`) }}</button>
-          </div>
-          <div class="mock-line column"><div class="ends"><span>{{ t('settingsUi.detailEnds') }}</span><span>30</span><span>{{ t('settingsUi.detailFull') }}</span></div><input type="range" min="0" max="100" value="30" /><small>{{ t('settingsUi.genDetail') }}</small></div>
-          <div class="mock-line column"><div class="ends"><span>{{ t('settingsUi.pushWait') }}</span><span>70</span><span>{{ t('settingsUi.pushGo') }}</span></div><input type="range" min="0" max="100" value="70" /><small>{{ t('settingsUi.genPush') }}</small></div>
-          <div class="mock-line column"><div class="ends"><span>{{ t('settingsUi.evidenceAct') }}</span><span>50</span><span>{{ t('settingsUi.evidenceSource') }}</span></div><input type="range" min="0" max="100" value="50" /><small>{{ t('settingsUi.genEvidence') }}</small></div>
-        </article>
-        <article class="settings-card">
-          <h2>{{ t('settingsUi.globalInstructions') }} <small>{{ t('settingsUi.generatedBy') }}</small></h2>
-          <textarea rows="8" readonly># {{ t('settingsUi.globalInstructions') }}
-- {{ t('settingsUi.genDetail') }}
-- {{ t('settingsUi.genPush') }}
-- {{ t('settingsUi.genEvidence') }}</textarea>
-          <p class="settings-note">{{ t('settingsUi.tokenInject') }}</p>
-          <div class="mock-line"><strong>{{ t('settingsUi.allowOverride') }}</strong><button class="settings-switch on" type="button"><i /></button></div>
-          <div class="settings-actions">
-            <button class="secondary-button" type="button">{{ t('settingsUi.previewPrompt') }}</button>
-            <button class="secondary-button" type="button">{{ t('settingsUi.discard') }}</button>
-            <button class="primary-button" type="button">{{ t('settingsUi.save') }}</button>
-          </div>
-        </article>
-      </div>
       <article class="settings-card">
         <h2>{{ t('settingsUi.interface') }}</h2>
         <div class="mock-line">
@@ -257,37 +221,6 @@
       </article>
     </template>
 
-    <template v-else-if="section === 'diagnostics'">
-      <article class="settings-card">
-        <h2>{{ t('settingsUi.sessionData') }}</h2>
-        <div class="mock-line"><strong>{{ t('settingsUi.keepLabel') }}</strong><select><option>{{ t('settingsUi.days90') }}</option></select></div>
-        <div class="mock-line"><strong>{{ t('settingsUi.storageLabel') }}</strong><div class="settings-meter grow"><i style="width: 48%; background: var(--accent)" /><i style="width: 32%; background: #7c6cf0" /><i style="width: 16%; background: #8b9298" /></div><span>2.5 GB</span></div>
-        <p class="settings-note">{{ t('settingsUi.storageLegend') }}</p>
-        <div class="settings-actions"><button class="secondary-button" type="button">{{ t('settingsUi.exportChats') }}</button><button class="secondary-button" type="button">{{ t('settingsUi.exportMarkdown') }}</button></div>
-      </article>
-      <article class="settings-card">
-        <h2>{{ t('settingsUi.traces') }}</h2>
-        <div class="mock-line"><div><strong>{{ t('settingsUi.recordTrace') }}</strong><small>{{ t('settingsUi.recordTraceHint') }}</small></div><button class="settings-switch on" type="button"><i /></button></div>
-        <div class="mock-line"><strong>{{ t('settingsUi.logLevel') }}</strong><div class="settings-seg"><button type="button">{{ t('settingsUi.levelBrief') }}</button><button class="active" type="button">{{ t('settingsUi.levelNormal') }}</button><button type="button">{{ t('settingsUi.levelVerbose') }}</button></div></div>
-        <div class="mock-line"><strong>{{ t('settingsUi.debugMode') }}</strong><button class="settings-switch" type="button"><i /></button></div>
-        <pre class="settings-log">20:19:02 Claude → @Codex
-20:19:40 Codex
-20:21:13 Pi → Captain</pre>
-        <button class="agent-config-link" type="button">{{ t('settingsUi.openLogDir') }}</button>
-      </article>
-      <article class="settings-card">
-        <h2>{{ t('settingsUi.feedback') }}</h2>
-        <div class="settings-actions"><button class="primary-button" type="button">{{ t('settingsUi.packDiagnostics') }}</button><small>{{ t('settingsUi.packHint') }}</small></div>
-        <label class="mock-line"><input type="checkbox" /> {{ t('settingsUi.includeLast') }}</label>
-      </article>
-      <article class="settings-card settings-danger">
-        <h2>{{ t('settingsUi.dangerZone') }}</h2>
-        <div class="mock-line"><strong>{{ t('settingsUi.clearCache') }}</strong><span>420 MB</span><button class="secondary-button" type="button">{{ t('settingsUi.clear') }}</button></div>
-        <div class="mock-line"><strong>{{ t('settingsUi.deleteSessions') }}</strong><small>{{ t('settingsUi.needConfirm') }}</small><button class="secondary-button danger" type="button">{{ t('settingsUi.delete') }}…</button></div>
-        <div class="mock-line"><strong>{{ t('settingsUi.resetAll') }}</strong><span /><button class="secondary-button danger" type="button">{{ t('settingsUi.resetAll') }}</button></div>
-      </article>
-    </template>
-
     <template v-else-if="section === 'about'">
       <div class="settings-about">
         <img :src="mark" alt="" />
@@ -344,7 +277,6 @@ const titles = {
   general: ['systemSettings.general', 'settingsUi.generalHint'],
   usage: ['systemSettings.usage', 'settingsUi.usageLead'],
   preferences: ['systemSettings.preferences', 'settingsUi.prefsLead'],
-  diagnostics: ['systemSettings.diagnostics', 'settingsUi.diagnosticsHint'],
   about: ['systemSettings.about', 'settingsUi.aboutHint'],
   mcp: ['systemSettings.integrations', 'settingsUi.integrationsHint'],
 }
@@ -362,10 +294,8 @@ const mentionUser = ref(false)
 const contextMode = ref('summary')
 const failure = ref('captain')
 const allowNetwork = ref(false)
-const zoom = ref(100)
 const launchAtLogin = ref(false)
 const minimized = ref(false)
-const preset = ref('quick')
 const contextModes = [
   { id: 'full', title: 'settingsUi.contextMode.full', meta: '~8K tokens', hint: 'settingsUi.contextHint.full' },
   { id: 'summary', title: 'settingsUi.contextMode.summary', meta: '~1K tokens', hint: 'settingsUi.contextHint.summary' },
@@ -373,7 +303,6 @@ const contextModes = [
 ]
 const failureModes = ['retry', 'captain', 'notify']
 const permissionModes = ['read', 'ask', 'auto']
-const presets = ['quick', 'careful', 'explore', 'practical']
 const permissionAgents = reactive([
   { id: 'codex', name: 'Codex', mode: 'ask', logo: publicAsset('agent-logos/codex.svg') },
   { id: 'claude', name: 'Claude Code', mode: 'ask', logo: publicAsset('agent-logos/claude.png') },
@@ -381,16 +310,6 @@ const permissionAgents = reactive([
   { id: 'gemini', name: 'Gemini CLI', mode: 'read', logo: publicAsset('agent-logos/gemini.svg') },
 ])
 const autoCount = computed(() => permissionAgents.filter(agent => agent.mode === 'auto').length)
-const notices = [
-  { id: 'done', lead: 'settingsUi.notice.doneLead' },
-  { id: 'approval', lead: 'settingsUi.notice.approvalLead' },
-  { id: 'error', lead: 'settingsUi.notice.errorLead' },
-]
-const noticeState = reactive({
-  'done-desktop': true, 'done-sound': false, 'done-badge': true,
-  'approval-desktop': true, 'approval-sound': true, 'approval-badge': true,
-  'error-desktop': true, 'error-sound': true, 'error-badge': true,
-})
 const shortcuts = [
   { id: 'summon', keys: '⌥ Space' },
   { id: 'newChat', keys: '⌘ N' },

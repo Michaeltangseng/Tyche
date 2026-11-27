@@ -141,7 +141,6 @@ import {
   InformationCircleOutline,
   OptionsOutline,
   PersonOutline,
-  PulseOutline,
   RefreshOutline,
   SearchOutline,
   ShieldCheckmarkOutline,
@@ -209,7 +208,6 @@ const groups = [
     labelKey: 'systemSettings.groupOther',
     items: [
       { id: 'preferences', labelKey: 'systemSettings.preferences', icon: PersonOutline },
-      { id: 'diagnostics', labelKey: 'systemSettings.diagnostics', icon: PulseOutline },
       { id: 'about', labelKey: 'systemSettings.about', icon: InformationCircleOutline },
     ],
   },
