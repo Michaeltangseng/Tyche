@@ -1,149 +1,108 @@
 <template>
   <div class="room-cast" :data-mode="state.mode" :aria-label="ariaLabel">
-    <Transition name="room-cast-swap" mode="out-in">
-      <div v-if="state.mode === 'running'" key="relay" class="room-relay">
-        <span
-          v-if="state.taskNumber !== '' && state.taskNumber != null"
-          class="room-relay-task"
-          :title="state.taskLabel"
-        >#{{ state.taskNumber }}</span>
-        <div class="room-relay-chain">
-          <template v-for="(node, index) in relayNodes" :key="node.roleId">
-            <span v-if="index" class="room-relay-link" aria-hidden="true">
-              <span class="room-relay-thread" />
-              <ChevronForwardOutline class="room-relay-chevron" />
+    <div ref="castRow" class="room-cast-row">
+      <div ref="memberHost" class="room-member-cluster">
+        <button
+          v-for="role in roles"
+          v-show="shownIds.has(role.id)"
+          :key="role.id"
+          class="room-agent-chip"
+          type="button"
+          data-member-chip
+          :data-role-id="role.id"
+          :data-speaking="replyFor(role) ? 'true' : undefined"
+          :data-quiet="role.can_speak === false ? 'true' : undefined"
+          :style="chipStyle(role)"
+          :title="chipTitle(role)"
+          :aria-label="chipAria(role)"
+          @click="selectRole(role)"
+        >
+          <span v-if="role.provider" class="room-chip-face">
+            <span class="room-chip-photo">
+              <RoomMascot :mascot="roleFace(role)" />
             </span>
+            <span v-if="role.is_captain" class="room-captain-mark" :title="t('room.captain')">⚓</span>
+          </span>
+          <span class="room-chip-name">{{ labelFor(role) }}</span>
+          <span v-if="role.can_speak === false" class="room-agent-mute" aria-hidden="true">{{ role.unavailable ? '⚠' : '🔇' }}</span>
+          <span v-if="replyFor(role)" class="room-chip-live" :title="t('room.relay.replying')">
+            <span class="room-chip-live-dot" aria-hidden="true" />
+            <span aria-hidden="true">{{ elapsed(replyFor(role).since) }}</span>
+          </span>
+        </button>
+        <span v-if="!roles.length" class="room-agent-idle">{{ t('room.teamIdle') }}</span>
+        <div v-if="hiddenRoles.length" class="room-member-more-anchor">
+          <button
+            ref="memberMore"
+            class="room-member-more"
+            type="button"
+            data-member-more
+            :aria-expanded="membersOpen ? 'true' : 'false'"
+            aria-haspopup="dialog"
+            :aria-label="t('room.moreMembers', { count: hiddenRoles.length })"
+            @click.stop="membersOpen = !membersOpen"
+          >+{{ hiddenRoles.length }}</button>
+          <div
+            v-if="membersOpen"
+            ref="memberPopover"
+            class="room-member-popover"
+            role="dialog"
+            :aria-label="t('room.moreMembers', { count: hiddenRoles.length })"
+            @keydown.esc.prevent.stop="membersOpen = false"
+          >
             <button
-              class="room-relay-node"
+              v-for="role in hiddenRoles"
+              :key="role.id"
+              class="room-member-popover-row"
               type="button"
-              :data-state="node.state"
-              :data-live="node.state === 'active' ? 'true' : undefined"
-              :style="{ '--agent-glow': glowFor(node.role) }"
-              :title="nodeTitle(node)"
-              :aria-label="nodeTitle(node)"
-              @click="selectRole(node.role)"
+              @click="pickHidden(role)"
             >
-              <span class="room-relay-face">
-                <RoomMascot v-if="node.role" :mascot="roleFace(node.role)" />
-                <span v-else class="room-relay-initial">{{ initialFor(node.role) }}</span>
-                <span
-                  v-if="node.state === 'active'"
-                  :key="node.activationKey"
-                  class="room-relay-baton"
-                  aria-hidden="true"
-                />
-                <span v-if="node.state === 'done'" class="room-relay-stamp" aria-hidden="true">✓</span>
-                <span v-else-if="node.state === 'attention'" class="room-relay-stamp attention" aria-hidden="true">!</span>
-                <span v-if="node.role?.is_captain" class="room-captain-mark" :title="t('room.captain')">⚓</span>
+              <span class="room-chip-face">
+                <span class="room-chip-photo">
+                  <RoomMascot :mascot="roleFace(role)" />
+                </span>
               </span>
-              <span class="room-relay-copy">
-                <strong>{{ labelFor(node.role) }}</strong>
-                <small :data-state="node.state">
-                  <span v-if="node.state === 'active'" class="room-relay-pulse" aria-hidden="true" />
-                  <span>{{ nodeStatusLabel(node) }}</span>
-                  <span v-if="nodeTimer(node)" class="room-relay-timer" aria-hidden="true">{{ nodeTimer(node) }}</span>
-                </small>
-              </span>
+              <span>{{ labelFor(role) }}</span>
             </button>
-          </template>
-          <button
-            class="room-agent-add room-agent-add-inline"
-            type="button"
-            :title="t('room.addAgent')"
-            :aria-label="t('room.addAgent')"
-            :disabled="addDisabled"
-            @click="emit('add-role')"
-          >
-            <AddOutline />
-          </button>
+          </div>
         </div>
-        <span
-          v-if="state.extraActiveTasks"
-          class="room-relay-extra"
-          :title="t('room.relay.moreTasks', { count: state.extraActiveTasks })"
-        >+{{ state.extraActiveTasks }}</span>
+        <button
+          class="room-agent-add"
+          type="button"
+          :title="t('room.addAgent')"
+          :aria-label="t('room.addAgent')"
+          :disabled="addDisabled"
+          @click="emit('add-role')"
+        >
+          <AddOutline />
+        </button>
       </div>
-
-      <div v-else key="cast" class="room-cast-row">
-        <div class="room-agent-strip" :aria-label="t('room.members', { count: roles.length })">
-          <button
-            v-for="role in roles"
-            :key="role.id"
-            class="room-agent-chip"
-            type="button"
-            :data-speaking="replyFor(role) ? 'true' : undefined"
-            :data-quiet="role.can_speak === false ? 'true' : undefined"
-            :style="chipStyle(role)"
-            :title="chipTitle(role)"
-            :aria-label="chipAria(role)"
-            @click="selectRole(role)"
-          >
-            <span v-if="role.provider" class="room-chip-face">
-              <span class="room-chip-photo">
-                <RoomMascot :mascot="roleFace(role)" />
-              </span>
-              <span v-if="role.is_captain" class="room-captain-mark" :title="t('room.captain')">⚓</span>
-            </span>
-            <span class="room-chip-name">{{ labelFor(role) }}</span>
-            <span v-if="role.can_speak === false" class="room-agent-mute" aria-hidden="true">{{ role.unavailable ? '⚠' : '🔇' }}</span>
-            <span v-if="replyFor(role)" class="room-chip-live" :title="t('room.relay.replying')">
-              <span class="room-chip-live-dot" aria-hidden="true" />
-              <span aria-hidden="true">{{ elapsed(replyFor(role).since) }}</span>
-            </span>
-          </button>
-          <span v-if="!roles.length" class="room-agent-idle">{{ t('room.teamIdle') }}</span>
-          <button
-            class="room-agent-add"
-            type="button"
-            :title="t('room.addAgent')"
-            :aria-label="t('room.addAgent')"
-            :disabled="addDisabled"
-            @click="emit('add-role')"
-          >
-            <AddOutline />
-          </button>
-          <button
-            v-if="unavailableRoles.length"
-            class="room-cast-warning"
-            type="button"
-            :title="unavailableTitle"
-            :aria-label="unavailableTitle"
-            @click="selectRole(unavailableRoles[0])"
-          >
-            <span aria-hidden="true">⚠</span>
-            <span>{{ t('room.agentsUnavailable', { count: unavailableRoles.length }) }}</span>
-          </button>
-          <button
-            v-if="state.mode === 'settled'"
-            class="room-recap-pill"
-            type="button"
-            :data-tone="state.tone"
-            :title="recapTitle"
-            :aria-label="recapTitle"
-            @click="emit('open-work')"
-          >
-            <span v-if="recapFaces.length" class="room-recap-faces" aria-hidden="true">
-              <RoomMascot
-                v-for="node in recapFaces"
-                :key="node.roleId"
-                :mascot="roleFace(node.role || { id: node.roleId })"
-              />
-              <span v-if="recapExtra" class="room-recap-more">+{{ recapExtra }}</span>
-            </span>
-            <span class="room-recap-dot" :data-tone="state.tone" aria-hidden="true" />
-            <span class="room-recap-text">{{ recapLabel }}</span>
-            <span v-if="relativeAge(state.settledAt)" class="room-recap-age" aria-hidden="true">{{ relativeAge(state.settledAt) }}</span>
-          </button>
-        </div>
-      </div>
-    </Transition>
+      <button
+        v-if="unavailableRoles.length"
+        class="room-cast-warning"
+        type="button"
+        :title="unavailableTitle"
+        :aria-label="unavailableTitle"
+        @click="selectRole(unavailableRoles[0])"
+      >
+        <span aria-hidden="true">⚠</span>
+        <span>{{ t('room.agentsUnavailable', { count: unavailableRoles.length }) }}</span>
+      </button>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { AddOutline, ChevronForwardOutline } from '@vicons/ionicons5'
+import { computed, nextTick, onBeforeUnmount, onMounted, onUpdated, ref, watch } from 'vue'
+import { AddOutline } from '@vicons/ionicons5'
 import { t } from '../i18n.js'
+import {
+  MEMBER_ADD_WIDTH,
+  MEMBER_GAP,
+  MEMBER_MORE_WIDTH,
+  MEMBER_STRIP_RATIO,
+  fitMemberCount,
+} from '../memberStrip.js'
 import { portraitGlow } from '../role-portraits.js'
 import { roleFace } from '../room-mascots.js'
 import RoomMascot from './RoomMascot.vue'
@@ -157,10 +116,18 @@ const props = defineProps({
   busy: { type: Boolean, default: false },
   canAdd: { type: Boolean, default: true },
 })
-const emit = defineEmits(['select-role', 'add-role', 'open-work'])
+const emit = defineEmits(['select-role', 'add-role'])
 
 const now = ref(Date.now())
+const castRow = ref(null)
+const memberHost = ref(null)
+const memberMore = ref(null)
+const memberPopover = ref(null)
+const membersOpen = ref(false)
+const visibleCount = ref(Number.POSITIVE_INFINITY)
+const widthCache = new Map()
 let clock = null
+let resizeObserver = null
 
 function startClock() {
   now.value = Date.now()
@@ -181,47 +148,90 @@ watch(
   { immediate: true },
 )
 
-onBeforeUnmount(stopClock)
-
-const roleById = computed(() => new Map(props.roles.map(role => [role.id, role])))
-const relayNodes = computed(() => (props.state?.nodes || []).map(node => ({
-  ...node,
-  role: roleById.value.get(node.roleId) || {
-    id: node.roleId,
-    display_name: node.roleId,
-    provider: '',
-    can_speak: true,
-  },
-})))
-const recapNodes = computed(() => relayNodes.value.filter(node => (
-  node.state === 'done' || node.state === 'attention'
-)))
+const shownIds = computed(() => new Set(props.roles.slice(0, visibleCount.value).map(role => role.id)))
+const hiddenRoles = computed(() => props.roles.slice(Math.min(visibleCount.value, props.roles.length)))
 const unavailableRoles = computed(() => props.roles.filter(role => role?.unavailable === true))
 const unavailableTitle = computed(() => (
   unavailableRoles.value.length
     ? `${unavailableRoles.value.map(role => labelFor(role)).join(', ')} · ${t('room.agentUnavailable')}`
     : ''
 ))
-const recapFaces = computed(() => recapNodes.value.slice(0, 3))
-const recapExtra = computed(() => Math.max(0, recapNodes.value.length - 3))
 const addDisabled = computed(() => props.busy || !props.canAdd)
 const ariaLabel = computed(() => (
   props.state?.mode === 'running'
     ? t('room.relay.label')
     : t('room.members', { count: props.roles.length })
 ))
-const recapLabel = computed(() => {
-  if (props.state?.tone === 'review') return t('room.relay.awaitingAcceptance')
-  if (props.state?.tone === 'attention') return t('room.relay.needsAttention')
-  return t('room.relay.completed')
+watch(hiddenRoles, (hidden) => {
+  if (!hidden.length) membersOpen.value = false
 })
-const recapTitle = computed(() => {
-  const names = recapNodes.value.map(node => labelFor(node.role)).filter(Boolean)
-  const parts = []
-  if (props.state?.taskNumber !== '' && props.state?.taskNumber != null) parts.push(`#${props.state.taskNumber}`)
-  if (props.state?.taskLabel) parts.push(props.state.taskLabel)
-  if (names.length) parts.push(names.join(' → '))
-  return parts.join(' · ')
+
+function measured(node, attribute, natural) {
+  const marked = Number(node?.getAttribute?.(attribute))
+  return marked > 0 ? marked : natural
+}
+
+function measureMembers() {
+  const row = castRow.value
+  const host = memberHost.value
+  if (!row || !host) return
+  const chips = [...host.querySelectorAll('[data-member-chip]')]
+  for (const chip of chips) {
+    const id = chip.dataset.roleId
+    const width = measured(chip, 'data-measure-width', chip.offsetWidth)
+    if (id && width > 0) widthCache.set(id, width)
+  }
+  const widths = props.roles.map(role => widthCache.get(role.id) || 0)
+  const reserved = [...row.querySelectorAll('.room-cast-warning')]
+    .reduce((total, node) => total + measured(node, 'data-measure-width', node.offsetWidth) + MEMBER_GAP, 0)
+  const rowWidth = measured(row, 'data-measure-client', row.clientWidth)
+  const available = rowWidth > 0 ? rowWidth - reserved : 0
+  const cap = available > 0 ? Math.min(rowWidth * MEMBER_STRIP_RATIO, available) : 0
+  const budget = cap - MEMBER_ADD_WIDTH - MEMBER_GAP
+  const next = !cap || widths.some(width => !width)
+    ? props.roles.length
+    : fitMemberCount(widths, budget, MEMBER_MORE_WIDTH, MEMBER_GAP)
+  if (next !== visibleCount.value) visibleCount.value = next
+}
+
+function closeOpenMenus(event) {
+  if (event.key !== 'Escape' || !membersOpen.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  membersOpen.value = false
+}
+
+function onMembersPointer(event) {
+  const target = event.target
+  if (membersOpen.value && !memberPopover.value?.contains(target) && !memberMore.value?.contains(target)) {
+    membersOpen.value = false
+  }
+}
+
+watch(membersOpen, (open) => {
+  if (!open) return
+  nextTick(() => memberPopover.value?.querySelector('button')?.focus())
+})
+
+onMounted(() => {
+  window.addEventListener('keydown', closeOpenMenus)
+  window.addEventListener('pointerdown', onMembersPointer)
+  if (typeof ResizeObserver === 'function' && castRow.value) {
+    resizeObserver = new ResizeObserver(() => measureMembers())
+    resizeObserver.observe(castRow.value)
+  }
+  measureMembers()
+})
+
+onUpdated(() => {
+  measureMembers()
+})
+
+onBeforeUnmount(() => {
+  stopClock()
+  resizeObserver?.disconnect()
+  window.removeEventListener('keydown', closeOpenMenus)
+  window.removeEventListener('pointerdown', onMembersPointer)
 })
 
 function replyFor(role) {
@@ -250,12 +260,13 @@ function chipAria(role) {
   return `${t('room.configureRole')}: ${labelFor(role)}`
 }
 
-function initialFor(role) {
-  return labelFor(role).slice(0, 1)
-}
-
 function selectRole(role) {
   if (role?.id) emit('select-role', role.id)
+}
+
+function pickHidden(role) {
+  membersOpen.value = false
+  selectRole(role)
 }
 
 function elapsed(value) {
@@ -267,39 +278,6 @@ function elapsed(value) {
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
-function relativeAge(value) {
-  const at = new Date(value || '').getTime()
-  if (Number.isNaN(at) || !at) return ''
-  const minutes = Math.max(0, Math.floor((now.value - at) / 60000))
-  if (minutes < 1) return t('room.relay.justNow')
-  if (minutes < 60) return t('room.relay.minutesAgo', { count: minutes })
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return t('room.relay.hoursAgo', { count: hours })
-  return t('room.relay.daysAgo', { count: Math.floor(hours / 24) })
-}
-
-function nodeStatusLabel(node) {
-  if (node.state === 'active') {
-    if (node.status === 'queued') return t('room.status.queued')
-    if (node.status === 'starting') return t('room.status.starting')
-    if (node.status === 'replying') return t('room.relay.replying')
-    return t('room.relay.working')
-  }
-  if (node.state === 'done') return t('room.relay.completed')
-  if (node.state === 'attention') return t('room.relay.needsAttention')
-  if (node.role?.unavailable) return t('room.unavailable')
-  return t('room.relay.waiting')
-}
-
-function nodeTimer(node) {
-  if (node.state !== 'active') return ''
-  if (!node.since || node.status === 'queued') return ''
-  return elapsed(node.since)
-}
-
-function nodeTitle(node) {
-  return `${labelFor(node.role)} · ${nodeStatusLabel(node)}`
-}
 </script>
 
 <style scoped>
@@ -316,15 +294,17 @@ function nodeTitle(node) {
   min-width: 0;
   display: flex;
   align-items: center;
+  gap: 8px;
 }
 
-.room-agent-strip {
+.room-member-cluster {
+  position: relative;
   display: flex;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex: 0 1 auto;
   align-items: center;
+  gap: 8px;
   min-width: 0;
+  max-width: 70%;
 }
 
 .room-agent-chip {
@@ -366,9 +346,7 @@ function nodeTitle(node) {
   transition: box-shadow 0.2s ease;
 }
 
-.room-chip-photo :deep(.room-mascot-art),
-.room-relay-face :deep(.room-mascot-art),
-.room-recap-faces :deep(.room-mascot-art) {
+.room-chip-photo :deep(.room-mascot-art) {
   width: 100%;
   height: 100%;
 }
@@ -438,6 +416,73 @@ function nodeTitle(node) {
   font-size: var(--text-xs);
 }
 
+.room-member-more-anchor {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.room-member-more {
+  flex: 0 0 auto;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-active);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.room-member-more:hover,
+.room-member-more:focus-visible {
+  outline: none;
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.room-member-popover {
+  position: absolute;
+  z-index: 6;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  gap: 2px;
+  min-width: 180px;
+  max-width: 260px;
+  max-height: 280px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.35);
+}
+
+.room-member-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 8px 4px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.room-member-popover-row:hover,
+.room-member-popover-row:focus-visible {
+  outline: none;
+  background: rgb(255 255 255 / 0.06);
+}
+
 .room-agent-add {
   width: 28px;
   height: 28px;
@@ -469,13 +514,6 @@ function nodeTitle(node) {
   cursor: not-allowed;
 }
 
-.room-agent-add-inline {
-  width: 26px;
-  height: 26px;
-  flex-basis: 26px;
-  margin-left: 2px;
-}
-
 .room-cast-warning {
   display: inline-flex;
   align-items: center;
@@ -500,341 +538,6 @@ function nodeTitle(node) {
   background: color-mix(in srgb, var(--warning) 16%, var(--surface));
 }
 
-.room-relay {
-  width: 100%;
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.room-relay-task {
-  flex: 0 0 auto;
-  padding: 2px 6px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--text) 7%, transparent);
-  color: var(--faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 10px;
-  line-height: 1.4;
-}
-
-.room-relay-chain {
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px;
-}
-
-.room-relay-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 1px;
-  color: var(--faint);
-}
-
-.room-relay-thread {
-  width: 12px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--border-strong));
-}
-
-.room-relay-chevron {
-  width: 11px;
-  height: 11px;
-  opacity: 0.5;
-}
-
-.room-relay-node {
-  --agent-glow: var(--accent);
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  max-width: 190px;
-  padding: 2px 8px 2px 2px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.16s ease, opacity 0.16s ease;
-}
-
-.room-relay-node:hover,
-.room-relay-node:focus-visible {
-  outline: none;
-  background: rgb(255 255 255 / 0.06);
-}
-
-.room-relay-face {
-  position: relative;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
-  display: grid;
-  border-radius: 50%;
-}
-
-.room-relay-portrait {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: #1b2124;
-  object-fit: cover;
-  object-position: center 12%;
-}
-
-.room-relay-initial {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: var(--surface-active);
-  color: var(--text-soft);
-  font-size: var(--text-xs);
-  font-weight: 600;
-}
-
-.room-relay-node[data-state="waiting"] {
-  opacity: 0.72;
-}
-
-.room-relay-node[data-state="waiting"] .room-relay-portrait {
-  box-shadow: inset 0 0 0 1px var(--border-strong);
-}
-
-.room-relay-node[data-state="done"] .room-relay-portrait {
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border-strong) 80%, transparent);
-}
-
-.room-relay-node[data-state="active"] .room-relay-portrait {
-  box-shadow:
-    0 0 0 1.5px color-mix(in srgb, var(--agent-glow) 85%, white),
-    0 0 16px color-mix(in srgb, var(--agent-glow) 38%, transparent);
-}
-
-.room-relay-node[data-state="active"] .room-relay-face::after {
-  content: "";
-  position: absolute;
-  inset: -5px;
-  border-radius: 50%;
-  background: conic-gradient(
-    from 0deg,
-    transparent 0deg 230deg,
-    color-mix(in srgb, var(--agent-glow) 72%, transparent) 320deg,
-    transparent 360deg
-  );
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1px));
-  animation: room-relay-aura 3.4s linear infinite;
-  pointer-events: none;
-}
-
-.room-relay-baton {
-  position: absolute;
-  inset: -6px;
-  border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--agent-glow) 70%, transparent);
-  opacity: 0;
-  animation: room-baton-pass 0.42s ease-out;
-  pointer-events: none;
-}
-
-.room-relay-stamp {
-  position: absolute;
-  right: -3px;
-  bottom: -2px;
-  z-index: 3;
-  width: 14px;
-  height: 14px;
-  display: grid;
-  place-items: center;
-  border: 1.5px solid var(--surface);
-  border-radius: 50%;
-  background: #1b2124;
-  color: var(--text-soft);
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 1;
-  animation: room-stamp-in 0.26s ease-out;
-}
-
-.room-relay-stamp.attention {
-  color: var(--warning);
-}
-
-.room-relay-face .room-captain-mark {
-  top: -3px;
-  right: auto;
-  bottom: auto;
-  left: -3px;
-}
-
-.room-relay-copy {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.room-relay-copy strong {
-  overflow: hidden;
-  color: var(--text-soft);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.room-relay-copy small {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--faint);
-  font-size: 10px;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.room-relay-node[data-state="active"] .room-relay-copy strong {
-  color: var(--text);
-}
-
-.room-relay-node[data-state="active"] .room-relay-copy small {
-  color: var(--accent-text);
-}
-
-.room-relay-pulse {
-  width: 5px;
-  height: 5px;
-  flex: 0 0 5px;
-  border-radius: 50%;
-  background: currentColor;
-  animation: room-dot-breathe 1.6s ease-in-out infinite;
-}
-
-.room-relay-timer {
-  font-variant-numeric: tabular-nums;
-  opacity: 0.75;
-}
-
-.room-relay-extra {
-  flex: 0 0 auto;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--surface-active);
-  color: var(--faint);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-}
-
-.room-recap-pill {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  padding: 3px 9px 3px 4px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface-raised) 70%, transparent);
-  color: var(--text-soft);
-  font: inherit;
-  font-size: 10px;
-  cursor: pointer;
-  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
-}
-
-.room-recap-pill:hover,
-.room-recap-pill:focus-visible {
-  outline: none;
-  border-color: var(--border-strong);
-  background: var(--surface-hover);
-  color: var(--text);
-}
-
-.room-recap-faces {
-  display: inline-flex;
-  align-items: center;
-}
-
-.room-recap-faces img {
-  width: 18px;
-  height: 18px;
-  margin-left: -6px;
-  border: 1.5px solid var(--surface);
-  border-radius: 50%;
-  background: #1b2124;
-  object-fit: cover;
-  object-position: center 12%;
-}
-
-.room-recap-faces img:first-child {
-  margin-left: 0;
-}
-
-.room-recap-more {
-  width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  margin-left: -6px;
-  border: 1.5px solid var(--surface);
-  border-radius: 50%;
-  background: #3a3b40;
-  color: var(--text-soft);
-  font-size: 9px;
-  font-weight: 600;
-}
-
-.room-recap-dot {
-  width: 6px;
-  height: 6px;
-  flex: 0 0 6px;
-  border-radius: 50%;
-  background: var(--success);
-}
-
-.room-recap-dot[data-tone="review"] {
-  background: var(--warning);
-}
-
-.room-recap-dot[data-tone="attention"] {
-  background: var(--danger, #f97066);
-}
-
-.room-recap-text {
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.room-recap-age {
-  color: var(--faint);
-  white-space: nowrap;
-}
-
-.room-cast-swap-enter-active,
-.room-cast-swap-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
-}
-
-.room-cast-swap-enter-from {
-  opacity: 0;
-  transform: translateY(4px);
-}
-
-.room-cast-swap-leave-to {
-  opacity: 0;
-  transform: translateY(-4px);
-}
-
 @keyframes room-chip-breathe {
   0%, 100% {
     box-shadow:
@@ -853,49 +556,16 @@ function nodeTitle(node) {
   50% { opacity: 1; transform: scale(1.15); }
 }
 
-@keyframes room-relay-aura {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes room-baton-pass {
-  0% { opacity: 0; transform: scale(0.72); }
-  35% { opacity: 0.9; }
-  100% { opacity: 0; transform: scale(1.35); }
-}
-
-@keyframes room-stamp-in {
-  0% { opacity: 0; transform: scale(0.4); }
-  55% { opacity: 1; transform: scale(1.12); }
-  100% { opacity: 1; transform: scale(1); }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .room-agent-chip[data-speaking="true"] .room-chip-photo,
-  .room-chip-live-dot,
-  .room-relay-node[data-state="active"] .room-relay-face::after,
-  .room-relay-baton,
-  .room-relay-stamp,
-  .room-relay-pulse {
+  .room-chip-live-dot {
     animation: none;
-  }
-
-  .room-cast-swap-enter-active,
-  .room-cast-swap-leave-active {
-    transition: none;
   }
 }
 
 @media (max-width: 950px) {
   .room-cast {
     min-height: 40px;
-  }
-
-  .room-recap-pill {
-    margin-left: 0;
-  }
-
-  .room-relay-chain {
-    width: 100%;
   }
 }
 </style>

@@ -74,9 +74,15 @@ function inventoryLines(inventory) {
   return lines
 }
 
+function rosterInstruction(wait) {
+  return wait === false
+    ? 'After create_roles succeeds, call assign_in_group in this same turn and start the work. Do not wait for another user message.'
+    : 'After create_roles, do not call assign_in_group in the same turn. The next user message is the instruction to start or change the team.'
+}
+
 function briefing({
   chatTitle, me, lastSeq, rows, trigger, nameOf, filesOf = () => [], viewerIsCaptain = false,
-  members, launchProviders, equippedSkills, skillInventory,
+  members, launchProviders, equippedSkills, skillInventory, rosterWaitsForInstruction = true,
 }) {
   let seen = lastSeq
   let blocked = false
@@ -136,6 +142,7 @@ function briefing({
     ...rosterLines(members, launchProviders),
     ...equippedSkillLines(equippedSkills),
     ...(viewerIsCaptain ? inventoryLines(skillInventory) : []),
+    ...(viewerIsCaptain ? [rosterInstruction(rosterWaitsForInstruction)] : []),
     'Since you last looked:',
   ]
   if (omittedLine) lines.push(omittedLine)

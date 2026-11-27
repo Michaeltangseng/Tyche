@@ -67,6 +67,18 @@ test('captain briefing lists equippable skills and a member briefing includes on
     rows: [trigger],
   })
   assert.match(captain.text, /Skills available to equip:\n- claude: frontend-design \[claude\/global\/frontend-design\] — Layout\n- codex: none/)
+  assert.match(captain.text, /next user message is the instruction to start or change the team/)
+  const immediate = briefing({
+    chatTitle: 'C',
+    me: 'captain',
+    lastSeq: 0,
+    trigger,
+    nameOf: message => message.authorId,
+    viewerIsCaptain: true,
+    rosterWaitsForInstruction: false,
+    rows: [trigger],
+  })
+  assert.match(immediate.text, /call assign_in_group in this same turn/)
   const worker = briefing({
     chatTitle: 'C',
     me: 'worker',

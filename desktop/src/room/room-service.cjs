@@ -60,6 +60,7 @@ function createRoomService({
   // null/undefined means "not known yet"; only the runtime registry gate
   // applies. The callback is read on demand so agent recovery is picked up.
   availableProviders = null,
+  rosterWaitsForInstruction = null,
 } = {}) {
   if (!roomDb || !repository) throw new TypeError('ROOM_SERVICE_DEPENDENCIES_REQUIRED')
   const { database } = roomDb
@@ -166,6 +167,7 @@ function createRoomService({
     canLaunch: providerCanSpeak,
     onUnavailable: unavailableAttention,
     skillSource: skillInventory,
+    rosterWaitsForInstruction,
   })
   const queue = createTaskQueue({
     roomDb,
@@ -224,6 +226,7 @@ function createRoomService({
     selectSkills: skillInventory
       ? (provider, ids) => skillInventory.assertSelectable(provider, ids)
       : null,
+    rosterWaitsForInstruction,
   })
 
   function onTaskSettled(info) {

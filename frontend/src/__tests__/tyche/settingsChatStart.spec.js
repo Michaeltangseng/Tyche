@@ -2,9 +2,11 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import SettingsPages from '../../components/SettingsPages.vue'
 import { setLocale } from '../../i18n.js'
+import { applyRoomRunPreferences } from '../../room-run-preferences.js'
 
 afterEach(() => {
   delete window.tycheDesktop
+  applyRoomRunPreferences({ openWorkbenchOnStart: true, rosterWaitsForInstruction: true })
 })
 
 describe('chat start preferences', () => {
@@ -55,6 +57,12 @@ describe('chat start preferences', () => {
       defaultCaptainKind: 'claude',
       defaultMemberKinds: ['claude', 'codex'],
     }))
+    const wait = wrapper.findAll('[role="switch"]').find(button => button.attributes('aria-label') === 'Wait for an instruction after adding members')
+    expect(wait.attributes('aria-checked')).toBe('true')
+    await wait.trigger('click')
+    await flushPromises()
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ rosterWaitsForInstruction: false }))
+
     expect(wrapper.get('[role="radiogroup"] [role="radio"][aria-checked="true"]').text()).toBe('Multiple')
     expect(wrapper.findAll('[role="radiogroup"] [role="radio"][aria-checked="true"]')).toHaveLength(1)
     wrapper.unmount()

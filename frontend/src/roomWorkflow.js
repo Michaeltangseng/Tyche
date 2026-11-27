@@ -235,3 +235,88 @@ export function buildRoomWorkflow({
   const visibleEdges = edges.filter(edge => visible.some(node => node.id === edge.from) && visible.some(node => node.id === edge.to))
   return { nodes: visible, edges: visibleEdges, layers: layerNodes(visible, visibleEdges) }
 }
+
+function captionText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * The header shows only the latest handoff: who passed the work, and who has it now.
+ * Edges stay in the order the trace recorded them. A live target wins over a later
+ * settled branch. Captions are the recorded edge label and the current step title.
+ */
+export function headerHandoff(workflow) {
+  const nodes = Array.isArray(workflow?.nodes) ? workflow.nodes : []
+  const edges = Array.isArray(workflow?.edges) ? workflow.edges : []
+  if (!nodes.length) return null
+  const byId = new Map(nodes.filter(node => node?.id).map(node => [node.id, node]))
+  const liveEdges = edges.filter(edge => byId.get(edge.to)?.live)
+  const edge = liveEdges.at(-1) || edges.at(-1) || null
+  let current = edge ? byId.get(edge.to) : null
+  if (!current) {
+    current = nodes.find(node => node?.live && !String(node.id).startsWith('origin:'))
+      || [...nodes].reverse().find(node => node?.id && !String(node.id).startsWith('origin:'))
+      || null
+  }
+  if (!current?.roleId) return null
+  const previous = edge ? byId.get(edge.from) : null
+  const captions = []
+  for (const value of [edge?.label, current.title, current.label]) {
+    const text = captionText(value)
+    if (text && !captions.includes(text)) captions.push(text)
+  }
+  return {
+    previousRoleId: previous?.roleId && previous.roleId !== current.roleId ? previous.roleId : '',
+    currentRoleId: current.roleId,
+    live: Boolean(current.live),
+    captions,
+  }
+}
+
+/**
+ * People doing the work right now. Concurrent replies all stay. When nobody
+ * is live, the latest recorded beat remains, without the person who handed it off.
+ */
+export function statusExecutors({ state, workflow } = {}) {
+  const executors = []
+  const seen = new Set()
+  function add(roleId, extra = {}) {
+    if (!roleId) return
+    const existing = executors.find(item => item.roleId === roleId)
+    if (existing) {
+      if (!existing.messageId && extra.messageId) existing.messageId = extra.messageId
+      if (!existing.title && extra.title) existing.title = extra.title
+      existing.live = existing.live || extra.live !== false
+      return
+    }
+    if (seen.has(roleId)) return
+    seen.add(roleId)
+    executors.push({
+      roleId,
+      live: extra.live !== false,
+      messageId: extra.messageId || '',
+      title: extra.title || '',
+    })
+  }
+  for (const node of state?.nodes || []) {
+    if (node?.state === 'active') add(node.roleId, { live: true })
+  }
+  for (const reply of state?.replies || []) {
+    add(reply.roleId, { live: true, messageId: reply.messageId || '' })
+  }
+  if (executors.length) return executors
+
+  const nodes = (workflow?.nodes || []).filter(node => node?.roleId && !String(node.id).startsWith('origin:'))
+  const layers = Array.isArray(workflow?.layers) ? workflow.layers : []
+  const lastLayer = [...layers].reverse()
+    .map(layer => layer.filter(node => node?.roleId && !String(node.id).startsWith('origin:')))
+    .find(layer => layer.length)
+  const live = nodes.filter(node => node.live)
+  const chosen = lastLayer?.length ? lastLayer : (live.length ? live : nodes.slice(-1))
+  return chosen.map(node => ({
+    roleId: node.roleId,
+    live: Boolean(node.live),
+    messageId: node.messageId || '',
+    title: node.title || node.label || '',
+  }))
+}

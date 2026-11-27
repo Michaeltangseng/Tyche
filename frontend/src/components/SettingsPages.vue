@@ -146,6 +146,56 @@
         </article>
       </div>
       <article class="settings-card">
+        <h2>{{ t('settingsUi.interface') }}</h2>
+        <div class="mock-line">
+          <div>
+            <strong>{{ t('settingsUi.titleMarquee') }}</strong>
+            <small>{{ t('settingsUi.titleMarqueeHint') }}</small>
+          </div>
+          <button
+            class="settings-switch"
+            :class="{ on: titleMarqueeEnabled }"
+            type="button"
+            role="switch"
+            :aria-checked="titleMarqueeEnabled ? 'true' : 'false'"
+            :aria-label="t('settingsUi.titleMarquee')"
+            @click="setTitleMarqueeEnabled(!titleMarqueeEnabled)"
+          ><i /></button>
+        </div>
+        <div class="mock-line">
+          <div>
+            <strong>{{ t('settingsUi.openWorkbench') }}</strong>
+            <small>{{ t('settingsUi.openWorkbenchHint') }}</small>
+          </div>
+          <button
+            class="settings-switch"
+            :class="{ on: openWorkbenchOnStart }"
+            type="button"
+            role="switch"
+            :aria-checked="openWorkbenchOnStart ? 'true' : 'false'"
+            :aria-label="t('settingsUi.openWorkbench')"
+            :disabled="savingRunPreference"
+            @click="setOpenWorkbench(!openWorkbenchOnStart)"
+          ><i /></button>
+        </div>
+        <div class="mock-line">
+          <div>
+            <strong>{{ t('settingsUi.waitForInstruction') }}</strong>
+            <small>{{ t('settingsUi.waitForInstructionHint') }}</small>
+          </div>
+          <button
+            class="settings-switch"
+            :class="{ on: rosterWaitsForInstruction }"
+            type="button"
+            role="switch"
+            :aria-checked="rosterWaitsForInstruction ? 'true' : 'false'"
+            :aria-label="t('settingsUi.waitForInstruction')"
+            :disabled="savingRunPreference"
+            @click="setRosterWaits(!rosterWaitsForInstruction)"
+          ><i /></button>
+        </div>
+      </article>
+      <article class="settings-card">
         <h2>{{ t('settingsUi.chatStart') }}</h2>
         <p class="settings-note">{{ t('settingsUi.chatStartHint') }}</p>
         <div class="settings-seg chat-start-mode" role="radiogroup" :aria-label="t('settingsUi.chatStart')">
@@ -251,6 +301,8 @@ import { computed, onMounted, reactive, ref, unref, watch } from 'vue'
 import { agentLabel, agentLogo, publicAsset } from '../catalog.js'
 import { desktopApi } from '../desktop.js'
 import { locale as currentLocale, setLocale, t } from '../i18n.js'
+import { applyRoomRunPreferences, openWorkbenchOnStart, rosterWaitsForInstruction } from '../room-run-preferences.js'
+import { setTitleMarqueeEnabled, titleMarqueeEnabled } from '../title-marquee.js'
 import SkillsPage from './skills/SkillsPage.vue'
 import UsageSettingsPanel from './UsageSettingsPanel.vue'
 
@@ -351,7 +403,37 @@ async function loadCaptainPreference() {
     if (mode === 'multi' && savedCaptain && !memberKinds.value.includes(savedCaptain)) {
       memberKinds.value = [savedCaptain, ...memberKinds.value]
     }
+    applyRoomRunPreferences(value)
   } catch { /* keep the current selection */ }
+}
+
+const savingRunPreference = ref(false)
+
+async function saveRunPreference(patch) {
+  const bridge = desktopApi()?.workPreferences
+  if (!bridge?.get || !bridge?.save || savingRunPreference.value) return
+  savingRunPreference.value = true
+  const previous = {
+    openWorkbenchOnStart: openWorkbenchOnStart.value,
+    rosterWaitsForInstruction: rosterWaitsForInstruction.value,
+  }
+  applyRoomRunPreferences(patch)
+  try {
+    const current = await bridge.get()
+    await bridge.save({ ...current, ...patch })
+  } catch {
+    applyRoomRunPreferences(previous)
+  } finally {
+    savingRunPreference.value = false
+  }
+}
+
+function setOpenWorkbench(enabled) {
+  void saveRunPreference({ openWorkbenchOnStart: Boolean(enabled) })
+}
+
+function setRosterWaits(enabled) {
+  void saveRunPreference({ rosterWaitsForInstruction: Boolean(enabled) })
 }
 
 function memberSelected(kind) {

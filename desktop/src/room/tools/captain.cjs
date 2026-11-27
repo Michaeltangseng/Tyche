@@ -136,6 +136,7 @@ function registerCaptainTools({
   dispatcher, repository, captainAssignment, timeline, roomDb, canLaunch = () => true,
   onUnavailable = null,
   selectSkills = null,
+  rosterWaitsForInstruction = () => true,
 }) {
   if (!roomDb) throw new TypeError('ROOM_CAPTAIN_TOOLS_DATABASE_REQUIRED')
   const { database } = roomDb
@@ -221,7 +222,8 @@ function registerCaptainTools({
   }
 
   dispatcher.register('assign_in_group', async (args, context) => {
-    if (rosterCreatedThisRun(context.runId)) throw new Error('ROOM_ROSTER_ASSIGN_WAIT')
+    const waits = typeof rosterWaitsForInstruction === 'function' ? rosterWaitsForInstruction() !== false : true
+    if (waits && rosterCreatedThisRun(context.runId)) throw new Error('ROOM_ROSTER_ASSIGN_WAIT')
     return captainAssignment.assign({
       chatId: context.chatId,
       captainRoleId: context.roleId,
@@ -247,7 +249,7 @@ function registerCaptainTools({
       roles: args.roles,
     })
   }, {
-    description: 'Add members to this chat by writing each member name, provider, responsibilities, prompt, and skill ids chosen from the briefing inventory. The platform stores the maximum permission for that provider. New members are not woken. Do not call assign_in_group in this same turn.',
+    description: 'Add members to this chat by writing each member name, provider, responsibilities, prompt, and skill ids chosen from the briefing inventory. The platform stores the maximum permission for that provider. New members are not woken until assign_in_group. Follow the briefing on whether to assign in this turn or wait for the next user message.',
     inputSchema: {
       type: 'object',
       properties: {

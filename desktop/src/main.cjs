@@ -96,6 +96,7 @@ const {
 } = require('./knowledge/local-knowledge-base.cjs')
 const { LocalKnowledgeConnectors } = require('./knowledge/local-knowledge-connectors.cjs')
 const { createRoomHost } = require('./room/room-host.cjs')
+const { loadedWorkPreferences } = require('./workspace/work-preferences.cjs')
 const { SkillLibrary } = require('./skills/skill-library.cjs')
 const { registerSkillLibraryIpc } = require('./shell/skill-library-ipc.cjs')
 const { registerTeamRoomIpc } = require('./shell/team-room-ipc.cjs')
@@ -1286,6 +1287,13 @@ if (!hasSingleInstanceLock) {
               )
             } catch {
               return null
+            }
+          },
+          rosterWaitsForInstruction: () => {
+            try {
+              return loadedWorkPreferences(workspace?.state?.workPreferences).rosterWaitsForInstruction !== false
+            } catch {
+              return true
             }
           },
           onChanged: () => {

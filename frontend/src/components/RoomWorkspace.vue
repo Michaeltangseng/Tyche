@@ -14,8 +14,16 @@
               @keydown.enter.prevent="beginTitleEdit"
               @mouseenter="measureTitle"
             >
-              <span ref="titleClip" class="room-chat-title-clip" :class="{ marquee: titleOverflows }">
-                <span class="room-chat-title-text">{{ activeChatLabel }}</span>
+              <span
+                ref="titleClip"
+                class="room-chat-title-clip"
+                :class="{ marquee: titleMarqueeEnabled && titleOverflows }"
+                :style="titleMarqueeEnabled && titleOverflows ? { '--marquee-duration': marqueeDuration } : undefined"
+              >
+                <span class="room-chat-title-track">
+                  <span class="room-chat-title-text">{{ activeChatLabel }}</span>
+                  <span v-if="titleMarqueeEnabled && titleOverflows" class="room-chat-title-text" aria-hidden="true">{{ activeChatLabel }}</span>
+                </span>
               </span>
             </div>
             <div v-else class="room-chat-title editing">
@@ -44,7 +52,6 @@
         :can-add="canAddRole"
         @select-role="openRoleSettings"
         @add-role="openNewRole"
-        @open-work="workPanelOpen = true"
       />
 
       <div class="room-header-actions">
@@ -595,6 +602,8 @@ import { useRoomWorkspace } from '../composables/useRoomWorkspace.js'
 import { agentUsageRows, formatUsageLine } from '../room-usage.js'
 import { deriveRoomCollaboration } from '../roomCollaboration.js'
 import { buildRoomWorkflow } from '../roomWorkflow.js'
+import { applyRoomRunPreferences, openWorkbenchOnStart } from '../room-run-preferences.js'
+import { titleMarqueeEnabled } from '../title-marquee.js'
 import MarkdownMessage from './MarkdownMessage.vue'
 import RoomCollaborationRibbon from './RoomCollaborationRibbon.vue'
 import RoomRunTrace from './RoomRunTrace.vue'
@@ -739,6 +748,7 @@ const workTab = ref('')
 const name = ref('')
 const titleEditing = ref(false)
 const titleOverflows = ref(false)
+const marqueeDuration = ref('6s')
 const titleClip = ref(null)
 const titleText = ref(null)
 let titleEditCancelled = false
@@ -1417,7 +1427,13 @@ async function create(team) {
 function measureTitle() {
   const clip = titleClip.value
   const text = clip?.querySelector('.room-chat-title-text')
-  titleOverflows.value = Boolean(text && text.scrollWidth > clip.clientWidth + 1)
+  if (!text || !clip) {
+    titleOverflows.value = false
+    return
+  }
+  titleOverflows.value = text.scrollWidth > clip.clientWidth + 1
+  const distance = text.scrollWidth + 48
+  marqueeDuration.value = `${Math.max(3.2, distance / 36).toFixed(1)}s`
 }
 
 function beginTitleEdit() {
@@ -1607,6 +1623,41 @@ function openUsage() {
   workTab.value = 'usage'
 }
 
+function openTrace() {
+  workPanelRequested.value = true
+  workPanelOpen.value = true
+  workTab.value = 'trace'
+}
+
+const openedTraceForChat = new Set()
+let runPreferenceLoad = null
+
+function loadRunPreferences() {
+  if (!runPreferenceLoad) {
+    const read = desktopApi()?.workPreferences?.get
+    runPreferenceLoad = Promise.resolve(typeof read === 'function' ? read() : null)
+      .then((value) => {
+        applyRoomRunPreferences(value)
+        if (!openWorkbenchOnStart.value && !workPanelRequested.value) workPanelOpen.value = false
+      })
+      .catch(() => {})
+  }
+  return runPreferenceLoad
+}
+
+watch(
+  () => [chatId.value, collaboration.value.mode, openWorkbenchOnStart.value],
+  async () => {
+    await loadRunPreferences()
+    const id = chatId.value
+    if (!id || !openWorkbenchOnStart.value || collaboration.value.mode !== 'running') return
+    if (openedTraceForChat.has(id)) return
+    openedTraceForChat.add(id)
+    openTrace()
+  },
+  { immediate: true },
+)
+
 function closeWorkPanel() {
   workPanelOpen.value = false
   workPanelRequested.value = false
@@ -1664,7 +1715,7 @@ watch(() => props.openRequest, (request) => {
   void openRoom(request.roomId, request.chatId)
 }, { immediate: true, flush: 'post' })
 
-watch(activeChatLabel, () => nextTick(measureTitle))
+watch([activeChatLabel, titleMarqueeEnabled], () => nextTick(measureTitle))
 
 watch(roleSettingsOpen, (open) => {
   document.body.classList.toggle('room-overlay-open', open)
@@ -1692,17 +1743,19 @@ onBeforeUnmount(() => {
 .room-project-name { align-self: flex-start; display: inline-flex; align-items: center; color: var(--faint); font-size: var(--text-2xs); }
 .room-title-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .room-title-row h1 { margin: 0; min-width: 0; font-size: var(--text-xl); font-weight: 650; line-height: 1.2; }
-.room-chat-title { display: inline-flex; align-items: center; max-width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: text; }
-.room-chat-title-clip { display: block; max-width: 10ch; overflow: hidden; }
+.room-chat-title { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: text; }
+.room-chat-title-clip { --title-gap: 2.5ch; display: block; min-width: 0; max-width: 10ch; overflow: hidden; }
+.room-chat-title-track { display: inline-flex; align-items: center; gap: var(--title-gap); white-space: nowrap; }
 .room-chat-title-text { display: inline-block; white-space: nowrap; outline: none; }
-.room-chat-title.editing .room-chat-title-text { min-width: 4ch; max-width: 36ch; }
-.room-chat-title-clip.marquee:hover .room-chat-title-text { animation: room-title-marquee 7s ease-in-out infinite; }
-@keyframes room-title-marquee {
-  0%, 18% { transform: translateX(0); }
-  82%, 100% { transform: translateX(calc(10ch - 100%)); }
+.room-chat-title-clip:not(.marquee) .room-chat-title-text { max-width: 10ch; overflow: hidden; text-overflow: ellipsis; }
+.room-chat-title.editing .room-chat-title-text { min-width: 4ch; max-width: 36ch; overflow: visible; text-overflow: clip; }
+.room-chat-title-clip.marquee:hover .room-chat-title-track {
+  animation: room-title-marquee var(--marquee-duration, 6s) linear infinite;
+  animation-delay: 0.15s;
 }
-@media (prefers-reduced-motion: reduce) {
-  .room-chat-title-clip.marquee:hover .room-chat-title-text { animation: none; }
+@keyframes room-title-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(-50% - (var(--title-gap) / 2))); }
 }
 .room-subtitle { max-width: 34ch; overflow: hidden; color: var(--faint); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
 .room-collaboration { flex: 1 1 auto; min-width: 0; }

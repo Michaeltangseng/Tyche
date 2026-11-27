@@ -10,7 +10,7 @@ const { createRoomReadModel } = require('../../src/room/read-model.cjs')
 const { createToolDispatcher } = require('../../src/room/tools/dispatcher.cjs')
 const { createCaptainAssignment, registerCaptainTools } = require('../../src/room/tools/captain.cjs')
 
-function setup(t, { providers = ['claude', 'codex', 'hermes'], onUnavailable = null } = {}) {
+function setup(t, { providers = ['claude', 'codex', 'hermes'], onUnavailable = null, rosterWaitsForInstruction = () => true } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
@@ -46,6 +46,7 @@ function setup(t, { providers = ['claude', 'codex', 'hermes'], onUnavailable = n
     roomDb,
     canLaunch,
     onUnavailable,
+    rosterWaitsForInstruction,
   })
   return { roomDb, repo, roomId, chatId, captain, timeline, dispatcher, queued }
 }
@@ -118,6 +119,24 @@ test('create_roles writes the same role record the dialog writes, at max permiss
     /ROOM_ROSTER_ASSIGN_WAIT/,
   )
   assert.equal(timeline.latest(chatId).id, message.id)
+})
+
+test('create_roles can assign in the same turn when the preference does not wait', async t => {
+  const { chatId, captain, dispatcher, queued } = setup(t, { rosterWaitsForInstruction: () => false })
+  dispatcher.bindRun('run1', { chatId, roleId: captain, allowedTools: ['create_roles', 'assign_in_group'] })
+  const created = await dispatcher.invoke({
+    runId: 'run1',
+    callId: 'roster-1',
+    name: 'create_roles',
+    args: { roles: [{ displayName: '实现', provider: 'codex', prompt: '改代码' }] },
+  })
+  await dispatcher.invoke({
+    runId: 'run1',
+    callId: 'assign-1',
+    name: 'assign_in_group',
+    args: { text: '开始', roleIds: [created.roleIds[0]] },
+  })
+  assert.equal(queued.length, 1)
 })
 
 test('a later run can assign the members create_roles stored', async t => {

@@ -50,6 +50,7 @@ function createEngine({
   canLaunch = null,
   onUnavailable = null,
   skillSource = null,
+  rosterWaitsForInstruction = null,
 }) {
   const { database } = roomDb
   const activeReplies = new Map()
@@ -231,6 +232,9 @@ function createEngine({
             launchProviders: speakable,
             equippedSkills,
             skillInventory,
+            rosterWaitsForInstruction: typeof rosterWaitsForInstruction === 'function'
+              ? rosterWaitsForInstruction() !== false
+              : true,
           })
           const prompt = briefingResult.text
           const watermark = briefingResult.seen

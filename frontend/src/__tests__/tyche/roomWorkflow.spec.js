@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildRoomWorkflow } from '../../roomWorkflow.js'
+import { buildRoomWorkflow, headerHandoff, statusExecutors } from '../../roomWorkflow.js'
 
 const roles = [
   { id: 'captain', display_name: 'Captain', is_captain: true },
@@ -118,5 +118,57 @@ describe('room workflow', () => {
     ])
     expect(pending.nodes.find(node => node.roleId === 'jia').live).toBe(true)
     expect(pending.edges[0].label).toBe('先说一个笑话')
+  })
+
+  it('keeps the header handoff on the live step', () => {
+    expect(headerHandoff({ nodes: [], edges: [] })).toBeNull()
+    expect(headerHandoff({
+      nodes: [
+        { id: 'origin:captain', roleId: 'captain', live: false, title: '' },
+        { id: 'joke', roleId: 'jia', live: false, title: '讲一个笑话' },
+        { id: 'punch', roleId: 'yi', live: true, title: '收尾' },
+      ],
+      edges: [
+        { from: 'origin:captain', to: 'joke', label: '开始接力' },
+        { from: 'joke', to: 'punch', label: '甲已经交棒' },
+      ],
+    })).toEqual({
+      previousRoleId: 'jia',
+      currentRoleId: 'yi',
+      live: true,
+      captions: ['甲已经交棒', '收尾'],
+    })
+  })
+
+  it('lists everyone running, and only the latest beat once the work is quiet', () => {
+    expect(statusExecutors({
+      state: {
+        nodes: [
+          { roleId: 'jia', state: 'active' },
+          { roleId: 'yi', state: 'active' },
+        ],
+        replies: [
+          { roleId: 'jia', messageId: 'm-jia' },
+          { roleId: 'yi', messageId: 'm-yi' },
+        ],
+      },
+      workflow: { nodes: [], edges: [] },
+    })).toEqual([
+      { roleId: 'jia', live: true, messageId: 'm-jia', title: '' },
+      { roleId: 'yi', live: true, messageId: 'm-yi', title: '' },
+    ])
+
+    expect(statusExecutors({
+      state: { nodes: [], replies: [] },
+      workflow: {
+        nodes: [
+          { id: 'origin:captain', roleId: 'captain', live: false, title: '' },
+          { id: 'joke', roleId: 'jia', live: false, title: '讲一个笑话' },
+        ],
+        edges: [],
+      },
+    })).toEqual([
+      { roleId: 'jia', live: false, messageId: '', title: '讲一个笑话' },
+    ])
   })
 })

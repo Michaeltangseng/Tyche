@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import RoomWorkflow from '../../components/RoomWorkflow.vue'
 import RoomWorkspace from '../../components/RoomWorkspace.vue'
 import { setLocale } from '../../i18n.js'
+import { applyRoomRunPreferences } from '../../room-run-preferences.js'
 
 function data() {
   return {
@@ -78,6 +79,7 @@ const cleanup = []
 afterEach(() => {
   cleanup.splice(0).forEach(dispose => dispose())
   delete window.tycheDesktop
+  applyRoomRunPreferences({ openWorkbenchOnStart: true, rosterWaitsForInstruction: true })
   vi.useRealTimers()
 })
 
@@ -162,6 +164,31 @@ describe('team room workspace', () => {
 
     await wrapper.get('.room-usage-toggle').trigger('click')
     expect(wrapper.get('.room-work-tab.active').text()).toContain('Usage')
+
+    await wrapper.get('[data-work-tab="trace"]').trigger('click')
+    expect(wrapper.get('.room-work-tab.active').text()).toContain('Trace')
+  })
+
+  it('opens the trace tab when the first task starts, and stays closed when that preference is off', async () => {
+    const running = data()
+    running.tasks = [{
+      id: 'task-1', chat_id: 'chat-1', number: 1, title: 'Tell a joke', status: 'in_progress',
+      assignee_role_id: 'worker', created_at: '2026-11-15T10:01:00Z',
+    }]
+    const opened = mountRoom(api(running))
+    await flushPromises()
+    expect(opened.get('.room-work-tab.active').text()).toContain('Trace')
+    opened.unmount()
+
+    window.tycheDesktop = {
+      workPreferences: {
+        get: vi.fn(async () => ({ openWorkbenchOnStart: false, rosterWaitsForInstruction: true })),
+        save: vi.fn(async value => value),
+      },
+    }
+    const closed = mountRoom(api(structuredClone(running)))
+    await flushPromises()
+    expect(closed.find('.room-ledger').exists()).toBe(false)
   })
 
   it('jumps the chat to the turn behind a workflow face', async () => {
