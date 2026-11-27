@@ -237,6 +237,8 @@ describe('workspace sidebar rail', () => {
     expect(wrapper.text()).toContain('Notes')
     expect(wrapper.text()).not.toContain('Codex')
 
+    await wrapper.get('.sidebar-footer .sidebar-user').trigger('click')
+    expect(fixture.openSystemSettings).toHaveBeenCalledWith('preferences')
     await wrapper.get('.sidebar-footer .icon-button').trigger('click')
     expect(fixture.openSystemSettings).toHaveBeenCalledWith('agents')
     wrapper.unmount()

@@ -20,6 +20,12 @@ describe('chat title marquee preference', () => {
   })
 
   it('saves the personal preference switch', async () => {
+    window.tycheDesktop = {
+      workPreferences: {
+        get: async () => ({ chatStartMode: 'single', defaultCaptainKind: '', defaultMemberKinds: [] }),
+        save: async value => value,
+      },
+    }
     const wrapper = mount(SettingsPages, {
       props: {
         section: 'preferences',
@@ -33,7 +39,11 @@ describe('chat title marquee preference', () => {
     expect(toggle.attributes('aria-checked')).toBe('true')
     await toggle.trigger('click')
     expect(toggle.attributes('aria-checked')).toBe('false')
+    expect(readTitleMarqueeEnabled()).toBe(true)
+    await wrapper.get('button.primary-button').trigger('click')
+    await flushPromises()
     expect(readTitleMarqueeEnabled()).toBe(false)
     wrapper.unmount()
+    delete window.tycheDesktop
   })
 })

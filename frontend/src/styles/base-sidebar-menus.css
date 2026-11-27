@@ -320,6 +320,7 @@
   height: 22px;
   display: grid;
   place-items: center;
+  overflow: hidden;
   border-radius: 50%;
   background: var(--surface-active);
   color: var(--text);
@@ -327,6 +328,10 @@
   font-weight: 700;
   line-height: 1;
 }
+
+.sidebar-user-mark[data-portrait="true"] { background: transparent; }
+
+.sidebar-user-mark img { width: 22px; height: 22px; display: block; }
 
 @media (prefers-reduced-motion: reduce) {
   .preference-icon-enter-active,

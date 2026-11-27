@@ -109,137 +109,163 @@
     <UsageSettingsPanel v-else-if="section === 'usage'" />
 
     <template v-else-if="section === 'preferences'">
-      <article class="settings-card">
-        <h2>{{ t('settingsUi.profileGroup') }}</h2>
-        <div class="setting-row">
-          <div>
-            <strong>{{ t('settingsUi.userPortrait') }}</strong>
+      <div class="pref-layout">
+        <div class="pref-column">
+          <h2 class="pref-label">{{ t('settingsUi.displayGroup') }}</h2>
+          <article class="settings-card">
+            <div class="setting-row">
+              <div>
+                <strong>{{ t('settingsUi.titleMarquee') }}</strong>
+                <small>{{ t('settingsUi.titleMarqueeHint') }}</small>
+              </div>
+              <button
+                class="settings-switch"
+            :class="{ on: draftMarquee }"
+            type="button"
+            role="switch"
+            :aria-checked="draftMarquee ? 'true' : 'false'"
+            :aria-label="t('settingsUi.titleMarquee')"
+            @click="draftMarquee = !draftMarquee"
+              ><i /></button>
+            </div>
+            <div class="setting-row">
+              <div>
+                <strong>{{ t('settingsUi.openWorkbench') }}</strong>
+                <small>{{ t('settingsUi.openWorkbenchHint') }}</small>
+              </div>
+              <button
+                class="settings-switch"
+            :class="{ on: draftOpenWorkbench }"
+            type="button"
+            role="switch"
+            :aria-checked="draftOpenWorkbench ? 'true' : 'false'"
+            :aria-label="t('settingsUi.openWorkbench')"
+            @click="draftOpenWorkbench = !draftOpenWorkbench"
+              ><i /></button>
+            </div>
+          </article>
+          <h2 class="pref-label">
+            {{ t('settingsUi.chatStart') }}
+            <button class="pref-info" type="button" :title="t('settingsUi.captainHint')" :aria-label="t('settingsUi.captainHint')">i</button>
+          </h2>
+          <article class="settings-card">
+            <div class="setting-row setting-row-head">
+              <small>{{ t('settingsUi.chatStartHint') }}</small>
+              <div class="settings-seg chat-start-mode" role="radiogroup" :aria-label="t('settingsUi.chatStart')">
+                <button type="button" role="radio" :aria-checked="chatStartMode === 'single'" :class="{ active: chatStartMode === 'single' }" @click="setChatStartMode('single')">{{ t('settingsUi.chatStartSingle') }}</button>
+                <button type="button" role="radio" :aria-checked="chatStartMode === 'multi'" :class="{ active: chatStartMode === 'multi' }" @click="setChatStartMode('multi')">{{ t('settingsUi.chatStartMulti') }}</button>
+              </div>
+            </div>
+            <div class="pref-members" :role="chatStartMode === 'multi' ? 'group' : 'radiogroup'" :aria-label="t('settingsUi.chatStart')">
+              <div
+                v-for="agent in captainChoices"
+                :key="agent.kind"
+                class="pref-member"
+                :data-selected="agent.ready && memberSelected(agent.kind) ? 'true' : undefined"
+                :data-unavailable="agent.ready ? undefined : 'true'"
+              >
+                <span class="pref-mark" :data-mode="chatStartMode" aria-hidden="true" />
+                <button
+                  class="pref-member-logo"
+                  type="button"
+                  :aria-label="t('systemSettings.openAgentDetail', { agent: agent.label })"
+                  @click="openAgentDetail?.({ kind: agent.kind, label: agent.label })"
+                >
+                  <img :src="agent.logo" alt="" />
+                </button>
+                <button class="pref-member-name" type="button" :role="chatStartMode === 'multi' ? 'checkbox' : 'radio'" :aria-checked="agent.ready && memberSelected(agent.kind) ? 'true' : 'false'" :disabled="!agent.ready" @click="toggleStartMember(agent.kind)">
+                  {{ agent.label }}
+                </button>
+                <button
+                  v-if="!agent.ready"
+                  class="pref-member-captain"
+                  type="button"
+                  @click="openAgentDetail?.({ kind: agent.kind, label: agent.label })"
+                >
+                  {{ agent.status || t('settingsUi.needsSetup') }} · {{ t('home.configureAgent') }}
+                </button>
+                <button
+                  v-else-if="chatStartMode === 'multi' && memberSelected(agent.kind) && captainKind !== agent.kind"
+                  class="pref-member-captain"
+                  type="button"
+                  @click="makeStartCaptain(agent.kind)"
+                >
+                  {{ t('settingsUi.makeCaptain') }}
+                </button>
+                <span v-else-if="captainKind === agent.kind && memberSelected(agent.kind)" class="pref-member-badge">{{ t('settingsUi.defaultCaptain') }}</span>
+              </div>
+              <span v-if="!captainChoices.length" class="settings-note">{{ t('room.noProviders') }}</span>
+            </div>
+            <div class="setting-row">
+              <div>
+                <strong>{{ t('settingsUi.waitForInstruction') }}</strong>
+                <small>{{ t('settingsUi.waitForInstructionHint') }}</small>
+              </div>
+              <button
+                class="settings-switch"
+            :class="{ on: draftWait }"
+            type="button"
+            role="switch"
+            :aria-checked="draftWait ? 'true' : 'false'"
+            :aria-label="t('settingsUi.waitForInstruction')"
+            @click="draftWait = !draftWait"
+              ><i /></button>
+            </div>
+          </article>
+        </div>
+        <aside class="pref-identity">
+          <div class="pref-hero">
+            <span class="pref-hero-face">
+              <img v-if="selectedPortrait" :src="selectedPortrait.src" alt="" />
+              <b v-else>{{ t('room.you') }}</b>
+            </span>
+            <strong>{{ t('room.you') }}</strong>
             <small>{{ t('settingsUi.userPortraitHint') }}</small>
           </div>
-          <button class="agent-config-link" type="button" :disabled="!userPortrait || savingRunPreference" @click="setUserPortrait('')">{{ t('settingsUi.restoreDefault') }}</button>
-        </div>
-        <div class="pref-portraits" role="radiogroup" :aria-label="t('settingsUi.userPortrait')">
-          <button
-            v-for="mascot in userPortraits"
-            :key="mascot.id"
-            type="button"
-            role="radio"
-            :aria-checked="userPortrait === mascot.id ? 'true' : 'false'"
-            :aria-label="mascot.name"
-            :class="{ active: userPortrait === mascot.id }"
-            :disabled="savingRunPreference"
-            @click="setUserPortrait(mascot.id)"
-          >
-            <img :src="mascot.src" alt="" />
-          </button>
-        </div>
-      </article>
-      <article class="settings-card">
-        <h2>{{ t('settingsUi.displayGroup') }}</h2>
-        <div class="setting-row">
-          <div>
-            <strong>{{ t('settingsUi.titleMarquee') }}</strong>
-            <small>{{ t('settingsUi.titleMarqueeHint') }}</small>
-          </div>
-          <button
-            class="settings-switch"
-            :class="{ on: titleMarqueeEnabled }"
-            type="button"
-            role="switch"
-            :aria-checked="titleMarqueeEnabled ? 'true' : 'false'"
-            :aria-label="t('settingsUi.titleMarquee')"
-            @click="setTitleMarqueeEnabled(!titleMarqueeEnabled)"
-          ><i /></button>
-        </div>
-        <div class="setting-row">
-          <div>
-            <strong>{{ t('settingsUi.openWorkbench') }}</strong>
-            <small>{{ t('settingsUi.openWorkbenchHint') }}</small>
-          </div>
-          <button
-            class="settings-switch"
-            :class="{ on: openWorkbenchOnStart }"
-            type="button"
-            role="switch"
-            :aria-checked="openWorkbenchOnStart ? 'true' : 'false'"
-            :aria-label="t('settingsUi.openWorkbench')"
-            :disabled="savingRunPreference"
-            @click="setOpenWorkbench(!openWorkbenchOnStart)"
-          ><i /></button>
-        </div>
-      </article>
-      <article class="settings-card">
-        <div class="setting-row setting-row-head">
-          <div>
-            <h2>
-              {{ t('settingsUi.chatStart') }}
-              <button class="pref-info" type="button" :title="t('settingsUi.captainHint')" :aria-label="t('settingsUi.captainHint')">i</button>
-            </h2>
-            <small>{{ t('settingsUi.chatStartHint') }}</small>
-          </div>
-          <div class="settings-seg chat-start-mode" role="radiogroup" :aria-label="t('settingsUi.chatStart')">
-            <button type="button" role="radio" :aria-checked="chatStartMode === 'single'" :class="{ active: chatStartMode === 'single' }" :disabled="savingCaptain" @click="setChatStartMode('single')">{{ t('settingsUi.chatStartSingle') }}</button>
-            <button type="button" role="radio" :aria-checked="chatStartMode === 'multi'" :class="{ active: chatStartMode === 'multi' }" :disabled="savingCaptain" @click="setChatStartMode('multi')">{{ t('settingsUi.chatStartMulti') }}</button>
-          </div>
-        </div>
-        <div class="pref-members" :role="chatStartMode === 'multi' ? 'group' : 'radiogroup'" :aria-label="t('settingsUi.chatStart')">
-          <div
-            v-for="agent in captainChoices"
-            :key="agent.kind"
-            class="pref-member"
-            :data-selected="agent.ready && memberSelected(agent.kind) ? 'true' : undefined"
-            :data-unavailable="agent.ready ? undefined : 'true'"
-          >
-            <span class="pref-mark" :data-mode="chatStartMode" aria-hidden="true" />
+          <div class="pref-portraits" role="radiogroup" :aria-label="t('settingsUi.userPortrait')">
             <button
-              class="pref-member-logo"
+              v-for="mascot in userPortraits"
+              :key="mascot.id"
               type="button"
-              :aria-label="t('systemSettings.openAgentDetail', { agent: agent.label })"
-              @click="openAgentDetail?.({ kind: agent.kind, label: agent.label })"
+              role="radio"
+              :aria-checked="draftPortrait === mascot.id ? 'true' : 'false'"
+              :aria-label="mascot.name"
+              :class="{ active: draftPortrait === mascot.id }"
+              @click="setUserPortrait(mascot.id)"
             >
-              <img :src="agent.logo" alt="" />
+              <img :src="mascot.src" alt="" />
             </button>
-            <button class="pref-member-name" type="button" :role="chatStartMode === 'multi' ? 'checkbox' : 'radio'" :aria-checked="agent.ready && memberSelected(agent.kind) ? 'true' : 'false'" :disabled="savingCaptain || !agent.ready" @click="toggleStartMember(agent.kind)">
-              {{ agent.label }}
-            </button>
-            <button
-              v-if="!agent.ready"
-              class="pref-member-captain"
-              type="button"
-              @click="openAgentDetail?.({ kind: agent.kind, label: agent.label })"
-            >
-              {{ agent.status || t('settingsUi.needsSetup') }} · {{ t('home.configureAgent') }}
-            </button>
-            <button
-              v-else-if="chatStartMode === 'multi' && memberSelected(agent.kind) && captainKind !== agent.kind"
-              class="pref-member-captain"
-              type="button"
-              :disabled="savingCaptain"
-              @click="makeStartCaptain(agent.kind)"
-            >
-              {{ t('settingsUi.makeCaptain') }}
-            </button>
-            <span v-else-if="captainKind === agent.kind && memberSelected(agent.kind)" class="pref-member-badge">{{ t('settingsUi.defaultCaptain') }}</span>
           </div>
-          <span v-if="!captainChoices.length" class="settings-note">{{ t('room.noProviders') }}</span>
-        </div>
-        <div class="setting-row">
-          <div>
-            <strong>{{ t('settingsUi.waitForInstruction') }}</strong>
-            <small>{{ t('settingsUi.waitForInstructionHint') }}</small>
+          <button class="agent-config-link pref-restore" type="button" :disabled="!draftPortrait" @click="setUserPortrait('')">{{ t('settingsUi.restoreDefault') }}</button>
+          <div class="pref-preview" :aria-label="t('settingsUi.preview')">
+            <span class="pref-preview-label">{{ t('settingsUi.preview') }}</span>
+            <div v-if="previewCaptain" class="pref-bubble agent">
+              <span class="pref-preview-faces">
+                <i>
+                  <img :src="previewCaptain.logo" alt="" />
+                  <b v-if="chatStartMode === 'multi'" aria-hidden="true">★</b>
+                </i>
+                <i v-for="agent in previewOthers" :key="agent.kind"><img :src="agent.logo" alt="" /></i>
+              </span>
+              <div>
+                <strong>{{ previewCaptain.label }}</strong>
+                <p>{{ t('settingsUi.previewAgent') }}</p>
+              </div>
+            </div>
+            <div class="pref-bubble user">
+              <p>{{ t('settingsUi.previewUser') }}</p>
+              <span class="pref-hero-face mini">
+                <img v-if="selectedPortrait" :src="selectedPortrait.src" alt="" />
+                <b v-else>{{ t('room.you') }}</b>
+              </span>
+            </div>
           </div>
-          <button
-            class="settings-switch"
-            :class="{ on: rosterWaitsForInstruction }"
-            type="button"
-            role="switch"
-            :aria-checked="rosterWaitsForInstruction ? 'true' : 'false'"
-            :aria-label="t('settingsUi.waitForInstruction')"
-            :disabled="savingRunPreference"
-            @click="setRosterWaits(!rosterWaitsForInstruction)"
-          ><i /></button>
+        </aside>
+        <div class="pref-actions">
+          <button class="secondary-button" type="button" :disabled="!preferencesDirty || savingPreferences" @click="cancelPreferences">{{ t('common.cancel') }}</button>
+          <button class="primary-button" type="button" :disabled="!preferencesDirty || savingPreferences" @click="savePreferences">{{ t('common.save') }}</button>
         </div>
-      </article>
+      </div>
     </template>
 
     <template v-else-if="section === 'about'">
@@ -277,8 +303,8 @@ import { agentLabel, agentLogo, publicAsset } from '../catalog.js'
 import { desktopApi } from '../desktop.js'
 import { locale as currentLocale, setLocale, t } from '../i18n.js'
 import { ROOM_MASCOTS } from '../room-mascots.js'
-import { applyRoomRunPreferences, openWorkbenchOnStart, rosterWaitsForInstruction, userPortrait } from '../room-run-preferences.js'
-import { setTitleMarqueeEnabled, titleMarqueeEnabled } from '../title-marquee.js'
+import { applyRoomRunPreferences } from '../room-run-preferences.js'
+import { readTitleMarqueeEnabled, setTitleMarqueeEnabled } from '../title-marquee.js'
 import SkillsPage from './skills/SkillsPage.vue'
 import UsageSettingsPanel from './UsageSettingsPanel.vue'
 
@@ -340,7 +366,12 @@ const shortcuts = [
 const captainKind = ref('')
 const chatStartMode = ref('single')
 const memberKinds = ref([])
-const savingCaptain = ref(false)
+const draftPortrait = ref('')
+const draftOpenWorkbench = ref(true)
+const draftWait = ref(true)
+const draftMarquee = ref(readTitleMarqueeEnabled())
+const savingPreferences = ref(false)
+const committedPreferences = ref(null)
 const captainChoices = computed(() => (props.installedAgentKinds || []).map(item => {
   const kind = typeof item === 'string' ? item : item?.kind
   return {
@@ -353,6 +384,30 @@ const captainChoices = computed(() => (props.installedAgentKinds || []).map(item
 }).filter(agent => agent.kind))
 const readyChoices = computed(() => captainChoices.value.filter(agent => agent.ready))
 
+function preferenceSnapshot() {
+  return {
+    portrait: draftPortrait.value,
+    workbench: draftOpenWorkbench.value,
+    wait: draftWait.value,
+    marquee: draftMarquee.value,
+    mode: chatStartMode.value,
+    captain: captainKind.value,
+    members: [...memberKinds.value],
+  }
+}
+
+const preferencesDirty = computed(() => JSON.stringify(preferenceSnapshot()) !== JSON.stringify(committedPreferences.value))
+
+function applyPreferenceDraft(snapshot) {
+  draftPortrait.value = snapshot.portrait
+  draftOpenWorkbench.value = snapshot.workbench
+  draftWait.value = snapshot.wait
+  draftMarquee.value = snapshot.marquee
+  chatStartMode.value = snapshot.mode
+  captainKind.value = snapshot.captain
+  memberKinds.value = [...snapshot.members]
+}
+
 async function loadCaptainPreference() {
   const bridge = desktopApi()?.workPreferences
   if (!bridge?.get) return
@@ -363,113 +418,108 @@ async function loadCaptainPreference() {
     const savedCaptain = known(value?.defaultCaptainKind) ? value.defaultCaptainKind : (choices[0]?.kind || '')
     const savedMembers = (Array.isArray(value?.defaultMemberKinds) ? value.defaultMemberKinds : []).filter(known)
     const mode = value?.chatStartMode === 'multi' ? 'multi' : 'single'
-    chatStartMode.value = mode
-    captainKind.value = savedCaptain
-    memberKinds.value = mode === 'single'
+    const members = mode === 'single'
       ? (savedCaptain ? [savedCaptain] : [])
       : (savedMembers.includes(savedCaptain) || !savedCaptain ? savedMembers : [savedCaptain, ...savedMembers])
-    if (mode === 'multi' && savedCaptain && !memberKinds.value.includes(savedCaptain)) {
-      memberKinds.value = [savedCaptain, ...memberKinds.value]
-    }
     applyRoomRunPreferences(value)
+    applyPreferenceDraft({
+      portrait: /^(0[1-9]|1[0-2])$/.test(String(value?.userPortrait || '')) ? value.userPortrait : '',
+      workbench: value?.openWorkbenchOnStart !== false,
+      wait: value?.rosterWaitsForInstruction !== false,
+      marquee: readTitleMarqueeEnabled(),
+      mode,
+      captain: savedCaptain,
+      members: mode === 'multi' && savedCaptain && !members.includes(savedCaptain) ? [savedCaptain, ...members] : members,
+    })
+    committedPreferences.value = preferenceSnapshot()
   } catch { /* keep the current selection */ }
 }
 
-const savingRunPreference = ref(false)
-
-async function saveRunPreference(patch) {
-  const bridge = desktopApi()?.workPreferences
-  if (!bridge?.get || !bridge?.save || savingRunPreference.value) return
-  savingRunPreference.value = true
-  const previous = {
-    openWorkbenchOnStart: openWorkbenchOnStart.value,
-    rosterWaitsForInstruction: rosterWaitsForInstruction.value,
-  }
-  applyRoomRunPreferences(patch)
-  try {
-    const current = await bridge.get()
-    await bridge.save({ ...current, ...patch })
-  } catch {
-    applyRoomRunPreferences(previous)
-  } finally {
-    savingRunPreference.value = false
-  }
-}
-
-function setOpenWorkbench(enabled) {
-  void saveRunPreference({ openWorkbenchOnStart: Boolean(enabled) })
-}
-
-function setRosterWaits(enabled) {
-  void saveRunPreference({ rosterWaitsForInstruction: Boolean(enabled) })
-}
-
 const userPortraits = ROOM_MASCOTS
+const selectedPortrait = computed(() => userPortraits.find(mascot => mascot.id === draftPortrait.value) || null)
+const previewCaptain = computed(() => captainChoices.value.find(agent => agent.ready && agent.kind === captainKind.value && memberSelected(agent.kind)) || readyChoices.value.find(agent => memberSelected(agent.kind)) || null)
+const previewOthers = computed(() => {
+  if (chatStartMode.value !== 'multi' || !previewCaptain.value) return []
+  return captainChoices.value.filter(agent => agent.ready && agent.kind !== previewCaptain.value.kind && memberSelected(agent.kind)).slice(0, 3)
+})
 
 function setUserPortrait(id) {
-  void saveRunPreference({ userPortrait: id })
+  draftPortrait.value = id
 }
 
 function memberSelected(kind) {
   return chatStartMode.value === 'single' ? captainKind.value === kind : memberKinds.value.includes(kind)
 }
 
-async function saveStartTeam({ mode, captain, members }) {
-  const bridge = desktopApi()?.workPreferences
-  if (!bridge?.get || !bridge?.save || savingCaptain.value) return
-  savingCaptain.value = true
-  const previous = { mode: chatStartMode.value, captain: captainKind.value, members: [...memberKinds.value] }
+function assignStartTeam({ mode, captain, members }) {
   chatStartMode.value = mode
   captainKind.value = captain
   memberKinds.value = members
-  try {
-    const current = await bridge.get()
-    await bridge.save({
-      ...current,
-      chatStartMode: mode,
-      defaultCaptainKind: captain,
-      defaultMemberKinds: members,
-    })
-  } catch {
-    chatStartMode.value = previous.mode
-    captainKind.value = previous.captain
-    memberKinds.value = previous.members
-  } finally {
-    savingCaptain.value = false
-  }
 }
 
 function setChatStartMode(mode) {
   const captain = captainKind.value || readyChoices.value[0]?.kind || ''
   if (!captain) return
   if (mode === 'single') {
-    void saveStartTeam({ mode, captain, members: [captain] })
+    assignStartTeam({ mode, captain, members: [captain] })
     return
   }
   const members = memberKinds.value.includes(captain) ? [...memberKinds.value] : [captain, ...memberKinds.value]
-  void saveStartTeam({ mode, captain, members })
+  assignStartTeam({ mode, captain, members })
 }
 
 function toggleStartMember(kind) {
   if (!readyChoices.value.some(agent => agent.kind === kind)) return
   const captain = captainKind.value || kind
   if (chatStartMode.value !== 'multi') {
-    void saveStartTeam({ mode: 'single', captain: kind, members: [kind] })
+    assignStartTeam({ mode: 'single', captain: kind, members: [kind] })
     return
   }
   if (memberKinds.value.includes(kind)) {
     if (memberKinds.value.length === 1) return
     const members = memberKinds.value.filter(item => item !== kind)
-    void saveStartTeam({ mode: 'multi', captain: members.includes(captain) ? captain : members[0], members })
+    assignStartTeam({ mode: 'multi', captain: members.includes(captain) ? captain : members[0], members })
     return
   }
   if (memberKinds.value.length >= 8) return
-  void saveStartTeam({ mode: 'multi', captain, members: [...memberKinds.value, kind] })
+  assignStartTeam({ mode: 'multi', captain, members: [...memberKinds.value, kind] })
 }
 
 function makeStartCaptain(kind) {
   const members = memberKinds.value.includes(kind) ? [...memberKinds.value] : [...memberKinds.value, kind]
-  void saveStartTeam({ mode: 'multi', captain: kind, members })
+  assignStartTeam({ mode: 'multi', captain: kind, members })
+}
+
+function cancelPreferences() {
+  if (!committedPreferences.value) return
+  applyPreferenceDraft(committedPreferences.value)
+}
+
+async function savePreferences() {
+  const bridge = desktopApi()?.workPreferences
+  if (!bridge?.get || !bridge?.save || savingPreferences.value || !preferencesDirty.value) return
+  savingPreferences.value = true
+  const snapshot = preferenceSnapshot()
+  try {
+    const current = await bridge.get()
+    await bridge.save({
+      ...current,
+      userPortrait: snapshot.portrait,
+      openWorkbenchOnStart: snapshot.workbench,
+      rosterWaitsForInstruction: snapshot.wait,
+      chatStartMode: snapshot.mode,
+      defaultCaptainKind: snapshot.captain,
+      defaultMemberKinds: snapshot.members,
+    })
+    setTitleMarqueeEnabled(snapshot.marquee)
+    applyRoomRunPreferences({
+      userPortrait: snapshot.portrait,
+      openWorkbenchOnStart: snapshot.workbench,
+      rosterWaitsForInstruction: snapshot.wait,
+    })
+    committedPreferences.value = preferenceSnapshot()
+  } catch { /* leave the draft in place so the user can retry */ }
+  finally { savingPreferences.value = false }
 }
 
 onMounted(() => { if (props.section === 'preferences') void loadCaptainPreference() })
@@ -489,14 +539,50 @@ watch(() => props.section, (section) => {
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--border); border-radius: 99px; background: transparent; color: var(--text-soft); font: inherit; font-size: 12px; cursor: pointer; }
 .chip img { width: 16px; height: 16px; object-fit: contain; }
 .chip.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
-.pref-page { max-width: 680px; gap: 24px; }
-.pref-page .settings-card { display: grid; gap: 0; padding: 8px 20px 16px; }
-.pref-page .settings-card > h2, .setting-row-head h2 { margin: 16px 0 8px; font-size: 13px; font-weight: 650; }
+.pref-page { max-width: 920px; gap: 20px; container-type: inline-size; }
+.pref-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: stretch; }
+.pref-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
+.pref-column { display: grid; align-content: start; gap: 0; }
+.pref-label { display: flex; align-items: center; margin: 18px 2px 8px; font-size: 14px; font-weight: 650; }
+.pref-column > .pref-label:first-child { margin-top: 0; }
+.pref-page .settings-card { display: grid; gap: 0; margin-bottom: 4px; padding: 4px 20px 12px; }
 .setting-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; min-height: 64px; padding: 16px 0; border-top: 1px solid var(--border); }
 .setting-row:first-of-type { border-top: 0; }
-.setting-row-head { min-height: 0; padding-top: 8px; border-top: 0; }
-.setting-row strong, .setting-row-head h2 { display: block; font-size: 14px; font-weight: 640; }
-.setting-row small, .setting-row-head small { display: block; max-width: 52ch; margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.setting-row-head { min-height: 0; padding-top: 12px; border-top: 0; }
+.setting-row strong { display: block; font-size: 14px; font-weight: 640; }
+.setting-row small, .setting-row-head small { display: block; max-width: 42ch; margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.setting-row-head small { margin-top: 0; }
+.pref-identity { position: sticky; top: 0; display: grid; align-content: start; justify-items: center; gap: 14px; padding: 22px 18px 16px; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--surface) 55%, var(--bg)); }
+.pref-hero { display: grid; justify-items: center; gap: 6px; text-align: center; }
+.pref-hero > strong { font-size: 15px; }
+.pref-hero > small { max-width: 22ch; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.pref-hero-face { width: 96px; height: 96px; display: grid; place-items: center; overflow: hidden; border-radius: 28px; background: color-mix(in srgb, var(--text) 8%, transparent); }
+.pref-hero-face img { width: 78px; height: 78px; }
+.pref-hero-face b { color: var(--muted); font-size: 22px; font-weight: 650; }
+.pref-hero-face.mini { width: 28px; height: 28px; flex: none; border-radius: 9px; }
+.pref-hero-face.mini img { width: 22px; height: 22px; }
+.pref-hero-face.mini b { font-size: 11px; }
+.pref-restore { justify-self: center; }
+.pref-preview { display: grid; gap: 10px; width: 100%; margin-top: auto; padding-top: 14px; border-top: 1px solid var(--border); }
+.pref-preview-label { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: 0.04em; }
+.pref-bubble { display: flex; align-items: flex-start; gap: 8px; }
+.pref-bubble.agent { padding: 8px 10px; border-radius: 12px; background: color-mix(in srgb, var(--text) 6%, transparent); }
+.pref-bubble p { margin: 2px 0 0; color: var(--text); font-size: 12px; line-height: 1.4; }
+.pref-bubble strong { font-size: 12px; }
+.pref-bubble.user { justify-content: flex-end; align-items: flex-end; }
+.pref-bubble.user p { margin: 0; padding: 7px 10px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.pref-preview-faces { display: flex; }
+.pref-preview-faces i { position: relative; width: 26px; height: 26px; display: grid; place-items: center; margin-left: -6px; border-radius: 8px; background: var(--bg); }
+.pref-preview-faces i:first-child { margin-left: 0; }
+.pref-preview-faces img { width: 18px; height: 18px; object-fit: contain; }
+.pref-preview-faces b { position: absolute; right: -4px; bottom: -4px; color: var(--accent-text); font-size: 10px; font-style: normal; line-height: 1; }
+@container (max-width: 720px) {
+  .pref-layout { grid-template-columns: 1fr; }
+  .pref-identity { position: static; }
+  .pref-column { order: 1; }
+  .pref-preview { display: none; }
+  .pref-portraits { justify-content: start; }
+}
 .pref-info { width: 16px; height: 16px; margin-left: 6px; padding: 0; border: 1px solid var(--border-strong); border-radius: 50%; background: transparent; color: var(--muted); font: inherit; font-size: 11px; line-height: 14px; cursor: help; vertical-align: 1px; }
 .pref-members { display: grid; gap: 0; margin-top: 8px; }
 .chat-start-mode button[aria-checked="false"] { background: transparent; color: var(--muted); }
@@ -512,9 +598,9 @@ watch(() => props.section, (section) => {
 .pref-member-logo img { width: 22px; height: 22px; object-fit: contain; }
 .pref-member-logo:hover, .pref-member-logo:focus-visible { outline: none; background: var(--surface-hover); }
 .pref-member-name { flex: 1; min-width: 0; padding: 0; text-align: left; font-size: 13px; }
-.pref-portraits { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 0 8px; }
-.pref-portraits button { position: relative; width: 40px; height: 40px; display: grid; place-items: center; padding: 2px; border: 1px solid var(--border); border-radius: 12px; background: transparent; cursor: pointer; }
-.pref-portraits button img { width: 32px; height: 32px; }
+.pref-portraits { display: grid; grid-template-columns: repeat(4, 48px); justify-content: center; gap: 12px; }
+.pref-portraits button { position: relative; width: 48px; height: 48px; display: grid; place-items: center; padding: 2px; border: 1px solid var(--border); border-radius: 14px; background: transparent; cursor: pointer; }
+.pref-portraits button img { width: 36px; height: 36px; }
 .pref-portraits button.active, .pref-portraits button[aria-checked="true"] { border: 2px solid var(--accent); background: var(--accent-soft); }
 .pref-portraits button[aria-checked="true"]::after { content: ''; position: absolute; right: -3px; bottom: -3px; width: 8px; height: 8px; border: 2px solid var(--surface); border-radius: 50%; background: var(--accent); }
 .pref-portraits button:hover, .pref-portraits button:focus-visible { outline: none; background: var(--surface-hover); }

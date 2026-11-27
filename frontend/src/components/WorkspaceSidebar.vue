@@ -360,8 +360,11 @@
     </nav>
 
     <footer class="sidebar-footer">
-      <button class="sidebar-user" type="button" :title="t('nav.you')" :aria-label="t('nav.you')" @click="openSidebarSettings">
-        <span class="sidebar-user-mark" aria-hidden="true">{{ youMark }}</span>
+      <button class="sidebar-user" type="button" :title="t('nav.you')" :aria-label="t('nav.you')" @click="openUserPreferences">
+        <span class="sidebar-user-mark" :data-portrait="sidebarPortrait ? 'true' : undefined" aria-hidden="true">
+          <img v-if="sidebarPortrait" :src="sidebarPortrait.src" alt="" />
+          <template v-else>{{ youMark }}</template>
+        </span>
         <span>{{ t('nav.you') }}</span>
       </button>
       <div class="sidebar-footer-actions">
@@ -488,6 +491,8 @@ import {
 } from '@vicons/ionicons5'
 
 import { portraitGlow } from '../role-portraits.js'
+import { loadRoomRunPreferences, userPortrait } from '../room-run-preferences.js'
+import { mascotById } from '../room-mascots.js'
 import { loadRoomChatSeen, saveRoomChatSeen } from '../room-chat-read-state.js'
 import { chatActivityTime, chatMemberFaces } from '../chat-faces.js'
 import RoomMascot from './RoomMascot.vue'
@@ -833,6 +838,7 @@ const searchShortcut = computed(() => (
   typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'
 ))
 const youMark = computed(() => String(t('nav.you') || '').trim().slice(0, 1) || '•')
+const sidebarPortrait = computed(() => mascotById(userPortrait.value))
 
 function queryMatches(...values) {
   const query = sidebarQueryNormalized.value
@@ -988,6 +994,10 @@ function openSidebarSettings() {
   openSystemSettings?.('agents')
 }
 
+function openUserPreferences() {
+  openSystemSettings?.('preferences')
+}
+
 function openAgentManager() {
   openSystemSettings?.('agents')
 }
@@ -1001,6 +1011,7 @@ function handleSidebarSearchKey(event) {
 
 onMounted(() => {
   document.addEventListener('keydown', handleSidebarSearchKey)
+  void loadRoomRunPreferences()
 })
 
 onBeforeUnmount(() => {
