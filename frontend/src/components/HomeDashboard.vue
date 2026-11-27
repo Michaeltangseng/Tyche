@@ -64,37 +64,26 @@
       <section class="home-panel home-recent-panel">
         <header class="home-panel-header">
           <div>
-            <h2>{{ t(homeMode === 'first-task' ? 'home.firstTaskTitle' : 'home.recentTitle') }}</h2>
-            <p>{{ t(homeMode === 'first-task' ? 'home.firstTaskSubtitle' : 'home.recentSubtitle') }}</p>
+            <h2>{{ t('home.recentTitle') }}</h2>
+            <p>{{ t('home.recentSubtitle') }}</p>
           </div>
         </header>
-        <div v-if="recentGroups.length" class="home-recent-list">
+        <div v-if="recentChats.length" class="home-recent-list">
           <button
-            v-for="group in recentGroups"
-            :key="group.id"
+            v-for="row in recentChats"
+            :key="row.chat.id"
             class="home-recent-item"
             type="button"
-            @click="$emit('select-group', group.id)"
+            @click="$emit('select-chat', row.room.id, row.chat.id)"
           >
-            <span class="home-recent-avatar">
-              <ChatbubblesOutline v-if="group.conversationType !== 'direct'" />
-              <img v-else :src="agentLogo(group.directAgentKind, theme)" alt="" />
+            <span class="home-chat-stack" :data-count="String(facesFor(row.chat).length)" aria-hidden="true">
+              <span v-for="member in facesFor(row.chat)" :key="member.key" class="home-chat-face">
+                <RoomMascot :mascot="member.mascot" />
+              </span>
             </span>
             <span class="home-recent-copy">
-              <strong>{{ groupName(group) }}</strong>
-              <small>{{ recentGroupMeta(group) }}</small>
-            </span>
-            <span
-              v-if="isGroupAwaitingDecision(group.id)"
-              class="attention-mark"
-              role="img"
-              :title="t('humanGate.waiting')"
-              :aria-label="t('humanGate.waiting')"
-            >
-              <span class="attention-dot" />
-            </span>
-            <span v-else-if="isGroupRunning(group.id)" class="run-mark" :title="t('conversation.runningGeneric')">
-              <span class="run-agent-bars" aria-hidden="true"><i /><i /><i /></span>
+              <strong>{{ chatTitle(row) }}</strong>
+              <small>{{ chatMeta(row) }}</small>
             </span>
             <ChevronForwardOutline />
           </button>
@@ -102,36 +91,6 @@
         <div v-else class="home-panel-empty">
           <ChatbubblesOutline />
           <p>{{ t('home.recentEmpty') }}</p>
-        </div>
-      </section>
-
-      <section class="home-panel home-agent-panel">
-        <header class="home-panel-header">
-          <div>
-            <h2>{{ t('home.agentStatusTitle') }}</h2>
-            <p>{{ t('home.agentStatusSubtitle') }}</p>
-          </div>
-        </header>
-        <div v-if="homeAgentPreview.length" class="home-agent-list">
-          <button
-            v-for="agent in homeAgentPreview"
-            :key="agent.kind"
-            type="button"
-            class="home-agent-item"
-            @click="$emit('open-direct', agent)"
-          >
-            <img :src="agent.logo" :alt="agent.label" />
-            <span>
-              <strong>{{ agent.label }}</strong>
-              <small>{{ agentDescription(agent.kind) }}</small>
-            </span>
-            <ChevronForwardOutline />
-          </button>
-        </div>
-        <div v-else class="home-panel-empty">
-          <RefreshOutline v-if="discovering" class="spinning" />
-          <TerminalOutline v-else />
-          <p>{{ discovering ? t('onboarding.detecting') : t('home.noReadyAgents') }}</p>
         </div>
       </section>
     </div>
@@ -183,33 +142,29 @@ import {
   ChevronForwardOutline,
   RefreshOutline,
   SettingsOutline,
-  TerminalOutline,
   WarningOutline,
 } from '@vicons/ionicons5'
 import { agentLabel, agentLogo } from '../catalog.js'
+import { chatMemberFaces, recentRoomChats } from '../chat-faces.js'
 import { t } from '../i18n.js'
+import RoomMascot from './RoomMascot.vue'
 
 const props = defineProps({
-  agentDescription: { type: Function, required: true },
   awaitingDecisionGates: { type: Array, default: () => [] },
   discovering: { type: Boolean, default: false },
-  groupName: { type: Function, required: true },
   groups: { type: Array, required: true },
   installedCount: { type: Number, required: true },
-  isGroupAwaitingDecision: { type: Function, default: () => false },
-  isGroupRunning: { type: Function, required: true },
   onboardingCompleted: { type: Boolean, required: true },
   readyAgents: { type: Array, required: true },
-  recentGroupMeta: { type: Function, required: true },
   refreshing: { type: Boolean, required: true },
+  teamRooms: { type: Array, default: () => [] },
   theme: { type: String, required: true },
 })
 
 defineEmits([
   'open-agent-manager',
-  'open-direct',
-  'open-new-group',
   'refresh-agents',
+  'select-chat',
   'select-group',
 ])
 
@@ -219,11 +174,25 @@ const readyCount = computed(() => props.readyAgents.length)
 const visibleGroups = computed(() => props.groups.filter(group => (
   group.conversationType === 'direct' || Boolean(group.projectId)
 )))
-const recentGroups = computed(() => visibleGroups.value.slice().sort((left, right) => (
-  new Date(right.updatedAt || right.createdAt || 0).getTime()
-  - new Date(left.updatedAt || left.createdAt || 0).getTime()
-)).slice(0, 6))
-const homeAgentPreview = computed(() => props.readyAgents.slice(0, 5))
+const recentChats = computed(() => recentRoomChats(props.teamRooms))
+
+function facesFor(chat) {
+  return chatMemberFaces(chat)
+}
+
+function chatTitle(row) {
+  return row.chat?.title || row.room?.name || ''
+}
+
+function chatMeta(row) {
+  const activity = row.chat?.activity
+  if (activity?.text) {
+    const name = activity.author === 'user' ? t('room.you') : activity.name
+    return name ? t('room.activityLine', { name, text: activity.text }) : activity.text
+  }
+  if (activity?.name) return activity.name
+  return row.room?.workspace_label || row.room?.name || ''
+}
 const homeMode = computed(() => {
   if (visibleGroups.value.length) return 'workspace'
   return readyCount.value > 0 ? 'first-task' : 'setup'

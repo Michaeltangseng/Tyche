@@ -120,9 +120,9 @@ describe('Tyche workbench', () => {
     expect(wrapper.get('.home-dashboard').attributes('data-home-mode')).toBe('first-task')
     expect(wrapper.get('.home-dashboard-header h1').text()).toBe('Tyche workspace')
     expect(wrapper.get('.home-workspace-state').text()).toContain('2 Agents ready')
-    expect(wrapper.get('.home-panel-header h2').text()).toBe('Start your first task')
-    expect(wrapper.findAll('.home-panel-header h2')[1].text()).toBe('Start a new task')
-    expect(wrapper.get('.home-recent-panel .primary-button').text()).toContain('New group')
+    expect(wrapper.get('.home-panel-header h2').text()).toBe('Continue working')
+    expect(wrapper.find('.home-agent-panel').exists()).toBe(false)
+    expect(wrapper.find('.home-recent-panel .primary-button').exists()).toBe(false)
     expect(wrapper.find('.home-overview-grid').exists()).toBe(false)
     expect(wrapper.find('.setup-guide').exists()).toBe(false)
     expect(wrapper.findAll('.agent-card')).toHaveLength(0)
@@ -169,7 +169,7 @@ describe('Tyche workbench', () => {
       }))
     })
 
-    expect(wrapper.findAll('.home-agent-item').some(item => item.text().includes('OpenCodeReview'))).toBe(true)
+    expect(wrapper.find('.home-agent-panel').exists()).toBe(false)
     await wrapper.get('.new-group-button').trigger('click')
     expect(wrapper.findAll('.agent-choice').some(choice => choice.text().includes('OpenCodeReview'))).toBe(true)
     await wrapper.get('.modal-header .icon-button').trigger('click')
@@ -391,7 +391,8 @@ describe('Tyche workbench', () => {
     expect(wrapper.get('.home-dashboard').attributes('data-home-mode')).toBe('workspace')
     expect(wrapper.get('.home-workspace-state').classes()).toContain('attention')
     expect(wrapper.get('.home-recovery-notice').text()).toContain('conversation history is still available')
-    expect(wrapper.get('.home-recent-item').text()).toContain('Recovery history')
+    expect(wrapper.find('.home-recent-item').exists()).toBe(false)
+    expect(wrapper.get('.home-panel-empty').text()).toContain('No chats yet')
     expect(wrapper.find('.setup-guide').exists()).toBe(false)
 
     await wrapper.get('.home-recovery-notice button').trigger('click')
@@ -1744,7 +1745,8 @@ describe('Tyche workbench', () => {
       groups: createdGroup ? [directGroup, createdGroup] : [directGroup],
     }))
 
-    await wrapper.findAll('.home-agent-item')[0].trigger('click')
+    const codex = wrapper.findAll('.sidebar-agent').find(agent => agent.text().includes('Codex'))
+    await codex.get('.sidebar-agent-new').trigger('click')
     await flushPromises()
     expect(bridge.localWorkspace.createGroup).toHaveBeenCalledWith({
       conversationType: 'direct',

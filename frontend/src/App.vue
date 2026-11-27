@@ -56,23 +56,18 @@
 
         <HomeDashboard
           v-else-if="activeView === 'home'"
-          :agent-description="agentDescription"
           :awaiting-decision-gates="awaitingDecisionGates"
           :discovering="agentDiscoveryPending"
-          :group-name="groupName"
           :groups="snapshot.groups"
           :installed-count="installedCount"
-          :is-group-awaiting-decision="isGroupAwaitingDecision"
-          :is-group-running="isGroupRunning"
           :onboarding-completed="onboardingCompleted"
           :ready-agents="readyAgents"
-          :recent-group-meta="recentGroupMeta"
           :refreshing="refreshing"
+          :team-rooms="teamRooms"
           :theme="theme"
           @open-agent-manager="openAgentManager"
-          @open-direct="openDirect"
-          @open-new-group="openNewGroup"
           @refresh-agents="refreshAgents"
+          @select-chat="(roomId, chatId) => teamRoomNavigation.selectChat(roomId, chatId)"
           @select-group="selectGroup"
         />
 

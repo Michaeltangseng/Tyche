@@ -489,7 +489,7 @@ import {
 
 import { portraitGlow } from '../role-portraits.js'
 import { loadRoomChatSeen, saveRoomChatSeen } from '../room-chat-read-state.js'
-import { roleFace } from '../room-mascots.js'
+import { chatActivityTime, chatMemberFaces } from '../chat-faces.js'
 import RoomMascot from './RoomMascot.vue'
 
 const props = defineProps({
@@ -603,16 +603,7 @@ function chatRowTitle(room, chat) {
 }
 
 function chatMemberMascots(chat) {
-  const members = Array.isArray(chat?.members) ? chat.members : []
-  const captain = members.find(member => member.is_captain)
-  const rest = members.filter(member => member !== captain)
-    .sort((a, b) => (Number(b?.last_seq) || 0) - (Number(a?.last_seq) || 0))
-  const visible = (captain ? [captain, ...rest] : rest).slice(0, 3)
-  const faces = visible.length ? visible : [{ id: chat?.id || 'chat' }]
-  return faces.map(member => {
-    const key = member.id || `${member.provider || ''}:${member.name || ''}`
-    return { key, mascot: roleFace(member.id ? member : { id: key }) }
-  })
+  return chatMemberFaces(chat)
 }
 
 function chatSubtitle(_room, chat) {
@@ -940,11 +931,6 @@ function markChatSeen(chat) {
 function openTeamChat(room, chat) {
   markChatSeen(chat)
   selectTeamChat(room.id, chat.id)
-}
-
-function chatActivityTime(chat) {
-  const value = Date.parse(chat?.activity?.created_at || chat?.updated_at || chat?.created_at || '')
-  return Number.isFinite(value) ? value : 0
 }
 
 const flatTeamChats = computed(() => {
