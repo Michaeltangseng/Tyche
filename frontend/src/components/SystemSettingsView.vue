@@ -79,6 +79,7 @@
               :key="agent.kind"
               class="agent-table-item settings-agent-card"
               :class="{ focused: focusedAgentKind === agent.kind }"
+              @click="selectSettingsAgent(agent.kind)"
             >
               <div class="agent-table-row">
                 <span class="agent-identity">
@@ -179,6 +180,10 @@ const {
   t,
   themePreference,
 } = props.controller
+
+function selectSettingsAgent(kind) {
+  focusedAgentKind.value = kind
+}
 
 const groups = [
   {

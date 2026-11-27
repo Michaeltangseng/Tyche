@@ -14,7 +14,7 @@
 .agent-home {
   height: 100%;
   overflow: auto;
-  padding: 22px clamp(20px, 3vw, 40px) 36px;
+  padding: 18px clamp(12px, 1.6vw, 20px) 28px;
   background:
     radial-gradient(920px 240px at 18% 0%, rgb(48 72 170 / 0.22), transparent 68%),
     var(--workspace-surface);
@@ -298,7 +298,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(240px, 0.72fr);
   align-items: start;
-  gap: 12px;
+  gap: 8px;
 }
 
 .home-main-column,
@@ -322,16 +322,49 @@
   max-height: 560px;
 }
 
-.home-side-panel { max-height: none; }
+.home-side-panel {
+  max-height: none;
+  padding-inline: 4px;
+}
 
 .home-panel-header {
-  min-height: 46px;
+  min-height: 40px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: 12px 6px 8px;
+  gap: 8px;
+  padding: 8px 2px 4px;
 }
+
+.home-panel-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.home-panel-tools strong {
+  color: #f2f6ff;
+  font-size: 13px;
+  font-weight: 680;
+}
+
+.home-icon-button {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #9eb6ff;
+  cursor: pointer;
+}
+
+.home-icon-button svg { width: 15px; height: 15px; }
+.home-icon-button:hover,
+.home-icon-button:focus-visible { outline: none; background: rgb(255 255 255 / 0.06); }
 
 .home-panel-header > div {
   min-width: 0;
@@ -472,7 +505,7 @@
 .home-continue-button svg { width: 14px; height: 14px; }
 .home-continue-button:disabled { cursor: not-allowed; opacity: 0.5; }
 
-.home-agent-status { list-style: none; margin: 0; padding: 2px 8px 10px; display: grid; gap: 11px; }
+.home-agent-status { list-style: none; margin: 0; padding: 2px 2px 8px; display: grid; gap: 11px; }
 .home-agent-status li { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 10px; align-items: center; color: #e8eeff; font-size: 14px; }
 .home-agent-status i { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
 .home-agent-status i[data-tone="ready"] { background: #3ecf8e; box-shadow: 0 0 0 3px rgb(62 207 142 / 0.16); }

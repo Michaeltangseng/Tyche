@@ -3,7 +3,7 @@
     <header class="home-dashboard-header home-hero">
       <div class="home-hero-copy">
         <h1>{{ t('home.dashboardTitle') }}</h1>
-        <p>{{ t('home.dashboardSubtitle') }}</p>
+        <!-- <p>{{ t('home.dashboardSubtitle') }}</p> -->
       </div>
       <div
         class="home-workspace-state"
@@ -172,13 +172,10 @@
         <section class="home-panel home-side-panel">
           <header class="home-panel-header">
             <h2>{{ t('home.activityTitle') }}</h2>
-          </header>
-          <div class="home-activity-head">
-            <p class="home-activity-count">{{ activityHeadline }}</p>
             <p v-if="activity.delta !== null" class="home-activity-delta" :data-up="activity.delta >= 0 ? 'true' : 'false'">
               {{ t('home.activityVersus', { percent: `${activity.delta > 0 ? '+' : ''}${activity.delta}%` }) }}
             </p>
-          </div>
+          </header>
           <svg class="home-activity-chart" viewBox="0 0 100 36" preserveAspectRatio="none" role="img" :aria-label="t('home.activityTitle')">
             <defs>
               <linearGradient id="home-activity-fill" x1="0" y1="0" x2="0" y2="1">
@@ -197,33 +194,20 @@
         <section class="home-panel home-side-panel home-token-panel">
           <header class="home-panel-header">
             <h2>{{ t('home.tokenTitle') }}</h2>
+            <span class="home-panel-tools">
+              <strong v-if="tokenFigure">{{ tokenFigure }}</strong>
+              <button class="home-icon-button" type="button" :title="t('home.viewUsage')" :aria-label="t('home.viewUsage')" @click="$emit('open-usage')">
+                <OpenOutline />
+              </button>
+            </span>
           </header>
-          <p class="home-activity-count">{{ tokenHeadline }}</p>
-          <div v-if="tokenDays.length" class="home-token-chart">
-            <div class="home-token-bars" role="img" :aria-label="t('home.tokenTitle')">
-              <span
-                v-for="day in tokenDays"
-                :key="day.date"
-                class="home-token-col"
-                :data-today="day.today ? 'true' : undefined"
-                :style="{ height: tokenHeight(day) }"
-                :title="tokenTip(day)"
-              >
-                <i
-                  v-for="part in day.parts"
-                  :key="part.provider"
-                  :style="{ flexGrow: part.tokens, background: usageColor(part.provider) }"
-                />
-              </span>
-            </div>
-            <div class="home-axis" aria-hidden="true">
-              <small v-for="day in tokenDays" :key="`${day.date}-label`">{{ t(`home.weekday.${day.weekday}`) }}</small>
-            </div>
+          <svg v-if="tokenLine" class="home-activity-chart" viewBox="0 0 100 36" preserveAspectRatio="none" role="img" :aria-label="t('home.tokenTitle')">
+            <path :d="tokenArea" fill="rgb(126 176 255 / 0.18)" />
+            <path :d="tokenLine" fill="none" stroke="#9ec4ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+          </svg>
+          <div v-if="tokenDays.length" class="home-axis" aria-hidden="true">
+            <small v-for="day in tokenDays" :key="`${day.date}-label`">{{ t(`home.weekday.${day.weekday}`) }}</small>
           </div>
-          <button class="home-text-button" type="button" @click="$emit('open-usage')">
-            {{ t('home.viewUsage') }}
-            <ChevronForwardOutline />
-          </button>
         </section>
       </aside>
     </div>
@@ -274,6 +258,7 @@ import {
   CheckmarkCircleOutline,
   ChevronForwardOutline,
   FolderOpenOutline,
+  OpenOutline,
   GridOutline,
   RefreshOutline,
   SettingsOutline,
@@ -284,7 +269,7 @@ import {
 import { agentLabel, agentLogo } from '../catalog.js'
 import { recentRoomChats } from '../chat-faces.js'
 import { desktopApi } from '../desktop.js'
-import { localDayKey, relativeTime, usageColor, weekdayOf, weeklyActivity } from '../home-activity.js'
+import { localDayKey, relativeTime, weekdayOf, weeklyActivity } from '../home-activity.js'
 import { t } from '../i18n.js'
 import { formatTokenCount } from '../room-usage.js'
 
@@ -341,12 +326,6 @@ function chartPoints() {
     return [x, y]
   })
 }
-const activityHeadline = computed(() => {
-  if (activity.value.today) return t('home.activityToday', { count: activity.value.today })
-  if (activity.value.current) return t('home.activityWeek', { count: activity.value.current })
-  return t('home.activityEmpty')
-})
-
 function curve(points) {
   if (!points.length) return ''
   const [x, y] = points[0]
@@ -366,23 +345,22 @@ const tokenDays = ref([])
 const tokenPeak = computed(() => Math.max(1, ...tokenDays.value.map(day => day.tokens)))
 const tokenToday = computed(() => tokenDays.value.find(day => day.today)?.tokens || 0)
 const tokenWeek = computed(() => tokenDays.value.reduce((sum, day) => sum + day.tokens, 0))
-const tokenHeadline = computed(() => {
-  if (tokenToday.value) return t('home.tokenToday', { count: formatTokenCount(tokenToday.value) })
-  if (tokenWeek.value) return t('home.tokenWeek', { count: formatTokenCount(tokenWeek.value) })
-  return t('home.tokenEmpty')
+const tokenFigure = computed(() => {
+  if (tokenToday.value) return formatTokenCount(tokenToday.value)
+  if (tokenWeek.value) return formatTokenCount(tokenWeek.value)
+  return ''
 })
-
-function tokenHeight(day) {
-  if (!day.tokens) return '4%'
-  return `${Math.max(8, (day.tokens / tokenPeak.value) * 100)}%`
-}
-
-function tokenTip(day) {
-  const parts = day.parts
-    .filter(part => part.tokens > 0)
-    .map(part => `${part.provider} ${formatTokenCount(part.tokens)}`)
-  return [day.date, formatTokenCount(day.tokens), ...parts].join(' · ')
-}
+const tokenLine = computed(() => {
+  const days = tokenDays.value
+  if (days.length < 2) return ''
+  const points = days.map((day, index) => {
+    const x = (index / (days.length - 1)) * 100
+    const y = 30 - (day.tokens / tokenPeak.value) * 24
+    return [x, y]
+  })
+  return curve(points)
+})
+const tokenArea = computed(() => (tokenLine.value ? `${tokenLine.value} L 100 36 L 0 36 Z` : ''))
 
 onMounted(async () => {
   const report = desktopApi()?.teamRoom?.usageReport

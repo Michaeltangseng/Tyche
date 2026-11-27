@@ -94,6 +94,7 @@ describe('home dashboard', () => {
   })
 
   it('shows seven days of token use and opens usage settings', async () => {
+    setLocale('zh')
     window.tycheDesktop = {
       teamRoom: {
         usageReport: async () => ({
@@ -106,9 +107,10 @@ describe('home dashboard', () => {
     }
     const wrapper = mountHome()
     await flushPromises()
-    expect(wrapper.findAll('.home-token-bars span')).toHaveLength(2)
+    expect(wrapper.get('.home-token-panel .home-activity-chart').exists()).toBe(true)
     expect(wrapper.text()).toContain('1.5k')
-    await wrapper.get('.home-token-panel .home-text-button').trigger('click')
+    expect(wrapper.get('.home-icon-button').attributes('title')).toBe('查看更多')
+    await wrapper.get('.home-icon-button').trigger('click')
     expect(wrapper.emitted('open-usage')).toHaveLength(1)
     delete window.tycheDesktop
     wrapper.unmount()
