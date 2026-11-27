@@ -12,5 +12,4 @@
   </defs>
   <path class="body" fill="url(#blob-10-grad)" d="M10 40C8 33 14 28 21 30C24 24 33 23 37 28C42 24 51 26 52 32C58 33 59 41 54 44C50 49 40 47 34 48C26 50 14 49 10 40Z"/>
   <g class="eyes"><path class="eye" d="M20 40q4-5 8 0" fill="none" stroke="#1F2D3D" stroke-width="2.6" stroke-linecap="round"/><path class="eye" d="M35 40q4-5 8 0" fill="none" stroke="#1F2D3D" stroke-width="2.6" stroke-linecap="round"/></g>
-  <circle class="dot" cx="47" cy="41" r="2.2" fill="#2EC4B6"/>
 </svg>

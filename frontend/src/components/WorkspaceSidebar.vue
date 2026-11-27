@@ -360,8 +360,11 @@
     </nav>
 
     <footer class="sidebar-footer">
-      <button class="sidebar-user" type="button" :title="t('nav.you')" :aria-label="t('nav.you')" @click="openSidebarSettings">
-        <span class="sidebar-user-mark" aria-hidden="true">{{ youMark }}</span>
+      <button class="sidebar-user" type="button" :title="t('nav.you')" :aria-label="t('nav.you')" @click="openUserPreferences">
+        <span class="sidebar-user-mark" :data-portrait="sidebarPortrait ? 'true' : undefined" aria-hidden="true">
+          <img v-if="sidebarPortrait" :src="sidebarPortrait.src" alt="" />
+          <template v-else>{{ youMark }}</template>
+        </span>
         <span>{{ t('nav.you') }}</span>
       </button>
       <div class="sidebar-footer-actions">
@@ -488,8 +491,10 @@ import {
 } from '@vicons/ionicons5'
 
 import { portraitGlow } from '../role-portraits.js'
+import { loadRoomRunPreferences, userPortrait } from '../room-run-preferences.js'
+import { mascotById } from '../room-mascots.js'
 import { loadRoomChatSeen, saveRoomChatSeen } from '../room-chat-read-state.js'
-import { roleFace } from '../room-mascots.js'
+import { chatActivityTime, chatMemberFaces } from '../chat-faces.js'
 import RoomMascot from './RoomMascot.vue'
 
 const props = defineProps({
@@ -603,16 +608,7 @@ function chatRowTitle(room, chat) {
 }
 
 function chatMemberMascots(chat) {
-  const members = Array.isArray(chat?.members) ? chat.members : []
-  const captain = members.find(member => member.is_captain)
-  const rest = members.filter(member => member !== captain)
-    .sort((a, b) => (Number(b?.last_seq) || 0) - (Number(a?.last_seq) || 0))
-  const visible = (captain ? [captain, ...rest] : rest).slice(0, 3)
-  const faces = visible.length ? visible : [{ id: chat?.id || 'chat' }]
-  return faces.map(member => {
-    const key = member.id || `${member.provider || ''}:${member.name || ''}`
-    return { key, mascot: roleFace(member.id ? member : { id: key }) }
-  })
+  return chatMemberFaces(chat)
 }
 
 function chatSubtitle(_room, chat) {
@@ -842,6 +838,7 @@ const searchShortcut = computed(() => (
   typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'
 ))
 const youMark = computed(() => String(t('nav.you') || '').trim().slice(0, 1) || '•')
+const sidebarPortrait = computed(() => mascotById(userPortrait.value))
 
 function queryMatches(...values) {
   const query = sidebarQueryNormalized.value
@@ -942,11 +939,6 @@ function openTeamChat(room, chat) {
   selectTeamChat(room.id, chat.id)
 }
 
-function chatActivityTime(chat) {
-  const value = Date.parse(chat?.activity?.created_at || chat?.updated_at || chat?.created_at || '')
-  return Number.isFinite(value) ? value : 0
-}
-
 const flatTeamChats = computed(() => {
   const rows = teamRoomList.value.flatMap(room => (
     [...(Array.isArray(room.chats) ? room.chats : [])]
@@ -1002,6 +994,10 @@ function openSidebarSettings() {
   openSystemSettings?.('agents')
 }
 
+function openUserPreferences() {
+  openSystemSettings?.('user')
+}
+
 function openAgentManager() {
   openSystemSettings?.('agents')
 }
@@ -1015,6 +1011,7 @@ function handleSidebarSearchKey(event) {
 
 onMounted(() => {
   document.addEventListener('keydown', handleSidebarSearchKey)
+  void loadRoomRunPreferences()
 })
 
 onBeforeUnmount(() => {
@@ -1025,7 +1022,9 @@ onBeforeUnmount(() => {
 const railAgents = computed(() => (
   unref(sidebarAgentGroups).flatMap(group => group.agents)
 ))
-const castAgents = computed(() => railAgents.value.filter(agent => agent.ready === true))
+const castAgents = computed(() => railAgents.value.filter(agent => (
+  agent.cloud !== true || agent.ready === true
+)))
 
 function isRailAgentActive(agent) {
   return directGroupsFor(agent.kind).some(group => isSelectedConversation(group))

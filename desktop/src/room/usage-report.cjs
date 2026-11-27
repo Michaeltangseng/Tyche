@@ -219,7 +219,6 @@ function createUsageReport({ roomDb, privateRoot, now = () => new Date() }) {
 
     const rooms = [...byRoom.values()]
       .sort((left, right) => right.costUsd - left.costUsd)
-      .slice(0, 8)
     const agents = [...byProvider.values()]
       .map(agent => ({
         ...agent,

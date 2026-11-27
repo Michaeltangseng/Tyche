@@ -12,5 +12,4 @@
   </defs>
   <rect class="body" fill="url(#blob-04-grad)" x="11" y="11" width="42" height="42" rx="12" transform="rotate(-6 32 32)"/>
   <g class="eyes"><ellipse class="eye" cx="25" cy="34" rx="3.4" ry="4.9" fill="#1F2D3D"/><ellipse class="eye" cx="39" cy="34" rx="3.4" ry="4.9" fill="#1F2D3D"/></g>
-  <circle class="dot" cx="46" cy="40" r="2.2" fill="#2EC4B6"/>
 </svg>

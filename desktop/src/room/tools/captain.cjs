@@ -1,6 +1,29 @@
 const crypto = require('node:crypto')
 
 const PROVIDER = /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/
+const MASCOT_IDS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
+
+function hashedMascotId(key) {
+  let hash = 0
+  const text = String(key || '')
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) >>> 0
+  }
+  return MASCOT_IDS[hash % MASCOT_IDS.length]
+}
+
+function shownFace(role) {
+  return MASCOT_IDS.includes(role?.portrait) ? role.portrait : hashedMascotId(role?.id || role?.display_name || role?.provider)
+}
+
+function takePortrait(used) {
+  const free = MASCOT_IDS.find(id => !(used.get(id) > 0))
+  const pick = free || MASCOT_IDS.reduce((least, id) => (
+    (used.get(id) || 0) < (used.get(least) || 0) ? id : least
+  ), MASCOT_IDS[0])
+  used.set(pick, (used.get(pick) || 0) + 1)
+  return pick
+}
 
 function maxNativePermission(provider) {
   if (provider === 'claude') return 'bypassPermissions'
@@ -136,6 +159,7 @@ function registerCaptainTools({
   dispatcher, repository, captainAssignment, timeline, roomDb, canLaunch = () => true,
   onUnavailable = null,
   selectSkills = null,
+  rosterWaitsForInstruction = () => true,
 }) {
   if (!roomDb) throw new TypeError('ROOM_CAPTAIN_TOOLS_DATABASE_REQUIRED')
   const { database } = roomDb
@@ -185,6 +209,13 @@ function registerCaptainTools({
       }
     })
     return roomDb.withTransaction(() => {
+      const usedFaces = new Map()
+      for (const row of database.prepare(
+        "SELECT id, display_name, provider, portrait FROM chat_roles WHERE chat_id = ? AND status = 'active'",
+      ).all(chatId)) {
+        const face = shownFace(row)
+        usedFaces.set(face, (usedFaces.get(face) || 0) + 1)
+      }
       const enabled = [...room.providers]
       for (const spec of specs) {
         if (!enabled.includes(spec.provider)) enabled.push(spec.provider)
@@ -202,6 +233,7 @@ function registerCaptainTools({
           responsibilities: spec.responsibilities,
           nativePermission: spec.nativePermission,
           skills: spec.skills,
+          portrait: takePortrait(usedFaces),
           isCaptain: false,
           createdBy: captain.id,
         })
@@ -221,7 +253,8 @@ function registerCaptainTools({
   }
 
   dispatcher.register('assign_in_group', async (args, context) => {
-    if (rosterCreatedThisRun(context.runId)) throw new Error('ROOM_ROSTER_ASSIGN_WAIT')
+    const waits = typeof rosterWaitsForInstruction === 'function' ? rosterWaitsForInstruction() !== false : true
+    if (waits && rosterCreatedThisRun(context.runId)) throw new Error('ROOM_ROSTER_ASSIGN_WAIT')
     return captainAssignment.assign({
       chatId: context.chatId,
       captainRoleId: context.roleId,
@@ -247,7 +280,7 @@ function registerCaptainTools({
       roles: args.roles,
     })
   }, {
-    description: 'Add members to this chat by writing each member name, provider, responsibilities, prompt, and skill ids chosen from the briefing inventory. The platform stores the maximum permission for that provider. New members are not woken. Do not call assign_in_group in this same turn.',
+    description: 'Add members to this chat by writing each member name, provider, responsibilities, prompt, and skill ids chosen from the briefing inventory. The platform stores the maximum permission for that provider. New members are not woken until assign_in_group. Follow the briefing on whether to assign in this turn or wait for the next user message.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -312,4 +345,4 @@ function registerCaptainTools({
   })
 }
 
-module.exports = { createCaptainAssignment, registerCaptainTools }
+module.exports = { createCaptainAssignment, registerCaptainTools, hashedMascotId, takePortrait }

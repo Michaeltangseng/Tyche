@@ -14,8 +14,16 @@
               @keydown.enter.prevent="beginTitleEdit"
               @mouseenter="measureTitle"
             >
-              <span ref="titleClip" class="room-chat-title-clip" :class="{ marquee: titleOverflows }">
-                <span class="room-chat-title-text">{{ activeChatLabel }}</span>
+              <span
+                ref="titleClip"
+                class="room-chat-title-clip"
+                :class="{ marquee: titleMarqueeEnabled && titleOverflows }"
+                :style="titleMarqueeEnabled && titleOverflows ? { '--marquee-duration': marqueeDuration } : undefined"
+              >
+                <span class="room-chat-title-track">
+                  <span class="room-chat-title-text">{{ activeChatLabel }}</span>
+                  <span v-if="titleMarqueeEnabled && titleOverflows" class="room-chat-title-text" aria-hidden="true">{{ activeChatLabel }}</span>
+                </span>
               </span>
             </div>
             <div v-else class="room-chat-title editing">
@@ -44,7 +52,6 @@
         :can-add="canAddRole"
         @select-role="openRoleSettings"
         @add-role="openNewRole"
-        @open-work="workPanelOpen = true"
       />
 
       <div class="room-header-actions">
@@ -121,13 +128,20 @@
                   v-if="!entry.isUser && !entry.isSystem && entry.roleId"
                   class="room-message-avatar"
                   type="button"
+                  :data-speaking="isWorking(entry.message) ? 'true' : undefined"
+                  :style="avatarGlowStyle(entry)"
                   :aria-label="`${t('room.configureRole')}: ${entry.author}`"
                   @click="openRoleSettings(entry.roleId)"
                 >
                   <RoomMascot v-if="entry.roleId" :mascot="roleFace(rolesById.get(entry.roleId) || { id: entry.roleId })" />
                   <span v-else>{{ entry.author.slice(0, 1) }}</span>
                 </button>
-                <span v-else-if="!entry.isUser && !entry.isSystem" class="room-message-avatar">
+                <span
+                  v-else-if="!entry.isUser && !entry.isSystem"
+                  class="room-message-avatar"
+                  :data-speaking="isWorking(entry.message) ? 'true' : undefined"
+                  :style="avatarGlowStyle(entry)"
+                >
                   <RoomMascot v-if="entry.roleId" :mascot="roleFace(rolesById.get(entry.roleId) || { id: entry.roleId })" />
                   <span v-else>{{ entry.author.slice(0, 1) }}</span>
                 </span>
@@ -145,6 +159,13 @@
                       :aria-label="statusLabel(entry.message.status)"
                     >✓</span>
                     <span v-else-if="entry.message.status" class="room-message-status" :data-status="entry.message.status">{{ statusLabel(entry.message.status) }}</span>
+                    <button
+                      v-if="canStop(entry.message)"
+                      class="room-stop"
+                      type="button"
+                      :disabled="busy"
+                      @click="stopReply(entry.message.id)"
+                    >{{ t('room.stop') }}</button>
                     <span v-if="turnUsage(entry.message)" class="room-turn-usage">{{ turnUsage(entry.message) }}</span>
                   </header>
                   <MarkdownMessage
@@ -161,7 +182,7 @@
                     :mention-profiles="mentionProfiles"
                     aria-live="polite"
                   />
-                  <p v-else-if="isWorking(entry.message) && !entry.handoffs.length" class="room-live-output" aria-live="polite">{{ t('room.liveOutput') }}</p>
+                  <p v-else-if="isWorking(entry.message) && !entry.handoffs.length" class="room-thinking" aria-live="polite">{{ t('room.thinkingNow') }}</p>
                   <div v-if="entry.handoffs.length" class="room-handoff-list">
                     <div
                       v-for="handoff in entry.handoffs"
@@ -225,11 +246,11 @@
                   <div v-if="entry.message.status === 'waiting_for_input'" class="room-actions">
                     <span class="room-muted">{{ t('room.waitingForInput') }}</span>
                   </div>
-                  <div v-if="canStop(entry.message)" class="room-actions">
-                    <button class="secondary-button" type="button" :disabled="busy" @click="stopReply(entry.message.id)">{{ t('room.stop') }}</button>
-                  </div>
                 </div>
-                <span v-if="entry.isUser" class="room-message-avatar room-user-avatar" :aria-label="t('room.you')"><PersonOutline /></span>
+                <span v-if="entry.isUser" class="room-message-avatar room-user-avatar" :aria-label="t('room.you')">
+                  <RoomMascot v-if="userMascot" :mascot="userMascot" />
+                  <PersonOutline v-else />
+                </span>
               </article>
 
               <article v-else-if="entry.kind === 'report'" class="room-message room-report-card">
@@ -587,6 +608,7 @@ import {
 } from '@vicons/ionicons5'
 import { agentLogo } from '../catalog.js'
 import { desktopApi } from '../desktop.js'
+import { distinctGlows } from '../role-portraits.js'
 import { roomMascot, roleFace, ROOM_MASCOTS, mascotById } from '../room-mascots.js'
 import RoomMascot from './RoomMascot.vue'
 import { t } from '../i18n.js'
@@ -595,6 +617,8 @@ import { useRoomWorkspace } from '../composables/useRoomWorkspace.js'
 import { agentUsageRows, formatUsageLine } from '../room-usage.js'
 import { deriveRoomCollaboration } from '../roomCollaboration.js'
 import { buildRoomWorkflow } from '../roomWorkflow.js'
+import { applyRoomRunPreferences, openWorkbenchOnStart, userPortrait } from '../room-run-preferences.js'
+import { titleMarqueeEnabled } from '../title-marquee.js'
 import MarkdownMessage from './MarkdownMessage.vue'
 import RoomCollaborationRibbon from './RoomCollaborationRibbon.vue'
 import RoomRunTrace from './RoomRunTrace.vue'
@@ -739,6 +763,7 @@ const workTab = ref('')
 const name = ref('')
 const titleEditing = ref(false)
 const titleOverflows = ref(false)
+const marqueeDuration = ref('6s')
 const titleClip = ref(null)
 const titleText = ref(null)
 let titleEditCancelled = false
@@ -760,6 +785,7 @@ const activeChatLabel = computed(() => {
   return item.title
 })
 const composerCaptain = computed(() => roles.value.find(role => role.is_captain) || null)
+const userMascot = computed(() => mascotById(userPortrait.value))
 const mentionProfiles = computed(() => roles.value.map(role => ({
   kind: role.provider || role.id,
   label: role.display_name || role.provider || '',
@@ -852,6 +878,18 @@ const entries = computed(() => {
   }
   return folded
 })
+
+const workingGlow = computed(() => distinctGlows(
+  entries.value
+    .filter(entry => entry.kind === 'message' && isWorking(entry.message) && entry.roleId)
+    .map(entry => entry.roleId),
+))
+
+function avatarGlowStyle(entry) {
+  const glow = workingGlow.value.get(entry.roleId)
+  if (!glow) return undefined
+  return { '--chip-tint': glow.color, '--breath-delay': glow.delay }
+}
 
 const agentUsage = computed(() => agentUsageRows({
   roles: roles.value,
@@ -1003,7 +1041,7 @@ const ROSTER_FAN_MS = 1360
 const ROSTER_FAN_STAGGER_MS = 140
 const ROSTER_HOLD_MS = 1500
 const ROSTER_RETURN_STAGGER_MS = 500
-const ROSTER_RETURN_MS = 1400
+const ROSTER_RETURN_MS = 980
 
 function prefersReducedMotion() {
   return typeof window.matchMedia === 'function'
@@ -1038,36 +1076,58 @@ function finishRosterCard(card) {
   clearRosterMotion(card)
 }
 
+function scatterRosterSparks(card) {
+  const rect = card.getBoundingClientRect()
+  if (rect.width < 2 || typeof document === 'undefined') return
+  const layer = document.createElement('div')
+  layer.setAttribute('data-roster-spark', '')
+  layer.style.cssText = `position:fixed;left:${rect.left + rect.width / 2}px;top:${rect.top + rect.height / 2}px;width:0;height:0;z-index:90;pointer-events:none;`
+  const accent = getComputedStyle(card).getPropertyValue('--accent').trim() || '#7ee0ea'
+  for (let index = 0; index < 16; index += 1) {
+    const bit = document.createElement('i')
+    const angle = (Math.PI * 2 * index) / 16 + (index % 3) * 0.15
+    const distance = 28 + (index % 5) * 16
+    bit.style.cssText = `position:absolute;left:0;top:0;width:${index % 3 === 0 ? 7 : 4}px;height:${index % 3 === 0 ? 7 : 4}px;margin:-3px 0 0 -3px;border-radius:50%;background:${accent};box-shadow:0 0 8px ${accent};`
+    layer.appendChild(bit)
+    bit.animate([
+      { opacity: 1, transform: 'translate(0,0) scale(1)' },
+      { opacity: 0, transform: `translate(${Math.cos(angle) * distance}px, ${Math.sin(angle) * distance}px) scale(0.2)` },
+    ], { duration: 680, easing: 'cubic-bezier(0.16, 0.84, 0.3, 1)', fill: 'forwards' })
+  }
+  document.body.appendChild(layer)
+  rosterTimers.push(window.setTimeout(() => layer.remove(), 760))
+}
+
 function settleRosterCard(card) {
   if (!card?.isConnected || card._rosterSettled) return
-  card.dataset.intro = 'settle'
   card._rosterPop?.commitStyles?.()
   card._rosterPop?.cancel()
-  const slot = card.parentElement?.getBoundingClientRect?.()
-  const current = card.getBoundingClientRect()
-  if (!slot || slot.width < 2 || current.width < 2 || typeof card.animate !== 'function') {
+  if (typeof card.animate !== 'function') {
     finishRosterCard(card)
     return
   }
+  scatterRosterSparks(card)
   const angle = card._rosterAngle || 0
-  card.style.position = 'fixed'
-  card.style.margin = '0'
-  card.style.zIndex = card.style.zIndex || '80'
-  card.style.filter = 'none'
-  card.style.opacity = '1'
-  card.style.transform = 'none'
-  card.style.left = `${current.left}px`
-  card.style.top = `${current.top}px`
-  card.style.width = `${current.width}px`
-  const midLeft = current.left + (slot.left - current.left) * 0.45
-  const arcTop = Math.min(current.top, slot.top) - 36
-  const motion = card.animate([
-    { left: `${current.left}px`, top: `${current.top}px`, width: `${current.width}px`, transform: `rotate(${angle}deg)` },
-    { left: `${midLeft}px`, top: `${arcTop}px`, width: `${(current.width + slot.width) / 2}px`, transform: `rotate(${angle * 0.35}deg)`, offset: 0.45 },
-    { left: `${slot.left}px`, top: `${slot.top}px`, width: `${slot.width}px`, transform: 'rotate(0deg)' },
-  ], { duration: ROSTER_RETURN_MS, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'forwards' })
-  motion.finished?.then(() => finishRosterCard(card)).catch(() => finishRosterCard(card))
-  rosterTimers.push(window.setTimeout(() => finishRosterCard(card), ROSTER_RETURN_MS + 80))
+  const fan = `translate(-50%, -50%) rotate(${angle}deg)`
+  const fade = card.animate([
+    { opacity: 1, filter: 'blur(0px)', transform: `${fan} scale(1.08)` },
+    { opacity: 0, filter: 'blur(10px)', transform: `${fan} scale(0.82)` },
+  ], { duration: 420, easing: 'ease-in', fill: 'forwards' })
+  let arrived = false
+  const arrive = () => {
+    if (arrived) return
+    arrived = true
+    finishRosterCard(card)
+    if (!card.isConnected) return
+    card.dataset.intro = 'arrive'
+    const solid = card.animate([
+      { opacity: 0, filter: 'blur(8px)', transform: 'scale(0.94)' },
+      { opacity: 1, filter: 'blur(0px)', transform: 'scale(1)' },
+    ], { duration: 520, easing: 'cubic-bezier(0.16, 0.84, 0.3, 1)', fill: 'forwards' })
+    solid.finished?.then(() => { delete card.dataset.intro }).catch(() => { delete card.dataset.intro })
+  }
+  fade.finished?.then(arrive).catch(arrive)
+  rosterTimers.push(window.setTimeout(arrive, 500))
 }
 
 function chatStageRect() {
@@ -1417,7 +1477,13 @@ async function create(team) {
 function measureTitle() {
   const clip = titleClip.value
   const text = clip?.querySelector('.room-chat-title-text')
-  titleOverflows.value = Boolean(text && text.scrollWidth > clip.clientWidth + 1)
+  if (!text || !clip) {
+    titleOverflows.value = false
+    return
+  }
+  titleOverflows.value = text.scrollWidth > clip.clientWidth + 1
+  const distance = text.scrollWidth + 48
+  marqueeDuration.value = `${Math.max(3.2, distance / 36).toFixed(1)}s`
 }
 
 function beginTitleEdit() {
@@ -1607,6 +1673,41 @@ function openUsage() {
   workTab.value = 'usage'
 }
 
+function openTrace() {
+  workPanelRequested.value = true
+  workPanelOpen.value = true
+  workTab.value = 'trace'
+}
+
+const openedTraceForChat = new Set()
+let runPreferenceLoad = null
+
+function loadRunPreferences() {
+  if (!runPreferenceLoad) {
+    const read = desktopApi()?.workPreferences?.get
+    runPreferenceLoad = Promise.resolve(typeof read === 'function' ? read() : null)
+      .then((value) => {
+        applyRoomRunPreferences(value)
+        if (!openWorkbenchOnStart.value && !workPanelRequested.value) workPanelOpen.value = false
+      })
+      .catch(() => {})
+  }
+  return runPreferenceLoad
+}
+
+watch(
+  () => [chatId.value, collaboration.value.mode, openWorkbenchOnStart.value],
+  async () => {
+    await loadRunPreferences()
+    const id = chatId.value
+    if (!id || !openWorkbenchOnStart.value || collaboration.value.mode !== 'running') return
+    if (openedTraceForChat.has(id)) return
+    openedTraceForChat.add(id)
+    openTrace()
+  },
+  { immediate: true },
+)
+
 function closeWorkPanel() {
   workPanelOpen.value = false
   workPanelRequested.value = false
@@ -1664,7 +1765,7 @@ watch(() => props.openRequest, (request) => {
   void openRoom(request.roomId, request.chatId)
 }, { immediate: true, flush: 'post' })
 
-watch(activeChatLabel, () => nextTick(measureTitle))
+watch([activeChatLabel, titleMarqueeEnabled], () => nextTick(measureTitle))
 
 watch(roleSettingsOpen, (open) => {
   document.body.classList.toggle('room-overlay-open', open)
@@ -1692,17 +1793,19 @@ onBeforeUnmount(() => {
 .room-project-name { align-self: flex-start; display: inline-flex; align-items: center; color: var(--faint); font-size: var(--text-2xs); }
 .room-title-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .room-title-row h1 { margin: 0; min-width: 0; font-size: var(--text-xl); font-weight: 650; line-height: 1.2; }
-.room-chat-title { display: inline-flex; align-items: center; max-width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: text; }
-.room-chat-title-clip { display: block; max-width: 10ch; overflow: hidden; }
+.room-chat-title { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: text; }
+.room-chat-title-clip { --title-gap: 2.5ch; display: block; min-width: 0; max-width: 10ch; overflow: hidden; }
+.room-chat-title-track { display: inline-flex; align-items: center; gap: var(--title-gap); white-space: nowrap; }
 .room-chat-title-text { display: inline-block; white-space: nowrap; outline: none; }
-.room-chat-title.editing .room-chat-title-text { min-width: 4ch; max-width: 36ch; }
-.room-chat-title-clip.marquee:hover .room-chat-title-text { animation: room-title-marquee 7s ease-in-out infinite; }
-@keyframes room-title-marquee {
-  0%, 18% { transform: translateX(0); }
-  82%, 100% { transform: translateX(calc(10ch - 100%)); }
+.room-chat-title-clip:not(.marquee) .room-chat-title-text { max-width: 10ch; overflow: hidden; text-overflow: ellipsis; }
+.room-chat-title.editing .room-chat-title-text { min-width: 4ch; max-width: 36ch; overflow: visible; text-overflow: clip; }
+.room-chat-title-clip.marquee:hover .room-chat-title-track {
+  animation: room-title-marquee var(--marquee-duration, 6s) linear infinite;
+  animation-delay: 0.15s;
 }
-@media (prefers-reduced-motion: reduce) {
-  .room-chat-title-clip.marquee:hover .room-chat-title-text { animation: none; }
+@keyframes room-title-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(-50% - (var(--title-gap) / 2))); }
 }
 .room-subtitle { max-width: 34ch; overflow: hidden; color: var(--faint); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
 .room-collaboration { flex: 1 1 auto; min-width: 0; }
@@ -1759,7 +1862,7 @@ onBeforeUnmount(() => {
 .room-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 .room-conversation { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .room-timeline { flex: 1; overflow: auto; overscroll-behavior: contain; padding: 28px clamp(16px, 4vw, 48px) 16px; }
-.room-timeline-inner { width: min(920px, 100%); margin: 0 auto; }
+.room-timeline-inner { width: 100%; }
 .room-load-older { margin-bottom: 18px; }
 .room-welcome { max-width: 620px; margin: clamp(32px, 9vh, 96px) auto 0; text-align: center; }
 .room-welcome h2 { margin: 0 0 8px; font-size: var(--text-2xl); }
@@ -1786,12 +1889,31 @@ onBeforeUnmount(() => {
 .room-welcome-prompts button { padding: 7px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text-soft); font-family: inherit; font-size: var(--text-xs); cursor: pointer; }
 .room-welcome-prompts button:hover, .room-welcome-prompts button:focus-visible { outline: none; border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); color: var(--text); }
 .room-message { display: flex; gap: 12px; align-items: flex-start; margin: 0 0 24px; }
-.room-message-user { flex-direction: row-reverse; }
+.room-message-user { justify-content: flex-end; }
 .room-message-avatar { display: grid; flex: 0 0 44px; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: var(--text-soft); font: inherit; font-size: var(--text-xs); font-weight: 600; }
 button.room-message-avatar { cursor: pointer; }
 button.room-message-avatar:focus-visible { outline: none; }
 .room-message-avatar :deep(.room-mascot-art),
 .room-welcome-face :deep(.room-mascot-art) { width: 44px; height: 44px; }
+.room-message-avatar[data-speaking="true"] :deep(.room-mascot-art) {
+  transform-origin: center;
+  animation: room-avatar-breathe 2.2s ease-in-out infinite;
+  animation-delay: var(--breath-delay, 0s);
+}
+@keyframes room-avatar-breathe {
+  0%, 100% {
+    filter:
+      drop-shadow(0 0 3px var(--chip-tint, var(--accent)))
+      drop-shadow(0 0 10px color-mix(in srgb, var(--chip-tint, var(--accent)) 50%, transparent));
+    transform: scale(1);
+  }
+  50% {
+    filter:
+      drop-shadow(0 0 8px var(--chip-tint, var(--accent)))
+      drop-shadow(0 0 18px color-mix(in srgb, var(--chip-tint, var(--accent)) 72%, transparent));
+    transform: scale(1.08);
+  }
+}
 .room-handoff-face :deep(.room-mascot-art),
 .room-roster-card :deep(.room-mascot-art),
 .room-usage-face :deep(.room-mascot-art) { width: 100%; height: 100%; }
@@ -1800,23 +1922,33 @@ button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.
 @media (prefers-reduced-motion: reduce) {
   button.room-message-avatar:hover img,
   button.room-message-avatar:focus-visible img { animation: none; transform: scale(1.5); }
+  .room-message-avatar[data-speaking="true"] :deep(.room-mascot-art) {
+    animation: none;
+    filter: drop-shadow(0 0 8px var(--chip-tint, var(--accent)));
+    transform: none;
+  }
+  .room-thinking { animation: none; }
   .room-roster-card[data-intro] { position: static; left: auto; top: auto; width: 168px; transform: none; filter: none; box-shadow: none; }
   .room-roster-card[data-intro="center"]::before,
   .room-roster-card[data-intro="center"]::after { animation: none; opacity: 0; }
 }
 .room-user-avatar { border-radius: 50%; background: var(--surface-active); }
 .room-user-avatar svg { width: 22px; height: 22px; }
-.room-message-body { min-width: 0; max-width: min(760px, calc(100% - 60px)); padding: 4px 2px; }
-.room-message-user .room-message-body { max-width: min(640px, 82%); padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--surface-active) 72%, transparent); }
-.room-message header { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: baseline; margin-bottom: 4px; }
+.room-message-body { min-width: 0; flex: 1 1 auto; max-width: none; padding: 4px 2px; }
+.room-message-user .room-message-body { flex: 0 1 auto; max-width: min(720px, calc(100% - 56px)); padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--surface-active) 72%, transparent); }
+.room-message header { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; margin-bottom: 4px; }
 .room-message header strong { font-size: var(--text-sm); }
+.room-stop { margin: 0; padding: 1px 8px; border: 1px solid color-mix(in srgb, var(--danger, #c45c5c) 50%, var(--border)); border-radius: 999px; background: transparent; color: var(--danger, #e07a7a); font: inherit; font-size: var(--text-2xs); line-height: 1.5; cursor: pointer; }
+.room-stop:hover, .room-stop:focus-visible { outline: none; background: color-mix(in srgb, var(--danger, #c45c5c) 16%, transparent); }
+.room-thinking { margin: 2px 0 0; color: var(--text-soft); font-size: var(--text-sm); animation: room-thinking-fade 1.6s ease-in-out infinite; }
+@keyframes room-thinking-fade { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
 .room-message time { color: var(--faint); font-size: var(--text-2xs); }
 .room-message p { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.65; }
 .room-message ul { margin: 8px 0 0; padding-left: 18px; color: var(--text-soft); font-size: var(--text-xs); line-height: 1.55; }
 .room-report .room-message-body { padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); }
 .room-message-controller .room-message-body,
 .room-message-captain .room-message-body { padding: 0; border: 0; border-radius: 0; background: transparent; }
-.room-message-trace { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); font-size: var(--text-xs); }
+.room-message-trace { margin-top: 10px; padding-top: 8px; font-size: var(--text-xs); }
 .room-message-trace summary { cursor: pointer; color: var(--text-soft); }
 .room-message-trace .room-trace-list { margin: 8px 0 0; }
 .room-message-artifacts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
@@ -1928,7 +2060,7 @@ button.room-message-avatar:focus-visible img { animation: room-welcome-wobble 0.
 .room-card p { margin: 4px 0; }
 .room-card form { display: flex; flex-wrap: wrap; gap: 8px; }
 .room-card select { min-width: 0; }
-.room-assignment { padding-top: 8px; margin-top: 8px; border-top: 1px solid var(--border); font-size: var(--text-xs); }
+.room-assignment { padding-top: 8px; margin-top: 8px; font-size: var(--text-xs); }
 .room-live-output:not(.markdown-body) { max-height: 12rem; overflow: auto; padding: 8px; border-radius: 8px; background: color-mix(in srgb, var(--border) 18%, transparent); white-space: pre-wrap; }
 .room-message .markdown-body { overflow-wrap: anywhere; line-height: 1.65; }
 .room-message .markdown-body p { margin: 0 0 0.6em; white-space: normal; }
@@ -2124,7 +2256,8 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   .room-ledger { position: absolute; inset: 0 0 0 auto; z-index: 20; width: min(var(--room-ledger-width, 340px), 100%); box-shadow: -18px 0 50px rgb(0 0 0 / 0.18); }
   .room-timeline { padding: 20px 16px 12px; }
   .room-composer-wrap { padding: 8px 14px 14px; }
-  .room-message-body, .room-message-user .room-message-body { max-width: calc(100% - 44px); }
+  .room-message-body { max-width: none; }
+  .room-message-user .room-message-body { max-width: calc(100% - 56px); }
   .room-welcome { margin-top: 32px; }
   .room-settings-modal, .room-role-modal { width: 100%; max-height: calc(100vh - 24px); }
   .room-role-v2-body { grid-template-columns: 1fr; overflow: auto; }
@@ -2153,7 +2286,7 @@ body.room-overlay-open { overflow: hidden; }
 .room-composer-mentions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0; }
 .room-report-card .room-message-body { padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); }
 .room-report-task { color: var(--faint); font-size: var(--text-2xs); }
-.room-runs, .room-reports { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: var(--text-xs); }
+.room-runs, .room-reports { margin-top: 8px; padding-top: 8px; font-size: var(--text-xs); }
 .room-runs-title { color: var(--faint); font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: 0.04em; }
 .room-run-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 8px; align-items: baseline; margin: 4px 0; }
 .room-run-row > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2182,7 +2315,7 @@ body.room-overlay-open { overflow: hidden; }
 .room-turn-usage { margin-left: auto; color: var(--faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-variant-numeric: tabular-nums; opacity: 0.55; white-space: nowrap; transition: opacity 0.16s ease; }
 .room-message:hover .room-turn-usage,
 .room-message:focus-within .room-turn-usage { opacity: 1; }
-.room-run-trace { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); font-size: var(--text-xs); }
+.room-run-trace { margin-top: 8px; padding-top: 6px; font-size: var(--text-xs); }
 .room-run-trace > summary { display: flex; gap: 8px; align-items: center; color: var(--text-soft); cursor: pointer; }
 .room-run-trace-count { padding: 1px 6px; border-radius: 999px; background: var(--surface-active); color: var(--faint); font-size: 10px; }
 .room-tool-card { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: color-mix(in srgb, var(--surface) 82%, var(--surface-raised)); }

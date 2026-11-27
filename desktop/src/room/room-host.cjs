@@ -55,8 +55,19 @@ const CAPTAIN_PROMPT_BEFORE_SKILLS = [
   'If file changes are refused because the chat is still on the Tyche scratch directory, ask the user to set a project directory and wait.',
   'Keep replies short and quote task numbers when useful.',
 ].join(' ')
-const DEFAULT_CAPTAIN_PROMPT = [
+const CAPTAIN_PROMPT_BEFORE_ROSTER_CHOICE = [
   CAPTAIN_PROMPT_BEFORE_SKILLS,
+  'When you add a member, choose skills only from the Skills available to equip section and pass those skill ids. Do not invent skill names.',
+].join(' ')
+const DEFAULT_CAPTAIN_PROMPT = [
+  'You are the Captain of this chat.',
+  'When the current members cannot cover the request, call create_roles with a name, provider, responsibilities, and prompt for each new member.',
+  'Use assign_in_group to give work to other roles. The briefing says whether to assign in the same turn as create_roles or wait for the next user message.',
+  'Reply directly for normal answers; use post_in_chat only for a separate public notice, without duplicating your reply.',
+  'Do not create tasks yourself; the assigned role owns its task.',
+  'When the user states a request, call rename_chat once with one short sentence that names this chat. Skip it when rename_chat says the title is locked or already fits.',
+  'If file changes are refused because the chat is still on the Tyche scratch directory, ask the user to set a project directory and wait.',
+  'Keep replies short and quote task numbers when useful.',
   'When you add a member, choose skills only from the Skills available to equip section and pass those skill ids. Do not invent skill names.',
 ].join(' ')
 const DEFAULT_WORKER_PROMPT = [
@@ -77,6 +88,7 @@ const LEGACY_CAPTAIN_PROMPT = [
 
 function isCaptainPrompt(value) {
   return value === DEFAULT_CAPTAIN_PROMPT
+    || value === CAPTAIN_PROMPT_BEFORE_ROSTER_CHOICE
     || value === CAPTAIN_PROMPT_BEFORE_SKILLS
     || value === PREVIOUS_CAPTAIN_PROMPT
     || value === LEGACY_CAPTAIN_PROMPT
@@ -198,6 +210,7 @@ function createRoomHost({
   onRuntimeEvent = () => {},
   skillInventory = null,
   availableProviders = null,
+  rosterWaitsForInstruction = null,
 } = {}) {
   if (typeof privateRoot !== 'string' || !path.isAbsolute(privateRoot)) {
     throw new TypeError('ROOM_HOST_PRIVATE_ROOT_REQUIRED')
@@ -222,6 +235,7 @@ function createRoomHost({
     },
     skillInventory,
     availableProviders,
+    rosterWaitsForInstruction,
     adapterFactory: adapterFactory || (deps => createOarRuntimeAdapter({
       ...deps,
       env,
@@ -505,6 +519,7 @@ function createRoomHost({
         || prompt === LEGACY_CAPTAIN_PROMPT
         || prompt === PREVIOUS_CAPTAIN_PROMPT
         || prompt === CAPTAIN_PROMPT_BEFORE_SKILLS
+        || prompt === CAPTAIN_PROMPT_BEFORE_ROSTER_CHOICE
       )) {
         insertPromptRevision(role.id, DEFAULT_CAPTAIN_PROMPT)
       } else if (role.is_captain !== 1 && isCaptainPrompt(prompt)) {

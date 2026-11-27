@@ -101,6 +101,7 @@
             <button v-if="selectedProvider" type="button" class="link-button" @click="selectedProvider = ''">{{ t('settingsUi.usageClear') }}</button>
           </div>
           <p v-if="!roomRows.length" class="settings-note">{{ t('settingsUi.usageNoData') }}</p>
+          <div v-else class="usage-scroll">
           <div
             v-for="room in roomRows"
             :key="room.id"
@@ -117,6 +118,7 @@
             <i><b :style="{ width: roomWidth(room) }" /></i>
             <strong>{{ money(room.costUsd) }}</strong>
           </div>
+          </div>
         </article>
       </div>
 
@@ -126,7 +128,8 @@
           <button v-if="selectedRoomId" type="button" class="link-button" @click="selectedRoomId = ''">{{ t('settingsUi.usageClear') }}</button>
         </div>
         <p v-if="!agentRows.length" class="settings-note">{{ t('settingsUi.usageNoData') }}</p>
-        <table v-else class="settings-mini-table usage-agents">
+        <div v-else class="usage-scroll">
+        <table class="settings-mini-table usage-agents">
           <thead><tr><th>Agent</th><th>Token</th><th>{{ t('settingsUi.fee') }}</th><th>{{ t('settingsUi.share') }}</th></tr></thead>
           <tbody>
             <tr
@@ -149,6 +152,7 @@
             </tr>
           </tbody>
         </table>
+        </div>
       </article>
 
       <article class="settings-card">
@@ -489,6 +493,8 @@ onMounted(() => load())
 .usage-tooltip-part { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; line-height: 1.6; }
 .usage-tooltip-part b { margin-left: auto; color: var(--text-soft); font-weight: 600; }
 .link-button { border: 0; background: transparent; color: var(--accent-text); font: inherit; font-size: 11px; cursor: pointer; padding: 0; }
+.usage-scroll { height: 220px; overflow: auto; }
+.usage-agents thead th { position: sticky; top: 0; background: color-mix(in srgb, var(--surface) 92%, var(--bg)); }
 .usage-filter-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
 .usage-filter-head h2 small { color: var(--muted); font-size: 12px; font-weight: 500; }
 .room-row { display: grid; grid-template-columns: 88px minmax(0, 1fr) 64px; align-items: center; gap: 10px; min-height: 36px; padding: 0 6px; margin: 0 -6px; border-radius: 7px; cursor: pointer; }

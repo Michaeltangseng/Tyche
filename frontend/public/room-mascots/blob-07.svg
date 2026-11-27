@@ -12,5 +12,4 @@
   </defs>
   <path class="body" fill="url(#blob-07-grad)" d="M34 6C44 6 50 22 52 38C54 50 48 58 32 58C18 58 12 52 14 42C17 26 24 6 34 6Z"/>
   <g class="eyes"><ellipse class="eye" cx="27" cy="40" rx="3.4" ry="4.9" fill="#1F2D3D"/><ellipse class="eye" cx="39" cy="40" rx="3.4" ry="4.9" fill="#1F2D3D"/></g>
-  <circle class="dot" cx="45" cy="45" r="2.2" fill="#2EC4B6"/>
 </svg>

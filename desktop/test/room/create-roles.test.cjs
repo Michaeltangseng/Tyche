@@ -10,7 +10,7 @@ const { createRoomReadModel } = require('../../src/room/read-model.cjs')
 const { createToolDispatcher } = require('../../src/room/tools/dispatcher.cjs')
 const { createCaptainAssignment, registerCaptainTools } = require('../../src/room/tools/captain.cjs')
 
-function setup(t, { providers = ['claude', 'codex', 'hermes'], onUnavailable = null } = {}) {
+function setup(t, { providers = ['claude', 'codex', 'hermes'], onUnavailable = null, rosterWaitsForInstruction = () => true } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tyche-room-v2-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const roomDb = openRoomDatabase({ directory })
@@ -46,6 +46,7 @@ function setup(t, { providers = ['claude', 'codex', 'hermes'], onUnavailable = n
     roomDb,
     canLaunch,
     onUnavailable,
+    rosterWaitsForInstruction,
   })
   return { roomDb, repo, roomId, chatId, captain, timeline, dispatcher, queued }
 }
@@ -93,6 +94,9 @@ test('create_roles writes the same role record the dialog writes, at max permiss
   assert.deepEqual(roles.map(role => role.nativePermission), ['bypassPermissions', 'danger-full-access'])
   assert.deepEqual(roles.map(role => role.responsibilities), ['查资料', '改代码'])
   assert.equal(roles.every(role => role.isCaptain === false), true)
+  assert.notEqual(roles[0].portrait, roles[1].portrait)
+  assert.match(roles[0].portrait, /^(0[1-9]|1[0-2])$/)
+  assert.match(roles[1].portrait, /^(0[1-9]|1[0-2])$/)
   assert.equal(promptOf(roomDb, roles[0].id).prompt, '研究问题并给出出处。')
   assert.equal(promptOf(roomDb, roles[0].id).created_by, captain)
   assert.deepEqual(
@@ -118,6 +122,42 @@ test('create_roles writes the same role record the dialog writes, at max permiss
     /ROOM_ROSTER_ASSIGN_WAIT/,
   )
   assert.equal(timeline.latest(chatId).id, message.id)
+})
+
+test('create_roles repeats a portrait only after every mascot is already in use', async t => {
+  const { chatId, captain, dispatcher, repo } = setup(t)
+  for (const portrait of ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']) {
+    const roleId = repo.createRole({
+      chatId, displayName: `已有${portrait}`, provider: 'codex', prompt: '已有', portrait,
+    })
+    repo.addParticipant({ chatId, roleId })
+  }
+  dispatcher.bindRun('run-full', { chatId, roleId: captain, allowedTools: ['create_roles'] })
+  const created = await dispatcher.invoke({
+    runId: 'run-full',
+    callId: 'roster-full',
+    name: 'create_roles',
+    args: { roles: [{ displayName: '后来者', provider: 'claude', prompt: '继续' }] },
+  })
+  assert.match(repo.getRole(created.roleIds[0]).portrait, /^(0[1-9]|1[0-2])$/)
+})
+
+test('create_roles can assign in the same turn when the preference does not wait', async t => {
+  const { chatId, captain, dispatcher, queued } = setup(t, { rosterWaitsForInstruction: () => false })
+  dispatcher.bindRun('run1', { chatId, roleId: captain, allowedTools: ['create_roles', 'assign_in_group'] })
+  const created = await dispatcher.invoke({
+    runId: 'run1',
+    callId: 'roster-1',
+    name: 'create_roles',
+    args: { roles: [{ displayName: '实现', provider: 'codex', prompt: '改代码' }] },
+  })
+  await dispatcher.invoke({
+    runId: 'run1',
+    callId: 'assign-1',
+    name: 'assign_in_group',
+    args: { text: '开始', roleIds: [created.roleIds[0]] },
+  })
+  assert.equal(queued.length, 1)
 })
 
 test('a later run can assign the members create_roles stored', async t => {

@@ -107,106 +107,63 @@ describe('room collaboration ribbon', () => {
     expect(chips[0].attributes('data-speaking')).toBe('true')
     expect(chips[1].attributes('data-speaking')).toBeUndefined()
     expect(chips[0].get('.room-chip-live').text()).toBe('2:00')
+    expect(chips[0].attributes('style')).toContain('--chip-tint')
+    expect(chips[1].attributes('style')).toBeFalsy()
     wrapper.unmount()
   })
 
-  it('renders the relay from real run facts with a spotlight and a stamp', () => {
+  it('gives concurrent speakers different glow colors', () => {
     const wrapper = mountRibbon({
       mode: 'running',
-      taskNumber: 3,
-      taskLabel: 'Snake game',
-      extraActiveTasks: 1,
-      activeRoleId: 'codex',
-      nodes: [
-        {
-          roleId: 'claude',
-          state: 'done',
-          status: 'completed',
-          runId: 'run-1',
-          activationKey: 'run-1:done',
-        },
-        {
-          roleId: 'codex',
-          state: 'active',
-          status: 'running',
-          runId: 'run-2',
-          since: '2026-11-15T10:03:00Z',
-          activationKey: 'run-2',
-        },
-        {
-          roleId: 'pi',
-          state: 'waiting',
-          status: 'assigned',
-          activationKey: 'pi:waiting',
-        },
+      nodes: [],
+      replies: [
+        { roleId: 'claude', since: '2026-11-15T10:04:00Z', messageId: 'message-claude' },
+        { roleId: 'codex', since: '2026-11-15T10:04:10Z', messageId: 'message-codex' },
       ],
     })
-
-    const nodes = wrapper.findAll('.room-relay-node')
-    expect(nodes).toHaveLength(3)
-    expect(nodes.map(node => node.attributes('data-state'))).toEqual(['done', 'active', 'waiting'])
-    expect(nodes[0].find('.room-relay-stamp').exists()).toBe(true)
-    expect(nodes[1].find('.room-relay-baton').exists()).toBe(true)
-    expect(nodes[1].get('.room-relay-timer').text()).toBe('2:00')
-    expect(wrapper.get('.room-relay-task').text()).toBe('#3')
-    expect(wrapper.get('.room-relay-extra').text()).toBe('+1')
-    expect(wrapper.text()).toContain('Standing by')
-    expect(wrapper.findAll('.room-agent-chip')).toHaveLength(0)
+    const chips = wrapper.findAll('.room-agent-chip')
+    const claude = chips[0].attributes('style')
+    const codex = chips[1].attributes('style')
+    expect(chips[0].attributes('data-speaking')).toBe('true')
+    expect(chips[1].attributes('data-speaking')).toBe('true')
+    expect(claude).toContain('--chip-tint')
+    expect(codex).toContain('--chip-tint')
+    expect(claude).not.toBe(codex)
     wrapper.unmount()
   })
 
-  it('returns the cast with a quiet recap after the task settles', async () => {
+  it('keeps the member row and leaves the header status off', () => {
     const wrapper = mountRibbon({
-      mode: 'settled',
-      tone: 'review',
-      taskNumber: 3,
-      taskLabel: 'Snake game',
-      settledAt: '2026-11-15T10:04:00Z',
-      nodes: [
-        {
-          roleId: 'claude',
-          state: 'done',
-          status: 'completed',
-          runId: 'run-1',
-          activationKey: 'run-1:done',
-        },
-        {
-          roleId: 'codex',
-          state: 'done',
-          status: 'completed',
-          activationKey: 'assignment:codex:done',
-        },
-      ],
+      mode: 'running',
+      nodes: [{ roleId: 'codex', state: 'active', status: 'running' }],
+      replies: [{ roleId: 'codex', messageId: 'message-codex', since: '2026-11-15T10:04:00Z' }],
     })
 
     expect(wrapper.findAll('.room-agent-chip')).toHaveLength(3)
-    const recap = wrapper.get('.room-recap-pill')
-    expect(recap.attributes('data-tone')).toBe('review')
-    expect(recap.text()).toContain('Awaiting acceptance')
-    expect(recap.text()).toContain('1 min ago')
-    expect(recap.findAll('.room-recap-faces img')).toHaveLength(2)
-
-    await recap.trigger('click')
-    expect(wrapper.emitted('open-work')).toHaveLength(1)
+    expect(wrapper.find('.room-status').exists()).toBe(false)
+    expect(wrapper.find('.room-thought').exists()).toBe(false)
     wrapper.unmount()
   })
 
-  it('marks an interrupted run as attention in the recap', () => {
-    const wrapper = mountRibbon({
-      mode: 'settled',
-      tone: 'attention',
-      settledAt: '2026-11-15T10:04:00Z',
-      nodes: [{
-        roleId: 'codex',
-        state: 'attention',
-        status: 'failed',
-        runId: 'run-2',
-        activationKey: 'run-2:attention',
-      }],
-    })
-
-    expect(wrapper.get('.room-recap-pill').attributes('data-tone')).toBe('attention')
-    expect(wrapper.text()).toContain('Needs attention')
+  it('collapses members that do not fit and lists them from +N', async () => {
+    const wrapper = mountRibbon({ mode: 'idle', nodes: [], replies: [] })
+    wrapper.get('.room-cast-row').element.setAttribute('data-measure-client', '640')
+    wrapper.findAll('[data-member-chip]').forEach(chip => chip.element.setAttribute('data-measure-width', '220'))
+    await wrapper.setProps({ busy: true })
+    const visible = wrapper.findAll('.room-agent-chip').filter(chip => chip.element.style.display !== 'none')
+    expect(visible).toHaveLength(1)
+    const more = wrapper.get('.room-member-more')
+    expect(more.text()).toBe('+2')
+    await more.trigger('click')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.room-member-popover').exists()).toBe(false)
+    await more.trigger('click')
+    const hidden = wrapper.get('.room-member-popover').findAll('button')
+    expect(hidden).toHaveLength(2)
+    await hidden[0].trigger('click')
+    expect(wrapper.emitted('select-role')?.at(-1)).toEqual(['codex'])
+    expect(wrapper.find('.room-member-popover').exists()).toBe(false)
     wrapper.unmount()
   })
 })
