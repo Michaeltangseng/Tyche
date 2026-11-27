@@ -39,17 +39,12 @@
               <p>{{ t('systemSettings.agentPageHint') }}</p>
             </div>
             <div class="settings-page-actions">
-              <button class="secondary-button" type="button" @click="connectorOpen = !connectorOpen">
-                {{ t('systemSettings.extensions') }}
-              </button>
               <button class="secondary-button" type="button" :disabled="refreshing" @click="refreshAgents">
                 <RefreshOutline :class="{ spinning: refreshing }" />
                 {{ t('installer.refresh') }}
               </button>
             </div>
           </header>
-
-          <ConnectorPackagesPanel v-if="connectorOpen" @close="connectorOpen = false" />
 
           <div class="settings-subtabs" role="tablist" :aria-label="t('systemSettings.agentPageTitle')">
             <button type="button" role="tab" :aria-selected="agentTab === 'local'" :class="{ active: agentTab === 'local' }" @click="agentTab = 'local'">
@@ -140,18 +135,16 @@ import {
   ChevronBackOutline,
   InformationCircleOutline,
   OptionsOutline,
+  PersonCircleOutline,
   PersonOutline,
   RefreshOutline,
   SearchOutline,
-  ShieldCheckmarkOutline,
   SparklesOutline,
-  SwapHorizontalOutline,
   TerminalOutline,
 } from '@vicons/ionicons5'
 import SettingsPages from './SettingsPages.vue'
 import { desktopApi } from '../desktop.js'
 import CloudAgentBridgePanel from './CloudAgentBridgePanel.vue'
-import ConnectorPackagesPanel from './ConnectorPackagesPanel.vue'
 import McpServersPanel from './McpServersPanel.vue'
 
 const props = defineProps({
@@ -191,8 +184,6 @@ const groups = [
     items: [
       { id: 'agents', labelKey: 'systemSettings.agentPageTitle', icon: TerminalOutline },
       { id: 'skills', labelKey: 'systemSettings.skills', icon: SparklesOutline },
-      { id: 'orchestration', labelKey: 'systemSettings.orchestration', icon: SwapHorizontalOutline },
-      { id: 'permissions', labelKey: 'systemSettings.permissions', icon: ShieldCheckmarkOutline },
     ],
   },
   {
@@ -200,6 +191,7 @@ const groups = [
     labelKey: 'systemSettings.groupApp',
     items: [
       { id: 'general', labelKey: 'systemSettings.general', icon: OptionsOutline },
+      { id: 'user', labelKey: 'systemSettings.user', icon: PersonCircleOutline },
       { id: 'preferences', labelKey: 'systemSettings.preferences', icon: PersonOutline },
       { id: 'usage', labelKey: 'systemSettings.usage', icon: BarChartOutline },
     ],
@@ -214,7 +206,6 @@ const groups = [
 ]
 
 const agentTab = ref('local')
-const connectorOpen = ref(false)
 const testingKind = ref('')
 const testResults = ref({})
 const searchShortcut = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘F' : 'Ctrl F'

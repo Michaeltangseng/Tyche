@@ -111,4 +111,40 @@ describe('chat start preferences', () => {
     }))
     wrapper.unmount()
   })
+
+  it('saves the portrait on the user page and leaves chat defaults alone', async () => {
+    setLocale('zh')
+    const save = vi.fn(async value => value)
+    window.tycheDesktop = {
+      workPreferences: {
+        get: vi.fn(async () => ({
+          userPortrait: '',
+          chatStartMode: 'single',
+          defaultCaptainKind: 'claude',
+          defaultMemberKinds: ['claude'],
+        })),
+        save,
+      },
+    }
+    const wrapper = mount(SettingsPages, {
+      props: {
+        section: 'user',
+        setThemePreference: () => {},
+        themePreference: 'dark',
+      },
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('用户管理')
+    expect(wrapper.find('.pref-member').exists()).toBe(false)
+    await wrapper.get('.pref-portraits button').trigger('click')
+    expect(save).not.toHaveBeenCalled()
+    await wrapper.get('button.primary-button').trigger('click')
+    await flushPromises()
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      userPortrait: '01',
+      chatStartMode: 'single',
+      defaultCaptainKind: 'claude',
+    }))
+    wrapper.unmount()
+  })
 })

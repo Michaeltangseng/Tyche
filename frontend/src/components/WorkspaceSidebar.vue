@@ -995,7 +995,7 @@ function openSidebarSettings() {
 }
 
 function openUserPreferences() {
-  openSystemSettings?.('preferences')
+  openSystemSettings?.('user')
 }
 
 function openAgentManager() {
